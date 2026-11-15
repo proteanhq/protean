@@ -6,6 +6,7 @@ from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
+from protean.core.unit_of_work import UnitOfWork
 from protean.fields import String
 from protean.fields.basic import Identifier
 from protean.utils.globals import current_domain
@@ -60,6 +61,10 @@ class User(BaseAggregate):
         self.password_hash = event.password_hash
 
 
+class Profile(BaseAggregate):
+    email = String()
+
+
 class UserCommandHandler(BaseCommandHandler):
     @handle(Register)
     def register_user(self, command: Register) -> None:
@@ -72,6 +77,7 @@ def register_elements(test_domain):
     test_domain.register(Registered, part_of=User)
     test_domain.register(Register, part_of=User)
     test_domain.register(UserCommandHandler, part_of=User)
+    test_domain.register(Profile)
     test_domain.init(traverse=False)
 
 
@@ -118,14 +124,17 @@ def test_event_store_append_precedes_relational_commit(test_domain, monkeypatch)
     monkeypatch.setattr(BaseEventStore, "append", traced_append)
     monkeypatch.setattr(MemorySession, "commit", traced_commit)
 
-    UserCommandHandler().register_user(
-        Register(
-            id=str(uuid4()),
-            email="john.doe@example.com",
-            name="John Doe",
-            password_hash="hash",
+    with UnitOfWork():
+        User.register(
+            Register(
+                id=str(uuid4()),
+                email="john.doe@example.com",
+                name="John Doe",
+                password_hash="hash",
+            )
         )
-    )
+        # A state-based aggregate gives the commit a relational session.
+        test_domain.repository_for(Profile).add(Profile(email="john.doe@example.com"))
 
     assert "append" in order, order
     assert "commit" in order, order

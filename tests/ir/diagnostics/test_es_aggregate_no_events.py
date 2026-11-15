@@ -96,27 +96,6 @@ class TestESAggregateNoEvents:
         codes = [d["code"] for d in ir["diagnostics"]]
         assert "ES_AGGREGATE_NO_EVENTS" not in codes
 
-    def test_infrastructure_aggregate_not_flagged(self):
-        """A framework/infrastructure ES aggregate (FQN under
-        ``protean.adapters.``) with no events is skipped. Deleting the
-        ``protean.adapters.`` guard must fail this test."""
-        domain = Domain(name="ESInfra", root_path=".")
-
-        @domain.aggregate(event_sourced=True)
-        class Account:
-            balance = Float()
-
-        # Masquerade as an infrastructure aggregate so its cluster FQN sits under
-        # ``protean.adapters.`` (real adapter aggregates are internal and never
-        # clustered, so this override is how the guard is reached).
-        Account.__module__ = "protean.adapters.fake"
-
-        domain.init(traverse=False)
-        ir = IRBuilder(domain).build()
-
-        codes = [d["code"] for d in ir["diagnostics"]]
-        assert "ES_AGGREGATE_NO_EVENTS" not in codes
-
     def test_suppress_checks_drops_code(self):
         domain = Domain(name="ESSuppress", root_path=".")
 

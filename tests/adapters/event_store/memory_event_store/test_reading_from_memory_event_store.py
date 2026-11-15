@@ -1,11 +1,3 @@
-from typing import cast
-
-from protean.adapters.event_store.memory import (
-    MemoryMessage,
-    MemoryMessageRepository,
-)
-
-
 def _create_test_metadata(stream_name, message_type, message_id=None):
     """Helper to create metadata with required headers for tests."""
     return {
@@ -123,22 +115,15 @@ def test_read_last_message_past_the_read_page_limit(test_domain):
     newest record. An earlier implementation read one page and took its last row,
     so the append-only recovery-checkpoint stream returned a stale record once it
     outgrew a single page (the long-restart failure this guards). ``total`` is one
-    past ``repo.read``'s default page size so the naive read would miss the tail.
-
-    Seeded through the repository's ``add`` rather than ``_write``: ``_write``
-    re-reads the whole stream to compute the next version on every call, which is
-    O(n^2) and far too slow for this many rows.
+    past the default read page size so the naive read would miss the tail.
     """
-    repo = cast(MemoryMessageRepository, test_domain.repository_for(MemoryMessage))
+    store = test_domain.event_store.store
     total = 1_001
     for i in range(total):
-        repo.add(
-            MemoryMessage(
-                stream_name="recovery-checkpoint-Handler-order",
-                position=i,
-                type="Checkpoint",
-                data={"watermark": i, "unresolved": {}},
-            )
+        store.write_message(
+            "recovery-checkpoint-Handler-order",
+            "Checkpoint",
+            {"watermark": i, "unresolved": {}},
         )
 
     message = test_domain.event_store.store.get_last_stream_message(

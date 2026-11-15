@@ -193,10 +193,10 @@ routing.
 ### Process managers run within a Unit of Work. { data-toc-label="Transactions" }
 
 Each handler executes inside its own Unit of Work. If the handler fails, the
-PM's transition is rolled back. On the memory event store, the rollback also
-discards any command the handler issued before the failure. Message-DB writes
-such a command on its own connection, so the command survives the rollback.
-Keep issued commands idempotent so re-issuing one is safe.
+PM's transition is rolled back. A command the handler issued before the
+failure survives the rollback: the memory event store and Message-DB both
+write it at once, outside the Unit of Work. Keep issued commands idempotent so
+re-issuing one is safe.
 
 ## Best Practices
 

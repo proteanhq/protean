@@ -596,14 +596,10 @@ class UnitOfWork:
             # event-sourced aggregates' events, rather than leaving the store
             # missing a committed event. See ADR-0015.
             #
-            # Appending while the context is active also matters for adapters
-            # that back the event store with the relational provider (the
-            # in-memory adapter): their append joins THIS transaction instead of
-            # opening a colliding nested UnitOfWork, giving true atomicity when
-            # the two stores coincide. A real external store (message-db) writes
-            # directly. A genuine optimistic-concurrency conflict still raises and
-            # is re-driven by the handler-level version retry, which reloads the
-            # aggregate cleanly.
+            # The built-in event stores (memory, message-db) write the append
+            # directly, outside this transaction. A genuine optimistic-concurrency
+            # conflict still raises and is re-driven by the handler-level version
+            # retry, which reloads the aggregate cleanly.
             #
             # The append also runs before the outbox rows are saved. Outbox rows
             # carry the event's message id, which for an event-sourced aggregate
@@ -615,8 +611,9 @@ class UnitOfWork:
             # Flush the relational sessions before the append, so a stale
             # version-guarded UPDATE on a state-based aggregate fails here,
             # before any event is durable, and not on the outbox save's
-            # autoflush after the append. Sessions without a flush (in-memory,
-            # Elasticsearch) check versions at commit.
+            # autoflush after the append. The in-memory session's flush checks
+            # the recorded versions. Sessions without a flush (Elasticsearch)
+            # check versions at commit.
             for session in self._sessions.values():
                 flush = getattr(session, "flush", None)
                 if flush is not None:

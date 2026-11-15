@@ -1,7 +1,7 @@
 """Aggregate enrichers run only on aggregates the user registered.
 
-The framework stores its own rows (the memory event store's messages, outbox
-rows, processed-message markers) through aggregates too. An audit enricher
+The framework stores its own rows (outbox rows, processed-message markers)
+through aggregates too. An audit enricher
 that sets a field such as ``updated_by`` must not see those rows, or the save
 fails because they have no such field.
 """
@@ -9,7 +9,6 @@ fails because they have no such field.
 import pytest
 
 from protean import Domain
-from protean.adapters.event_store.memory import MemoryMessage
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.fields import Identifier, String
@@ -94,8 +93,9 @@ class TestEnricherSkipsInternalAggregates:
 @pytest.mark.no_test_domain
 class TestRegistryIsInternal:
     def test_framework_aggregate_is_internal(self):
-        domain, _ = _domain()
-        assert domain._domain_registry.is_internal(MemoryMessage)
+        domain, _ = _domain(outbox=True)
+        outbox_cls = domain._get_outbox_repo("default").meta_.part_of
+        assert domain._domain_registry.is_internal(outbox_cls)
 
     def test_user_aggregate_is_not_internal(self):
         domain, _ = _domain()

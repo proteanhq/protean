@@ -95,14 +95,15 @@ class TestEngineProcessorsFollowAggregateProviders:
 
         names = _engine_processor_names(domain)
 
-        # Internal aggregates stored in `memory`: the event store's
-        # MemoryMessage, plus the per-provider outbox clone
+        # The memory event store adds no internal aggregate on the memory
+        # provider; only the per-provider outbox clones are internal.
         internal_on_memory = [
             record.cls.__name__
             for record in domain.registry._elements["AGGREGATE"].values()
             if record.internal and record.cls.meta_.provider == "memory"
         ]
-        assert "MemoryMessage" in internal_on_memory
+        assert internal_on_memory
+        assert all(name.endswith("Outbox") for name in internal_on_memory)
         assert names == {"outbox-processor-default-to-default"}
         assert not any("-memory-" in name for name in names)
 

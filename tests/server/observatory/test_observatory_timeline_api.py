@@ -22,7 +22,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from protean.adapters.event_store import EventStore
-from protean.adapters.event_store.memory import MemoryMessage
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.domain import Domain
@@ -114,8 +113,17 @@ def _write_at(domain: Domain, when: dt, stream: str, message_type: str) -> None:
 
 def _add_raw_message(domain: Domain, **fields) -> None:
     """Store a message row as given, bypassing the defaults ``_write`` fills in."""
-    domain.repository_for(MemoryMessage).add(
-        MemoryMessage(position=0, type="Test.Raw.v1", data={}, **fields)
+    rows = domain.event_store.store.get_connection()
+    rows.append(
+        {
+            "id": str(uuid.uuid4()),
+            "position": 0,
+            "global_position": len(rows) + 1,
+            "type": "Test.Raw.v1",
+            "data": {},
+            "metadata": None,
+            **fields,
+        }
     )
 
 

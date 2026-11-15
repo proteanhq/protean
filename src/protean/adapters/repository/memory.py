@@ -308,6 +308,18 @@ class MemorySession:
                 self._db["data"][schema].pop(identifier, None)
                 self._db["dropped"].add((schema, identifier))
 
+    def flush(self) -> None:
+        """Raise :class:`ExpectedVersionError` when a recorded version is stale.
+
+        Checks the versions :meth:`commit` checks and changes nothing, so a
+        Unit of Work can find a stale write before it appends events.
+        :meth:`commit` checks again under the same lock.
+        """
+        with self._db["lock"]:
+            _refuse_stale_versions(
+                self._provider._databases, self._db["version_checks"]
+            )
+
     def commit(self) -> None:
         """Validate optimistic-concurrency versions and merge changes to the store.
 

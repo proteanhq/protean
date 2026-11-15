@@ -1,6 +1,3 @@
-from protean.adapters.event_store.memory import MemoryMessage
-
-
 def test_write_to_event_store(test_domain):
     position = test_domain.event_store.store.write_message(
         "testStream-123", "Event1", {"foo": "bar"}
@@ -8,9 +5,8 @@ def test_write_to_event_store(test_domain):
 
     assert position == 0
 
-    repo = test_domain.repository_for(MemoryMessage)
-    message = repo.get(1)
-    assert message.position == 0
+    messages = test_domain.event_store.store.get_stream_messages("testStream-123")
+    assert [(m["global_position"], m["position"]) for m in messages] == [(1, 0)]
 
 
 def test_that_position_is_incremented(test_domain):
@@ -19,9 +15,12 @@ def test_that_position_is_incremented(test_domain):
             "testStream-123", "Event1", {"foo": "bar"}
         )
 
-    repo = test_domain.repository_for(MemoryMessage)
-    message = repo.get(3)
-    assert message.position == 2
+    messages = test_domain.event_store.store.get_stream_messages("testStream-123")
+    assert [(m["global_position"], m["position"]) for m in messages] == [
+        (1, 0),
+        (2, 1),
+        (3, 2),
+    ]
 
 
 def test_multiple_writes_to_event_store(test_domain):

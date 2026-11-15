@@ -72,9 +72,7 @@ class TestDomainTraversal:
 
         assert publishing13.domain is not None
         publishing13.domain.init()
-        assert (
-            len(publishing13.domain.registry.aggregates) == 2
-        )  # MemoryMessage is internal, excluded
+        assert len(publishing13.domain.registry.aggregates) == 2
 
 
 @pytest.mark.no_test_domain
@@ -103,9 +101,7 @@ class TestMultiFolderStructureTraversal:
         assert domain.name == "Publishing20"
 
         domain.init()
-        assert (
-            len(domain.registry.aggregates) == 2
-        )  # MemoryMessage is internal, excluded
+        assert len(domain.registry.aggregates) == 2
 
     def test_elements_in_folder_with_their_own_toml_are_ignored(self):
         change_working_directory_to("test21")
@@ -115,9 +111,7 @@ class TestMultiFolderStructureTraversal:
         assert domain.name == "Publishing21"
 
         domain.init()
-        assert (
-            len(domain.registry.aggregates) == 1
-        )  # MemoryMessage is internal, excluded
+        assert len(domain.registry.aggregates) == 1
 
 
 @pytest.mark.no_test_domain
