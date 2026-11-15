@@ -189,6 +189,11 @@ the same stream sequentially, in the order they were written. When
 `get_by_hubspot_id` raises `ObjectNotFoundError`. When the source can
 deliver the two events in either order, use a Process Manager (Solution B).
 
+The `hubspot_id` field is unique, so a redelivered `HubspotClientCreated`
+fails with a `ValidationError` and writes no second `Client`. To skip the
+redelivered event, use the handler in
+[Solution C](#solution-c-idempotent-retry-with-unique-constraints).
+
 **When to use:** Both events target the same aggregate. The handling
 logic is simple. No cross-aggregate coordination needed.
 
@@ -207,6 +212,11 @@ before the creation event, the contacts are buffered and applied once the
 client exists. Both handlers are marked `start=True` for this reason: a
 process manager skips an event when no instance exists for its correlation
 value and the handler is not a start handler.
+
+A redelivered `CreateClient` command fails on the unique `hubspot_id` key
+with a `ValidationError` and writes no second `Client`. To skip the
+redelivered command, check for the key first, as the handler in
+[Solution C](#solution-c-idempotent-retry-with-unique-constraints) does.
 
 **When to use:** Events have causal dependencies. Multiple aggregates
 are involved. You need explicit state tracking of the integration flow.

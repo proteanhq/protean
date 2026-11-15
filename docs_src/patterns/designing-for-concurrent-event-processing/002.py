@@ -9,7 +9,7 @@ domain.config["command_processing"] = "sync"
 
 @domain.aggregate
 class Client:
-    hubspot_id: String(required=True)
+    hubspot_id: String(required=True, unique=True)
     name: String(max_length=200)
     contacts: List(content_type=String)
 
