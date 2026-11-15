@@ -51,7 +51,8 @@ clears an existing target the same way a plain `protean new` does.
 ### Behavior Modifiers
 
 - `--dry-run`: Prints the project-relative path of every file the command
-would create, one per line, and writes nothing. The target directory is left
+would create, one per line, and writes nothing. An empty folder the command
+would create is listed with a trailing `/`. The target directory is left
 alone whether or not it already has files in it, and `--force` does not clear
 it under a dry run.
 - `--force`, `-f`: Forces the command to run even if it would overwrite
