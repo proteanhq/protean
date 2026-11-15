@@ -320,7 +320,7 @@ def test_origin_stream_filter_reaches_the_subscription():
     resolved = resolve(example.domain, example.UserActionNotificationHandler)
 
     assert resolved["subscription_type"] == "event_store"
-    assert resolved["origin_stream"] == "user_actions"
+    assert resolved["origin_stream"] == "shop::user_actions"
     assert example.UserActionNotificationHandler.meta_.stream_category == "shop::order"
 
 

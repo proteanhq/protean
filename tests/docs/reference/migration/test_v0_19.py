@@ -8,6 +8,7 @@ import pytest
 
 from protean.adapters.repository.sqlalchemy import render_index_ddl
 from protean.domain import Domain
+from protean.port.event_store import BaseEventStore
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.outbox import _CLAIM_ORDER, OUTBOX_INDEXES, Outbox, OutboxStatus
 from protean.utils.reflection import fields
@@ -214,3 +215,21 @@ class TestFillStreamCategory:
 
     def test_the_page_shows_the_fill_snippet(self):
         assert '--8<-- "reference/migration/v0-19/001.py:fill"' in _section(BACKFILL)
+
+
+HEALTH_MEMBERS = (
+    "## A custom event store must define `ping()`, `health()` and `get_connection()`"
+)
+
+
+class TestEventStoreHealthMembers:
+    def test_the_named_members_are_abstract_on_base_event_store(self):
+        for member in ("ping", "health", "get_connection"):
+            assert member in BaseEventStore.__abstractmethods__
+
+    def test_the_page_names_every_member_it_says_is_required(self):
+        section = _section(HEALTH_MEMBERS)
+
+        for member in ("ping()", "health()", "get_connection()"):
+            assert f"`{member}`" in section
+        assert "TypeError" in section
