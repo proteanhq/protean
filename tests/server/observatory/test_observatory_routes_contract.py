@@ -48,7 +48,7 @@ _EXPECTED_ROUTES = [
         "/stats",
         "get",
         "stats_stats_get",
-        "Aggregated throughput and error rate statistics.",
+        "Outbox status, stream message counts and stream names.",
     ),
     (
         "/traces",

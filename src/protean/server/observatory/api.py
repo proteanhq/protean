@@ -1365,7 +1365,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
 
     @router.get("/stats")
     async def stats() -> JSONResponse:
-        """Aggregated throughput and error rate statistics."""
+        """Outbox status, stream message counts and stream names."""
         return _stats(domains)
 
     @router.get("/traces")
