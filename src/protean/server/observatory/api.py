@@ -287,40 +287,52 @@ def _count_stream(
     redis_conn: "redis.Redis[Any]",
     name: str,
     message_counts: dict[str, int],
-    consumer_groups: dict[str, dict[str, Any]],
+    consumer_groups: dict[str, dict[str, Any]] | None,
 ) -> None:
-    """Add one stream's length and group pending counts to the running totals."""
+    """Add one stream's length and group pending counts to the running totals.
+
+    When ``consumer_groups`` is given, each group is also recorded in it by name.
+    """
     try:
         message_counts["total_messages"] += redis_conn.xlen(name)
         for g in _xinfo_groups(redis_conn, name):
             if isinstance(g, dict):
+                # Read the name before counting: a name that fails to decode
+                # skips the rest of the stream without counting this group.
+                gname = None if consumer_groups is None else str(_xinfo_name(g))
                 gpending = _xinfo_count(g, "pending")
                 message_counts["in_flight"] += gpending
-                consumer_groups[str(_xinfo_name(g))] = {
-                    "stream": name,
-                    "pending": gpending,
-                    "lag": _xinfo_count(g, "lag"),
-                }
+                if consumer_groups is not None:
+                    consumer_groups[str(gname)] = {
+                        "stream": name,
+                        "pending": gpending,
+                        "lag": _xinfo_count(g, "lag"),
+                    }
     except Exception:  # one unreadable stream must not fail the endpoint
         logger.debug("Could not read stream %s", name, exc_info=True)
 
 
 def _message_counts(
-    redis_conn: "redis.Redis[Any] | None", stream_names: list[str]
-) -> tuple[dict[str, int], dict[str, dict[str, Any]]]:
-    """Return the message counts and the consumer groups across ``stream_names``."""
+    redis_conn: "redis.Redis[Any] | None",
+    stream_names: list[str],
+    consumer_groups: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, int]:
+    """Return the message counts across ``stream_names``.
+
+    When ``consumer_groups`` is given, it is filled with every group read.
+    """
     message_counts = {"total_messages": 0, "in_flight": 0, "failed": 0, "dlq": 0}
-    consumer_groups: dict[str, dict[str, Any]] = {}
     if redis_conn is not None:
         for name in stream_names:
             _count_stream(redis_conn, name, message_counts, consumer_groups)
-    return message_counts, consumer_groups
+    return message_counts
 
 
 def _streams(domains: list[Domain]) -> JSONResponse:
     redis_conn = _get_redis(domains)
     stream_names = _discover_streams(redis_conn) if redis_conn else []
-    message_counts, consumer_groups = _message_counts(redis_conn, stream_names)
+    consumer_groups: dict[str, dict[str, Any]] = {}
+    message_counts = _message_counts(redis_conn, stream_names, consumer_groups)
 
     return JSONResponse(
         content={
@@ -338,7 +350,7 @@ def _stats(domains: list[Domain]) -> JSONResponse:
 
     redis_conn = _get_redis(domains)
     stream_names = _discover_streams(redis_conn) if redis_conn else []
-    message_counts, _ = _message_counts(redis_conn, stream_names)
+    message_counts = _message_counts(redis_conn, stream_names)
 
     return JSONResponse(
         content={

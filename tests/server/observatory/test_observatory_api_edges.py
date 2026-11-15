@@ -88,6 +88,56 @@ class TestConsumerGroupsThatAreNotMappings:
         assert data["totals"]["consumer_pending"] == 1
         assert data["totals"]["stream_depth"] == 3
 
+    def test_consumers_skip_a_consumer_entry_that_is_not_a_dict(self, test_domain):
+        redis_conn = _stand_in_redis(test_domain)
+        redis_conn.scan.return_value = (0, [b"orders"])
+        redis_conn.xinfo_groups.return_value = [{"name": b"Handler"}]
+        redis_conn.xinfo_consumers.return_value = [
+            "junk",
+            {b"name": b"Handler-host-1-abc", b"pending": 2, b"idle": 7},
+        ]
+
+        data = _client(test_domain).get("/api/consumers").json()
+
+        assert [c["consumer_name"] for c in data["consumers"]] == ["Handler-host-1-abc"]
+        assert data["count"] == 1
+
+
+class TestGroupNameThatIsNotUtf8:
+    """``/streams`` stops counting a stream at a group name that fails to decode.
+
+    ``/stats`` never reads group names, so it counts every group.
+    """
+
+    def _redis_with_bad_group_name(self, domain: Domain) -> MagicMock:
+        redis_conn = _stand_in_redis(domain)
+        redis_conn.scan.return_value = (0, [b"orders"])
+        redis_conn.xlen.return_value = 5
+        redis_conn.xinfo_groups.return_value = [
+            {"name": "Good", "pending": 1, "lag": 0},
+            {"name": b"\xff\xfe", "pending": 2, "lag": 0},
+            {"name": "After", "pending": 4, "lag": 0},
+        ]
+        return redis_conn
+
+    def test_streams_leaves_out_the_group_it_cannot_name(self, test_domain):
+        self._redis_with_bad_group_name(test_domain)
+
+        data = _client(test_domain).get("/api/streams").json()
+
+        assert data["message_counts"]["in_flight"] == 1
+        assert data["consumer_groups"] == {
+            "Good": {"stream": "orders", "pending": 1, "lag": 0}
+        }
+
+    def test_stats_counts_the_group_it_cannot_name(self, test_domain):
+        self._redis_with_bad_group_name(test_domain)
+
+        data = _client(test_domain).get("/api/stats").json()
+
+        assert data["message_counts"]["in_flight"] == 7
+        assert data["message_counts"]["total_messages"] == 5
+
 
 class TestWorkers:
     def _client_with_consumer(
