@@ -545,7 +545,10 @@ class EventStore:
         return None
 
     def category_head_position(self, category: str) -> int:
-        """Return the ``global_position`` of the newest message in ``category``.
+        """Return the ``global_position`` of the newest row in ``category``.
+
+        For ``$all`` the row can be a snapshot row, because this reads raw rows
+        and skips nothing.
 
         Subscription lag monitoring uses it to find how far a subscription is
         behind the head of its category.
@@ -553,7 +556,7 @@ class EventStore:
         Args:
             category: A category, such as ``test::user``, or ``$all`` for the
                 whole store. A stream name, such as ``test::user-1``, gives
-                the newest message of that one stream.
+                the newest row of that one stream.
 
         Returns:
             The ``global_position`` of the newest row, or ``-1`` when the

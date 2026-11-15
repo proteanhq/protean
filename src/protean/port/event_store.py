@@ -703,7 +703,7 @@ class BaseEventStore(EventStorePort):
 
         message_count = 0
         # Scan raw rows: ``read_all`` leaves out snapshot rows and raises on
-        # malformed rows, the two kinds this check must inspect.
+        # malformed rows, and this check must inspect both.
         for msg in self._iter_all_messages():
             message_count += 1
             stream = msg.get("stream_name")

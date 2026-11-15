@@ -6,7 +6,9 @@
 
 ## Context
 
-`BaseEventStore.read(stream_name, position, no_of_messages)` is the single read
+When this decision was made, `BaseEventStore.read(stream_name, position,
+no_of_messages)` was the single read primitive. It is now
+`domain.event_store.read(stream, position, limit)`, and it is the read
 primitive behind every consumer that pages through the store: the
 `EventStoreSubscription` engine, projections and projectors, the outbox
 reconciliation sweep, the observatory timeline, and the `protean events` CLI.

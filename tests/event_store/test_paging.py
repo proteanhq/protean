@@ -1,8 +1,8 @@
 """Paging the whole store with ``read_all``.
 
 ``read_all`` reads raw rows in bounded pages, leaves out snapshot rows, and
-advances a cursor until a short page, so a cold-load reader (projection rebuild, backup, verify) reads the whole
-stream without the ``limit=1_000_000`` sentinel that silently truncates
+advances a cursor until a short page, so a cold-load reader such as a
+projection rebuild reads the whole stream without the ``limit=1_000_000`` sentinel that silently truncates
 past the read cap.
 """
 
