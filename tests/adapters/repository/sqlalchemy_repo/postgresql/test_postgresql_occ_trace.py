@@ -132,7 +132,7 @@ def _provoke_standalone_flush_conflict(domain, monkeypatch):
     entity = repo.get(counter_id)  # loaded at version 0, before the patch below
     entity.value = 7
 
-    provider = domain.providers["default"]
+    provider = provider_adapter(domain, "default")
     dao_cls = type(repo._dao)
     real_commit = dao_cls._commit_if_standalone
 

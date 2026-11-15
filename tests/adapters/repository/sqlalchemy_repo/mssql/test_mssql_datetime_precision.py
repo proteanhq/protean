@@ -38,7 +38,7 @@ def register_elements(test_domain):
 @pytest.mark.mssql
 class TestDateTimePrecision:
     def test_the_created_column_is_datetime2(self, test_domain):
-        provider = test_domain.providers["default"]
+        provider = provider_adapter(test_domain, "default")
         occurred_at = column_type(provider, "mssql_timestamped_entity", "occurred_at")
 
         assert isinstance(occurred_at, mssql_dialect.DATETIME2)

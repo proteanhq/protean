@@ -124,6 +124,8 @@ class TestMetadataContents:
             assert provider._metadata.tables == {}
 
             assert _table_names(provider.metadata) == ELEMENT_TABLES
+            # Kept on one line, so this check differs from the line it replaced
+            # only in how it reaches the provider.
             # fmt: off
             assert _table_names(provider_adapter(domain, "other").metadata) == {"invoice"}
             # fmt: on
