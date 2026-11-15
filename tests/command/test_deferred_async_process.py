@@ -2,8 +2,8 @@
 ``command_processing = "sync"``.
 
 Outside any unit of work the command is handled inline. Inside one (a handler,
-a ``@use_case`` method or a ``with UnitOfWork():`` block) it is stored with the
-caller's writes, ``process`` returns ``None``, and the command is handled after
+a ``@use_case`` method or a ``with UnitOfWork():`` block) it is stored at once,
+``process`` returns ``None``, and the command is handled after
 the caller commits, in its own unit of work with its own version retry. A
 conflict there never re-runs the caller, so an outside call the caller made
 before ``process`` happens once. Either way the command is stored as not
