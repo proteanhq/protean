@@ -127,7 +127,7 @@ names the `EventStoreCapabilities` flag it needs:
 | `test_read_category.py` | `READ_CATEGORY` | Exact category match, order and paging by global position, `limit` |
 | `test_read_all.py` | `READ_ALL` | Reads across every stream in global order |
 | `test_last_message.py` | `READ_STREAM`, `READ_CATEGORY` or `READ_ALL` | The newest row of a stream, a category or the store. Each class names the flag of its read. |
-| `test_stream_ids.py` | `READ_CATEGORY` | The stream ids of a category, each listed once |
+| `test_stream_ids.py` | `READ_CATEGORY` | The stream ids of a category, sorted and each listed once |
 | `test_expected_version.py` | `EXPECTED_VERSION` | Stale versions raise and write nothing; concurrent writers with one version commit one row |
 | `test_category_commit_order.py` | `CATEGORY_COMMIT_ORDER` | A category read taken while writers run is a prefix of the final read |
 | `test_consumer_groups.py` | `CONSUMER_GROUPS` | Group members split a category into disjoint sets of streams |

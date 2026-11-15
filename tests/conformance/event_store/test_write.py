@@ -1,6 +1,6 @@
 """Writes: the position a write returns and the row it stores.
 
-Each test reads the stream back with `get_stream_messages` to check the row.
+A test that checks a stored row reads it back with `get_stream_messages`.
 """
 
 from datetime import datetime

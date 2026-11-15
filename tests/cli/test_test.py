@@ -1761,32 +1761,19 @@ class TestPortConformance:
     against the suites under tests/conformance/.
     """
 
-    @pytest.mark.parametrize(
-        "port, provider, flag_class, not_declared",
-        [
-            (
-                "event_store",
-                "memory",
-                EventStoreCapabilities,
-                ["CONSUMER_GROUPS", "DURABLE", "SCHEMA_MANAGEMENT"],
-            ),
-            (
-                "broker",
-                "inline",
-                BrokerCapabilities,
-                ["MESSAGE_ORDERING", "BLOCKING_READ", "REPLAY", "STREAM_PARTITIONING"],
-            ),
-        ],
-    )
-    def test_reports_unmarked_then_one_row_per_flag(
-        self, capsys, port, provider, flag_class, not_declared
-    ):
-        cli_test_adapter(port=port, provider=provider)
+    def test_reports_unmarked_then_one_row_per_flag(self, capsys):
+        not_declared = [
+            "MESSAGE_ORDERING",
+            "BLOCKING_READ",
+            "REPLAY",
+            "STREAM_PARTITIONING",
+        ]
+        cli_test_adapter(port="broker", provider="inline")
 
         rows = _report_rows(capsys.readouterr().out)
         assert rows[0] == ("unmarked", "PASS", "1/1")
         # Declared flags in definition order, then the undeclared ones.
-        flag_names = [flag.name for flag in flag_class]
+        flag_names = [flag.name for flag in BrokerCapabilities]
         assert [name for name, _, _ in rows[1:]] == [
             name for name in flag_names if name not in not_declared
         ] + not_declared
@@ -1797,6 +1784,24 @@ class TestPortConformance:
         declared_rows = [r for r in rows[1:] if r[0] not in skipped]
         assert declared_rows
         assert all(r[1:] == ("SKIP", "(no tests collected)") for r in declared_rows)
+
+    def test_the_event_store_suite_passes_every_declared_flag_on_memory(self, capsys):
+        cli_test_adapter(port="event_store", provider="memory")
+
+        rows = _report_rows(capsys.readouterr().out)
+        assert [(name, status) for name, status, _ in rows] == [
+            ("unmarked", "PASS"),
+            ("WRITE", "PASS"),
+            ("READ_STREAM", "PASS"),
+            ("READ_CATEGORY", "PASS"),
+            ("READ_ALL", "PASS"),
+            ("EXPECTED_VERSION", "PASS"),
+            ("CATEGORY_COMMIT_ORDER", "PASS"),
+            ("CONSUMER_GROUPS", "SKIP"),
+            ("DURABLE", "SKIP"),
+            ("SCHEMA_MANAGEMENT", "SKIP"),
+        ]
+        assert [detail for _, _, detail in rows[7:]] == ["(not declared)"] * 3
 
     def test_the_cache_suite_passes_every_declared_flag_on_memory(self, capsys):
         cli_test_adapter(port="cache", provider="memory")
@@ -1951,10 +1956,12 @@ class TestPortConformance:
             port="event_store", provider="memory", capabilities="DURABLE,WRITE"
         )
 
-        assert _report_rows(capsys.readouterr().out) == [
-            ("WRITE", "SKIP", "(no tests collected)"),
-            ("DURABLE", "SKIP", "(not declared)"),
+        rows = _report_rows(capsys.readouterr().out)
+        assert [(name, status) for name, status, _ in rows] == [
+            ("WRITE", "PASS"),
+            ("DURABLE", "SKIP"),
         ]
+        assert rows[1][2] == "(not declared)"
 
     def test_a_named_set_stands_for_its_flags(self, capsys):
         cli_test_adapter(port="event_store", provider="memory", capabilities="BASIC")
