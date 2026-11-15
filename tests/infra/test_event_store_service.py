@@ -251,6 +251,31 @@ class TestForwarders:
         assert adapter.calls == [(member, args)]
 
 
+class TestTracingAndVerify:
+    def test_build_causation_tree_scans_the_adapter(self):
+        adapter = _RecordingAdapter()
+
+        assert _service(adapter).build_causation_tree("c-1") is None
+        assert adapter.calls == [("get_all_messages", (0, 1_000_000))]
+
+    def test_trace_of_an_unknown_message_raises(self):
+        adapter = _RecordingAdapter()
+
+        with pytest.raises(ValueError, match="m-1"):
+            _service(adapter).trace_causation("m-1")
+        with pytest.raises(ValueError, match="m-1"):
+            _service(adapter).trace_effects("m-1")
+
+    def test_verify_reads_the_adapter(self):
+        adapter = _RecordingAdapter()
+
+        report = _service(adapter).verify()
+
+        assert report.ok
+        assert report.message_count == 0
+        assert adapter.calls == [("get_all_messages", (0, 1000))]
+
+
 class TestBeforeInit:
     @pytest.mark.parametrize(
         "call",
@@ -274,6 +299,10 @@ class TestBeforeInit:
             lambda s: s.load_aggregate(object(), "1"),
             lambda s: s.create_snapshot(object(), "1"),
             lambda s: s.create_snapshots(object()),
+            lambda s: s.trace_causation("m-1"),
+            lambda s: s.trace_effects("m-1"),
+            lambda s: s.build_causation_tree("c-1"),
+            lambda s: s.verify(),
         ],
     )
     def test_call_raises_configuration_error(self, call):

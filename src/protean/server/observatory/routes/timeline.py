@@ -31,7 +31,11 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from protean.port.event_store import CausationNode
+from protean.infra.causation import (
+    CausationNode,
+    build_tree_from_group,
+    load_correlation_group,
+)
 from protean.server.tracing import TRACE_STREAM, decode_trace, trace_number
 
 if TYPE_CHECKING:
@@ -466,74 +470,6 @@ def _events_per_minute(stats: _TimelineStats) -> float | None:
 # ---------------------------------------------------------------------------
 
 
-def _build_causation_tree_from_group(
-    store: Any,
-    group: Sequence[Mapping[str, Any]],
-    traces_by_message_id: dict[str, dict[str, Any]] | None = None,
-) -> CausationNode | None:
-    """Build a causation tree from a pre-loaded correlation group.
-
-    Replicates the logic of ``BaseEventStore.build_causation_tree`` but
-    operates on an already-loaded group to avoid a redundant ``$all`` scan.
-
-    Args:
-        store: The event store instance (used for metadata extraction helpers).
-        group: Pre-loaded list of raw message dicts from the event store.
-        traces_by_message_id: Optional mapping of message_id to trace data
-            (with ``handler``, ``duration_ms`` keys).  When provided, nodes
-            are enriched with handler attribution and timing.
-    """
-    if not group:
-        return None
-
-    traces = traces_by_message_id or {}
-
-    by_id, children_map, roots = _index_group(store, group)
-
-    visited: set[str] = set()
-
-    if not roots:
-        root_candidates = [
-            m for m in group if store._extract_causation_id(m) not in by_id
-        ]
-        roots = root_candidates if root_candidates else [group[0]]
-
-    roots.sort(key=lambda m: m.get("global_position", 0))
-    return _build_causation_node(store, roots[0], None, children_map, traces, visited)
-
-
-def _index_group(
-    store: Any, group: Sequence[Mapping[str, Any]]
-) -> tuple[
-    dict[str, Mapping[str, Any]],
-    dict[str, list[Mapping[str, Any]]],
-    list[Mapping[str, Any]],
-]:
-    """Index a correlation group by message ID and by causation ID.
-
-    Returns the messages by their ID, the children of each message sorted by
-    global position, and the messages that have no causation ID.
-    """
-    by_id: dict[str, Mapping[str, Any]] = {}
-    children_map: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
-    roots: list[Mapping[str, Any]] = []
-
-    for m in group:
-        hid = store._extract_message_id(m)
-        if hid:
-            by_id[hid] = m
-        cid = store._extract_causation_id(m)
-        if cid:
-            children_map[cid].append(m)
-        else:
-            roots.append(m)
-
-    for children in children_map.values():
-        children.sort(key=lambda m: m.get("global_position", 0))
-
-    return by_id, children_map, roots
-
-
 def _parse_time_ms(time_val: Any) -> float | None:
     """Convert a time value to epoch milliseconds for delta computation."""
     if time_val is None:
@@ -549,84 +485,34 @@ def _parse_time_ms(time_val: Any) -> float | None:
     return None
 
 
-def _node_time_str(time_val: Any) -> str | None:
-    time_str: str | None
-    if time_val and hasattr(time_val, "isoformat"):
-        time_str = time_val.isoformat()
-    elif time_val:
-        time_str = str(time_val)
-    else:
-        time_str = None
-    return time_str
+def _decorate_tree(
+    root: CausationNode, traces_by_message_id: Mapping[str, Mapping[str, Any]]
+) -> None:
+    """Set each node's ``handler``, ``duration_ms`` and ``delta_ms``, in place.
 
-
-def _headers_and_domain_meta(
-    raw_msg: Mapping[str, Any],
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Return the ``headers`` and ``domain`` metadata, each as a dict."""
-    metadata = raw_msg.get("metadata", {})
-    if not isinstance(metadata, dict):
-        metadata = {}
-    headers = metadata.get("headers", {})
-    if not isinstance(headers, dict):
-        headers = {}
-    domain_meta = metadata.get("domain", {})
-    if not isinstance(domain_meta, dict):
-        domain_meta = {}
-    return headers, domain_meta
-
-
-def _build_causation_node(
-    store: Any,
-    raw_msg: Mapping[str, Any],
-    parent_time_ms: float | None,
-    children_map: dict[str, list[Mapping[str, Any]]],
-    traces: dict[str, dict[str, Any]],
-    visited: set[str],
-) -> CausationNode:
-    """Build the node for ``raw_msg`` and, recursively, its unvisited children.
-
-    Adds the ID of every node built to ``visited``.
+    ``handler`` and ``duration_ms`` come from the node's entry in
+    ``traces_by_message_id`` and stay ``None`` without one. ``delta_ms`` is the
+    milliseconds since the parent's ``time``; it stays ``None`` on the root
+    and when either time is missing or does not parse.
     """
-    hid = store._extract_message_id(raw_msg) or "?"
-    visited.add(hid)
+    _decorate_node(root, None, traces_by_message_id)
 
-    headers, domain_meta = _headers_and_domain_meta(raw_msg)
 
-    time_val = raw_msg.get("time")
-    time_str = _node_time_str(time_val)
+def _decorate_node(
+    node: CausationNode,
+    parent_time_ms: float | None,
+    traces: Mapping[str, Mapping[str, Any]],
+) -> None:
+    trace = traces.get(node.message_id, {})
+    node.handler = trace.get("handler")
+    node.duration_ms = trace.get("duration_ms")
 
-    # Compute delta_ms from parent timestamp
-    node_time_ms = _parse_time_ms(time_val) if time_val else _parse_time_ms(time_str)
-    delta_ms: float | None = None
+    node_time_ms = _parse_time_ms(node.time)
     if parent_time_ms is not None and node_time_ms is not None:
-        delta_ms = round(node_time_ms - parent_time_ms, 2)
+        node.delta_ms = round(node_time_ms - parent_time_ms, 2)
 
-    # Enrich from trace data
-    trace = traces.get(hid, {})
-
-    node = CausationNode(
-        message_id=hid,
-        message_type=raw_msg.get("type", headers.get("type", "?")),
-        kind=domain_meta.get("kind", "?"),
-        stream=raw_msg.get("stream_name", headers.get("stream", "?")),
-        time=time_str,
-        global_position=raw_msg.get("global_position"),
-        handler=trace.get("handler"),
-        duration_ms=trace.get("duration_ms"),
-        delta_ms=delta_ms,
-    )
-
-    for child_msg in children_map.get(hid, []):
-        child_id = store._extract_message_id(child_msg)
-        if child_id and child_id not in visited:
-            node.children.append(
-                _build_causation_node(
-                    store, child_msg, node_time_ms, children_map, traces, visited
-                )
-            )
-
-    return node
+    for child in node.children:
+        _decorate_node(child, node_time_ms, traces)
 
 
 def _load_traces_for_correlation(
@@ -734,12 +620,12 @@ def build_correlation_response(
                 store = domain.event_store.store
                 if store is None:
                     continue
-                group = store._load_correlation_group(correlation_id)
+                group = load_correlation_group(store, correlation_id)
                 if not group:
                     continue
 
                 return _correlation_response_from_group(
-                    domains, correlation_id, store, group, domain.name
+                    domains, correlation_id, group, domain.name
                 )
         except Exception:  # try the next store instead of failing the endpoint; logged
             logger.debug(
@@ -754,7 +640,6 @@ def build_correlation_response(
 def _correlation_response_from_group(
     domains: list[Domain],
     correlation_id: str,
-    store: Any,
     group: Sequence[Mapping[str, Any]],
     domain_name: str,
 ) -> dict[str, Any]:
@@ -767,9 +652,9 @@ def _correlation_response_from_group(
     traces = _load_traces_for_correlation(domains, correlation_id)
 
     # Build the causation tree from the already-loaded group
-    tree_root = _build_causation_tree_from_group(
-        store, group, traces_by_message_id=traces
-    )
+    tree_root = build_tree_from_group(group)
+    if tree_root is not None:
+        _decorate_tree(tree_root, traces)
     tree = asdict(tree_root) if tree_root else None
 
     total_duration_ms: float | None = None

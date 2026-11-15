@@ -2,8 +2,8 @@
 
 Tests for:
 - CausationNode new fields (handler, duration_ms, delta_ms) serialize via asdict()
-- _build_causation_tree_from_group computes delta_ms from parent/child timestamps
-- _build_causation_tree_from_group enriches nodes from traces_by_message_id
+- _decorate_tree computes delta_ms from parent/child timestamps
+- _decorate_tree enriches nodes from traces_by_message_id
 - build_correlation_response includes total_duration_ms
 - Graceful fallback: all new fields are None when no trace data
 """
@@ -22,9 +22,13 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.domain import Domain
 from protean.fields import Identifier, String
-from protean.port.event_store import CausationNode
+from protean.infra.causation import (
+    CausationNode,
+    build_tree_from_group,
+    load_correlation_group,
+)
 from protean.server.observatory.routes.timeline import (
-    _build_causation_tree_from_group,
+    _decorate_tree,
     _load_traces_for_correlation,
     _sum_tree_duration,
     build_correlation_response,
@@ -207,6 +211,14 @@ def _make_timed_group(
     ]
 
 
+def _decorated_tree(group, traces=None):
+    """Build ``group``'s causation tree and decorate it as the observatory does."""
+    tree = build_tree_from_group(group)
+    if tree is not None:
+        _decorate_tree(tree, traces or {})
+    return tree
+
+
 # ---------------------------------------------------------------------------
 # Tests: CausationNode serialization with new fields
 # ---------------------------------------------------------------------------
@@ -295,14 +307,11 @@ class TestCausationNodeNewFields:
 
 
 class TestTreeBuilderDeltaMs:
-    def test_computes_delta_between_parent_and_child(self, correlated_domain):
-        domain, _, _, _ = correlated_domain
-        store = domain.event_store.store
-
+    def test_computes_delta_between_parent_and_child(self):
         base_time = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
         group = _make_timed_group(base_time)
 
-        tree = _build_causation_tree_from_group(store, group)
+        tree = _decorated_tree(group)
         assert tree is not None
 
         # Root has no parent, so delta_ms is None
@@ -320,10 +329,7 @@ class TestTreeBuilderDeltaMs:
         assert grandchild.delta_ms is not None
         assert abs(grandchild.delta_ms - 70.0) < 0.01
 
-    def test_delta_ms_with_iso_string_timestamps(self, correlated_domain):
-        domain, _, _, _ = correlated_domain
-        store = domain.event_store.store
-
+    def test_delta_ms_with_iso_string_timestamps(self):
         group = [
             {
                 "type": "Test.Evt.v1",
@@ -347,17 +353,14 @@ class TestTreeBuilderDeltaMs:
             },
         ]
 
-        tree = _build_causation_tree_from_group(store, group)
+        tree = _decorated_tree(group)
         assert tree is not None
         assert len(tree.children) > 0
         # 100ms delta
         assert tree.children[0].delta_ms is not None
         assert abs(tree.children[0].delta_ms - 100.0) < 0.01
 
-    def test_delta_ms_none_when_no_timestamps(self, correlated_domain):
-        domain, _, _, _ = correlated_domain
-        store = domain.event_store.store
-
+    def test_delta_ms_none_when_no_timestamps(self):
         group = [
             {
                 "type": "Test.Evt.v1",
@@ -379,7 +382,7 @@ class TestTreeBuilderDeltaMs:
             },
         ]
 
-        tree = _build_causation_tree_from_group(store, group)
+        tree = _decorated_tree(group)
         assert tree is not None
         assert tree.delta_ms is None
         assert len(tree.children) > 0
@@ -392,10 +395,7 @@ class TestTreeBuilderDeltaMs:
 
 
 class TestTreeBuilderTraceEnrichment:
-    def test_enriches_handler_and_duration(self, correlated_domain):
-        domain, _, _, _ = correlated_domain
-        store = domain.event_store.store
-
+    def test_enriches_handler_and_duration(self):
         base_time = datetime(2026, 4, 1, 12, 0, 0, tzinfo=UTC)
         group = _make_timed_group(base_time)
 
@@ -410,9 +410,7 @@ class TestTreeBuilderTraceEnrichment:
             },
         }
 
-        tree = _build_causation_tree_from_group(
-            store, group, traces_by_message_id=traces
-        )
+        tree = _decorated_tree(group, traces)
         assert tree is not None
 
         # Root node enriched
@@ -431,20 +429,14 @@ class TestTreeBuilderTraceEnrichment:
         assert grandchild.handler is None
         assert grandchild.duration_ms is None
 
-    @pytest.mark.parametrize(
-        "traces_kwargs",
-        [{}, {"traces_by_message_id": {}}],
-        ids=["no_traces", "empty_traces"],
-    )
-    def test_graceful_fallback_without_trace_data(
-        self, correlated_domain, traces_kwargs
-    ):
+    @pytest.mark.parametrize("decorate", [False, True], ids=["bare", "empty_traces"])
+    def test_graceful_fallback_without_trace_data(self, correlated_domain, decorate):
         """Without trace data, the handler and duration_ms fields are None."""
         domain, corr_id, _, _ = correlated_domain
         store = domain.event_store.store
-        group = store._load_correlation_group(corr_id)
+        group = load_correlation_group(store, corr_id)
 
-        tree = _build_causation_tree_from_group(store, group, **traces_kwargs)
+        tree = _decorated_tree(group) if decorate else build_tree_from_group(group)
         assert tree is not None
         assert tree.handler is None
         assert tree.duration_ms is None
@@ -453,6 +445,65 @@ class TestTreeBuilderTraceEnrichment:
         assert len(tree.children) > 0
         assert tree.children[0].handler is None
         assert tree.children[0].duration_ms is None
+
+
+# ---------------------------------------------------------------------------
+# Tests: the domain and the observatory build the same tree
+# ---------------------------------------------------------------------------
+
+
+def _write(domain, stream, message_id, kind, causation_id, correlation_id):
+    domain.event_store.store.write_message(
+        stream,
+        f"Test.{message_id}.v1",
+        {},
+        metadata={
+            "headers": {"id": message_id, "type": f"Test.{message_id}.v1"},
+            "domain": {
+                "kind": kind,
+                "correlation_id": correlation_id,
+                "causation_id": causation_id,
+            },
+        },
+    )
+
+
+def _pre_order(node):
+    """Return ``(message_id, time)`` of every node, parent before children."""
+    if isinstance(node, CausationNode):
+        node = asdict(node)
+    pairs = [(node["message_id"], node["time"])]
+    for child in node["children"]:
+        pairs.extend(_pre_order(child))
+    return pairs
+
+
+class TestDomainAndObservatoryTreesMatch:
+    def test_same_nodes_in_the_same_order(self, tmp_path):
+        """A command, its event, two events of that event's handler and an
+        event caused by the first of those give the same tree both ways."""
+        domain = Domain(name="TreeMatch", root_path=str(tmp_path))
+        domain._initialize()
+        domain.init(traverse=False)
+
+        with domain.domain_context():
+            cid = "corr-match"
+            _write(domain, "test::order:command-1", "cmd", "COMMAND", None, cid)
+            _write(domain, "test::order-1", "placed", "EVENT", "cmd", cid)
+            _write(domain, "test::stock-1", "reserved", "EVENT", "placed", cid)
+            _write(domain, "test::mail-1", "queued", "EVENT", "placed", cid)
+            _write(domain, "test::stock-1", "low", "EVENT", "reserved", cid)
+            _write(domain, "test::other-1", "unrelated", "EVENT", None, "other")
+
+            tree = domain.event_store.build_causation_tree(cid)
+            response = build_correlation_response([domain], cid)
+
+        assert tree is not None
+        assert response is not None
+        expected_ids = ["cmd", "placed", "reserved", "low", "queued"]
+        assert [mid for mid, _ in _pre_order(tree)] == expected_ids
+        assert _pre_order(response["tree"]) == _pre_order(tree)
+        assert all(time is not None and "T" in time for _, time in _pre_order(tree))
 
 
 # ---------------------------------------------------------------------------
@@ -534,16 +585,13 @@ class TestCorrelationResponseTotalDuration:
 
 
 # ---------------------------------------------------------------------------
-# Tests: _parse_time_ms edge cases (via _build_causation_tree_from_group)
+# Tests: _parse_time_ms edge cases (via _decorate_tree)
 # ---------------------------------------------------------------------------
 
 
 class TestDeltaMsEdgeCases:
-    def test_invalid_iso_string_produces_none_delta(self, correlated_domain):
+    def test_invalid_iso_string_produces_none_delta(self):
         """Timestamps that are not ISO 8601 give no delta_ms."""
-        domain, _, _, _ = correlated_domain
-        store = domain.event_store.store
-
         group = [
             {
                 "type": "Test.Root.v1",
@@ -566,18 +614,15 @@ class TestDeltaMsEdgeCases:
                 },
             },
         ]
-        tree = _build_causation_tree_from_group(store, group)
+        tree = _decorated_tree(group)
         assert tree is not None
         # Invalid timestamps → None parsed → delta_ms is None
         assert tree.delta_ms is None
         assert len(tree.children) > 0
         assert tree.children[0].delta_ms is None
 
-    def test_non_string_non_datetime_time_returns_none(self, correlated_domain):
+    def test_non_string_non_datetime_time_returns_none(self):
         """Timestamps that are neither strings nor datetimes give no delta_ms."""
-        domain, _, _, _ = correlated_domain
-        store = domain.event_store.store
-
         group = [
             {
                 "type": "Test.Root.v1",
@@ -600,7 +645,7 @@ class TestDeltaMsEdgeCases:
                 },
             },
         ]
-        tree = _build_causation_tree_from_group(store, group)
+        tree = _decorated_tree(group)
         assert tree is not None
         assert tree.delta_ms is None
         assert len(tree.children) > 0

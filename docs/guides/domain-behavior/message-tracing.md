@@ -174,7 +174,7 @@ from a `correlation_id`:
 | `message_type` | `str` | The fully-qualified message type |
 | `kind` | `str` | `"EVENT"` or `"COMMAND"` |
 | `stream` | `str` | The stream name |
-| `time` | <code>str &#124; None</code> | Write timestamp |
+| `time` | <code>str &#124; None</code> | Write timestamp, as an ISO 8601 string |
 | `global_position` | <code>int &#124; None</code> | Global position in the event store |
 | `children` | `list[CausationNode]` | Child messages caused by this message |
 

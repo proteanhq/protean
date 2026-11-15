@@ -27,7 +27,8 @@ writes, aggregate loading and snapshots on these members.
 ## EventStore
 
 The service that `domain.event_store` returns. It holds the domain's adapter
-and provides reads, writes, aggregate loading and snapshots.
+and provides reads, writes, aggregate loading, snapshots, causation tracing and
+the integrity check.
 
 ::: protean.infra.event_store.EventStore
     options:
@@ -71,6 +72,38 @@ The guarantees an event store declares on its `capabilities` property.
 Tree node used by `build_causation_tree()` to represent the causation
 hierarchy of messages sharing a `correlation_id`.
 
-::: protean.port.event_store.CausationNode
+::: protean.infra.causation.CausationNode
+    options:
+      show_root_heading: false
+
+---
+
+## IntegrityReport
+
+The result of `verify()`, and the `data` payload of
+`protean eventstore verify --json`.
+
+::: protean.infra.integrity.IntegrityReport
+    options:
+      show_root_heading: false
+
+---
+
+## IntegrityViolation
+
+One broken invariant that `verify()` found.
+
+::: protean.infra.integrity.IntegrityViolation
+    options:
+      show_root_heading: false
+
+---
+
+## ViolationKind
+
+The kinds of `IntegrityViolation`. Each value is the string that
+`--json` writes.
+
+::: protean.infra.integrity.ViolationKind
     options:
       show_root_heading: false

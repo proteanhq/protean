@@ -166,6 +166,37 @@ class TestStoreDelegates:
         assert test_domain.event_store.store.stream_head_position("counter") == 11
         assert calls == ["counter"]
 
+    @pytest.mark.parametrize(
+        ("member", "call", "expected_args"),
+        [
+            ("trace_causation", lambda s: s.trace_causation("m-1"), (("m-1",), {})),
+            (
+                "trace_effects",
+                lambda s: s.trace_effects("m-1", recursive=False),
+                (("m-1",), {"recursive": False}),
+            ),
+            (
+                "build_causation_tree",
+                lambda s: s.build_causation_tree("c-1"),
+                (("c-1",), {}),
+            ),
+            ("verify", lambda s: s.verify(), ((), {})),
+        ],
+    )
+    def test_tracing_and_verify_reach_the_service(
+        self, test_domain, monkeypatch, member, call, expected_args
+    ):
+        calls = []
+
+        def record(*args, **kwargs):
+            calls.append((args, kwargs))
+            return "from-service"
+
+        monkeypatch.setattr(test_domain.event_store, member, record)
+
+        assert call(test_domain.event_store.store) == "from-service"
+        assert calls == [expected_args]
+
     @pytest.mark.parametrize("keyword", ["no_of" + "_messages", "sql"])
     def test_read_rejects_removed_keywords(self, test_domain, keyword):
         # The old row-count name is built from parts so a search of the

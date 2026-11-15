@@ -18,7 +18,7 @@ def add_traced_book() -> str:
 
 # --8<-- [end:correlation]
 # --8<-- [start:programmatic]
-from protean.port.event_store import CausationNode
+from protean.infra.causation import CausationNode
 from protean.utils.globals import current_domain
 
 

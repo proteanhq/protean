@@ -25,10 +25,10 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.domain import Domain
 from protean.fields import Identifier, String
+from protean.infra.causation import build_tree_from_group, load_correlation_group
 from protean.infra.event_store import EventStore
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.timeline import (
-    _build_causation_tree_from_group,
     _domain_from_stream,
     _extract_aggregate_id,
     _extract_event_type,
@@ -1040,27 +1040,23 @@ def correlated_client(correlated_domain):
 
 
 class TestBuildCausationTreeFromGroup:
-    def test_returns_none_for_empty_group(self, correlated_domain):
-        domain, _, _, _ = correlated_domain
-        store = domain.event_store.store
-        result = _build_causation_tree_from_group(store, [])
+    def test_returns_none_for_empty_group(self):
+        result = build_tree_from_group([])
         assert result is None
 
     def test_builds_tree_from_group(self, correlated_domain):
         domain, corr_id, _, _ = correlated_domain
         store = domain.event_store.store
-        group = store._load_correlation_group(corr_id)
-        tree = _build_causation_tree_from_group(store, group)
+        group = load_correlation_group(store, corr_id)
+        tree = build_tree_from_group(group)
 
         assert tree is not None
         assert tree.message_id == "msg-root-cmd"
         assert len(tree.children) == 1
         assert tree.children[0].message_id == "msg-evt-registered"
 
-    def test_handles_malformed_metadata(self, correlated_domain):
+    def test_handles_malformed_metadata(self):
         """Non-dict metadata gives a node of unknown kind."""
-        domain, _, _, _ = correlated_domain
-        store = domain.event_store.store
         group = [
             {
                 "type": "Test.Bad.v1",
@@ -1069,14 +1065,12 @@ class TestBuildCausationTreeFromGroup:
                 "metadata": "not-a-dict",
             }
         ]
-        tree = _build_causation_tree_from_group(store, group)
+        tree = build_tree_from_group(group)
         assert tree is not None
         assert tree.kind == "?"
 
-    def test_handles_non_dict_headers_and_domain(self, correlated_domain):
+    def test_handles_non_dict_headers_and_domain(self):
         """Non-dict headers and domain inside metadata give a node of unknown kind."""
-        domain, _, _, _ = correlated_domain
-        store = domain.event_store.store
         group = [
             {
                 "type": "Test.BadInner.v1",
@@ -1088,16 +1082,14 @@ class TestBuildCausationTreeFromGroup:
                 },
             }
         ]
-        tree = _build_causation_tree_from_group(store, group)
+        tree = build_tree_from_group(group)
         assert tree is not None
         assert tree.kind == "?"
         assert tree.message_type == "Test.BadInner.v1"
 
-    def test_handles_all_messages_with_causation_id(self, correlated_domain):
+    def test_handles_all_messages_with_causation_id(self):
         """When every message has a causation_id, the one whose parent is outside
         the group becomes the root."""
-        domain, _, _, _ = correlated_domain
-        store = domain.event_store.store
         group = [
             {
                 "type": "Test.Orphan.v1",
@@ -1126,22 +1118,20 @@ class TestBuildCausationTreeFromGroup:
                 },
             },
         ]
-        tree = _build_causation_tree_from_group(store, group)
+        tree = build_tree_from_group(group)
         assert tree is not None
         # orphan-1's causation_id points outside the group, so it's the root
         assert tree.message_id == "orphan-1"
         assert len(tree.children) == 1
 
-    def test_orders_children_by_global_position(self, correlated_domain):
-        domain, _, _, _ = correlated_domain
-        store = domain.event_store.store
+    def test_orders_children_by_global_position(self):
         group = [
             _raw_caused_message("root", None, 1),
             _raw_caused_message("late-child", "root", 3),
             _raw_caused_message("early-child", "root", 2),
         ]
 
-        tree = _build_causation_tree_from_group(store, group)
+        tree = build_tree_from_group(group)
 
         assert tree is not None
         assert [c.message_id for c in tree.children] == ["early-child", "late-child"]
@@ -1202,7 +1192,7 @@ class TestBuildCorrelationResponse:
         assert result is None
 
     def test_handles_broken_domain_gracefully(self, event_domain):
-        with _store_unavailable(event_domain, "_load_correlation_group"):
+        with _store_unavailable(event_domain, "get_all_messages"):
             result = build_correlation_response([event_domain], "any-id")
         assert result is None
 
@@ -1560,7 +1550,7 @@ class TestMultiDomainDeduplication:
 
 
 # ---------------------------------------------------------------------------
-# _build_causation_tree_from_group: timestamp formatting
+# build_tree_from_group: timestamp formatting
 # ---------------------------------------------------------------------------
 
 
@@ -1577,10 +1567,7 @@ class TestCausationTreeTimestampFormatting:
         ],
         ids=["datetime", "string", "missing"],
     )
-    def test_node_time(self, correlated_domain, time_field, expected):
-        domain, _, _, _ = correlated_domain
-        store = domain.event_store.store
-
+    def test_node_time(self, time_field, expected):
         group = [
             {
                 "type": "Test.Event.v1",
@@ -1593,7 +1580,7 @@ class TestCausationTreeTimestampFormatting:
                 },
             }
         ]
-        tree = _build_causation_tree_from_group(store, group)
+        tree = build_tree_from_group(group)
         assert tree is not None
         assert tree.time == expected
 

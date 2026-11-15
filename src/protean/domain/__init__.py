@@ -134,6 +134,7 @@ from protean.fields import (
     List as ListField,
 )
 from protean.fields.basic import ValueObjectList
+from protean.infra.causation import CausationNode
 from protean.infra.event_store import EventStore
 from protean.integrations.logging import (
     OTelTraceContextFilter,
@@ -147,7 +148,6 @@ from protean.ir.builder import (
     validate_lint_table,
 )
 from protean.ir.diagnostics import DiagnosticCode
-from protean.port.event_store import CausationNode
 from protean.server.tracing import TraceEmitter
 from protean.utils import (
     Clock,
@@ -2624,7 +2624,7 @@ class Domain:
             correlation_id: The correlation ID to trace.
 
         Returns:
-            Ordered list of [`CausationNode`][protean.port.event_store.CausationNode]
+            Ordered list of [`CausationNode`][protean.infra.causation.CausationNode]
             objects.  Empty list if no messages are found.
 
         Example::

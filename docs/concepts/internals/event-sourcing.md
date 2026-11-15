@@ -301,8 +301,11 @@ practical guide with examples.
 
 Every message in the event store carries a `correlation_id` (shared across the
 full causal chain) and a `causation_id` (the `headers.id` of the immediate
-parent message). `BaseEventStore` provides three methods that use these links
-to traverse the causation graph.
+parent message). The domain's event store service (`domain.event_store`)
+provides three methods that use these links to traverse the causation graph.
+The functions behind them live in `protean.infra.causation` and read any
+adapter through its `EventStorePort` members. Each adapter still has the three
+methods, and they call the service.
 
 All three methods scan `$all` (the global ordered stream) and filter by
 `correlation_id` to build a working set. This is intentional: causation
@@ -345,8 +348,9 @@ prevent infinite recursion when message IDs overlap between parent and child
 (can happen with the MessageDB adapter in sync mode).
 
 `CausationNode` is a dataclass with: `message_id`, `message_type`, `kind`
-(`"EVENT"` or `"COMMAND"`), `stream`, `time`, `global_position`, and
-`children`.
+(`"EVENT"` or `"COMMAND"`), `stream`, `time` (an ISO 8601 string),
+`global_position`, and `children`. The Observatory builds the same tree from
+the same function and then fills in `handler`, `duration_ms` and `delta_ms`.
 
 See [Message Tracing](../../guides/domain-behavior/message-tracing.md) for the
 practical guide with code examples, and

@@ -12,7 +12,7 @@ programmatically.
 from protean import Domain, apply, handle, invariant
 from protean.exceptions import ValidationError
 from protean.fields import Float, Identifier, String
-from protean.port.event_store import CausationNode
+from protean.infra.causation import CausationNode
 from protean.utils.eventing import Message
 from protean.utils.globals import current_domain
 
