@@ -15,7 +15,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from protean.domain import Domain
-from protean.port.broker import BrokerCapabilities
+from protean.port.broker import BaseBroker, BrokerCapabilities
 
 from ..tracing import TRACE_STREAM, decode_trace, trace_number
 
@@ -44,11 +44,11 @@ _SUCCESS_EVENTS = {"handler.completed", "message.handled"}
 
 # Window → bucket width in milliseconds for timeline aggregation
 _TIMELINE_BUCKET_MS = {
-    "5m": 10_000,  # 10s  → 30 buckets
-    "15m": 30_000,  # 30s  → 30 buckets
-    "1h": 120_000,  # 2min → 30 buckets
-    "24h": 3_600_000,  # 1hr  → 24 buckets
-    "7d": 21_600_000,  # 6hr  → 28 buckets
+    "5m": 10_000,  # 10s  → 31 buckets
+    "15m": 30_000,  # 30s  → 31 buckets
+    "1h": 120_000,  # 2min → 31 buckets
+    "24h": 3_600_000,  # 1hr  → 25 buckets
+    "7d": 21_600_000,  # 6hr  → 29 buckets
 }
 
 # Worker throughput settings
@@ -208,86 +208,1143 @@ def _xinfo_consumers(
     return cast("list[Any]", xinfo(name, groupname))
 
 
+# Cache for the combined overview scan to avoid redundant XRANGE calls.
+# TTL is shorter than the 5s poller interval so data stays fresh but back-to-back
+# requests (e.g. window change triggering multiple pollers) are served instantly.
+_OVERVIEW_CACHE_TTL_S = 3.0
+
+# Window → cached (stored-at time, overview body); one per router.
+_OverviewCache = dict[str, tuple[float, dict[str, Any]]]
+
+
+def _xinfo_field(entry: dict[Any, Any], key: str) -> Any:
+    """Return ``key`` from an ``XINFO`` entry, whose keys may be str or bytes."""
+    return entry.get(key) or entry.get(key.encode())
+
+
+def _xinfo_name(entry: dict[Any, Any]) -> Any:
+    """Return the ``name`` of an ``XINFO`` entry, decoded when it is bytes."""
+    name = _xinfo_field(entry, "name")
+    if isinstance(name, bytes):
+        name = name.decode("utf-8")
+    return name
+
+
+def _xinfo_count(entry: dict[Any, Any], key: str) -> int:
+    """Return a numeric ``XINFO`` field as an int, 0 when it is missing."""
+    return int(_xinfo_field(entry, key) or 0)
+
+
+def _redis_unavailable(content: dict[str, Any]) -> JSONResponse:
+    """Return the 503 response an endpoint sends when Redis is not reachable."""
+    return JSONResponse(content=content, status_code=503)
+
+
+# ----------------------------------------------------------------------
+# /health, /outbox
+# ----------------------------------------------------------------------
+
+
+def _health(domains: list[Domain]) -> JSONResponse:
+    # Use first domain's broker for health (they typically share infrastructure)
+    broker_stats = _broker_health(domains[0])
+
+    # Public health_stats() returns {"status", "connected", "details": {...}}
+    broker_details = broker_stats.get("details", {})
+    is_connected = broker_stats.get("connected", False)
+
+    return JSONResponse(
+        content={
+            "status": broker_stats.get("status", "unhealthy"),
+            "domains": [d.name for d in domains],
+            "infrastructure": {
+                "redis": {
+                    "healthy": is_connected and broker_details.get("healthy", False),
+                    "version": broker_details.get("redis_version", "unknown"),
+                    "connected_clients": broker_details.get("connected_clients", 0),
+                    "memory": broker_details.get("used_memory_human", "0B"),
+                    "uptime_seconds": broker_details.get("uptime_in_seconds", 0),
+                    "ops_per_sec": broker_details.get("instantaneous_ops_per_sec", 0),
+                },
+            },
+        }
+    )
+
+
+def _outbox(domains: list[Domain]) -> JSONResponse:
+    result: dict[str, Any] = {}
+    for domain in domains:
+        result[domain.name] = _outbox_status(domain)
+    return JSONResponse(content=result)
+
+
+# ----------------------------------------------------------------------
+# /streams, /stats
+# ----------------------------------------------------------------------
+
+
+def _count_stream(
+    redis_conn: "redis.Redis[Any]",
+    name: str,
+    message_counts: dict[str, int],
+    consumer_groups: dict[str, dict[str, Any]] | None,
+) -> None:
+    """Add one stream's length and group pending counts to the running totals.
+
+    When ``consumer_groups`` is given, each group is also recorded in it by name.
+    """
+    try:
+        message_counts["total_messages"] += redis_conn.xlen(name)
+        for g in _xinfo_groups(redis_conn, name):
+            if isinstance(g, dict):
+                # When groups are recorded (/streams), read the name before
+                # counting: a name that fails to decode skips the rest of the
+                # stream without counting this group. /stats reads no names.
+                gname = None if consumer_groups is None else str(_xinfo_name(g))
+                gpending = _xinfo_count(g, "pending")
+                message_counts["in_flight"] += gpending
+                if consumer_groups is not None:
+                    consumer_groups[str(gname)] = {
+                        "stream": name,
+                        "pending": gpending,
+                        "lag": _xinfo_count(g, "lag"),
+                    }
+    except Exception:  # one unreadable stream must not fail the endpoint
+        logger.debug("Could not read stream %s", name, exc_info=True)
+
+
+def _message_counts(
+    redis_conn: "redis.Redis[Any] | None",
+    stream_names: list[str],
+    consumer_groups: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, int]:
+    """Return the message counts across ``stream_names``.
+
+    When ``consumer_groups`` is given, it is filled with every group read.
+    """
+    message_counts = {"total_messages": 0, "in_flight": 0, "failed": 0, "dlq": 0}
+    if redis_conn is not None:
+        for name in stream_names:
+            _count_stream(redis_conn, name, message_counts, consumer_groups)
+    return message_counts
+
+
+def _streams(domains: list[Domain]) -> JSONResponse:
+    redis_conn = _get_redis(domains)
+    stream_names = _discover_streams(redis_conn) if redis_conn else []
+    consumer_groups: dict[str, dict[str, Any]] = {}
+    message_counts = _message_counts(redis_conn, stream_names, consumer_groups)
+
+    return JSONResponse(
+        content={
+            "message_counts": message_counts,
+            "streams": {"count": len(stream_names), "names": stream_names},
+            "consumer_groups": consumer_groups,
+        }
+    )
+
+
+def _stats(domains: list[Domain]) -> JSONResponse:
+    outbox_data: dict[str, Any] = {}
+    for domain in domains:
+        outbox_data[domain.name] = _outbox_status(domain)
+
+    redis_conn = _get_redis(domains)
+    stream_names = _discover_streams(redis_conn) if redis_conn else []
+    message_counts = _message_counts(redis_conn, stream_names)
+
+    return JSONResponse(
+        content={
+            "outbox": outbox_data,
+            "message_counts": message_counts,
+            "streams": {"count": len(stream_names), "names": stream_names},
+        }
+    )
+
+
+# ----------------------------------------------------------------------
+# /consumers, /workers
+# ----------------------------------------------------------------------
+
+
+def _consumer_row(
+    consumer: dict[Any, Any], group: str, stream_name: str
+) -> dict[str, Any]:
+    """Build one consumer row from an ``XINFO CONSUMERS`` entry."""
+    return {
+        "consumer_name": str(_xinfo_name(consumer)),
+        "group": group,
+        "stream": stream_name,
+        "pending": _xinfo_count(consumer, "pending"),
+        "idle_ms": _xinfo_count(consumer, "idle"),
+    }
+
+
+def _collect_group_consumers(
+    redis_conn: "redis.Redis[Any]",
+    stream_name: str,
+    group: str,
+    rows: list[dict[str, Any]],
+) -> None:
+    """Append a row per consumer of one (stream, group) to ``rows``."""
+    try:
+        rows.extend(
+            _consumer_row(c, group, stream_name)
+            for c in _xinfo_consumers(redis_conn, stream_name, group)
+            if isinstance(c, dict)
+        )
+    except Exception:  # one unreadable group must not drop the others
+        logger.debug(
+            "Could not read consumers of group %s on stream %s",
+            group,
+            stream_name,
+            exc_info=True,
+        )
+
+
+def _collect_stream_consumers(
+    redis_conn: "redis.Redis[Any]", stream_name: str, rows: list[dict[str, Any]]
+) -> None:
+    """Append a row per consumer of every group on one stream to ``rows``."""
+    try:
+        for g in _xinfo_groups(redis_conn, stream_name):
+            if not isinstance(g, dict):
+                continue
+            gname = _xinfo_name(g)
+            if gname:
+                _collect_group_consumers(redis_conn, stream_name, str(gname), rows)
+    except Exception:  # one unreadable stream must not fail the endpoint
+        logger.debug("Could not read groups of stream %s", stream_name, exc_info=True)
+
+
+def _collect_consumers(redis_conn: "redis.Redis[Any]") -> list[dict[str, Any]]:
+    """Return a row per consumer across all streams and consumer groups."""
+    rows: list[dict[str, Any]] = []
+    for stream_name in _discover_streams(redis_conn):
+        _collect_stream_consumers(redis_conn, stream_name, rows)
+    return rows
+
+
+def _consumers(domains: list[Domain]) -> JSONResponse:
+    redis_conn = _get_redis(domains)
+    if not redis_conn:
+        return _redis_unavailable(
+            {"consumers": [], "count": 0, "error": "Redis not available"}
+        )
+
+    result = _collect_consumers(redis_conn)
+    return JSONResponse(content={"consumers": result, "count": len(result)})
+
+
+def _new_worker(worker_id: str, hostname: str, pid: str) -> dict[str, Any]:
+    """Return an empty worker record for the worker ``hostname``-``pid``."""
+    return {
+        "worker_id": worker_id,
+        "hostname": hostname,
+        "pid": int(pid) if pid.isdigit() else 0,
+        "subscriptions": [],
+        "subscription_count": 0,
+        "total_pending": 0,
+        "min_idle_ms": float("inf"),
+        "_domains": set(),
+        "_streams": set(),
+    }
+
+
+def _add_consumer_to_worker(w: dict[str, Any], consumer: dict[str, Any]) -> None:
+    """Add one consumer row's subscription, counts, domain and stream to a worker."""
+    w["subscriptions"].append(consumer)
+    w["subscription_count"] += 1
+    w["total_pending"] += consumer["pending"]
+    w["min_idle_ms"] = min(w["min_idle_ms"], consumer["idle_ms"])
+
+    # Extract engine domain from group (module path), e.g.
+    # "inventory.projections.inventory_level.InventoryLevelProjector" → "inventory"
+    # "protean.server.engine.Commands:..." → skip (command dispatcher)
+    group = consumer["group"]
+    if not group.startswith("protean."):
+        engine_domain = group.split(".")[0]
+        w["_domains"].add(engine_domain)
+    w["_streams"].add(consumer["stream"])
+
+
+def _group_workers(consumers: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Group consumer rows by worker key (hostname, pid)."""
+    worker_map: dict[str, dict[str, Any]] = {}
+    for consumer in consumers:
+        hostname, pid = _parse_worker_key(consumer["consumer_name"])
+        worker_id = f"{hostname}-{pid}"
+        if worker_id not in worker_map:
+            worker_map[worker_id] = _new_worker(worker_id, hostname, pid)
+        _add_consumer_to_worker(worker_map[worker_id], consumer)
+
+    for w in worker_map.values():
+        w["domain"] = ", ".join(sorted(w.pop("_domains")))
+        w["streams"] = sorted(w.pop("_streams"))
+    return worker_map
+
+
+def _trace_worker_key(trace: dict[str, Any] | None) -> str | None:
+    """Return the worker key of a ``handler.completed`` trace, else None."""
+    if trace is None or trace.get("event") != "handler.completed":
+        return None
+
+    trace_worker_id = trace.get("worker_id")
+    if not trace_worker_id or not isinstance(trace_worker_id, str):
+        return None
+
+    # Map trace worker_id (subscription ID) to worker key
+    t_hostname, t_pid = _parse_worker_key(trace_worker_id)
+    return f"{t_hostname}-{t_pid}"
+
+
+def _worker_throughput(
+    redis_conn: "redis.Redis[Any]", worker_ids: list[str], now_ms: int
+) -> dict[str, list[int]]:
+    """Count each worker's completed handlers per bucket over the throughput window."""
+    window_ms = _WORKER_THROUGHPUT_WINDOW_S * 1000
+    bucket_ms = _WORKER_THROUGHPUT_BUCKET_S * 1000
+    bucket_count = _WORKER_THROUGHPUT_WINDOW_S // _WORKER_THROUGHPUT_BUCKET_S
+    min_id = str(now_ms - window_ms)
+
+    # Initialize throughput buckets per worker
+    throughput: dict[str, list[int]] = {}
+    for wid in worker_ids:
+        throughput[wid] = [0] * bucket_count
+
+    try:
+        raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)
+    except Exception:  # scrape: show zero throughput without traces
+        logger.debug("Could not read traces for worker throughput", exc_info=True)
+        raw_entries = []
+
+    for stream_id, fields in raw_entries:
+        t_worker_id = _trace_worker_key(decode_trace(fields))
+        if t_worker_id not in throughput:
+            continue
+
+        # Determine bucket from stream ID timestamp
+        sid = _decode_stream_id(stream_id)
+        ts_ms = int(sid.split("-")[0])
+        bucket_idx = (ts_ms - (now_ms - window_ms)) // bucket_ms
+        if 0 <= bucket_idx < bucket_count:
+            throughput[t_worker_id][bucket_idx] += 1
+
+    return throughput
+
+
+def _worker_status(total: int, min_idle_ms: float) -> str:
+    """Return ``active``, ``idle`` or ``offline`` for a worker."""
+    # Status: use throughput as primary signal (if processing, it's active),
+    # fall back to idle_ms from XINFO CONSUMERS
+    if total > 0 or min_idle_ms < _WORKER_ACTIVE_THRESHOLD_MS:
+        return "active"
+    if min_idle_ms < _WORKER_IDLE_THRESHOLD_MS:
+        return "idle"
+    return "offline"
+
+
+def _workers(domains: list[Domain]) -> JSONResponse:
+    redis_conn = _get_redis(domains)
+    if not redis_conn:
+        return _redis_unavailable(
+            {"workers": [], "count": 0, "error": "Redis not available"}
+        )
+
+    worker_map = _group_workers(_collect_consumers(redis_conn))
+
+    now_ms = int(time.time() * 1000)
+    bucket_count = _WORKER_THROUGHPUT_WINDOW_S // _WORKER_THROUGHPUT_BUCKET_S
+    throughput = _worker_throughput(redis_conn, list(worker_map), now_ms)
+
+    # Merge throughput into worker objects and compute status
+    for wid, w in worker_map.items():
+        counts = throughput.get(wid, [0] * bucket_count)
+        total = sum(counts)
+        w["throughput"] = {
+            "window_seconds": _WORKER_THROUGHPUT_WINDOW_S,
+            "bucket_seconds": _WORKER_THROUGHPUT_BUCKET_S,
+            "counts": counts,
+            "total": total,
+        }
+        w["status"] = _worker_status(total, w["min_idle_ms"])
+
+    workers_list = sorted(
+        worker_map.values(),
+        key=lambda w: (w["domain"], w["status"] != "active", w["hostname"]),
+    )
+
+    return JSONResponse(
+        content={
+            "workers": workers_list,
+            "count": len(workers_list),
+            "timestamp": now_ms,
+        }
+    )
+
+
+# ----------------------------------------------------------------------
+# /queue-depth
+# ----------------------------------------------------------------------
+
+
+def _add_outbox_depth(domains: list[Domain], result: dict[str, Any]) -> None:
+    """Add each domain's outbox counts and pending total to ``result``."""
+    for domain in domains:
+        outbox_data = _outbox_status(domain)
+        if outbox_data.get("status") == "ok":
+            counts = outbox_data["counts"]
+            result["outbox"][domain.name] = counts
+            result["totals"]["outbox_pending"] += counts.get("pending", 0)
+            result["totals"]["outbox_pending"] += counts.get("processing", 0)
+
+
+def _add_group_depths(
+    redis_conn: "redis.Redis[Any]",
+    stream_name: str,
+    stream_entry: dict[str, Any],
+    totals: dict[str, Any],
+) -> int:
+    """Add each group's pending and lag on one stream, and return the max lag."""
+    max_lag = 0
+    try:
+        for g in _xinfo_groups(redis_conn, stream_name):
+            if isinstance(g, dict):
+                gpending = _xinfo_count(g, "pending")
+                glag = _xinfo_count(g, "lag")
+                stream_entry["consumer_groups"][str(_xinfo_name(g))] = {
+                    "pending": gpending,
+                    "lag": glag,
+                }
+                totals["consumer_pending"] += gpending
+                max_lag = max(max_lag, glag)
+    # keep the stream entry without group data; logged
+    except Exception:
+        logger.debug("Could not read groups of stream %s", stream_name, exc_info=True)
+    return max_lag
+
+
+def _add_stream_depth(
+    redis_conn: "redis.Redis[Any]", stream_name: str, result: dict[str, Any]
+) -> None:
+    """Add one stream's length, group lag and pending counts to ``result``."""
+    try:
+        stream_entry: dict[str, Any] = {
+            "length": redis_conn.xlen(stream_name),
+            "consumer_groups": {},
+        }
+        max_lag = _add_group_depths(
+            redis_conn, stream_name, stream_entry, result["totals"]
+        )
+        result["totals"]["stream_depth"] += max_lag
+        result["streams"][stream_name] = stream_entry
+    except Exception:  # one unreadable stream must not fail the endpoint
+        logger.debug("Could not read stream %s", stream_name, exc_info=True)
+
+
+def _queue_depth(domains: list[Domain]) -> JSONResponse:
+    result: dict[str, Any] = {
+        "timestamp": time.time() * 1000,
+        "outbox": {},
+        "streams": {},
+        "totals": {
+            "outbox_pending": 0,
+            "stream_depth": 0,
+            "consumer_pending": 0,
+        },
+    }
+
+    # 1. Outbox counts per domain
+    _add_outbox_depth(domains, result)
+
+    # 2. Per-stream depth + per-consumer-group lag
+    #    stream_depth  = max lag across all consumer groups per stream
+    #                    (the actual unconsumed backlog, NOT total XLEN)
+    #    consumer_pending = messages delivered but not yet ACK'd (in-flight)
+    redis_conn = _get_redis(domains)
+    if redis_conn:
+        for stream_name in _discover_streams(redis_conn):
+            _add_stream_depth(redis_conn, stream_name, result)
+
+    return JSONResponse(content=result)
+
+
+# ----------------------------------------------------------------------
+# /traces
+# ----------------------------------------------------------------------
+
+
+def _trace_matches(trace: dict[str, Any], filters: dict[str, str | None]) -> bool:
+    """Return whether ``trace`` equals every filter that has a value."""
+    return all(not value or trace.get(key) == value for key, value in filters.items())
+
+
+def _trace_fetch_count(count: int, message_id: str | None, has_filters: bool) -> int:
+    """Return how many trace entries to read for a ``/traces`` request."""
+    # XREVRANGE returns newest-first; fetch extra to account for filtering
+    # message_id lookups scan wider since lifecycle events may be sparse
+    if message_id:
+        fetch_count = 5000
+    elif has_filters:
+        fetch_count = count * 3
+    else:
+        fetch_count = count
+    return min(fetch_count, 5000)
+
+
+def _traces(
+    domains: list[Domain],
+    count: int,
+    domain: str | None,
+    stream: str | None,
+    event: str | None,
+    message_id: str | None,
+) -> JSONResponse:
+    redis_conn = _get_redis(domains)
+    if not redis_conn:
+        return _redis_unavailable(
+            {"traces": [], "count": 0, "error": "Redis not available"}
+        )
+
+    filters = {
+        "domain": domain,
+        "stream": stream,
+        "event": event,
+        "message_id": message_id,
+    }
+    has_filters = any(filters.values())
+
+    try:
+        raw_entries = redis_conn.xrevrange(
+            TRACE_STREAM, count=_trace_fetch_count(count, message_id, has_filters)
+        )
+    except Exception:  # any read error becomes a 500 response; logged
+        logger.exception("Error reading trace stream")
+        return JSONResponse(
+            content={"traces": [], "count": 0, "error": "Failed to read traces"},
+            status_code=500,
+        )
+
+    result: list[dict[str, Any]] = []
+    for stream_id, fields in raw_entries:
+        trace = decode_trace(fields)
+        if trace is None or not _trace_matches(trace, filters):
+            continue
+
+        trace["_stream_id"] = _decode_stream_id(stream_id)
+        result.append(trace)
+
+        # message_id lookups return all matching events (no count limit)
+        if not message_id and len(result) >= count:
+            break
+
+    return JSONResponse(content={"traces": result, "count": len(result)})
+
+
+def _invalid_window(window: str) -> JSONResponse:
+    """Return the 400 response for a window that is not in ``_WINDOW_MS``."""
+    valid = ", ".join(_WINDOW_MS.keys())
+    return JSONResponse(
+        content={"error": f"Invalid window: {window}. Use {valid}."},
+        status_code=400,
+    )
+
+
+def _timeline_buckets(
+    now_ms: int, window_ms: int, bucket_ms: int
+) -> dict[int, dict[str, int]]:
+    """Return an empty bucket for every ``bucket_ms`` step of the window."""
+    window_start = (now_ms - window_ms) // bucket_ms * bucket_ms
+    buckets: dict[int, dict[str, int]] = {}
+    t = window_start
+    while t <= now_ms:
+        buckets[t] = {"time_ms": t, "total": 0, "success": 0, "errors": 0}
+        t += bucket_ms
+    return buckets
+
+
+def _add_to_bucket(
+    buckets: dict[int, dict[str, int]],
+    bucket_ms: int,
+    stream_id: object,
+    event_type: str,
+) -> None:
+    """Count one trace in the timeline bucket its stream ID falls in."""
+    sid = _decode_stream_id(stream_id)
+    ts_ms = int(sid.split("-")[0])
+    bucket_key = ts_ms // bucket_ms * bucket_ms
+    bucket = buckets.get(bucket_key)
+    if bucket is not None:
+        bucket["total"] += 1
+        if event_type in _SUCCESS_EVENTS:
+            bucket["success"] += 1
+        elif event_type in _ERROR_EVENTS:
+            bucket["errors"] += 1
+
+
+def _overview_stats(
+    raw_entries: list[Any], buckets: dict[int, dict[str, int]], bucket_ms: int
+) -> dict[str, Any]:
+    """Count events, errors and latency in one pass, filling ``buckets`` as well."""
+    counts: dict[str, int] = {}
+    error_count = 0
+    total = 0
+    latency_sum = 0.0
+    latency_count = 0
+
+    for stream_id, fields in raw_entries:
+        trace = decode_trace(fields)
+        if trace is None:
+            continue
+
+        event_type = trace.get("event", "unknown")
+        if not isinstance(event_type, str):
+            continue
+
+        counts[event_type] = counts.get(event_type, 0) + 1
+        total += 1
+        if event_type in _ERROR_EVENTS:
+            error_count += 1
+        duration = trace_number(trace.get("duration_ms"))
+        if event_type == "handler.completed" and duration is not None:
+            latency_sum += duration
+            latency_count += 1
+
+        _add_to_bucket(buckets, bucket_ms, stream_id, event_type)
+
+    error_rate = round((error_count / total * 100), 2) if total > 0 else 0.0
+    avg_latency_ms = round(latency_sum / latency_count, 2) if latency_count > 0 else 0.0
+    return {
+        "counts": counts,
+        "error_count": error_count,
+        "error_rate": error_rate,
+        "avg_latency_ms": avg_latency_ms,
+        "total": total,
+    }
+
+
+def _traces_overview(
+    domains: list[Domain], cache: _OverviewCache, window: str
+) -> JSONResponse:
+    window_ms = _WINDOW_MS.get(window)
+    if window_ms is None:
+        return _invalid_window(window)
+
+    # Check cache
+    now = time.time()
+    cached = cache.get(window)
+    if cached and (now - cached[0]) < _OVERVIEW_CACHE_TTL_S:
+        return JSONResponse(content=cached[1])
+
+    redis_conn = _get_redis(domains)
+    if not redis_conn:
+        return _redis_unavailable({"error": "Redis not available"})
+
+    now_ms = int(now * 1000)
+    min_id = str(now_ms - window_ms)
+    bucket_ms = _TIMELINE_BUCKET_MS[window]
+
+    try:
+        raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)
+    except Exception:  # any read error becomes a 500 response; logged
+        logger.exception("Error reading trace stream")
+        return JSONResponse(content={"error": "Failed to read traces"}, status_code=500)
+
+    buckets = _timeline_buckets(now_ms, window_ms, bucket_ms)
+    stats = _overview_stats(raw_entries, buckets, bucket_ms)
+
+    result: dict[str, Any] = {
+        "window": window,
+        # Stats
+        **stats,
+        # Timeline
+        "bucket_ms": bucket_ms,
+        "buckets": sorted(buckets.values(), key=lambda b: b["time_ms"]),
+    }
+
+    # Update cache (use current time, not the pre-scan `now`)
+    cache[window] = (time.time(), result)
+
+    return JSONResponse(content=result)
+
+
+def _overview_part(
+    domains: list[Domain], cache: _OverviewCache, window: str, keys: tuple[str, ...]
+) -> JSONResponse:
+    """Return the ``keys`` of the overview body, or the overview's error response."""
+    overview = _traces_overview(domains, cache, window)
+    body = json.loads(bytes(overview.body).decode())
+    if "error" in body:
+        return overview
+    return JSONResponse(content={key: body[key] for key in keys})
+
+
+def _traces_stats(
+    domains: list[Domain], cache: _OverviewCache, window: str
+) -> JSONResponse:
+    return _overview_part(
+        domains,
+        cache,
+        window,
+        ("window", "counts", "error_count", "error_rate", "avg_latency_ms", "total"),
+    )
+
+
+def _traces_timeline(
+    domains: list[Domain], cache: _OverviewCache, window: str
+) -> JSONResponse:
+    return _overview_part(domains, cache, window, ("window", "bucket_ms", "buckets"))
+
+
+def _failed_trace_range(
+    window: str, start: str | None, end: str | None
+) -> tuple[str, str] | JSONResponse:
+    """Return the (min, max) stream IDs to read, or a 400 response."""
+    if start and end:
+        # Custom range: parse ISO 8601 timestamps
+        try:
+            start_dt = datetime.fromisoformat(start)
+            end_dt = datetime.fromisoformat(end)
+            return (
+                str(int(start_dt.timestamp() * 1000)),
+                str(int(end_dt.timestamp() * 1000)),
+            )
+        except (ValueError, TypeError):
+            return JSONResponse(
+                content={"error": "Invalid date format. Use ISO 8601."},
+                status_code=400,
+            )
+
+    window_ms = _WINDOW_MS.get(window)
+    if window_ms is None:
+        return _invalid_window(window)
+    return str(int(time.time() * 1000) - window_ms), "+"
+
+
+def _failed_traces(
+    raw_entries: list[Any], filters: dict[str, str | None]
+) -> list[dict[str, Any]]:
+    """Return the failed and DLQ traces that match ``filters``, oldest first."""
+    matches: list[dict[str, Any]] = []
+    for stream_id, fields in raw_entries:
+        trace = decode_trace(fields)
+        if trace is None:
+            continue
+
+        event_type = trace.get("event", "")
+        if not isinstance(event_type, str) or event_type not in _ERROR_EVENTS:
+            continue
+
+        # Apply optional filters
+        if not _trace_matches(trace, filters):
+            continue
+
+        trace["_stream_id"] = _decode_stream_id(stream_id)
+        matches.append(trace)
+    return matches
+
+
+def _traces_failed(
+    domains: list[Domain],
+    window: str,
+    handler: str | None,
+    message_type: str | None,
+    limit: int,
+    offset: int,
+    start: str | None,
+    end: str | None,
+) -> JSONResponse:
+    redis_conn = _get_redis(domains)
+    if not redis_conn:
+        return _redis_unavailable(
+            {"traces": [], "total_count": 0, "error": "Redis not available"}
+        )
+
+    # Determine time range
+    id_range = _failed_trace_range(window, start, end)
+    if isinstance(id_range, JSONResponse):
+        return id_range
+    min_id, max_id = id_range
+
+    try:
+        raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id, max=max_id)
+    except Exception:  # any read error becomes a 500 response; logged
+        logger.exception("Error reading trace stream for failed traces")
+        return JSONResponse(
+            content={
+                "traces": [],
+                "total_count": 0,
+                "error": "Failed to read traces",
+            },
+            status_code=500,
+        )
+
+    # Collect all matching entries (for total count + pagination)
+    all_matches = _failed_traces(
+        raw_entries, {"handler": handler, "message_type": message_type}
+    )
+
+    # Sort newest first, then paginate
+    all_matches.reverse()
+    total_count = len(all_matches)
+    page = all_matches[offset : offset + limit]
+
+    return JSONResponse(content={"traces": page, "total_count": total_count})
+
+
+def _trace_detail(domains: list[Domain], stream_id: str) -> JSONResponse:
+    redis_conn = _get_redis(domains)
+    if not redis_conn:
+        return _redis_unavailable({"error": "Redis not available"})
+
+    try:
+        entries = redis_conn.xrange(TRACE_STREAM, min=stream_id, max=stream_id)
+    except Exception:  # any read error becomes a 500 response; logged
+        logger.exception(f"Error reading trace {stream_id}")
+        return JSONResponse(content={"error": "Failed to read trace"}, status_code=500)
+
+    if not entries:
+        return JSONResponse(content={"error": "Trace not found"}, status_code=404)
+
+    _, fields = entries[0]
+    trace = decode_trace(fields)
+    if trace is None:
+        return JSONResponse(
+            content={"error": "Failed to parse trace data"}, status_code=500
+        )
+    trace["_stream_id"] = stream_id
+    return JSONResponse(content=trace)
+
+
+def _delete_traces(domains: list[Domain]) -> JSONResponse:
+    redis_conn = _get_redis(domains)
+    if not redis_conn:
+        return _redis_unavailable({"error": "Redis not available"})
+
+    try:
+        deleted = redis_conn.delete(TRACE_STREAM)
+        return JSONResponse(content={"status": "ok", "deleted": bool(deleted)})
+    except Exception:  # a Redis delete error becomes a 500 response; logged
+        logger.exception("Error deleting trace stream")
+        return JSONResponse(
+            content={"error": "Failed to delete traces"}, status_code=500
+        )
+
+
+# ----------------------------------------------------------------------
+# /subscriptions
+# ----------------------------------------------------------------------
+
+
+def _subscription_summary(statuses: list[Any]) -> dict[str, Any]:
+    """Return the totals of a domain's subscription statuses."""
+    return {
+        "total": len(statuses),
+        "ok": sum(1 for s in statuses if s.status == "ok"),
+        "lagging": sum(1 for s in statuses if s.status == "lagging"),
+        "unknown": sum(1 for s in statuses if s.status == "unknown"),
+        "total_lag": sum(s.lag or 0 for s in statuses),
+        "total_pending": sum(s.pending for s in statuses),
+        "total_dlq": sum(s.dlq_depth for s in statuses),
+    }
+
+
+def _domain_subscriptions(domain: Domain) -> dict[str, Any]:
+    """Return one domain's subscription statuses and summary, or an error status."""
+    from protean.server.subscription_status import (  # noqa: PLC0415
+        collect_subscription_statuses,
+    )
+
+    try:
+        statuses = collect_subscription_statuses(domain)
+        return {
+            "status": "ok",
+            "subscriptions": [s.to_dict() for s in statuses],
+            "summary": _subscription_summary(statuses),
+        }
+    except Exception:  # one domain's error must not hide the others; logged
+        logger.exception(f"Error collecting subscription status for {domain.name}")
+        return {
+            "status": "error",
+            "error": "Failed to collect subscription status",
+        }
+
+
+def _subscriptions(domains: list[Domain]) -> JSONResponse:
+    result: dict[str, Any] = {}
+    for domain in domains:
+        result[domain.name] = _domain_subscriptions(domain)
+    return JSONResponse(content=result)
+
+
+# ----------------------------------------------------------------------
+# /dlq
+# ----------------------------------------------------------------------
+
+
+def _subscription_dlq_streams(domain: Domain, subscription: str) -> list[str]:
+    """Return the DLQ streams (and backfill DLQ streams) of one stream category."""
+    from protean.utils.dlq import discover_subscriptions  # noqa: PLC0415
+
+    dlq_streams: list[str] = []
+    for info in discover_subscriptions(domain):
+        if info.stream_category == subscription:
+            dlq_streams.append(info.dlq_stream)
+            if info.backfill_dlq_stream:
+                dlq_streams.append(info.backfill_dlq_stream)
+    return dlq_streams
+
+
+def _no_subscription(subscription: str) -> JSONResponse:
+    """Return the 404 response for a stream category with no subscription."""
+    return JSONResponse(
+        content={"error": f"No subscription for '{subscription}'"},
+        status_code=404,
+    )
+
+
+def _dlq_broker(domain: Domain) -> BaseBroker | None:
+    """Return the default broker when it supports dead-letter queues, else None."""
+    broker = domain.brokers.get("default")
+    if broker is None or not broker.has_capability(
+        BrokerCapabilities.DEAD_LETTER_QUEUE
+    ):
+        return None
+    return broker
+
+
+def _dlq_entry_fields(entry: Any) -> dict[str, Any]:
+    """Return the fields of a DLQ entry that the DLQ endpoints show."""
+    return {
+        "dlq_id": entry.dlq_id,
+        "original_id": entry.original_id,
+        "stream": entry.stream,
+        "consumer_group": entry.consumer_group,
+        "failure_reason": entry.failure_reason,
+        "failed_at": entry.failed_at,
+        "retry_count": entry.retry_count,
+        "dlq_stream": entry.dlq_stream,
+    }
+
+
+def _dlq_list_streams(domain: Domain, subscription: str | None) -> list[str] | None:
+    """Return the DLQ streams to list, or None for a category with no subscription."""
+    from protean.utils.dlq import collect_dlq_streams  # noqa: PLC0415
+
+    if subscription:
+        return _subscription_dlq_streams(domain, subscription) or None
+    return collect_dlq_streams(domain)
+
+
+def _dlq_list(
+    domains: list[Domain], subscription: str | None, limit: int, offset: int
+) -> JSONResponse:
+    domain = domains[0]
+    try:
+        with domain.domain_context():
+            broker = domain.brokers.get("default")
+            if broker is None:
+                return JSONResponse(
+                    content={"error": "No default broker configured"},
+                    status_code=503,
+                )
+            if not broker.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+                return JSONResponse(
+                    content={"error": "Broker does not support DLQ"},
+                    status_code=501,
+                )
+
+            dlq_streams = _dlq_list_streams(domain, subscription)
+            if dlq_streams is None:
+                return _no_subscription(str(subscription))
+
+            # Fetch all entries (broker sorts newest first)
+            all_entries = broker.dlq_list(dlq_streams, limit=10000)
+            total_count = len(all_entries)
+            page = all_entries[offset : offset + limit]
+
+            return JSONResponse(
+                content={
+                    "entries": [_dlq_entry_fields(e) for e in page],
+                    "total_count": total_count,
+                }
+            )
+    except Exception:  # any DLQ error becomes a 500 response; logged
+        logger.exception("Error listing DLQ")
+        return JSONResponse(
+            content={"error": "Failed to list DLQ messages"},
+            status_code=500,
+        )
+
+
+def _dlq_not_available() -> JSONResponse:
+    """Return the 503 response for a broker without dead-letter-queue support."""
+    return JSONResponse(content={"error": "DLQ not available"}, status_code=503)
+
+
+def _dlq_not_found(dlq_id: str) -> JSONResponse:
+    """Return the 404 response for a DLQ message that no DLQ stream holds."""
+    return JSONResponse(
+        content={"error": f"DLQ message '{dlq_id}' not found"},
+        status_code=404,
+    )
+
+
+def _dlq_inspect(domains: list[Domain], dlq_id: str) -> JSONResponse:
+    from protean.utils.dlq import collect_dlq_streams  # noqa: PLC0415
+
+    domain = domains[0]
+    try:
+        with domain.domain_context():
+            broker = _dlq_broker(domain)
+            if broker is None:
+                return _dlq_not_available()
+
+            for dlq_stream in collect_dlq_streams(domain):
+                entry = broker.dlq_inspect(dlq_stream, dlq_id)
+                if entry:
+                    # Strip internal DLQ metadata from displayed payload
+                    payload = {
+                        k: v for k, v in entry.payload.items() if k != "_dlq_metadata"
+                    }
+                    return JSONResponse(
+                        content={**_dlq_entry_fields(entry), "payload": payload}
+                    )
+
+            return _dlq_not_found(dlq_id)
+    except Exception:  # any DLQ error becomes a 500 response; logged
+        logger.exception("Error inspecting DLQ message")
+        return JSONResponse(
+            content={"error": "Failed to inspect DLQ message"},
+            status_code=500,
+        )
+
+
+def _replay_entry(
+    broker: Any, dlq_stream: str, dlq_id: str, target_stream: str
+) -> JSONResponse:
+    """Replay one DLQ message to ``target_stream`` and return the response."""
+    if broker.dlq_replay(dlq_stream, dlq_id, target_stream):
+        return JSONResponse(
+            content={
+                "status": "ok",
+                "replayed": True,
+                "target_stream": target_stream,
+            }
+        )
+    return JSONResponse(content={"error": "Replay failed"}, status_code=500)
+
+
+def _dlq_replay(domains: list[Domain], dlq_id: str) -> JSONResponse:
+    from protean.utils.dlq import collect_dlq_streams  # noqa: PLC0415
+
+    domain = domains[0]
+    try:
+        with domain.domain_context():
+            broker = _dlq_broker(domain)
+            if broker is None:
+                return _dlq_not_available()
+
+            for dlq_stream in collect_dlq_streams(domain):
+                entry = broker.dlq_inspect(dlq_stream, dlq_id)
+                if entry:
+                    return _replay_entry(broker, dlq_stream, dlq_id, entry.stream)
+
+            return _dlq_not_found(dlq_id)
+    except Exception:  # any DLQ error becomes a 500 response; logged
+        logger.exception("Error replaying DLQ message")
+        return JSONResponse(
+            content={"error": "Failed to replay DLQ message"},
+            status_code=500,
+        )
+
+
+def _dlq_replay_all(domains: list[Domain], subscription: str) -> JSONResponse:
+    domain = domains[0]
+    try:
+        with domain.domain_context():
+            broker = _dlq_broker(domain)
+            if broker is None:
+                return _dlq_not_available()
+
+            dlq_streams = _subscription_dlq_streams(domain, subscription)
+            if not dlq_streams:
+                return _no_subscription(subscription)
+
+            total = 0
+            for dlq_stream in dlq_streams:
+                total += broker.dlq_replay_all(dlq_stream, subscription)
+
+            return JSONResponse(
+                content={
+                    "status": "ok",
+                    "replayed": total,
+                    "target_stream": subscription,
+                }
+            )
+    except Exception:  # any DLQ error becomes a 500 response; logged
+        logger.exception("Error replaying all DLQ messages")
+        return JSONResponse(
+            content={"error": "Failed to replay DLQ messages"},
+            status_code=500,
+        )
+
+
+def _dlq_purge(domains: list[Domain], subscription: str) -> JSONResponse:
+    domain = domains[0]
+    try:
+        with domain.domain_context():
+            broker = _dlq_broker(domain)
+            if broker is None:
+                return _dlq_not_available()
+
+            dlq_streams = _subscription_dlq_streams(domain, subscription)
+            if not dlq_streams:
+                return _no_subscription(subscription)
+
+            total = 0
+            for dlq_stream in dlq_streams:
+                total += broker.dlq_purge(dlq_stream)
+
+            return JSONResponse(content={"status": "ok", "purged": total})
+    except Exception:  # any DLQ error becomes a 500 response; logged
+        logger.exception("Error purging DLQ")
+        return JSONResponse(
+            content={"error": "Failed to purge DLQ"},
+            status_code=500,
+        )
+
+
+# ----------------------------------------------------------------------
+# Router
+# ----------------------------------------------------------------------
+
+
 def create_api_router(domains: list[Domain]) -> APIRouter:
     """Create the REST API router for observatory endpoints."""
     router = APIRouter()
+    # Each router keeps its own overview cache.
+    overview_cache: _OverviewCache = {}
+
+    # Each route is a thin wrapper around a module-level function. FastAPI
+    # builds the operationId from the wrapper's name and the description from
+    # its docstring, and `domains` must stay out of the signature, or FastAPI
+    # would read it from the query string.
 
     @router.get("/health")
     async def health() -> JSONResponse:
         """Infrastructure health check."""
-        # Use first domain's broker for health (they typically share infrastructure)
-        broker_stats = _broker_health(domains[0])
-
-        # Public health_stats() returns {"status", "connected", "details": {...}}
-        broker_details = broker_stats.get("details", {})
-        is_connected = broker_stats.get("connected", False)
-
-        return JSONResponse(
-            content={
-                "status": broker_stats.get("status", "unhealthy"),
-                "domains": [d.name for d in domains],
-                "infrastructure": {
-                    "redis": {
-                        "healthy": is_connected
-                        and broker_details.get("healthy", False),
-                        "version": broker_details.get("redis_version", "unknown"),
-                        "connected_clients": broker_details.get("connected_clients", 0),
-                        "memory": broker_details.get("used_memory_human", "0B"),
-                        "uptime_seconds": broker_details.get("uptime_in_seconds", 0),
-                        "ops_per_sec": broker_details.get(
-                            "instantaneous_ops_per_sec", 0
-                        ),
-                    },
-                },
-            }
-        )
+        return _health(domains)
 
     @router.get("/outbox")
     async def outbox() -> JSONResponse:
         """Outbox status for all domains."""
-        result: dict[str, Any] = {}
-        for domain in domains:
-            result[domain.name] = _outbox_status(domain)
-        return JSONResponse(content=result)
+        return _outbox(domains)
 
     @router.get("/streams")
     async def streams() -> JSONResponse:
         """Stream lengths and consumer group info."""
-        redis_conn = _get_redis(domains)
-        stream_names = _discover_streams(redis_conn) if redis_conn else []
-
-        message_counts = {"total_messages": 0, "in_flight": 0, "failed": 0, "dlq": 0}
-        consumer_groups: dict[str, dict[str, Any]] = {}
-
-        for name in stream_names:
-            if redis_conn is None:
-                break
-            try:
-                message_counts["total_messages"] += redis_conn.xlen(name)
-                groups_info = _xinfo_groups(redis_conn, name)
-                for g in groups_info:
-                    if isinstance(g, dict):
-                        gname = g.get("name") or g.get(b"name")
-                        if isinstance(gname, bytes):
-                            gname = gname.decode("utf-8")
-                        gpending = g.get("pending") or g.get(b"pending") or 0
-                        glag = g.get("lag") or g.get(b"lag") or 0
-                        message_counts["in_flight"] += int(gpending)
-                        consumer_groups[str(gname)] = {
-                            "stream": name,
-                            "pending": int(gpending),
-                            "lag": int(glag),
-                        }
-            except Exception:  # one unreadable stream must not fail the endpoint
-                logger.debug("Could not read stream %s", name, exc_info=True)
-
-        return JSONResponse(
-            content={
-                "message_counts": message_counts,
-                "streams": {"count": len(stream_names), "names": stream_names},
-                "consumer_groups": consumer_groups,
-            }
-        )
+        return _streams(domains)
 
     @router.get("/consumers")
     async def consumers() -> JSONResponse:
@@ -297,66 +1354,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
         per-worker pending counts and idle time — the key data needed to
         verify that multiple worker instances are sharing the load.
         """
-        redis_conn = _get_redis(domains)
-        if not redis_conn:
-            return JSONResponse(
-                content={
-                    "consumers": [],
-                    "count": 0,
-                    "error": "Redis not available",
-                },
-                status_code=503,
-            )
-
-        stream_names = _discover_streams(redis_conn)
-        result: list[dict[str, Any]] = []
-
-        for stream_name in stream_names:
-            try:
-                groups = _xinfo_groups(redis_conn, stream_name)
-                for g in groups:
-                    if not isinstance(g, dict):
-                        continue
-                    gname = g.get("name") or g.get(b"name")
-                    if isinstance(gname, bytes):
-                        gname = gname.decode("utf-8")
-                    if not gname:
-                        continue
-
-                    try:
-                        consumers_info = _xinfo_consumers(
-                            redis_conn, stream_name, gname
-                        )
-                        for c in consumers_info:
-                            if not isinstance(c, dict):
-                                continue
-                            cname = c.get("name") or c.get(b"name")
-                            if isinstance(cname, bytes):
-                                cname = cname.decode("utf-8")
-                            cpending = c.get("pending") or c.get(b"pending") or 0
-                            cidle = c.get("idle") or c.get(b"idle") or 0
-                            result.append(
-                                {
-                                    "consumer_name": str(cname),
-                                    "group": str(gname),
-                                    "stream": stream_name,
-                                    "pending": int(cpending),
-                                    "idle_ms": int(cidle),
-                                }
-                            )
-                    except Exception:  # one unreadable group must not drop the others
-                        logger.debug(
-                            "Could not read consumers of group %s on stream %s",
-                            gname,
-                            stream_name,
-                            exc_info=True,
-                        )
-            except Exception:  # one unreadable stream must not fail the endpoint
-                logger.debug(
-                    "Could not read groups of stream %s", stream_name, exc_info=True
-                )
-
-        return JSONResponse(content={"consumers": result, "count": len(result)})
+        return _consumers(domains)
 
     @router.get("/workers")
     async def workers() -> JSONResponse:
@@ -366,178 +1364,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
         per-worker throughput from the trace stream. Each worker represents one
         engine process (container/pod) that may run multiple subscriptions.
         """
-        redis_conn = _get_redis(domains)
-        if not redis_conn:
-            return JSONResponse(
-                content={
-                    "workers": [],
-                    "count": 0,
-                    "error": "Redis not available",
-                },
-                status_code=503,
-            )
-
-        # 1. Collect all consumers (same logic as /api/consumers)
-        stream_names = _discover_streams(redis_conn)
-        all_consumers: list[dict[str, Any]] = []
-
-        for stream_name in stream_names:
-            try:
-                groups = _xinfo_groups(redis_conn, stream_name)
-                for g in groups:
-                    if not isinstance(g, dict):
-                        continue
-                    gname = g.get("name") or g.get(b"name")
-                    if isinstance(gname, bytes):
-                        gname = gname.decode("utf-8")
-                    if not gname:
-                        continue
-
-                    try:
-                        consumers_info = _xinfo_consumers(
-                            redis_conn, stream_name, gname
-                        )
-                        for c in consumers_info:
-                            if not isinstance(c, dict):
-                                continue
-                            cname = c.get("name") or c.get(b"name")
-                            if isinstance(cname, bytes):
-                                cname = cname.decode("utf-8")
-                            cpending = c.get("pending") or c.get(b"pending") or 0
-                            cidle = c.get("idle") or c.get(b"idle") or 0
-                            all_consumers.append(
-                                {
-                                    "consumer_name": str(cname),
-                                    "group": str(gname),
-                                    "stream": stream_name,
-                                    "pending": int(cpending),
-                                    "idle_ms": int(cidle),
-                                }
-                            )
-                    except Exception:  # one unreadable group must not drop the others
-                        logger.debug(
-                            "Could not read consumers of group %s on stream %s",
-                            gname,
-                            stream_name,
-                            exc_info=True,
-                        )
-            except Exception:  # one unreadable stream must not fail the endpoint
-                logger.debug(
-                    "Could not read groups of stream %s", stream_name, exc_info=True
-                )
-
-        # 2. Group consumers by worker key (hostname, pid)
-        worker_map: dict[str, dict[str, Any]] = {}
-        for consumer in all_consumers:
-            hostname, pid = _parse_worker_key(consumer["consumer_name"])
-            worker_id = f"{hostname}-{pid}"
-
-            if worker_id not in worker_map:
-                worker_map[worker_id] = {
-                    "worker_id": worker_id,
-                    "hostname": hostname,
-                    "pid": int(pid) if pid.isdigit() else 0,
-                    "subscriptions": [],
-                    "subscription_count": 0,
-                    "total_pending": 0,
-                    "min_idle_ms": float("inf"),
-                    "_domains": set(),
-                    "_streams": set(),
-                }
-
-            w = worker_map[worker_id]
-            w["subscriptions"].append(consumer)
-            w["subscription_count"] += 1
-            w["total_pending"] += consumer["pending"]
-            w["min_idle_ms"] = min(w["min_idle_ms"], consumer["idle_ms"])
-
-            # Extract engine domain from group (module path), e.g.
-            # "inventory.projections.inventory_level.InventoryLevelProjector" → "inventory"
-            # "protean.server.engine.Commands:..." → skip (command dispatcher)
-            group = consumer["group"]
-            if not group.startswith("protean."):
-                engine_domain = group.split(".")[0]
-                w["_domains"].add(engine_domain)
-            w["_streams"].add(consumer["stream"])
-
-        # 3. Finalize domain and streams
-        for w in worker_map.values():
-            w["domain"] = ", ".join(sorted(w.pop("_domains")))
-            w["streams"] = sorted(w.pop("_streams"))
-
-        # 4. Compute per-worker throughput from trace stream
-        now_ms = int(time.time() * 1000)
-        window_ms = _WORKER_THROUGHPUT_WINDOW_S * 1000
-        bucket_ms = _WORKER_THROUGHPUT_BUCKET_S * 1000
-        bucket_count = _WORKER_THROUGHPUT_WINDOW_S // _WORKER_THROUGHPUT_BUCKET_S
-        min_id = str(now_ms - window_ms)
-
-        # Initialize throughput buckets per worker
-        throughput: dict[str, list[int]] = {}
-        for wid in worker_map:
-            throughput[wid] = [0] * bucket_count
-
-        try:
-            raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)
-        except Exception:  # scrape: show zero throughput without traces
-            logger.debug("Could not read traces for worker throughput", exc_info=True)
-            raw_entries = []
-
-        for stream_id, fields in raw_entries:
-            trace = decode_trace(fields)
-            if trace is None or trace.get("event") != "handler.completed":
-                continue
-
-            trace_worker_id = trace.get("worker_id")
-            if not trace_worker_id or not isinstance(trace_worker_id, str):
-                continue
-
-            # Map trace worker_id (subscription ID) to worker key
-            t_hostname, t_pid = _parse_worker_key(trace_worker_id)
-            t_worker_id = f"{t_hostname}-{t_pid}"
-
-            if t_worker_id not in throughput:
-                continue
-
-            # Determine bucket from stream ID timestamp
-            sid = _decode_stream_id(stream_id)
-            ts_ms = int(sid.split("-")[0])
-            bucket_idx = (ts_ms - (now_ms - window_ms)) // bucket_ms
-            if 0 <= bucket_idx < bucket_count:
-                throughput[t_worker_id][bucket_idx] += 1
-
-        # 5. Merge throughput into worker objects and compute status
-        for wid, w in worker_map.items():
-            counts = throughput.get(wid, [0] * bucket_count)
-            total = sum(counts)
-            w["throughput"] = {
-                "window_seconds": _WORKER_THROUGHPUT_WINDOW_S,
-                "bucket_seconds": _WORKER_THROUGHPUT_BUCKET_S,
-                "counts": counts,
-                "total": total,
-            }
-
-            # Status: use throughput as primary signal (if processing, it's active),
-            # fall back to idle_ms from XINFO CONSUMERS
-            if total > 0 or w["min_idle_ms"] < _WORKER_ACTIVE_THRESHOLD_MS:
-                w["status"] = "active"
-            elif w["min_idle_ms"] < _WORKER_IDLE_THRESHOLD_MS:
-                w["status"] = "idle"
-            else:
-                w["status"] = "offline"
-
-        workers_list = sorted(
-            worker_map.values(),
-            key=lambda w: (w["domain"], w["status"] != "active", w["hostname"]),
-        )
-
-        return JSONResponse(
-            content={
-                "workers": workers_list,
-                "count": len(workers_list),
-                "timestamp": now_ms,
-            }
-        )
+        return _workers(domains)
 
     @router.get("/queue-depth")
     async def queue_depth() -> JSONResponse:
@@ -547,102 +1374,12 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
         and per-consumer-group XPENDING in a single response optimized
         for dashboard polling.
         """
-        result: dict[str, Any] = {
-            "timestamp": time.time() * 1000,
-            "outbox": {},
-            "streams": {},
-            "totals": {
-                "outbox_pending": 0,
-                "stream_depth": 0,
-                "consumer_pending": 0,
-            },
-        }
-
-        # 1. Outbox counts per domain
-        for domain in domains:
-            outbox_data = _outbox_status(domain)
-            if outbox_data.get("status") == "ok":
-                counts = outbox_data["counts"]
-                result["outbox"][domain.name] = counts
-                result["totals"]["outbox_pending"] += counts.get("pending", 0)
-                result["totals"]["outbox_pending"] += counts.get("processing", 0)
-
-        # 2. Per-stream depth + per-consumer-group lag
-        #    stream_depth  = max lag across all consumer groups per stream
-        #                    (the actual unconsumed backlog, NOT total XLEN)
-        #    consumer_pending = messages delivered but not yet ACK'd (in-flight)
-        redis_conn = _get_redis(domains)
-        if redis_conn:
-            for stream_name in _discover_streams(redis_conn):
-                try:
-                    xlen = redis_conn.xlen(stream_name)
-                    stream_entry: dict[str, Any] = {
-                        "length": xlen,
-                        "consumer_groups": {},
-                    }
-                    max_lag = 0
-
-                    try:
-                        groups = _xinfo_groups(redis_conn, stream_name)
-                        for g in groups:
-                            if isinstance(g, dict):
-                                gname = g.get("name") or g.get(b"name")
-                                if isinstance(gname, bytes):
-                                    gname = gname.decode("utf-8")
-                                gpending = g.get("pending") or g.get(b"pending") or 0
-                                glag = g.get("lag") or g.get(b"lag") or 0
-                                stream_entry["consumer_groups"][str(gname)] = {
-                                    "pending": int(gpending),
-                                    "lag": int(glag),
-                                }
-                                result["totals"]["consumer_pending"] += int(gpending)
-                                max_lag = max(max_lag, int(glag))
-                    # keep the stream entry without group data; logged
-                    except Exception:
-                        logger.debug(
-                            "Could not read groups of stream %s",
-                            stream_name,
-                            exc_info=True,
-                        )
-
-                    result["totals"]["stream_depth"] += max_lag
-                    result["streams"][stream_name] = stream_entry
-                except Exception:  # one unreadable stream must not fail the endpoint
-                    logger.debug("Could not read stream %s", stream_name, exc_info=True)
-
-        return JSONResponse(content=result)
+        return _queue_depth(domains)
 
     @router.get("/stats")
     async def stats() -> JSONResponse:
-        """Aggregated throughput and error rate statistics."""
-        outbox_data: dict[str, Any] = {}
-        for domain in domains:
-            outbox_data[domain.name] = _outbox_status(domain)
-
-        redis_conn = _get_redis(domains)
-        stream_names = _discover_streams(redis_conn) if redis_conn else []
-
-        message_counts = {"total_messages": 0, "in_flight": 0, "failed": 0, "dlq": 0}
-        for name in stream_names:
-            if redis_conn is None:
-                break
-            try:
-                message_counts["total_messages"] += redis_conn.xlen(name)
-                groups_info = _xinfo_groups(redis_conn, name)
-                for g in groups_info:
-                    if isinstance(g, dict):
-                        gpending = g.get("pending") or g.get(b"pending") or 0
-                        message_counts["in_flight"] += int(gpending)
-            except Exception:  # one unreadable stream must not fail the endpoint
-                logger.debug("Could not read stream %s", name, exc_info=True)
-
-        return JSONResponse(
-            content={
-                "outbox": outbox_data,
-                "message_counts": message_counts,
-                "streams": {"count": len(stream_names), "names": stream_names},
-            }
-        )
+        """Outbox status, stream message counts and stream names."""
+        return _stats(domains)
 
     @router.get("/traces")
     async def traces(
@@ -655,58 +1392,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
         ),
     ) -> JSONResponse:
         """Recent trace history from the persisted Redis Stream."""
-        redis_conn = _get_redis(domains)
-        if not redis_conn:
-            return JSONResponse(
-                content={"traces": [], "count": 0, "error": "Redis not available"},
-                status_code=503,
-            )
-
-        has_filters = domain or stream or event or message_id
-
-        try:
-            # XREVRANGE returns newest-first; fetch extra to account for filtering
-            # message_id lookups scan wider since lifecycle events may be sparse
-            if message_id:
-                fetch_count = 5000
-            elif has_filters:
-                fetch_count = count * 3
-            else:
-                fetch_count = count
-            raw_entries = redis_conn.xrevrange(
-                TRACE_STREAM, count=min(fetch_count, 5000)
-            )
-        except Exception:  # any read error becomes a 500 response; logged
-            logger.exception("Error reading trace stream")
-            return JSONResponse(
-                content={"traces": [], "count": 0, "error": "Failed to read traces"},
-                status_code=500,
-            )
-
-        result: list[dict[str, Any]] = []
-        for stream_id, fields in raw_entries:
-            trace = decode_trace(fields)
-            if trace is None:
-                continue
-
-            # Apply filters
-            if domain and trace.get("domain") != domain:
-                continue
-            if stream and trace.get("stream") != stream:
-                continue
-            if event and trace.get("event") != event:
-                continue
-            if message_id and trace.get("message_id") != message_id:
-                continue
-
-            trace["_stream_id"] = _decode_stream_id(stream_id)
-            result.append(trace)
-
-            # message_id lookups return all matching events (no count limit)
-            if not message_id and len(result) >= count:
-                break
-
-        return JSONResponse(content={"traces": result, "count": len(result)})
+        return _traces(domains, count, domain, stream, event, message_id)
 
     @router.get("/traces/stats")
     async def traces_stats(
@@ -717,20 +1403,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
         Delegates to the combined /traces/overview endpoint and returns
         only the stats portion for backward compatibility.
         """
-        overview = await traces_overview(window=window)
-        body = json.loads(bytes(overview.body).decode())
-        if "error" in body:
-            return overview
-        return JSONResponse(
-            content={
-                "window": body["window"],
-                "counts": body["counts"],
-                "error_count": body["error_count"],
-                "error_rate": body["error_rate"],
-                "avg_latency_ms": body["avg_latency_ms"],
-                "total": body["total"],
-            }
-        )
+        return _traces_stats(domains, overview_cache, window)
 
     @router.get("/traces/timeline")
     async def traces_timeline(
@@ -741,23 +1414,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
         Delegates to the combined /traces/overview endpoint and returns
         only the timeline portion for backward compatibility.
         """
-        overview = await traces_overview(window=window)
-        body = json.loads(bytes(overview.body).decode())
-        if "error" in body:
-            return overview
-        return JSONResponse(
-            content={
-                "window": body["window"],
-                "bucket_ms": body["bucket_ms"],
-                "buckets": body["buckets"],
-            }
-        )
-
-    # Cache for the combined overview scan to avoid redundant XRANGE calls.
-    # TTL is half the poller interval (5s) so data stays fresh but back-to-back
-    # requests (e.g. window change triggering multiple pollers) are served instantly.
-    _overview_cache: dict[str, tuple[float, dict[str, Any]]] = {}
-    _OVERVIEW_CACHE_TTL_S = 3.0
+        return _traces_timeline(domains, overview_cache, window)
 
     @router.get("/traces/overview")
     async def traces_overview(
@@ -768,111 +1425,10 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
         Returns event counts, error rate, avg latency, AND pre-aggregated
         timeline buckets.  The frontend calls this once instead of two
         separate endpoints, halving Redis scan time for large windows.
-        Results are cached for 2 seconds to avoid redundant scans from
+        Results are cached for 3 seconds to avoid redundant scans from
         near-simultaneous requests.
         """
-        window_ms = _WINDOW_MS.get(window)
-        if window_ms is None:
-            valid = ", ".join(_WINDOW_MS.keys())
-            return JSONResponse(
-                content={"error": f"Invalid window: {window}. Use {valid}."},
-                status_code=400,
-            )
-
-        # Check cache
-        now = time.time()
-        cached = _overview_cache.get(window)
-        if cached and (now - cached[0]) < _OVERVIEW_CACHE_TTL_S:
-            return JSONResponse(content=cached[1])
-
-        redis_conn = _get_redis(domains)
-        if not redis_conn:
-            return JSONResponse(
-                content={"error": "Redis not available"}, status_code=503
-            )
-
-        now_ms = int(now * 1000)
-        min_id = str(now_ms - window_ms)
-        bucket_ms = _TIMELINE_BUCKET_MS[window]
-
-        try:
-            raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id)
-        except Exception:  # any read error becomes a 500 response; logged
-            logger.exception("Error reading trace stream")
-            return JSONResponse(
-                content={"error": "Failed to read traces"}, status_code=500
-            )
-
-        # --- Stats accumulators ---
-        counts: dict[str, int] = {}
-        error_count = 0
-        total = 0
-        latency_sum = 0.0
-        latency_count = 0
-
-        # --- Timeline buckets ---
-        window_start = (now_ms - window_ms) // bucket_ms * bucket_ms
-        buckets: dict[int, dict[str, int]] = {}
-        t = window_start
-        while t <= now_ms:
-            buckets[t] = {"time_ms": t, "total": 0, "success": 0, "errors": 0}
-            t += bucket_ms
-
-        # Single pass over all entries
-        for stream_id, fields in raw_entries:
-            trace = decode_trace(fields)
-            if trace is None:
-                continue
-
-            event_type = trace.get("event", "unknown")
-            if not isinstance(event_type, str):
-                continue
-
-            # Stats
-            counts[event_type] = counts.get(event_type, 0) + 1
-            total += 1
-            if event_type in _ERROR_EVENTS:
-                error_count += 1
-            duration = trace_number(trace.get("duration_ms"))
-            if event_type == "handler.completed" and duration is not None:
-                latency_sum += duration
-                latency_count += 1
-
-            # Timeline bucket
-            sid = _decode_stream_id(stream_id)
-            ts_ms = int(sid.split("-")[0])
-            bucket_key = ts_ms // bucket_ms * bucket_ms
-            bucket = buckets.get(bucket_key)
-            if bucket is not None:
-                bucket["total"] += 1
-                if event_type in _SUCCESS_EVENTS:
-                    bucket["success"] += 1
-                elif event_type in _ERROR_EVENTS:
-                    bucket["errors"] += 1
-
-        error_rate = round((error_count / total * 100), 2) if total > 0 else 0.0
-        avg_latency_ms = (
-            round(latency_sum / latency_count, 2) if latency_count > 0 else 0.0
-        )
-        timeline = sorted(buckets.values(), key=lambda b: b["time_ms"])
-
-        result: dict[str, Any] = {
-            "window": window,
-            # Stats
-            "counts": counts,
-            "error_count": error_count,
-            "error_rate": error_rate,
-            "avg_latency_ms": avg_latency_ms,
-            "total": total,
-            # Timeline
-            "bucket_ms": bucket_ms,
-            "buckets": timeline,
-        }
-
-        # Update cache (use current time, not the pre-scan `now`)
-        _overview_cache[window] = (time.time(), result)
-
-        return JSONResponse(content=result)
+        return _traces_overview(domains, overview_cache, window)
 
     @router.get("/traces/failed")
     async def traces_failed(
@@ -890,109 +1446,14 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
         with optional filtering by handler name and message type.
         Supports offset-based pagination via offset/limit params.
         """
-        redis_conn = _get_redis(domains)
-        if not redis_conn:
-            return JSONResponse(
-                content={
-                    "traces": [],
-                    "total_count": 0,
-                    "error": "Redis not available",
-                },
-                status_code=503,
-            )
-
-        # Determine time range
-        if start and end:
-            # Custom range: parse ISO 8601 timestamps
-            try:
-                start_dt = datetime.fromisoformat(start)
-                end_dt = datetime.fromisoformat(end)
-                min_id = str(int(start_dt.timestamp() * 1000))
-                max_id = str(int(end_dt.timestamp() * 1000))
-            except (ValueError, TypeError):
-                return JSONResponse(
-                    content={"error": "Invalid date format. Use ISO 8601."},
-                    status_code=400,
-                )
-        else:
-            window_ms = _WINDOW_MS.get(window)
-            if window_ms is None:
-                valid = ", ".join(_WINDOW_MS.keys())
-                return JSONResponse(
-                    content={"error": f"Invalid window: {window}. Use {valid}."},
-                    status_code=400,
-                )
-            min_id = str(int(time.time() * 1000) - window_ms)
-            max_id = "+"
-
-        try:
-            raw_entries = redis_conn.xrange(TRACE_STREAM, min=min_id, max=max_id)
-        except Exception:  # any read error becomes a 500 response; logged
-            logger.exception("Error reading trace stream for failed traces")
-            return JSONResponse(
-                content={
-                    "traces": [],
-                    "total_count": 0,
-                    "error": "Failed to read traces",
-                },
-                status_code=500,
-            )
-
-        # Collect all matching entries (for total count + pagination)
-        all_matches: list[dict[str, Any]] = []
-        for stream_id, fields in raw_entries:
-            trace = decode_trace(fields)
-            if trace is None:
-                continue
-
-            event_type = trace.get("event", "")
-            if not isinstance(event_type, str) or event_type not in _ERROR_EVENTS:
-                continue
-
-            # Apply optional filters
-            if handler and trace.get("handler") != handler:
-                continue
-            if message_type and trace.get("message_type") != message_type:
-                continue
-
-            trace["_stream_id"] = _decode_stream_id(stream_id)
-            all_matches.append(trace)
-
-        # Sort newest first, then paginate
-        all_matches.reverse()
-        total_count = len(all_matches)
-        page = all_matches[offset : offset + limit]
-
-        return JSONResponse(content={"traces": page, "total_count": total_count})
+        return _traces_failed(
+            domains, window, handler, message_type, limit, offset, start, end
+        )
 
     @router.get("/traces/{stream_id}")
     async def trace_detail(stream_id: str) -> JSONResponse:
         """Fetch a single trace event by its Redis stream ID."""
-        redis_conn = _get_redis(domains)
-        if not redis_conn:
-            return JSONResponse(
-                content={"error": "Redis not available"}, status_code=503
-            )
-
-        try:
-            entries = redis_conn.xrange(TRACE_STREAM, min=stream_id, max=stream_id)
-        except Exception:  # any read error becomes a 500 response; logged
-            logger.exception(f"Error reading trace {stream_id}")
-            return JSONResponse(
-                content={"error": "Failed to read trace"}, status_code=500
-            )
-
-        if not entries:
-            return JSONResponse(content={"error": "Trace not found"}, status_code=404)
-
-        _, fields = entries[0]
-        trace = decode_trace(fields)
-        if trace is None:
-            return JSONResponse(
-                content={"error": "Failed to parse trace data"}, status_code=500
-            )
-        trace["_stream_id"] = stream_id
-        return JSONResponse(content=trace)
+        return _trace_detail(domains, stream_id)
 
     @router.get("/subscriptions")
     async def subscriptions() -> JSONResponse:
@@ -1001,37 +1462,7 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
         Returns per-subscription lag, pending count, DLQ depth, and
         overall summary for each monitored domain.
         """
-        from protean.server.subscription_status import (  # noqa: PLC0415
-            collect_subscription_statuses,
-        )
-
-        result: dict[str, Any] = {}
-        for domain in domains:
-            try:
-                statuses = collect_subscription_statuses(domain)
-                result[domain.name] = {
-                    "status": "ok",
-                    "subscriptions": [s.to_dict() for s in statuses],
-                    "summary": {
-                        "total": len(statuses),
-                        "ok": sum(1 for s in statuses if s.status == "ok"),
-                        "lagging": sum(1 for s in statuses if s.status == "lagging"),
-                        "unknown": sum(1 for s in statuses if s.status == "unknown"),
-                        "total_lag": sum(s.lag or 0 for s in statuses),
-                        "total_pending": sum(s.pending for s in statuses),
-                        "total_dlq": sum(s.dlq_depth for s in statuses),
-                    },
-                }
-            except Exception:  # one domain's error must not hide the others; logged
-                logger.exception(
-                    f"Error collecting subscription status for {domain.name}"
-                )
-                result[domain.name] = {
-                    "status": "error",
-                    "error": "Failed to collect subscription status",
-                }
-
-        return JSONResponse(content=result)
+        return _subscriptions(domains)
 
     # ------------------------------------------------------------------
     # DLQ Management Endpoints
@@ -1047,282 +1478,35 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
 
         Supports offset-based pagination via offset/limit params.
         """
-        from protean.utils.dlq import (  # noqa: PLC0415
-            collect_dlq_streams,
-            discover_subscriptions,
-        )
-
-        domain = domains[0]
-        try:
-            with domain.domain_context():
-                broker = domain.brokers.get("default")
-                if broker is None:
-                    return JSONResponse(
-                        content={"error": "No default broker configured"},
-                        status_code=503,
-                    )
-                if not broker.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
-                    return JSONResponse(
-                        content={"error": "Broker does not support DLQ"},
-                        status_code=501,
-                    )
-
-                if subscription:
-                    infos = discover_subscriptions(domain)
-                    dlq_streams: list[str] = []
-                    for info in infos:
-                        if info.stream_category == subscription:
-                            dlq_streams.append(info.dlq_stream)
-                            if info.backfill_dlq_stream:
-                                dlq_streams.append(info.backfill_dlq_stream)
-                    if not dlq_streams:
-                        return JSONResponse(
-                            content={"error": f"No subscription for '{subscription}'"},
-                            status_code=404,
-                        )
-                else:
-                    dlq_streams = collect_dlq_streams(domain)
-
-                # Fetch all entries (broker sorts newest first)
-                all_entries = broker.dlq_list(dlq_streams, limit=10000)
-                total_count = len(all_entries)
-                page = all_entries[offset : offset + limit]
-
-                return JSONResponse(
-                    content={
-                        "entries": [
-                            {
-                                "dlq_id": e.dlq_id,
-                                "original_id": e.original_id,
-                                "stream": e.stream,
-                                "consumer_group": e.consumer_group,
-                                "failure_reason": e.failure_reason,
-                                "failed_at": e.failed_at,
-                                "retry_count": e.retry_count,
-                                "dlq_stream": e.dlq_stream,
-                            }
-                            for e in page
-                        ],
-                        "total_count": total_count,
-                    }
-                )
-        except Exception:  # any DLQ error becomes a 500 response; logged
-            logger.exception("Error listing DLQ")
-            return JSONResponse(
-                content={"error": "Failed to list DLQ messages"},
-                status_code=500,
-            )
+        return _dlq_list(domains, subscription, limit, offset)
 
     @router.get("/dlq/{dlq_id}")
     async def dlq_inspect(dlq_id: str) -> JSONResponse:
         """Inspect a single DLQ message with full payload."""
-        from protean.utils.dlq import collect_dlq_streams  # noqa: PLC0415
-
-        domain = domains[0]
-        try:
-            with domain.domain_context():
-                broker = domain.brokers.get("default")
-                if broker is None or not broker.has_capability(
-                    BrokerCapabilities.DEAD_LETTER_QUEUE
-                ):
-                    return JSONResponse(
-                        content={"error": "DLQ not available"},
-                        status_code=503,
-                    )
-
-                dlq_streams = collect_dlq_streams(domain)
-                for dlq_stream in dlq_streams:
-                    entry = broker.dlq_inspect(dlq_stream, dlq_id)
-                    if entry:
-                        # Strip internal DLQ metadata from displayed payload
-                        payload = {
-                            k: v
-                            for k, v in entry.payload.items()
-                            if k != "_dlq_metadata"
-                        }
-                        return JSONResponse(
-                            content={
-                                "dlq_id": entry.dlq_id,
-                                "original_id": entry.original_id,
-                                "stream": entry.stream,
-                                "consumer_group": entry.consumer_group,
-                                "failure_reason": entry.failure_reason,
-                                "failed_at": entry.failed_at,
-                                "retry_count": entry.retry_count,
-                                "dlq_stream": entry.dlq_stream,
-                                "payload": payload,
-                            }
-                        )
-
-                return JSONResponse(
-                    content={"error": f"DLQ message '{dlq_id}' not found"},
-                    status_code=404,
-                )
-        except Exception:  # any DLQ error becomes a 500 response; logged
-            logger.exception("Error inspecting DLQ message")
-            return JSONResponse(
-                content={"error": "Failed to inspect DLQ message"},
-                status_code=500,
-            )
+        return _dlq_inspect(domains, dlq_id)
 
     @router.post("/dlq/{dlq_id}/replay")
     async def dlq_replay(dlq_id: str) -> JSONResponse:
         """Replay a single DLQ message back to its original stream."""
-        from protean.utils.dlq import collect_dlq_streams  # noqa: PLC0415
-
-        domain = domains[0]
-        try:
-            with domain.domain_context():
-                broker = domain.brokers.get("default")
-                if broker is None or not broker.has_capability(
-                    BrokerCapabilities.DEAD_LETTER_QUEUE
-                ):
-                    return JSONResponse(
-                        content={"error": "DLQ not available"},
-                        status_code=503,
-                    )
-
-                dlq_streams = collect_dlq_streams(domain)
-                for dlq_stream in dlq_streams:
-                    entry = broker.dlq_inspect(dlq_stream, dlq_id)
-                    if entry:
-                        success = broker.dlq_replay(dlq_stream, dlq_id, entry.stream)
-                        if success:
-                            return JSONResponse(
-                                content={
-                                    "status": "ok",
-                                    "replayed": True,
-                                    "target_stream": entry.stream,
-                                }
-                            )
-                        return JSONResponse(
-                            content={"error": "Replay failed"},
-                            status_code=500,
-                        )
-
-                return JSONResponse(
-                    content={"error": f"DLQ message '{dlq_id}' not found"},
-                    status_code=404,
-                )
-        except Exception:  # any DLQ error becomes a 500 response; logged
-            logger.exception("Error replaying DLQ message")
-            return JSONResponse(
-                content={"error": "Failed to replay DLQ message"},
-                status_code=500,
-            )
+        return _dlq_replay(domains, dlq_id)
 
     @router.post("/dlq/replay-all")
     async def dlq_replay_all(
         subscription: str = Query(..., description="Stream category (required)"),
     ) -> JSONResponse:
         """Replay all DLQ messages for a subscription."""
-        from protean.utils.dlq import discover_subscriptions  # noqa: PLC0415
-
-        domain = domains[0]
-        try:
-            with domain.domain_context():
-                broker = domain.brokers.get("default")
-                if broker is None or not broker.has_capability(
-                    BrokerCapabilities.DEAD_LETTER_QUEUE
-                ):
-                    return JSONResponse(
-                        content={"error": "DLQ not available"},
-                        status_code=503,
-                    )
-
-                infos = discover_subscriptions(domain)
-                dlq_streams: list[str] = []
-                for info in infos:
-                    if info.stream_category == subscription:
-                        dlq_streams.append(info.dlq_stream)
-                        if info.backfill_dlq_stream:
-                            dlq_streams.append(info.backfill_dlq_stream)
-
-                if not dlq_streams:
-                    return JSONResponse(
-                        content={"error": f"No subscription for '{subscription}'"},
-                        status_code=404,
-                    )
-
-                total = 0
-                for dlq_stream in dlq_streams:
-                    total += broker.dlq_replay_all(dlq_stream, subscription)
-
-                return JSONResponse(
-                    content={
-                        "status": "ok",
-                        "replayed": total,
-                        "target_stream": subscription,
-                    }
-                )
-        except Exception:  # any DLQ error becomes a 500 response; logged
-            logger.exception("Error replaying all DLQ messages")
-            return JSONResponse(
-                content={"error": "Failed to replay DLQ messages"},
-                status_code=500,
-            )
+        return _dlq_replay_all(domains, subscription)
 
     @router.delete("/dlq")
     async def dlq_purge(
         subscription: str = Query(..., description="Stream category (required)"),
     ) -> JSONResponse:
         """Purge all DLQ messages for a subscription."""
-        from protean.utils.dlq import discover_subscriptions  # noqa: PLC0415
-
-        domain = domains[0]
-        try:
-            with domain.domain_context():
-                broker = domain.brokers.get("default")
-                if broker is None or not broker.has_capability(
-                    BrokerCapabilities.DEAD_LETTER_QUEUE
-                ):
-                    return JSONResponse(
-                        content={"error": "DLQ not available"},
-                        status_code=503,
-                    )
-
-                infos = discover_subscriptions(domain)
-                dlq_streams: list[str] = []
-                for info in infos:
-                    if info.stream_category == subscription:
-                        dlq_streams.append(info.dlq_stream)
-                        if info.backfill_dlq_stream:
-                            dlq_streams.append(info.backfill_dlq_stream)
-
-                if not dlq_streams:
-                    return JSONResponse(
-                        content={"error": f"No subscription for '{subscription}'"},
-                        status_code=404,
-                    )
-
-                total = 0
-                for dlq_stream in dlq_streams:
-                    total += broker.dlq_purge(dlq_stream)
-
-                return JSONResponse(content={"status": "ok", "purged": total})
-        except Exception:  # any DLQ error becomes a 500 response; logged
-            logger.exception("Error purging DLQ")
-            return JSONResponse(
-                content={"error": "Failed to purge DLQ"},
-                status_code=500,
-            )
+        return _dlq_purge(domains, subscription)
 
     @router.delete("/traces")
     async def delete_traces() -> JSONResponse:
         """Clear all persisted trace history."""
-        redis_conn = _get_redis(domains)
-        if not redis_conn:
-            return JSONResponse(
-                content={"error": "Redis not available"}, status_code=503
-            )
-
-        try:
-            deleted = redis_conn.delete(TRACE_STREAM)
-            return JSONResponse(content={"status": "ok", "deleted": bool(deleted)})
-        except Exception:  # a Redis delete error becomes a 500 response; logged
-            logger.exception("Error deleting trace stream")
-            return JSONResponse(
-                content={"error": "Failed to delete traces"}, status_code=500
-            )
+        return _delete_traces(domains)
 
     return router

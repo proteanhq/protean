@@ -91,7 +91,7 @@ case "$TARGET" in
     ;;
   observatory-api)
     MODULE="src/protean/server/observatory/api.py"
-    TESTS="tests/server/observatory/test_observatory_api.py tests/server/observatory/test_trace_decoding.py"
+    TESTS="tests/server/observatory/test_observatory_api.py tests/server/observatory/test_observatory_api_edges.py tests/server/observatory/test_trace_decoding.py"
     ;;
   observatory-timeline)
     MODULE="src/protean/server/observatory/routes/timeline.py"
