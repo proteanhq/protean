@@ -2235,10 +2235,9 @@ class Domain:
         handled after the caller's unit of work commits, in its own unit of
         work. A failure while it runs, such as a deadline that passed before
         the commit, makes the caller's commit raise ``TransactionError``. A
-        rollback of the caller means the command never runs. The memory event
-        store discards it with the caller's writes; an event store that writes
-        outside the unit of work, such as Message DB, keeps it stored and
-        unhandled.
+        rollback of the caller means the command never runs. The built-in
+        event stores write outside the unit of work, so the command stays
+        stored and unhandled.
 
         Args:
             command: Instance of a ``@domain.command``-decorated class.
