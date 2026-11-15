@@ -18,6 +18,8 @@ from protean.utils import outbox_trace
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.outbox import Outbox, OutboxStatus
 
+pytestmark = pytest.mark.database
+
 CATEGORY = "test::counter"
 
 
