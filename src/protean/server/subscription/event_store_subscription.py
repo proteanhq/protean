@@ -8,7 +8,7 @@ import socket
 import time
 from collections.abc import Iterable
 from enum import Enum, StrEnum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 from uuid import uuid4
 
 from protean.core.command_handler import BaseCommandHandler
@@ -1042,19 +1042,16 @@ class EventStoreSubscription(BaseSubscription):
                 )
                 continue
 
-            position = message.metadata.event_store.global_position
-            metadata = message.metadata
-            skip = await _skip_handled_message(
-                self, message, metadata, position, idempotency_store
+            received = _received_message(
+                message, message.metadata, message.metadata.event_store.global_position
             )
+            skip = await _skip_handled_message(self, received, idempotency_store)
             if skip is _HandledSkip.IDEMPOTENT:
                 successful_count += 1
             if skip is not _HandledSkip.NOT_SKIPPED:
                 continue
 
-            if await _handle_and_advance(
-                self, message, metadata, position, idempotency_store
-            ):
+            if await _handle_and_advance(self, received, idempotency_store):
                 successful_count += 1
 
         return successful_count
@@ -1475,16 +1472,37 @@ class _HandledSkip(Enum):
     IDEMPOTENT = "idempotent"
 
 
-def _message_labels(metadata: Metadata) -> tuple[str, str]:
-    """Return the message type and message ID used in log lines."""
-    return metadata.headers.type or "unknown", metadata.headers.id or "unknown"
+class _ReceivedMessage(NamedTuple):
+    """A message from the batch with the fields ``process_batch`` logs and checks."""
+
+    message: Message
+    metadata: Metadata
+    position: int
+    message_type: str
+    message_id: str
+    short_id: str
+    idempotency_key: str | None
+
+
+def _received_message(
+    message: Message, metadata: Metadata, position: int
+) -> _ReceivedMessage:
+    """Read the fields ``process_batch`` needs from a message, once."""
+    message_id = metadata.headers.id or "unknown"
+    return _ReceivedMessage(
+        message=message,
+        metadata=metadata,
+        position=position,
+        message_type=metadata.headers.type or "unknown",
+        message_id=message_id,
+        short_id=message_id[:8],
+        idempotency_key=metadata.headers.idempotency_key if metadata.headers else None,
+    )
 
 
 async def _skip_handled_message(
     subscription: EventStoreSubscription,
-    message: Message,
-    metadata: Metadata,
-    position: int,
+    received: _ReceivedMessage,
     idempotency_store: Any,
 ) -> _HandledSkip:
     """Log the message, and advance past it when it needs no handling.
@@ -1493,21 +1511,20 @@ async def _skip_handled_message(
     recorded as ``success``, gets a ``handle_ok`` trace record and a cursor
     write, in that order.
     """
-    message_type, message_id = _message_labels(metadata)
-    short_id = message_id[:8]
+    metadata, position = received.metadata, received.position
 
     # Log the message being picked up, with payload
     logger.info(
         f"[{subscription.subscriber_class_name}] "
-        f"Received {message_type} (ID: {short_id}..., pos: {position})\n"
-        f"  Payload: {message.to_dict()}"
+        f"Received {received.message_type} (ID: {received.short_id}..., pos: {position})\n"
+        f"  Payload: {received.message.to_dict()}"
     )
 
     # Skip synchronous messages — they were already handled inline
     if not (metadata.domain and metadata.domain.asynchronous):
         logger.info(
             f"[{subscription.subscriber_class_name}] "
-            f"{message_type} (pos: {position}): already processed inline"
+            f"{received.message_type} (pos: {position}): already processed inline"
         )
         # A skipped sync message is a non-failed advance past the cursor,
         # the same transition the spec models as HandleOk. Emit before the
@@ -1517,47 +1534,42 @@ async def _skip_handled_message(
         return _HandledSkip.INLINE
 
     # Check idempotency store for already-processed commands
-    idempotency_key = metadata.headers.idempotency_key if metadata.headers else None
-    if not (idempotency_key and idempotency_store.is_active):
-        return _HandledSkip.NOT_SKIPPED
-    existing = idempotency_store.check(idempotency_key)
-    if not (existing and existing.get("status") == "success"):
-        return _HandledSkip.NOT_SKIPPED
+    if received.idempotency_key and idempotency_store.is_active:
+        existing = idempotency_store.check(received.idempotency_key)
+        if existing and existing.get("status") == "success":
+            logger.info(
+                f"[{subscription.subscriber_class_name}] "
+                f"{received.message_type} (ID: {received.short_id}...): "
+                f"already processed (idempotent)"
+            )
+            # An idempotent skip is a non-failed advance (already handled),
+            # the same HandleOk transition the spec models. Emit before the
+            # cursor write so a durable flush lands after it in the log.
+            recovery_trace.record(action="handle_ok", position=position)
+            await subscription.update_read_position(position)
+            return _HandledSkip.IDEMPOTENT
 
-    logger.info(
-        f"[{subscription.subscriber_class_name}] "
-        f"{message_type} (ID: {short_id}...): already processed (idempotent)"
-    )
-    # An idempotent skip is a non-failed advance (already handled),
-    # the same HandleOk transition the spec models. Emit before the
-    # cursor write so a durable flush lands after it in the log.
-    recovery_trace.record(action="handle_ok", position=position)
-    await subscription.update_read_position(position)
-    return _HandledSkip.IDEMPOTENT
+    return _HandledSkip.NOT_SKIPPED
 
 
 async def _handle_and_advance(
     subscription: EventStoreSubscription,
-    message: Message,
-    metadata: Metadata,
-    position: int,
+    received: _ReceivedMessage,
     idempotency_store: Any,
 ) -> bool:
     """Hand the message to the engine, then advance the cursor past it.
 
     Returns whether the engine handled the message successfully.
     """
-    message_type, message_id = _message_labels(metadata)
-    short_id = message_id[:8]
-    idempotency_key = metadata.headers.idempotency_key if metadata.headers else None
+    position = received.position
 
     # Process the message and get a success/failure result
     is_successful = await subscription.engine.handle_message(
-        subscription.handler, message, worker_id=subscription.subscription_id
+        subscription.handler, received.message, worker_id=subscription.subscription_id
     )
 
     if not is_successful:
-        await _record_handler_failure(subscription, metadata, position)
+        await _record_handler_failure(subscription, received)
 
     # The in-memory cursor advances past this message: HandleOk for a handled
     # message, Advance for a failed one (after its record, if recovery is
@@ -1576,23 +1588,23 @@ async def _handle_and_advance(
     if is_successful:
         logger.info(
             f"[{subscription.subscriber_class_name}] "
-            f"Completed {message_type} (ID: {short_id}..., pos: {position})"
+            f"Completed {received.message_type} (ID: {received.short_id}..., pos: {position})"
         )
         # Record success in the idempotency store for future dedup
-        if idempotency_key and idempotency_store.is_active:
-            idempotency_store.record_success(idempotency_key, True)
+        if received.idempotency_key and idempotency_store.is_active:
+            idempotency_store.record_success(received.idempotency_key, True)
 
     return is_successful
 
 
 async def _record_handler_failure(
-    subscription: EventStoreSubscription, metadata: Metadata, position: int
+    subscription: EventStoreSubscription, received: _ReceivedMessage
 ) -> None:
     """Log a failed message and, with recovery enabled, write its ``Failed`` record."""
-    message_type, message_id = _message_labels(metadata)
+    metadata, position = received.metadata, received.position
     logger.warning(
         f"[{subscription.subscriber_class_name}] "
-        f"Failed {message_type} (ID: {message_id[:8]}..., pos: {position})"
+        f"Failed {received.message_type} (ID: {received.short_id}..., pos: {position})"
     )
     recovery_trace.record(action="fail", position=position)
     # Record the failure durably BEFORE advancing the cursor past it
@@ -1604,8 +1616,8 @@ async def _record_handler_failure(
     stream_position = metadata.event_store.position if metadata.event_store else None
     await subscription._record_failed_position(
         position,
-        message_type,
-        message_id,
+        received.message_type,
+        received.message_id,
         stream_name=stream_name,
         stream_position=stream_position,
     )
