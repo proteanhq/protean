@@ -192,20 +192,6 @@
     ]
   },
   {
-    "path": "src/protean/server/outbox_processor.py",
-    "file_name": "outbox_processor.py",
-    "functions": [
-      {
-        "name": "OutboxProcessor::process_batch",
-        "complexity": 22
-      },
-      {
-        "name": "OutboxProcessor::_process_single_message",
-        "complexity": 30
-      }
-    ]
-  },
-  {
     "path": "src/protean/server/supervisor.py",
     "file_name": "supervisor.py",
     "functions": [
