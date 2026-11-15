@@ -2082,7 +2082,9 @@ class TestReconstructUnresolved:
         msg.metadata.event_store.position = None
         store.read.return_value = [msg]
 
-        with pytest.raises(ValueError, match="no per-stream position"):
+        with pytest.raises(
+            ValueError, match="'failed-stream' carries no per-stream position"
+        ):
             reconstruct_unresolved(store, "rec-stream", "failed-stream", page_size=1)
 
     @pytest.mark.no_test_domain

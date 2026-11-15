@@ -258,6 +258,8 @@ class TestFailedPositionRecording:
         assert failed_msgs[0].data["position"] == 5
         assert failed_msgs[0].data["retry_count"] == 0
         assert failed_msgs[0].metadata.headers.type == FailedPositionStatus.FAILED.value
+        assert failed_msgs[0].data["message_type"] == msg.metadata.headers.type
+        assert failed_msgs[0].data["message_id"] == msg.metadata.headers.id
 
     @pytest.mark.asyncio
     async def test_failed_position_stores_stream_info(self, test_domain):
@@ -501,6 +503,8 @@ class TestRecoveryPass:
         assert exhausted_data["stream_name"] == msg.metadata.headers.stream
         assert exhausted_data["stream_name"] is not None
         assert exhausted_data["stream_position"] == 0
+        # Two recovery passes counted 1 and 2, so the third counts 3.
+        assert exhausted_data["retry_count"] == 3
 
         # No more unresolved positions
         assert len(sub._get_unresolved_positions()) == 0
