@@ -326,20 +326,12 @@ Event handlers should be equally thin:
 --8<-- "patterns/thin-handlers-rich-domain/004.py:event_handler"
 ```
 
-<<<<<<< HEAD
-The reservation logic (checking availability, preventing double-reservation,
-updating quantities) lives in `Inventory.reserve()`, not in the handler.
-`OrderPlaced` belongs to `Order`, so `stream_category` points the handler at the
-order stream. Without it the handler would listen to the inventory stream and
-never see the event.
-=======
 The reservation logic (rejecting an empty list of lines or a line quantity of
 zero or less, checking availability, preventing double-reservation, updating
 quantities) is in
 `Inventory.reserve()`. `OrderPlaced` belongs to
 `Order`, so `stream_category` points the handler at the order stream. Without
 it the handler would listen to the inventory stream and never see the event.
->>>>>>> bda796b8 (Reject non-positive and over-stock reservations in inventory examples (#2231))
 
 ---
 

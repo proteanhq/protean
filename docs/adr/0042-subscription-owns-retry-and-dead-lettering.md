@@ -29,11 +29,7 @@ Boundary: this covers subscription-consumed streams. A stream consumed directly 
 
 ## Consequences
 
-<<<<<<< HEAD
-The leak is gone on the InlineBroker path, and a subscription-consumed message has one dead-letter destination, `{stream}:dlq`. Because the broker no longer dead-letters underneath the subscription, once the DLQ recovers the subscription acks the message and clears `retry_counts[identifier]`. While the DLQ is down the message is held for redelivery and the entry stays set, which is accurate live state, not a leak.
-=======
 The leak is gone on the InlineBroker path, and a subscription-consumed message has one dead-letter destination, `{stream}:dlq`. Because the broker no longer dead-letters a message the subscription owns, the subscription acks the message and clears the message's retry count once the DLQ recovers. While the DLQ is down, the broker holds the message for redelivery and the retry count stays set. The set count is accurate live state, so it is not a leak.
->>>>>>> 29fefb00 (Key StreamSubscription retry counts by stream and entry id (#2253))
 
 Production adapters are untouched: they inherit the no-op hook and keep the same nack contract.
 
