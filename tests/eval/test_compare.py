@@ -5,6 +5,12 @@ Approach B (context-driven) replays the committed transcript and gets a
 verify-green verdict plus a correctness score in range. The comparison is built
 once per module (it scaffolds the gold and replays the transcript), which keeps
 the run quick.
+
+The tests that score the committed transcript skip when the installed pack's
+minor has no transcripts at all. ``test_a_live_transcript_exists_for_the_current_minor``
+fails in that case, so the missing recording is reported once, by the guard.
+When the minor has other transcripts but no ``place_order.json``, they fail. The
+other tests build their own transcript and run either way.
 """
 
 from __future__ import annotations
@@ -25,17 +31,62 @@ from tests.eval.compare import (
 from tests.eval.gold import GoldProject
 from tests.eval.runner import RunResult, eval_root
 from tests.eval.spec import TaskSpec
-from tests.eval.transcript import Transcript, transcript_path
+from tests.eval.transcript import (
+    LIVE_LANE_COMMAND,
+    Transcript,
+    Turn,
+    current_transcripts,
+    transcript_path,
+    transcript_version,
+)
 from tests.eval.workspace import Workspace
 
 pytestmark = pytest.mark.no_test_domain
 
 
+def _require_committed_place_order(root: Path, version: str) -> None:
+    """Skip when the minor of *version* has no transcripts, which the guard
+    reports. Fail when it has others but no ``place_order.json``."""
+    committed = transcript_path(root, transcript_version(version), "place_order")
+    if committed.is_file():
+        return
+    message = (
+        f"no committed transcript at {committed}. "
+        f"Record one with `{LIVE_LANE_COMMAND}`."
+    )
+    # The guard only reports a minor with no transcripts at all. When the minor
+    # has others, a skip here would drop this coverage silently.
+    if current_transcripts(root, version):
+        pytest.fail(message)
+    pytest.skip(
+        f"{message} test_a_live_transcript_exists_for_the_current_minor "
+        f"reports the empty minor."
+    )
+
+
 @pytest.fixture(scope="module")
 def comparison(tmp_path_factory: pytest.TempPathFactory) -> Comparison:
+    _require_committed_place_order(eval_root(), PACK_VERSION)
     gold_dest = tmp_path_factory.mktemp("gold")
     replay_dest = tmp_path_factory.mktemp("replay")
     return compare("place_order", gold_dest, replay_dest)
+
+
+def test_missing_place_order_skips_when_the_minor_has_no_transcripts(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(pytest.skip.Exception):
+        _require_committed_place_order(tmp_path, "0.19.1")
+
+
+def test_missing_place_order_fails_when_the_minor_has_other_transcripts(
+    tmp_path: Path,
+) -> None:
+    other = transcript_path(tmp_path, "0.19.0", "order_and_payment")
+    other.parent.mkdir(parents=True)
+    other.write_text("{}")
+    with pytest.raises(pytest.fail.Exception, match="place_order.json"):
+        _require_committed_place_order(tmp_path, "0.19.1")
 
 
 def test_reports_both_approaches(comparison: Comparison) -> None:
@@ -96,8 +147,12 @@ class TestStalenessGuard:
 
     @staticmethod
     def _transcript() -> Transcript:
-        return Transcript.load(
-            transcript_path(eval_root(), PACK_VERSION, "place_order")
+        return Transcript(
+            transcript_version(PACK_VERSION),
+            "place_order",
+            "place an order",
+            (Turn("done"),),
+            "sha256:recorded",
         )
 
     def test_a_clean_replay_passes(self) -> None:
@@ -128,6 +183,24 @@ class TestStalenessGuard:
             _reject_stale(transcript, result)
 
 
+@pytest.fixture
+def eval_root_with_transcript(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """Point ``compare`` at a temporary eval root holding a ``place_order``
+    transcript for the installed pack's minor, so the tests that stub the replay
+    do not depend on the committed recording."""
+    root = tmp_path / "eval"
+    Transcript(
+        transcript_version(PACK_VERSION),
+        "place_order",
+        "place an order",
+        (Turn("done"),),
+        "sha256:recorded",
+    ).save(root)
+    monkeypatch.setattr(compare_module, "eval_root", lambda: root)
+    return root
+
+
+@pytest.mark.usefixtures("eval_root_with_transcript")
 def test_a_stale_replay_is_rejected_before_scoring(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -156,6 +229,36 @@ def test_a_stale_replay_is_rejected_before_scoring(
         compare("place_order", tmp_path / "gold_dest", replay_dest)
 
 
+@pytest.mark.usefixtures("eval_root_with_transcript")
+def test_a_patch_release_compares_its_minors_transcript(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """On a patch release ``compare`` replays the transcript recorded for the
+    minor, not a directory named after the patch."""
+    major, minor, _ = transcript_version(PACK_VERSION).split(".")
+    monkeypatch.setattr(compare_module, "PACK_VERSION", f"{major}.{minor}.7")
+    monkeypatch.setattr(
+        compare_module,
+        "build_gold",
+        lambda spec, dest: GoldProject(root=tmp_path, ir={}),
+    )
+    replayed: list[Transcript] = []
+
+    def fake_replay(transcript: Transcript, *, workspace: Workspace) -> RunResult:
+        replayed.append(transcript)
+        return RunResult(turns=(), project_hash="deadbeef")
+
+    monkeypatch.setattr(compare_module, "replay", fake_replay)
+
+    replay_dest = tmp_path / "replay"
+    replay_dest.mkdir()
+    with pytest.raises(StaleTranscriptError):
+        compare("place_order", tmp_path / "gold_dest", replay_dest)
+
+    assert [t.project_hash for t in replayed] == ["sha256:recorded"]
+
+
+@pytest.mark.usefixtures("eval_root_with_transcript")
 def test_context_driven_verify_green_describes_the_final_tree(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -237,6 +340,7 @@ def _context_ir(package: str, placement: dict[str, str]) -> dict[str, Any]:
     }
 
 
+@pytest.mark.usefixtures("eval_root_with_transcript")
 def test_the_task_contexts_are_scored_against_the_declaration(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -7,9 +7,10 @@ score against the same gold:
 - **Approach A (deterministic).** Build the gold project from the spec, run
   ``protean verify`` over it, and score its IR against itself. This is 1.0 by
   construction and is the scorer's own oracle check.
-- **Approach B (context-driven).** Replay the task's committed transcript into a
-  workspace with no model, run ``protean verify`` over the tree the replay
-  produced, and score its IR against the gold.
+- **Approach B (context-driven).** Replay the task's committed transcript for
+  the installed pack's minor into a workspace with no model, run
+  ``protean verify`` over the tree the replay produced, and score its IR against
+  the gold.
 
 Both verdicts come from a fresh ``protean verify`` of the final project, not
 from a verify the run recorded along the way: a transcript can verify green and
@@ -41,7 +42,7 @@ from tests.eval.runner import RunResult, eval_root, replay
 from tests.eval.scoring import Correctness, Recovery, score, score_boundary
 from tests.eval.spec import read_spec
 from tests.eval.tools import run_verify
-from tests.eval.transcript import Transcript, transcript_path
+from tests.eval.transcript import Transcript, transcript_path, transcript_version
 from tests.eval.workspace import Workspace
 
 __all__ = ["ApproachResult", "Comparison", "StaleTranscriptError", "compare"]
@@ -100,8 +101,8 @@ def compare(task_id: str, gold_dest: Path | str, replay_dest: Path | str) -> Com
     *gold_dest* and *replay_dest* are caller-owned directories (a test's temp
     dirs): the gold project lands under *gold_dest*, and the replayed
     context-driven project under *replay_dest*. The task's transcript for the
-    installed ``PACK_VERSION`` must exist, or replay has nothing to run, and it
-    must replay clean or this raises :class:`StaleTranscriptError`.
+    minor of the installed ``PACK_VERSION`` must exist, or replay has nothing to
+    run, and it must replay clean or this raises :class:`StaleTranscriptError`.
 
     Both recovery scores are taken against the task spec's declared contexts, so
     a task that names a bounded-context grouping has its layout judged instead of
@@ -123,7 +124,9 @@ def compare(task_id: str, gold_dest: Path | str, replay_dest: Path | str) -> Com
         ),
     )
 
-    transcript = Transcript.load(transcript_path(eval_root(), PACK_VERSION, task_id))
+    transcript = Transcript.load(
+        transcript_path(eval_root(), transcript_version(PACK_VERSION), task_id)
+    )
     workspace = Workspace(Path(replay_dest))
     result = replay(transcript, workspace=workspace)
     _reject_stale(transcript, result)
