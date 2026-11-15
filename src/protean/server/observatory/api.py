@@ -297,8 +297,9 @@ def _count_stream(
         message_counts["total_messages"] += redis_conn.xlen(name)
         for g in _xinfo_groups(redis_conn, name):
             if isinstance(g, dict):
-                # Read the name before counting: a name that fails to decode
-                # skips the rest of the stream without counting this group.
+                # When groups are recorded (/streams), read the name before
+                # counting: a name that fails to decode skips the rest of the
+                # stream without counting this group. /stats reads no names.
                 gname = None if consumer_groups is None else str(_xinfo_name(g))
                 gpending = _xinfo_count(g, "pending")
                 message_counts["in_flight"] += gpending

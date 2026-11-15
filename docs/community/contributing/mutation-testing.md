@@ -88,7 +88,7 @@ coverage figures below are statement coverage, worked out from the report's
 |---|---|---|---|---|
 | `ir-builder` | `src/protean/ir/builder.py` | `tests/ir/test_ir_builder.py` and the six `tests/ir/test_*_extraction.py` files (command and event, database model, description, field, handler, index) | 79.5% (1397 of 1757 statements) | 31 min 6 s |
 | `ir-diff` | `src/protean/ir/diff.py` | `tests/ir/test_diff.py`, `tests/ir/test_compatibility.py` | 93.2% (618 of 663 statements) | 5 min 1 s |
-| `observatory-api` | `src/protean/server/observatory/api.py` | `tests/server/observatory/test_observatory_api.py`, `tests/server/observatory/test_observatory_api_edges.py`, `tests/server/observatory/test_trace_decoding.py` | 93.9% (633 of 674 statements) | 2 min 43 s (1,906 mutants) |
+| `observatory-api` | `src/protean/server/observatory/api.py` | `tests/server/observatory/test_observatory_api.py`, `tests/server/observatory/test_observatory_api_edges.py`, `tests/server/observatory/test_trace_decoding.py` | 93.9% (635 of 676 statements) | 2 min 43 s (1,906 mutants) |
 | `observatory-timeline` | `src/protean/server/observatory/routes/timeline.py` | `tests/server/observatory/test_observatory_timeline_api.py`, `tests/server/observatory/test_trace_search.py` | 93.7% (445 of 475 statements) | 1 min 45 s |
 | `observatory-metrics` | `src/protean/server/observatory/metrics.py` | `tests/server/observatory/test_observatory_metrics.py` | 50.0% (197 of 394 statements) | 3 min 31 s |
 
