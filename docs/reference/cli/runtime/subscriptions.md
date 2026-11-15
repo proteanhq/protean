@@ -122,7 +122,7 @@ infrastructure directly:
 1. Event handlers, command handlers, projectors, and process managers are
    discovered from `domain.registry`
 2. The `ConfigResolver` determines each handler's subscription type
-3. For event store subscriptions, position streams and `stream_head_position()`
+3. For event store subscriptions, position streams and `category_head_position()`
    are queried. `dlq_depth` counts the positions whose latest record in the
    subscription's `failed-*` stream is `Exhausted`
 4. For stream subscriptions, Redis `XINFO GROUPS` and `XLEN` are queried

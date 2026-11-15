@@ -21,11 +21,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from protean.adapters.event_store import EventStore
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.domain import Domain
 from protean.fields import Identifier, String
+from protean.infra.event_store import EventStore
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.timeline import (
     _build_causation_tree_from_group,

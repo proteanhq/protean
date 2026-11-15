@@ -143,12 +143,12 @@ def test_reading_many_messages(test_domain, activated_user):
 
 
 @pytest.mark.eventstore
-def test_limiting_no_of_messages(test_domain, renamed_user):
+def test_limiting_the_number_of_messages(test_domain, renamed_user):
     messages = test_domain.event_store.store.read(f"test::user-{renamed_user.id}")
     assert len(messages) == 12
 
     messages = test_domain.event_store.store.read(
-        f"test::user-{renamed_user.id}", no_of_messages=5
+        f"test::user-{renamed_user.id}", limit=5
     )
     assert len(messages) == 5
 
@@ -166,7 +166,7 @@ def test_reading_messages_from_position(test_domain, renamed_user):
 @pytest.mark.eventstore
 def test_reading_messages_from_position_with_limit(test_domain, renamed_user):
     messages = test_domain.event_store.store.read(
-        f"test::user-{renamed_user.id}", position=5, no_of_messages=2
+        f"test::user-{renamed_user.id}", position=5, limit=2
     )
 
     assert len(messages) == 2

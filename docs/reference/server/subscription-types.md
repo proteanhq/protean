@@ -232,7 +232,7 @@ history:
 messages = event_store.read(
     stream_category,
     position=current_position + 1,
-    no_of_messages=messages_per_tick,
+    limit=messages_per_tick,
 )
 ```
 
@@ -360,7 +360,7 @@ API, and Prometheus metrics. Lag is computed differently for each type:
 
 | Type | How lag is calculated |
 |------|----------------------|
-| **EventStoreSubscription** | `stream_head_position(category) - current_position` where `current_position` is read from the handler's `position-{subscriber}-{category}` stream |
+| **EventStoreSubscription** | `category_head_position(category) - current_position` where `current_position` is read from the handler's `position-{subscriber}-{category}` stream |
 | **StreamSubscription** | Redis `XINFO GROUPS` native `lag` field (Redis 7.0+). When Redis has no lag to report (before 7.0, or when it sends nil), the messages after `last-delivered-id` are counted with `XRANGE` |
 
 Check subscription lag from the CLI:

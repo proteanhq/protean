@@ -165,7 +165,7 @@ def test_raises_when_both_version_and_time_are_given():
 
 @pytest.mark.eventstore
 def test_raises_when_event_store_not_configured(test_domain):
-    test_domain.event_store._event_store = None
+    test_domain.event_store._adapter = None
 
     with pytest.raises(IncorrectUsageError, match="Event store is not configured"):
         current_domain.repository_for(User).get_or_none("missing")

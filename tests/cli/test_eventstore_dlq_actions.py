@@ -240,7 +240,7 @@ def _write_event_to_store(test_domain, msg: Message) -> Message:
     store.write_message(
         stream, msg.metadata.headers.type, msg.data, metadata=msg.metadata.to_dict()
     )
-    return store.read(stream, position=0, no_of_messages=1)[0]
+    return store.read(stream, position=0, limit=1)[0]
 
 
 def _drive_to_exhaustion(
@@ -853,7 +853,7 @@ class TestReplay:
         category = User.meta_.stream_category
         msg = _create_message(stream_name=f"{category}-{uuid4()}")
         _write_event_to_store(test_domain, msg)
-        stored_at = store.read(category, position=0, no_of_messages=1)[
+        stored_at = store.read(category, position=0, limit=1)[
             0
         ].metadata.event_store.global_position
 

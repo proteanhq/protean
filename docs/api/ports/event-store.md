@@ -15,9 +15,21 @@ concrete adapter configuration.
 ## EventStorePort
 
 The `typing.Protocol` every event store implements. `BaseEventStore`
-subclasses it and adds the features built on these members.
+subclasses it, and the `EventStore` service builds the event store's reads,
+writes, aggregate loading and snapshots on these members.
 
 ::: protean.port.event_store.EventStorePort
+    options:
+      show_root_heading: false
+
+---
+
+## EventStore
+
+The service that `domain.event_store` returns. It holds the domain's adapter
+and provides reads, writes, aggregate loading and snapshots.
+
+::: protean.infra.event_store.EventStore
     options:
       show_root_heading: false
 

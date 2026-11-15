@@ -99,7 +99,7 @@ All spans follow the naming pattern `protean.<subsystem>.<operation>`:
 | `protean.uow.commit` | Transaction commit | `UnitOfWork` |
 | `protean.repository.add` | Aggregate persistence | `BaseRepository` |
 | `protean.repository.get` | Aggregate retrieval | `BaseRepository` |
-| `protean.event_store.append` | Event store write | `BaseEventStore` |
+| `protean.event_store.append` | Event store write | `EventStore` |
 | `protean.engine.handle_message` | Server message handling | `Engine` |
 | `protean.outbox.process` | Outbox batch | `OutboxProcessor` |
 | `protean.outbox.publish` | Outbox single publish | `OutboxProcessor` |

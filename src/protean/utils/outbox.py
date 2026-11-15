@@ -1711,7 +1711,7 @@ def _messages_missing_internal_row(
     store = domain.event_store.store
     tail = last.metadata.event_store.global_position
     start = max(0, tail - limit + 1)
-    messages = store.read("$all", position=start, no_of_messages=limit)
+    messages = store.read("$all", position=start, limit=limit)
 
     # Every repairable event in the window is checked. Several processes can
     # write to one domain, so another process can commit after a crash and

@@ -136,9 +136,7 @@ def test_the_internal_reads_accept_the_arguments_the_page_shows(example):
         == []
     )
 
-    messages = example.domain.event_store.store.read(
-        STREAM, position=0, no_of_messages=10
-    )
+    messages = example.domain.event_store.store.read(STREAM, position=0, limit=10)
     assert [m.metadata.headers.type for m in messages] == ["Shop.OrderPlaced.v1"]
 
 

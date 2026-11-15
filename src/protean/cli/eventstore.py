@@ -203,14 +203,14 @@ def _read_failing_event(
 
     if stream_name and stream_position is not None:
         # A specific stream is read by its own per-stream position.
-        messages = store.read(stream_name, position=stream_position, no_of_messages=1)
+        messages = store.read(stream_name, position=stream_position, limit=1)
     else:
         domain_meta = record.metadata.domain if record.metadata else None
         origin_stream = domain_meta.origin_stream if domain_meta else None
         if not origin_stream:
             return None
         # A category read spans streams, so it is keyed by global position.
-        messages = store.read(origin_stream, position=position, no_of_messages=1)
+        messages = store.read(origin_stream, position=position, limit=1)
 
     if not messages:
         return None
