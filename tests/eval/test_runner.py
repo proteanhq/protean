@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from protean.dx.pack import PACK_VERSION, iter_skills
+from tests.eval import runner as runner_module
 from tests.eval import tools as tools_module
 from tests.eval.discovery import discover_domain_arg, discover_import_package
 from tests.eval.drivers import (
@@ -39,6 +40,7 @@ from tests.eval.transcript import (
     Turn,
     list_transcripts,
     transcript_path,
+    transcript_version,
     transcripts_dir,
 )
 from tests.eval.workspace import Workspace, WorkspaceError
@@ -865,6 +867,42 @@ class TestTranscriptFormat:
         assert text.endswith("\n")
         assert '\n  "pack_version"' in text  # two-space indent, sorted first key
 
+    def test_live_mark_round_trips(self) -> None:
+        transcript = Transcript(
+            "1.0.0",
+            "demo",
+            "in",
+            (Turn("t"),),
+            "sha256:z",
+            recorded_by="live",
+            model_id="m-1",
+        )
+        text = transcript.dumps()
+        assert '"model_id": "m-1"' in text
+        assert '"recorded_by": "live"' in text
+        assert Transcript.loads(text) == transcript
+
+    def test_dumps_sorts_the_live_mark_with_the_other_keys(self) -> None:
+        transcript = Transcript(
+            "1.0.0", "demo", "in", (), "sha256:z", recorded_by="live", model_id="m"
+        )
+        keys = [
+            line.split('"')[1]
+            for line in transcript.dumps().splitlines()
+            if line.startswith('  "')
+        ]
+        assert keys == sorted(keys)
+        assert "model_id" in keys
+        assert "recorded_by" in keys
+
+    def test_a_transcript_without_the_live_mark_loads_unmarked(self) -> None:
+        transcript = Transcript.loads(
+            '{"pack_version": "1.0.0", "project_hash": "sha256:z", '
+            '"task_id": "demo", "task_input": "in", "turns": []}'
+        )
+        assert transcript.recorded_by is None
+        assert transcript.model_id is None
+
     def test_from_dict_tolerates_missing_optional_keys(self) -> None:
         turn = Turn.from_dict({"text": "no tools here"})
         assert turn.tool_calls == ()
@@ -903,7 +941,11 @@ class TestRecordAndReplay:
 
         transcript = record("demo", ReplayDriver(turns), root=tmp_path)
 
-        assert transcript.pack_version == PACK_VERSION
+        assert transcript.pack_version == transcript_version(PACK_VERSION)
+        # A record() call is never a live recording on its own; only the live
+        # lane stamps the mark.
+        assert transcript.recorded_by is None
+        assert transcript.model_id is None
         assert transcript.task_id == "demo"
         assert transcript.task_input == "build a thing\n"
         assert transcript.project_hash.startswith("sha256:")
@@ -912,6 +954,18 @@ class TestRecordAndReplay:
         assert [turn.text for turn in transcript.turns] == ["write", "done"]
         assert transcript.turns[0].tool_calls == turns[0].tool_calls
         assert transcript.turns[0].tool_results == ({"ok": True, "path": "domain.py"},)
+
+    def test_record_on_a_patch_release_keys_to_its_minor(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A recording made on 0.18.3 lands under 0.18.0, so it is the file every
+        patch of that minor replays."""
+        turns = self._write_task(tmp_path)
+        monkeypatch.setattr(runner_module, "PACK_VERSION", "0.18.3")
+
+        transcript = record("demo", ReplayDriver(turns), root=tmp_path)
+
+        assert transcript.pack_version == "0.18.0"
 
     def test_record_then_replay_lands_the_same_hash(self, tmp_path: Path) -> None:
         turns = self._write_task(tmp_path)

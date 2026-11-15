@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.eval.drivers import LIVE_DRIVER_ENV_VAR, resolve_live_driver
+from tests.eval.drivers import LIVE_DRIVER_ENV_VAR, resolve_live_driver, stamp_live
 from tests.eval.gold import build_gold
 from tests.eval.runner import build_pack_prompt, eval_root, record, replay
 from tests.eval.spec import read_spec
@@ -51,7 +51,8 @@ def test_live_lane_records_a_replayable_green_transcript(
     driver = resolve_live_driver(build_pack_prompt(), TOOL_SPECS)
     assert driver is not None  # the env var is set, so resolution returns one
 
-    transcript = record(task_id, driver)
+    # Stamp before validating, so the transcript checked below is the one saved.
+    transcript = stamp_live(record(task_id, driver), driver)
 
     # Validate before saving: a non-replayable or non-green run must not leave a
     # bad fixture in the checkout. Verify the tree the replay actually produced,

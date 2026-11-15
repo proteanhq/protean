@@ -1,7 +1,7 @@
 """The replay lane and the pack-staleness guard.
 
-These run in core CI with no model access. The staleness guard asserts a
-transcript exists for the installed pack version; the replay test replays each
+These run in core CI with no model access. The staleness guard asserts a live
+transcript exists for the installed pack's minor; the replay test replays each
 committed transcript and asserts it lands the recorded project and verifies
 green.
 """
@@ -15,44 +15,49 @@ import pytest
 from protean.dx.pack import PACK_VERSION
 from tests.eval.runner import eval_root, read_task, replay
 from tests.eval.tools import run_verify
-from tests.eval.transcript import Transcript, list_transcripts
+from tests.eval.transcript import (
+    Transcript,
+    current_transcripts,
+    key_problems,
+    live_marker_problems,
+    missing_transcript_problem,
+)
 from tests.eval.workspace import Workspace
 
 pytestmark = pytest.mark.no_test_domain
 
-# The transcripts committed for the installed pack version. Empty means the pack
-# moved and nothing has been re-recorded, which the staleness guard reports.
-_CURRENT_TRANSCRIPTS = list_transcripts(eval_root(), PACK_VERSION)
+# The transcripts committed for the installed pack's minor. Empty means a new
+# minor has nothing recorded yet, which the staleness guard reports.
+_CURRENT_TRANSCRIPTS = current_transcripts(eval_root(), PACK_VERSION)
 _IDS = [p.stem for p in _CURRENT_TRANSCRIPTS]
 
 
-def test_a_transcript_exists_for_the_current_pack_version() -> None:
-    """The staleness guard: the pack version must have at least one transcript,
-    or the replay lane has nothing to run."""
-    assert _CURRENT_TRANSCRIPTS, (
-        f"stale pack, re-record: no transcript under "
-        f"transcripts/{PACK_VERSION}/. Run the live lane "
-        f"(`pytest tests/eval -m live`) and commit the new fixture."
-    )
+def test_a_live_transcript_exists_for_the_current_minor() -> None:
+    """The staleness guard: the installed pack's minor must have at least one
+    transcript, or the replay lane has nothing to run. An older minor's
+    directory does not count."""
+    problem = missing_transcript_problem(eval_root(), PACK_VERSION)
+    assert problem is None, problem
+
+
+@pytest.mark.parametrize("transcript_path", _CURRENT_TRANSCRIPTS, ids=_IDS)
+def test_transcript_is_a_live_recording(transcript_path: Path) -> None:
+    """A committed transcript must carry ``recorded_by="live"`` and a
+    ``model_id``, so a scripted or copied file cannot satisfy the guard."""
+    problems = live_marker_problems(Transcript.load(transcript_path), transcript_path)
+    assert not problems, "\n".join(problems)
 
 
 @pytest.mark.parametrize("transcript_path", _CURRENT_TRANSCRIPTS, ids=_IDS)
 def test_transcript_pack_version_matches_its_directory(transcript_path: Path) -> None:
-    """A transcript's internal ``pack_version`` must equal the installed
-    ``PACK_VERSION`` and its directory, and its ``task_id`` must equal the
-    filename. Otherwise a stale or misfiled fixture dropped into
-    ``transcripts/{PACK_VERSION}/`` would satisfy the existence guard and replay
+    """A transcript's internal ``pack_version`` must equal its directory and the
+    installed pack's minor, and its ``task_id`` must equal the filename.
+    Otherwise a misfiled fixture would satisfy the existence guard and replay
     against the wrong pack or under the wrong task."""
-    transcript = Transcript.load(transcript_path)
-    assert transcript.pack_version == PACK_VERSION == transcript_path.parent.name, (
-        f"transcript {transcript.task_id!r} records pack_version "
-        f"{transcript.pack_version!r} but sits under {transcript_path.parent.name!r} "
-        f"for installed pack {PACK_VERSION!r}; re-record it."
+    problems = key_problems(
+        Transcript.load(transcript_path), transcript_path, PACK_VERSION
     )
-    assert transcript.task_id == transcript_path.stem, (
-        f"transcript at {transcript_path.name} records task_id "
-        f"{transcript.task_id!r}; the canonical key is <task_id>.json."
-    )
+    assert not problems, "\n".join(problems)
 
 
 @pytest.mark.parametrize("transcript_path", _CURRENT_TRANSCRIPTS, ids=_IDS)

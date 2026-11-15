@@ -9,7 +9,7 @@ packages only `src/protean`).
 ## The two lanes
 
 - **Replay lane (default, CI, no model).** `pytest tests/eval` replays every
-  committed transcript for the installed pack version and asserts the produced
+  committed transcript for the installed pack's minor and asserts the produced
   project tree hashes to the recorded value and `protean verify` is green. It
   needs no model access.
 - **Live lane (opt-in, maintainer-side).** `pytest tests/eval -m live` drives a
@@ -136,8 +136,7 @@ the scaffold emits, so a spec writing `orderItem` reads back as the `OrderItem`
 the gold carries.
 
 What the two new tasks omit, until their transcripts are recorded: only
-`place_order` carries a committed transcript, so `compare()` runs both approaches
-for it alone. The other two tasks score their gold through the harness (Approach
+`place_order` is recorded, so `compare()` runs both approaches for it alone. The other two tasks score their gold through the harness (Approach
 A and the scorer), and Approach B joins them once the live lane records a
 transcript for each.
 
@@ -199,7 +198,7 @@ CI guard keeps `n` small because each run is a real scaffold.
 tests/eval/
   tasks/<task_id>/task.md          # the prompt the context-driven path sees
   tasks/<task_id>/spec.json        # the gold recipe: project name + aggregates (flat or by context)
-  transcripts/<pack_version>/<task_id>.json   # recorded runs, keyed to the pack
+  transcripts/<major>.<minor>.0/<task_id>.json   # recorded runs, keyed to the pack minor
   workspace.py transcript.py tools.py drivers.py runner.py   # the run harness
   discovery.py ir_probe.py spec.py gold.py scoring.py compare.py  # the scorer
 ```
@@ -208,15 +207,16 @@ Adding a task's gold and scoring side means adding `tasks/<task_id>/task.md` and
 `tasks/<task_id>/spec.json`: `list_task_specs()` discovers the task from those two
 files alone, and `build_gold` and the rubric run from them. Approach B (the
 context-driven half of `compare`) also needs a recorded transcript at
-`transcripts/<pack_version>/<task_id>.json`, so a new task's full comparison needs
+`transcripts/<major>.<minor>.0/<task_id>.json`, so a new task's full comparison needs
 a maintainer-side recording too (see "Recording a transcript" below).
 
 ## The transcript format
 
-One JSON file per run, holding the pack version, the task id, the task prompt,
+One JSON file per run, holding the pack minor, the task id, the task prompt,
 the ordered assistant `turns` (each turn's text, its `tool_calls` as
-`[{name, input}]`, and the `tool_results` those calls returned), and a
-`project_hash` of the produced tree.
+`[{name, input}]`, and the `tool_results` those calls returned), a
+`project_hash` of the produced tree, and the live mark: `"recorded_by": "live"`
+and the `model_id` of the model that ran.
 
 Replay never feeds a recorded result back. It recomputes every one by re-running
 the tool, so the project a transcript lands is a pure function of the assistant
@@ -242,10 +242,26 @@ scaffold command would collapse the context-driven path into the deterministic
 
 ## Pack staleness
 
-Transcripts are keyed to `PACK_VERSION`. When the pack version changes, the old
-version's transcripts are orphaned and a new directory must be recorded. The
-replay lane asserts a transcript exists for the current version and otherwise
-fails with "stale pack, re-record".
+Transcripts are keyed to the minor of `PACK_VERSION`: `transcripts/0.19.0/` holds
+the transcripts for every 0.19.x release. The replay lane enforces these rules:
+
+- A patch release records nothing. Pack 0.19.1 replays the files in
+  `transcripts/0.19.0/`.
+- A minor release needs a live transcript recorded before the bump commit. Pack
+  0.19.0 with only `transcripts/0.18.0/` fails the guard: the replay lane never
+  falls back to an older minor. The message names the directory it looked in
+  and `pytest tests/eval -m live`.
+- A transcript that lacks `"recorded_by": "live"` or a `model_id` fails the guard,
+  and the message names the file. A copied, scripted or hand-edited file cannot
+  pass.
+- A transcript's `pack_version` must equal its directory name, and its `task_id`
+  must equal its file name.
+
+`PACK_VERSION` is `protean.__version__`, and the recorder writes under the minor
+of the version in the checkout when it runs. So for a new minor, set the new
+version in the working tree first, run the live lane, and commit the transcript
+ahead of the bump commit. A recording made before the version changes lands
+under the old minor's directory.
 
 ## Recording a transcript (maintainer)
 
@@ -259,14 +275,14 @@ pytest tests/eval -m live
 ```
 
 The factory is called as `factory(system_prompt, tool_specs)` and returns an
-object with `next_turn(conversation) -> Turn | None`. `system_prompt` is the
+object with `next_turn(conversation) -> Turn | None` and a `model_id: str`
+attribute naming the model it runs. `system_prompt` is the
 packaged AGENTS.md plus the bundled skills at the installed pack version;
 `tool_specs` describes the tools. The driver runs a normal tool-use loop:
 each turn it returns the assistant's text and tool calls, and the harness feeds
 the tool results back into the conversation it sees next. Returning `None` (or a
-turn with no tool calls) ends the run. The recorded transcript is written under
-`transcripts/<pack_version>/` for you to commit.
-
-The committed `place_order.json` is a bootstrap fixture, authored with a scripted
-driver so the replay lane has something to run in CI before a real recording
-exists. Re-record it from a live run when the pack version changes.
+turn with no tool calls) ends the run. After the run the live lane reads the
+driver's `model_id` and stamps it on the transcript with `"recorded_by": "live"`.
+A driver without a non-empty `model_id` fails the lane, and nothing is saved.
+The recorded transcript is written under `transcripts/<major>.<minor>.0/` for you
+to commit.

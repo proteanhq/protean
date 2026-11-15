@@ -5,6 +5,11 @@ Approach B (context-driven) replays the committed transcript and gets a
 verify-green verdict plus a correctness score in range. The comparison is built
 once per module (it scaffolds the gold and replays the transcript), which keeps
 the run quick.
+
+The tests that score the committed transcript skip when the installed pack's
+minor has none. ``test_a_live_transcript_exists_for_the_current_minor`` fails
+in that case, so the missing recording is reported once, by the guard. The
+other tests build their own transcript and run either way.
 """
 
 from __future__ import annotations
@@ -25,7 +30,13 @@ from tests.eval.compare import (
 from tests.eval.gold import GoldProject
 from tests.eval.runner import RunResult, eval_root
 from tests.eval.spec import TaskSpec
-from tests.eval.transcript import Transcript, transcript_path
+from tests.eval.transcript import (
+    LIVE_LANE_COMMAND,
+    Transcript,
+    Turn,
+    transcript_path,
+    transcript_version,
+)
 from tests.eval.workspace import Workspace
 
 pytestmark = pytest.mark.no_test_domain
@@ -33,6 +44,15 @@ pytestmark = pytest.mark.no_test_domain
 
 @pytest.fixture(scope="module")
 def comparison(tmp_path_factory: pytest.TempPathFactory) -> Comparison:
+    committed = transcript_path(
+        eval_root(), transcript_version(PACK_VERSION), "place_order"
+    )
+    if not committed.is_file():
+        pytest.skip(
+            f"no committed transcript at {committed}; "
+            f"test_a_live_transcript_exists_for_the_current_minor reports it. "
+            f"Record one with `{LIVE_LANE_COMMAND}`."
+        )
     gold_dest = tmp_path_factory.mktemp("gold")
     replay_dest = tmp_path_factory.mktemp("replay")
     return compare("place_order", gold_dest, replay_dest)
@@ -96,8 +116,12 @@ class TestStalenessGuard:
 
     @staticmethod
     def _transcript() -> Transcript:
-        return Transcript.load(
-            transcript_path(eval_root(), PACK_VERSION, "place_order")
+        return Transcript(
+            transcript_version(PACK_VERSION),
+            "place_order",
+            "place an order",
+            (Turn("done"),),
+            "sha256:recorded",
         )
 
     def test_a_clean_replay_passes(self) -> None:
@@ -128,6 +152,24 @@ class TestStalenessGuard:
             _reject_stale(transcript, result)
 
 
+@pytest.fixture
+def eval_root_with_transcript(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """Point ``compare`` at a temporary eval root holding a ``place_order``
+    transcript for the installed pack's minor, so the tests that stub the replay
+    do not depend on the committed recording."""
+    root = tmp_path / "eval"
+    Transcript(
+        transcript_version(PACK_VERSION),
+        "place_order",
+        "place an order",
+        (Turn("done"),),
+        "sha256:recorded",
+    ).save(root)
+    monkeypatch.setattr(compare_module, "eval_root", lambda: root)
+    return root
+
+
+@pytest.mark.usefixtures("eval_root_with_transcript")
 def test_a_stale_replay_is_rejected_before_scoring(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -156,6 +198,36 @@ def test_a_stale_replay_is_rejected_before_scoring(
         compare("place_order", tmp_path / "gold_dest", replay_dest)
 
 
+@pytest.mark.usefixtures("eval_root_with_transcript")
+def test_a_patch_release_compares_its_minors_transcript(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """On a patch release ``compare`` replays the transcript recorded for the
+    minor, not a directory named after the patch."""
+    major, minor, _ = transcript_version(PACK_VERSION).split(".")
+    monkeypatch.setattr(compare_module, "PACK_VERSION", f"{major}.{minor}.7")
+    monkeypatch.setattr(
+        compare_module,
+        "build_gold",
+        lambda spec, dest: GoldProject(root=tmp_path, ir={}),
+    )
+    replayed: list[Transcript] = []
+
+    def fake_replay(transcript: Transcript, *, workspace: Workspace) -> RunResult:
+        replayed.append(transcript)
+        return RunResult(turns=(), project_hash="deadbeef")
+
+    monkeypatch.setattr(compare_module, "replay", fake_replay)
+
+    replay_dest = tmp_path / "replay"
+    replay_dest.mkdir()
+    with pytest.raises(StaleTranscriptError):
+        compare("place_order", tmp_path / "gold_dest", replay_dest)
+
+    assert [t.project_hash for t in replayed] == ["sha256:recorded"]
+
+
+@pytest.mark.usefixtures("eval_root_with_transcript")
 def test_context_driven_verify_green_describes_the_final_tree(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -237,6 +309,7 @@ def _context_ir(package: str, placement: dict[str, str]) -> dict[str, Any]:
     }
 
 
+@pytest.mark.usefixtures("eval_root_with_transcript")
 def test_the_task_contexts_are_scored_against_the_declaration(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

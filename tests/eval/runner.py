@@ -7,7 +7,8 @@ same loop with a different driver.
 
 - :func:`record` runs a driver against a task, produces a project in a temporary
   workspace, and captures the run as a :class:`~tests.eval.transcript.Transcript`
-  keyed to the current ``PACK_VERSION``. The live lane doubles as the recorder.
+  keyed to the minor of the current ``PACK_VERSION``. The live lane doubles as
+  the recorder.
 - :func:`replay` runs a transcript's recorded turns through the same loop with a
   :class:`~tests.eval.drivers.ReplayDriver`, into a caller-supplied workspace, so
   the caller can then compare the recomputed project hash against the recorded
@@ -39,7 +40,13 @@ from protean.dx.pack import (
 )
 from tests.eval.drivers import Conversation, Driver, Message, ReplayDriver
 from tests.eval.tools import VerifyResult, execute_tool_call
-from tests.eval.transcript import TASK_FILE, TASKS_DIRNAME, Transcript, Turn
+from tests.eval.transcript import (
+    TASK_FILE,
+    TASKS_DIRNAME,
+    Transcript,
+    Turn,
+    transcript_version,
+)
 from tests.eval.workspace import Workspace
 
 __all__ = [
@@ -172,7 +179,9 @@ def record(
 
     The run happens in a temporary workspace that is discarded afterwards; the
     transcript holds everything replay needs to land the same project again. The
-    transcript is keyed to the current ``PACK_VERSION``.
+    transcript is keyed to the minor of the current ``PACK_VERSION``
+    (``0.18.3`` records under ``0.18.0``). It carries no live mark: only the live
+    lane stamps one, through :func:`~tests.eval.drivers.stamp_live`.
     """
     task_input = read_task(task_id, root=root)
     with TemporaryDirectory(prefix="protean-eval-") as tmp:
@@ -185,7 +194,7 @@ def record(
             max_turns=max_turns,
         )
     return Transcript(
-        pack_version=PACK_VERSION,
+        pack_version=transcript_version(PACK_VERSION),
         task_id=task_id,
         task_input=task_input,
         turns=result.turns,

@@ -8,23 +8,24 @@ Two drivers matter:
 
 - :class:`ReplayDriver` replays recorded turns with no model. It ignores the
   conversation and hands back the transcript's turns in order. This is the
-  deterministic CI lane, and the same driver the bootstrap fixture is generated
-  with.
+  deterministic CI lane.
 - A live driver calls a real model. It is resolved at runtime from
   ``PROTEAN_EVAL_LIVE_DRIVER`` (see :func:`resolve_live_driver`), so the harness
   ships no model dependency and adds no metered API key. When the variable is
   unset the live lane skips; when it is set but wrong, resolution raises rather
-  than skipping silently.
+  than skipping silently. A live driver also carries a ``model_id: str``
+  attribute naming the model it ran, which :func:`stamp_live` writes into the
+  transcript the live lane records.
 """
 
 from __future__ import annotations
 
 import importlib
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol, runtime_checkable
 
-from tests.eval.transcript import ToolCall, Turn
+from tests.eval.transcript import LIVE_RECORDER, ToolCall, Transcript, Turn
 
 __all__ = [
     "LIVE_DRIVER_ENV_VAR",
@@ -35,6 +36,7 @@ __all__ = [
     "ReplayDriver",
     "Role",
     "resolve_live_driver",
+    "stamp_live",
 ]
 
 LIVE_DRIVER_ENV_VAR = "PROTEAN_EVAL_LIVE_DRIVER"
@@ -45,7 +47,8 @@ Role = Literal["user", "assistant", "tool"]
 
 
 class LiveDriverError(Exception):
-    """The live-driver env var is set but does not name a usable factory."""
+    """The live-driver env var is set but does not name a usable factory, or the
+    driver it built does not name the model it ran."""
 
 
 @dataclass
@@ -105,7 +108,9 @@ def resolve_live_driver(
 
     The variable names a factory as ``module.path:attribute``. The factory is
     called with the pack *system_prompt* and the *tool_specs* and must return a
-    :class:`Driver`. Returns ``None`` when the variable is unset, so the live
+    :class:`Driver` that also carries a ``model_id: str`` attribute. This
+    function does not check ``model_id``; the live lane reads it after the run,
+    through :func:`stamp_live`. Returns ``None`` when the variable is unset, so the live
     lane skips. Raises :class:`LiveDriverError` when the variable is malformed
     or the factory returns something without a callable ``next_turn``. When the
     variable names a module or attribute that cannot be imported, that error
@@ -134,3 +139,20 @@ def resolve_live_driver(
             f"{spec!r} returned {driver!r}, which is not a Driver (no callable next_turn)"
         )
     return driver
+
+
+def stamp_live(transcript: Transcript, driver: object) -> Transcript:
+    """Return *transcript* marked as a live recording by *driver*: ``recorded_by``
+    set to ``"live"`` and ``model_id`` set to the driver's ``model_id``.
+
+    Raises :class:`LiveDriverError` when *driver* has no ``model_id``, or one
+    that is not a non-empty string, so a recording never carries the live mark
+    without naming its model.
+    """
+    model_id = getattr(driver, "model_id", None)
+    if not isinstance(model_id, str) or not model_id.strip():
+        raise LiveDriverError(
+            f"the live driver {driver!r} has model_id={model_id!r}; a live driver "
+            f"must carry a non-empty model_id: str attribute naming the model it ran"
+        )
+    return replace(transcript, recorded_by=LIVE_RECORDER, model_id=model_id)
