@@ -507,7 +507,7 @@ class TestStreamSubscriptionDLQReconciliation:
         assert identifier not in native_ids
         group_key = f"stream_reconcile:{group}"
         assert identifier in [e[0] for e in broker._failed_messages[group_key]]
-        assert identifier in sub.retry_counts
+        assert f"stream_reconcile:{identifier}" in sub.retry_counts
 
         # Recovery: lift the outage, run one more cycle. It lands in {stream}:dlq,
         # the native DLQ stays empty, and the retry count clears.
@@ -519,7 +519,7 @@ class TestStreamSubscriptionDLQReconciliation:
         native_dlq = broker.get_dlq_messages(group, "stream_reconcile")
         native_ids = [e[0] for entries in native_dlq.values() for e in entries]
         assert identifier not in native_ids
-        assert identifier not in sub.retry_counts
+        assert f"stream_reconcile:{identifier}" not in sub.retry_counts
 
 
 # ── Tests: EventStoreSubscription failed position tracking ──────────────
