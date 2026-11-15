@@ -599,7 +599,8 @@ pytest --db-provider=dynamodb --db-uri="http://localhost:8000" \
    logic. The helper handles value objects, shadow fields, and associations
    consistently.
 4. **Register All Required Lookups**: Protean validates that all 12 standard
-   lookups are registered. Missing lookups produce warnings at domain init.
+   lookups are registered. The provider registry raises `ConfigurationError`
+   when it loads a provider class that is missing any of them.
 5. **Provide No-Op Sessions**: If your database does not support transactions,
    provide a session with no-op `commit()`, `rollback()`, and `close()`.
 6. **Test with Conformance Suite**: Run `protean test test-adapter` as part
