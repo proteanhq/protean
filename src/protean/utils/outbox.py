@@ -1298,7 +1298,9 @@ def reconcile_outbox(
 
     The return value counts the rows this call wrote, internal and external.
     It leaves out a row skipped because a row with the same ``message_id`` and
-    ``target_broker`` was already saved.
+    ``target_broker`` was already saved. With the in-memory provider it also
+    leaves out a row that the commit drops because another writer committed
+    the same row first.
     """
     if not getattr(domain, "has_outbox", False):
         return 0
@@ -1337,8 +1339,8 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     partition_keys = domain._partition_keys
     backfill_suffix = backfill_suffix_from_config(domain.config)
 
-    created = 0
-    with UnitOfWork():
+    saved: list[Any] = []
+    with UnitOfWork() as uow:
         for message in missing:
             message_id = message.metadata.headers.id
             domain_meta = message.metadata.domain
@@ -1388,10 +1390,15 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                 # A live unit of work, or another sweep, may write this row
                 # after _messages_missing_internal_row checked for it. Its row
                 # is kept and this one skipped.
-                if outbox_repo._dao.save_if_absent(outbox_message) is not None:
-                    created += 1
+                row = outbox_repo._dao.save_if_absent(outbox_message)
+                if row is not None:
+                    saved.append(row)
 
-    return created
+    # In memory, ``save_if_absent`` only stages a row, and the commit drops it
+    # when another writer committed the same row first. Such a row was not
+    # written by this call.
+    schema_name = outbox_repo._dao.schema_name
+    return sum(1 for row in saved if (schema_name, row.id) not in uow._dropped_rows)
 
 
 # The ids of one broker lookup are sent as bind parameters. MSSQL accepts about

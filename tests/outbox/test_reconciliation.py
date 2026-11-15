@@ -10,12 +10,14 @@ from unittest.mock import MagicMock
 import pytest
 from sqlalchemy import text
 
+from protean.adapters.repository.memory import DictDAO, MemorySession
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.process_manager import BaseProcessManager
+from protean.core.unit_of_work import UnitOfWork
 from protean.core.upcaster import BaseUpcaster
 from protean.domain import Domain
 from protean.fields import Identifier, Integer, String
@@ -1783,3 +1785,167 @@ class TestReconcileSkipsStateBasedAggregates:
             assert reconcile_outbox(domain, provider_name="analytics") == 0
             assert reads == []
             assert analytics_repo._dao.query.all().items == []
+
+
+def _make_memory_domain(*brokers):
+    """A domain on the in-memory provider and event store, where an outbox
+    row saved by ``save_if_absent`` is only staged until its commit. Each
+    broker in *brokers* is added to ``external_brokers``."""
+    domain = Domain(name="ReconcileMemory")
+    domain.config["enable_outbox"] = True
+    domain.config["server"] = {"default_subscription_type": "stream"}
+    _register_wallet_and_account(domain)
+    domain.register(Credited, part_of=Wallet, published=True)
+    _with_external_brokers(*brokers)(domain)
+    domain.init(traverse=False)
+    return domain
+
+
+@pytest.mark.no_test_domain
+class TestOverlappingSweepsInMemory:
+    """Two sweeps stage the same missing row. The one that commits second
+    has its row dropped by the commit, and counts nothing."""
+
+    def _sweep_a_with_sweep_b_inside(self, domain, monkeypatch):
+        """Run sweep A. Once A has staged its rows, run sweep B to completion
+        in another thread. Return A's count, B's count and the rows A staged."""
+        real_save_if_absent = DictDAO.save_if_absent
+        real_commit = UnitOfWork.commit
+        staged_by_a = []
+        sweep_b_results = []
+        sweep_b_errors = []
+
+        def sweep_b():
+            try:
+                sweep_b_results.append(reconcile_outbox(domain))
+            except Exception as exc:  # reported by the assertion below
+                sweep_b_errors.append(exc)
+
+        def record_a_rows(dao, entity_obj, **kwargs):
+            row = real_save_if_absent(dao, entity_obj, **kwargs)
+            if threading.current_thread() is threading.main_thread() and row:
+                staged_by_a.append(row)
+            return row
+
+        def let_b_commit_first(uow):
+            if threading.current_thread() is threading.main_thread():
+                thread = threading.Thread(target=sweep_b)
+                thread.start()
+                thread.join(timeout=30)
+                assert not thread.is_alive()
+            real_commit(uow)
+
+        monkeypatch.setattr(DictDAO, "save_if_absent", record_a_rows)
+        monkeypatch.setattr(UnitOfWork, "commit", let_b_commit_first)
+        sweep_a_result = reconcile_outbox(domain)
+
+        assert sweep_b_errors == []
+        assert len(sweep_b_results) == 1
+        return sweep_a_result, sweep_b_results[0], staged_by_a
+
+    def test_the_second_committer_counts_nothing(self, monkeypatch):
+        domain = _make_memory_domain()
+        with domain.domain_context():
+            outbox_repo = domain._get_outbox_repo("default")
+            _fund(domain)
+            message_id = _newest_message_id(domain)
+            outbox_repo._dao._delete_all()  # simulate the crash window
+
+            sweep_a, sweep_b, staged_by_a = self._sweep_a_with_sweep_b_inside(
+                domain, monkeypatch
+            )
+
+            assert (sweep_a, sweep_b) == (0, 1)
+            assert len(staged_by_a) == 1
+            rows = outbox_repo.find_all_by_message_id(message_id)
+            assert len(rows) == 1
+            assert rows[0].id != staged_by_a[0].id
+
+    def test_dropped_external_broker_rows_are_not_counted(self, monkeypatch):
+        domain = _make_memory_domain("ext-a")
+        with domain.domain_context():
+            outbox_repo = domain._get_outbox_repo("default")
+            wallet = Wallet()
+            wallet.raise_(Credited(wallet_id=wallet.id, amount=100))
+            domain.repository_for(Wallet).add(wallet)
+            message_id = _newest_message_id(domain)
+            outbox_repo._dao._delete_all()  # simulate the crash window
+
+            sweep_a, sweep_b, staged_by_a = self._sweep_a_with_sweep_b_inside(
+                domain, monkeypatch
+            )
+
+            assert (sweep_a, sweep_b) == (0, 2)
+            assert sorted(row.target_broker for row in staged_by_a) == [
+                "default",
+                "ext-a",
+            ]
+            rows = outbox_repo.find_all_by_message_id(message_id)
+            assert sorted(row.target_broker for row in rows) == ["default", "ext-a"]
+            assert {row.id for row in rows}.isdisjoint(row.id for row in staged_by_a)
+
+    def test_a_single_sweep_counts_every_row_it_wrote(self):
+        domain = _make_memory_domain()
+        with domain.domain_context():
+            outbox_repo = domain._get_outbox_repo("default")
+            for _ in range(3):
+                _fund(domain)
+            outbox_repo._dao._delete_all()  # simulate the crash window
+
+            assert reconcile_outbox(domain) == 3
+            assert len(outbox_repo._dao.query.all().items) == 3
+
+    def test_a_live_commit_that_loses_its_row_to_a_sweep_raises_nothing(
+        self, monkeypatch
+    ):
+        """A sweep commits the row after the live unit of work staged its
+        copy. The live commit drops its copy, keeps the sweep's row and raises
+        nothing.
+
+        On the memory event store the live event stays in the unit of work's
+        session until this commit, so no sweep can see it yet. The test
+        commits the row the sweep would save instead."""
+        domain = _make_memory_domain()
+        with domain.domain_context():
+            outbox_repo = domain._get_outbox_repo("default")
+            outbox_cls = outbox_repo._dao.entity_cls
+            sweep_dao = domain.providers["default"].get_dao(
+                outbox_cls, outbox_repo._database_model
+            )
+            real_commit = MemorySession.commit
+            sweep_rows = []
+
+            def sweep_commits_first(session):
+                # The live commit is the one with a staged outbox row.
+                staged = [
+                    session._db["data"][schema][identifier]
+                    for schema, identifier in session._db["if_absent"]
+                ]
+                if staged and not sweep_rows:
+                    # Same message and broker, so the same unique key.
+                    live_row = sweep_dao.database_model_cls.to_entity(staged[0])
+                    sweep_rows.append(
+                        outbox_cls.create_message(
+                            message_id=live_row.message_id,
+                            stream_name=live_row.stream_name,
+                            message_type=live_row.type,
+                            data=live_row.data,
+                            metadata=live_row.metadata_,
+                        )
+                    )
+                    sweep_dao.outside_uow().save(sweep_rows[0])
+                real_commit(session)
+
+            monkeypatch.setattr(MemorySession, "commit", sweep_commits_first)
+            with UnitOfWork() as live_uow:
+                wallet = Wallet()
+                wallet.raise_(Funded(wallet_id=wallet.id, amount=100))
+                domain.repository_for(Wallet).add(wallet)
+            monkeypatch.undo()
+
+            assert len(sweep_rows) == 1
+            [(schema_name, dropped_id)] = live_uow._dropped_rows
+            assert schema_name == outbox_repo._dao.schema_name
+            assert dropped_id != sweep_rows[0].id
+            rows = outbox_repo.find_all_by_message_id(_newest_message_id(domain))
+            assert [row.id for row in rows] == [sweep_rows[0].id]
