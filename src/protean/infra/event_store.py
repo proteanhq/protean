@@ -216,12 +216,13 @@ class EventStore:
     """The framework's view of the domain's event-store adapter.
 
     `domain.event_store` returns one. The adapter is built by `domain.init()`;
-    until then `_adapter` is `None` and every feature method raises.
+    until then `_adapter` is `None`.
 
     Raises:
-        ConfigurationError: From every feature method and forwarder, when
-            `domain.init()` has not built the adapter yet. The error carries
-            the code `CONFIG_EVENT_STORE_NOT_INITIALIZED`.
+        ConfigurationError: From every feature method and forwarder that reaches
+            the adapter, when `domain.init()` has not built it yet. The error
+            carries the code `CONFIG_EVENT_STORE_NOT_INITIALIZED`. `store`,
+            `close` and the static `category` need no adapter and never raise.
     """
 
     def __init__(self, domain: Domain) -> None:
@@ -743,7 +744,7 @@ class EventStore:
 
             aggregate = part_of.from_events(events)
 
-        # Create a new snapshot if the event count exceeds the threshold.
+        # Create a new snapshot once the event count reaches the threshold.
         # This runs inline (synchronous write) for simplicity — the aggregate
         # is already in memory and the write is to a separate snapshot stream.
         if (

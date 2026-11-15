@@ -91,7 +91,7 @@ name to one that is registered.
 | **Category** | `configuration` |
 | **Level** | `error` |
 | **Exception** | `ConfigurationError` |
-| **Raised by** | `Domain._require_event_store` |
+| **Raised by** | `Domain._require_event_store`, `EventStore._require_adapter` |
 
 **Why.** The event store is wired during `domain.init()`; using it before then leaves
 the store unset.

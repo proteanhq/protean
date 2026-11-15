@@ -4,7 +4,8 @@
 it: ``$all`` reads the whole store, a name with no ``-`` reads a category, and
 any other name reads one stream. ``category_head_position`` follows the same
 rule for ``$all``. Each forwarder reaches the adapter member it names, and every
-call raises ``ConfigurationError`` before ``domain.init()`` builds the adapter.
+call that reaches the adapter raises ``ConfigurationError`` before
+``domain.init()`` builds it.
 """
 
 from typing import Any

@@ -601,7 +601,9 @@ class BaseEventStore(EventStorePort):
         """
         position = 0
         while True:
-            batch = self._read_raw("$all", position=position, limit=batch_size)
+            # Read this adapter, not the domain's: `verify` checks the store it
+            # is called on, which a standalone build may not be.
+            batch = self.get_all_messages(position=position, limit=batch_size)
             if not batch:
                 return
             yield from batch
@@ -695,8 +697,8 @@ class BaseEventStore(EventStorePort):
         snapshot_version: dict[str, int] = {}
 
         message_count = 0
-        # Scan raw rows: ``read_all`` deserializes, which raises on snapshot
-        # rows and on malformed rows, the two kinds this check must inspect.
+        # Scan raw rows: ``read_all`` leaves out snapshot rows and raises on
+        # malformed rows, the two kinds this check must inspect.
         for msg in self._iter_all_messages():
             message_count += 1
             stream = msg.get("stream_name")

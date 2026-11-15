@@ -122,7 +122,7 @@ def test_fetching_non_existing_aggregates(test_domain):
 @pytest.mark.eventstore
 def test_get_raises_when_event_store_not_configured(test_domain):
     # Force the backing store to None to exercise the guard in ``get``.
-    test_domain.event_store._event_store = None
+    test_domain.event_store._adapter = None
 
     with pytest.raises(IncorrectUsageError, match="Event store is not configured"):
         current_domain.repository_for(User).get("foobar")
