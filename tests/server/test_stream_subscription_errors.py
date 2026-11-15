@@ -197,7 +197,7 @@ class TestRetryToDLQRoundTrip:
 
         # Failure 3 → DLQ + ACK
         await sub.handle_failed_message(identifier, payload)
-        assert f"test_stream:{identifier}" not in sub.retry_counts
+        assert sub.retry_counts == {}
         [dlq_msg] = _dlq(sub, "test_stream:dlq")
         assert dlq_msg["data"] == "important"
         assert dlq_msg["_dlq_metadata"]["retry_count"] == 3
@@ -226,7 +226,7 @@ class TestRetryToDLQRoundTrip:
         await sub.handle_failed_message(identifier, {"data": "x"}, stream="test_stream")
 
         # Immediate DLQ (retry_count=1 >= max_retries=1)
-        assert f"test_stream:{identifier}" not in sub.retry_counts
+        assert sub.retry_counts == {}
         assert len(_dlq(sub, "test_stream:dlq")) == 1
 
     @pytest.mark.asyncio
@@ -243,7 +243,7 @@ class TestRetryToDLQRoundTrip:
         assert _read_ids(sub) == [identifier]
         assert await sub._acknowledge_message(identifier) is True
 
-        assert f"test_stream:{identifier}" not in sub.retry_counts
+        assert sub.retry_counts == {}
         assert _read_ids(sub) == []
 
 
@@ -311,6 +311,21 @@ class TestRetryCountsPerStream:
         assert sub.broker.acks == [(sub.stream_category, SHARED_ID)]
         assert sub.retry_counts == {backfill_key: 1}
         assert primary_key not in sub.retry_counts
+
+    @pytest.mark.asyncio
+    async def test_backfill_ack_keeps_the_primary_count(self, test_domain):
+        sub = _lanes_sub_on_recording_broker(test_domain)
+        primary_key = f"{sub.stream_category}:{SHARED_ID}"
+        backfill_key = f"{sub.backfill_stream}:{SHARED_ID}"
+
+        await sub.handle_failed_message(SHARED_ID, {"data": "x"})
+        assert sub.retry_counts == {primary_key: 1}
+
+        assert await sub._acknowledge_message(SHARED_ID, stream=sub.backfill_stream)
+
+        assert sub.broker.acks == [(sub.backfill_stream, SHARED_ID)]
+        assert sub.retry_counts == {primary_key: 1}
+        assert backfill_key not in sub.retry_counts
 
     @pytest.mark.asyncio
     async def test_backfill_entry_reaches_its_dlq_after_max_retries(self, test_domain):
@@ -522,7 +537,7 @@ class TestDeserializationDLQ:
         assert dlq_msg["corrupt"] == "data"
         assert dlq_msg["extra"] == 42
         assert "_dlq_metadata" in dlq_msg
-        assert f"test_stream:{identifier}" not in sub.retry_counts
+        assert sub.retry_counts == {}
 
 
 # ── Tests: DLQ Disabled ──────────────────────────────────────────────────
@@ -554,7 +569,7 @@ class TestDLQDisabled:
         assert _read_ids(sub) == []
         assert _in_flight(sub, "test_stream") == 0
         # And retry count cleared
-        assert f"test_stream:{identifier}" not in sub.retry_counts
+        assert sub.retry_counts == {}
 
 
 # ── Tests: DLQ Publish Failure ───────────────────────────────────────────
@@ -584,7 +599,7 @@ class TestDLQPublishFailure:
 
         await sub.handle_failed_message(identifier, {"data": "x"})
         assert len(_dlq(sub, "test_stream:dlq")) == 1
-        assert f"test_stream:{identifier}" not in sub.retry_counts
+        assert sub.retry_counts == {}
         assert _read_ids(sub) == []
 
     @pytest.mark.asyncio
