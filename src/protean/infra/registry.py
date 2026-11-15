@@ -19,6 +19,7 @@ from importlib import import_module, metadata
 from typing import TYPE_CHECKING, Generic, TypeVar, cast
 
 from protean.exceptions import ConfigurationError
+from protean.port.dao import REQUIRED_LOOKUPS
 
 if TYPE_CHECKING:
     # Runtime imports would cycle: the adapter modules import this one.
@@ -102,8 +103,10 @@ class AdapterRegistry(Generic[PortT]):
         Raises:
             ConfigurationError: When ``name`` is not registered, its class path
                 is not an absolute ``module.ClassName`` path, importing the module raises ``ImportError``,
-                the module has no such class, or the class leaves abstract
-                members unimplemented.
+                the module has no such class, the class leaves abstract
+                members unimplemented, or the ``after_load`` check rejects it,
+                as the providers registry does for a provider class that lacks
+                a required lookup.
         """
         self._discover_plugins()
 
@@ -153,18 +156,19 @@ class AdapterRegistry(Generic[PortT]):
         self._paths.clear()
 
 
-def _warn_missing_lookups(name: str, provider_cls: type["BaseProvider"]) -> None:
-    missing = provider_cls.validate_lookups()
+def _check_required_lookups(name: str, provider_cls: type["BaseProvider"]) -> None:
+    """Raise ``ConfigurationError`` naming the provider and every lookup in
+    ``REQUIRED_LOOKUPS`` that ``provider_cls`` does not register."""
+    missing = sorted(REQUIRED_LOOKUPS - set(provider_cls.get_lookups()))
     if missing:
-        logger.warning(
-            f"Provider '{name}' ({provider_cls.__name__}) is missing "
-            f"required lookups: {', '.join(missing)}. "
-            f"Filters using these lookups will raise NotImplementedError."
+        raise ConfigurationError(
+            f"Database provider '{name}' ({provider_cls.__name__}) does not "
+            f"register required lookups: {', '.join(missing)}."
         )
 
 
 providers: AdapterRegistry["BaseProvider"] = AdapterRegistry(
-    "protean.providers", "database provider", after_load=_warn_missing_lookups
+    "protean.providers", "database provider", after_load=_check_required_lookups
 )
 brokers: AdapterRegistry["BaseBroker"] = AdapterRegistry("protean.brokers", "broker")
 event_stores: AdapterRegistry["BaseEventStore"] = AdapterRegistry(

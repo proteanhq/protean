@@ -34,3 +34,13 @@ to write one.
 ::: protean.port.provider.BaseProvider
     options:
       show_root_heading: false
+
+## LookupPort
+
+::: protean.port.dao.LookupPort
+    options:
+      show_root_heading: false
+
+::: protean.port.dao.REQUIRED_LOOKUPS
+    options:
+      show_root_heading: true

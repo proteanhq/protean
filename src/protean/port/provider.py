@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from protean.core.entity import BaseEntity
     from protean.core.projection import BaseProjection
     from protean.domain import Domain
-    from protean.port.dao import BaseLookup
+    from protean.port.dao import LookupPort
 
 logger = logging.getLogger(__name__)
 
@@ -262,9 +262,19 @@ class ProviderPort(Protocol):
         cached class.
         """
 
+    @classmethod
     @abstractmethod
-    def get_lookup(self, lookup_name: str) -> "type[BaseLookup]":
-        """The lookup class registered under `lookup_name`."""
+    def get_lookups(cls) -> "Mapping[str, type[LookupPort]]":
+        """Every lookup class the provider class registers, keyed by lookup
+        name."""
+
+    @abstractmethod
+    def get_lookup(self, lookup_name: str) -> "type[LookupPort]":
+        """The lookup class registered under `lookup_name`.
+
+        Raises `NotImplementedError` naming the lookup and the provider when
+        no lookup is registered under `lookup_name`.
+        """
 
 
 class RawQueryProviderPort(ProviderPort, Protocol):
@@ -282,29 +292,11 @@ class BaseProvider(RegisterLookupMixin, ProviderPort):
     A provider subclasses this class first and then `ProviderPort`, or
     `RawQueryProviderPort` when it declares `DatabaseCapabilities.RAW_QUERIES`.
     It sets `database_type`, implements the Port's abstract members, and
-    registers every lookup in `REQUIRED_LOOKUPS`.
+    registers every lookup in `protean.port.dao.REQUIRED_LOOKUPS`.
 
     The Custom Database Adapters guide walks through building an adapter: the
     DAO, the database model, lookups, registration, and the call flow.
     """
-
-    # Minimum lookups every adapter must register
-    REQUIRED_LOOKUPS: frozenset[str] = frozenset(
-        {
-            "exact",
-            "iexact",
-            "contains",
-            "icontains",
-            "startswith",
-            "endswith",
-            "gt",
-            "gte",
-            "lt",
-            "lte",
-            "in",
-            "isnull",
-        }
-    )
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Raise `TypeError` when a subclass names `RawQueryProviderPort` but
@@ -323,29 +315,6 @@ class BaseProvider(RegisterLookupMixin, ProviderPort):
         self.domain = domain
         self.config = config
         self.managed = config.get("managed", True)
-
-    @classmethod
-    def validate_lookups(cls) -> list[str]:
-        """Check that all required lookups are registered.
-
-        Returns a list of missing lookup names. Empty list means
-        all required lookups are present.
-        """
-        registered = set(cls.get_lookups().keys())
-        return sorted(cls.REQUIRED_LOOKUPS - registered)
-
-    def _extract_lookup(self, key: str) -> "tuple[str, type[BaseLookup]]":
-        """Extract lookup method based on key name format"""
-        parts = key.split("__")
-        # 'exact' is the default lookup if there was no explicit comparison op in `key`
-        # Only single-level field__op lookups are supported.  Nested attribute
-        # queries (e.g. address__city__contains) are unnecessary because:
-        #   - Value objects are flattened into shadow fields (billing_address_street)
-        #   - Child entities live in separate repositories with their own queries
-        op = "exact" if len(parts) == 1 else parts[1]
-
-        # Construct and assign the lookup class as a filter criteria
-        return parts[0], self.get_lookup(op)
 
     def raw(self, query: Any, data: Any = None) -> Any:
         """Raise `NotSupportedError` naming the provider.

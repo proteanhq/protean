@@ -5,12 +5,28 @@ import functools
 import inspect
 import logging
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 if TYPE_CHECKING:
-    from protean.port.dao import BaseLookup
+    from protean.port.dao import LookupPort
 
 logger = logging.getLogger(__name__)
+
+LookupT = TypeVar("LookupT", bound="type[LookupPort]")
+
+
+def split_lookup_key(key: str) -> tuple[str, str]:
+    """Split a filter key into its field name and lookup name.
+
+    `"age__gte"` gives `("age", "gte")`. A key without `__` gives the lookup
+    name `"exact"`.
+    """
+    parts = key.split("__")
+    # Only single-level field__op lookups are supported.  Nested attribute
+    # queries (e.g. address__city__contains) are unnecessary because:
+    #   - Value objects are flattened into shadow fields (billing_address_street)
+    #   - Child entities live in separate repositories with their own queries
+    return parts[0], "exact" if len(parts) == 1 else parts[1]
 
 
 def subclasses(cls: type) -> Iterator[type]:
@@ -24,44 +40,59 @@ def subclasses(cls: type) -> Iterator[type]:
 class RegisterLookupMixin:
     """Helper Mixin to register Lookups to an Adapter"""
 
-    class_lookups: ClassVar[dict[str, type["BaseLookup"]]]
+    class_lookups: ClassVar[dict[str, type["LookupPort"]]]
 
     @classmethod
-    def _get_lookup(cls, lookup_name: str) -> type["BaseLookup"] | None:
+    def _get_lookup(cls, lookup_name: str) -> type["LookupPort"] | None:
         return cls.get_lookups().get(lookup_name, None)
 
     @classmethod
     @functools.cache
-    def get_lookups(cls) -> dict[str, type["BaseLookup"]]:
+    def get_lookups(cls) -> dict[str, type["LookupPort"]]:
         """Fetch all Lookups"""
         class_lookups = [
             parent.__dict__.get("class_lookups", {}) for parent in inspect.getmro(cls)
         ]
         return cls.merge_dicts(class_lookups)
 
-    def get_lookup(self, lookup_name: str) -> type["BaseLookup"]:
-        """Fetch Lookup by name"""
-        from protean.port.dao import BaseLookup  # noqa: PLC0415
+    def get_lookup(self, lookup_name: str) -> type["LookupPort"]:
+        """The lookup class registered under `lookup_name`.
+
+        Raises `NotImplementedError` naming the lookup and the provider when no
+        lookup is registered under `lookup_name`, or when the registered class
+        does not subclass `LookupPort`.
+        """
+        from protean.port.dao import LookupPort  # noqa: PLC0415
 
         lookup = self._get_lookup(lookup_name)
-
-        # If unable to find Lookup, or if Lookup is the wrong class, raise Error
-        if lookup is None or (
-            lookup is not None and not issubclass(lookup, BaseLookup)
-        ):
-            raise NotImplementedError
+        if lookup is None:
+            raise NotImplementedError(
+                f"Lookup '{lookup_name}' is not registered on {self._describe()}"
+            )
+        # `LookupPort` is not runtime-checkable, so `issubclass` would raise
+        # `TypeError`; the MRO holds it for every class that subclasses it.
+        if LookupPort not in lookup.__mro__:
+            raise NotImplementedError(
+                f"Lookup '{lookup_name}' on {self._describe()} is "
+                f"{lookup.__name__}, which does not subclass LookupPort"
+            )
 
         return lookup
 
+    def _describe(self) -> str:
+        name = getattr(self, "name", None)
+        cls_name = self.__class__.__name__
+        return f"provider '{name}' ({cls_name})" if name else f"provider {cls_name}"
+
     @staticmethod
     def merge_dicts(
-        dicts: list[dict[str, type["BaseLookup"]]],
-    ) -> dict[str, type["BaseLookup"]]:
+        dicts: list[dict[str, type["LookupPort"]]],
+    ) -> dict[str, type["LookupPort"]]:
         """
         Merge dicts in reverse to preference the order of the original list. e.g.,
         merge_dicts([a, b]) will preference the keys in 'a' over those in 'b'.
         """
-        merged: dict[str, type[BaseLookup]] = {}
+        merged: dict[str, type[LookupPort]] = {}
         for d in reversed(dicts):
             merged.update(d)
         return merged
@@ -74,13 +105,11 @@ class RegisterLookupMixin:
     @classmethod
     def register_lookup(
         cls,
-        lookup: type["BaseLookup"],
+        lookup: LookupT,
         lookup_name: str | None = None,
-    ) -> type["BaseLookup"]:
+    ) -> LookupT:
         """Register a Lookup to a class"""
-        name: str = (
-            cast(str, lookup.lookup_name) if lookup_name is None else lookup_name
-        )
+        name = lookup.lookup_name if lookup_name is None else lookup_name
         if "class_lookups" not in cls.__dict__:
             cls.class_lookups = {}
 
@@ -92,16 +121,14 @@ class RegisterLookupMixin:
     @classmethod
     def _delist_lookup(
         cls,
-        lookup: type["BaseLookup"],
+        lookup: type["LookupPort"],
         lookup_name: str | None = None,
     ) -> None:
         """
         Remove given lookup from cls lookups. For use in tests only as it's
         not thread-safe.
         """
-        name: str = (
-            cast(str, lookup.lookup_name) if lookup_name is None else lookup_name
-        )
+        name = lookup.lookup_name if lookup_name is None else lookup_name
         del cls.class_lookups[name]
 
 

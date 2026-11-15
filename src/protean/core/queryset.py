@@ -11,7 +11,7 @@ from protean.exceptions import NotSupportedError
 from protean.fields.resolved import serialize_custom_value
 from protean.port.provider import DatabaseCapabilities
 from protean.utils.globals import _find_uow
-from protean.utils.query import Q
+from protean.utils.query import Q, split_lookup_key
 from protean.utils.reflection import attributes, fields, id_field
 
 if TYPE_CHECKING:
@@ -129,7 +129,9 @@ class QuerySet:
         new_kwargs = {}
         for key, value in kwargs.items():
             # Extract the field name in the composite key (e.g. `name` from `name__contains`)
-            extracted_key_name, _ = self._owner_dao.provider._extract_lookup(key)
+            extracted_key_name, lookup_name = split_lookup_key(key)
+            # Resolve the lookup now so an unknown one fails at filter time.
+            self._owner_dao.provider.get_lookup(lookup_name)
 
             # Get the attribute name of the field
             # We want to support both field name and attribute name in the query,

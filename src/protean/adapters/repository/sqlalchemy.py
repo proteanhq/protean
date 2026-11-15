@@ -76,10 +76,10 @@ from protean.fields.spec import _UNSET, FieldSpec
 from protean.infra.registry import providers
 from protean.port.dao import (
     BaseDAO,
-    BaseLookup,
     BoundedDeletePort,
     ClaimCandidatesPort,
     HoldBack,
+    LookupPort,
     NativeClaimPort,
 )
 from protean.port.health import PoolStats
@@ -103,7 +103,7 @@ from protean.utils import (
 from protean.utils.container import Options
 from protean.utils.globals import _domain_context_stack, current_domain, current_uow
 from protean.utils.logging import get_logging_config_value
-from protean.utils.query import F, Q
+from protean.utils.query import F, Q, split_lookup_key
 from protean.utils.reflection import attributes, fields, id_field
 
 if TYPE_CHECKING:
@@ -769,6 +769,21 @@ def check_index_ddl_dialect(dialect_name: str) -> None:
             f"Unknown index DDL dialect '{dialect_name}'. "
             f"Supported: {', '.join(sorted(RENDERED_INDEX_DIALECTS))}."
         )
+
+
+def _sql_lookup(
+    provider: ProviderPort,
+    lookup_name: str,
+    column: str,
+    value: typing.Any,
+    model: typing.Any,
+) -> "DefaultLookup":
+    """The lookup `provider` registers under `lookup_name`, comparing `column`
+    of `model` with `value`."""
+    # Every lookup registered on ``SAProvider`` is a ``DefaultLookup``, which
+    # declares ``as_expression``; ``get_lookup`` returns the wider type.
+    lookup_class = typing.cast("type[DefaultLookup]", provider.get_lookup(lookup_name))
+    return lookup_class(column, value, database_model_cls=model)
 
 
 def _q_field_names(criteria: Q) -> set[str]:
@@ -2042,10 +2057,10 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
                 params.append(self._build_filters(child, model))
             else:
                 # Find the lookup class and the key
-                stripped_key, lookup_class = self.provider._extract_lookup(child[0])
-
-                # Instantiate the lookup class and get the expression
-                lookup = lookup_class(stripped_key, child[1], database_model_cls=model)
+                stripped_key, lookup_name = split_lookup_key(child[0])
+                lookup = _sql_lookup(
+                    self.provider, lookup_name, stripped_key, child[1], model
+                )
                 if criteria.negated:
                     expression = lookup.as_expression()
                     assert expression is not None
@@ -2497,8 +2512,10 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
         # case-sensitive as a ``Q`` filter (MSSQL's default collation is not).
         clauses = []
         for column in hold_back.group_by:
-            name, lookup_class = self.provider._extract_lookup(column)
-            lookup = lookup_class(name, getattr(row, column), database_model_cls=other)
+            name, lookup_name = split_lookup_key(column)
+            lookup = _sql_lookup(
+                self.provider, lookup_name, name, getattr(row, column), other
+            )
             clauses.append(lookup.as_expression())
         clauses.append(self._build_filters(hold_back.applies, row))
         clauses.append(self._build_filters(hold_back.applies, other))
@@ -3885,7 +3902,7 @@ operators = {
 }
 
 
-class DefaultLookup(BaseLookup):
+class DefaultLookup(LookupPort):
     """Base class with default implementation of expression construction"""
 
     def __init__(
@@ -3895,8 +3912,10 @@ class DefaultLookup(BaseLookup):
         *,
         database_model_cls: typing.Any = None,
     ) -> None:
-        """Source is LHS and Target is RHS of a comparsion"""
-        super().__init__(source, target, database_model_cls=database_model_cls)
+        """Source is the column name (LHS) and target the value (RHS) of the
+        comparison."""
+        self.source, self.target = source, target
+        self.database_model_cls = database_model_cls
 
     def process_source(self) -> typing.Any:
         """Return source with transformations, if any"""
@@ -3915,7 +3934,7 @@ class DefaultLookup(BaseLookup):
         return self.target
 
     def as_expression(self) -> typing.Any:
-        assert self.lookup_name is not None
+        """The SQLAlchemy expression for this comparison."""
         lookup_func = getattr(self.process_source(), operators[self.lookup_name])
         return lookup_func(self.process_target())
 
@@ -4040,7 +4059,7 @@ class MSSQLStringLookupMixin:
     """Mixin to add MSSQL case-sensitive collation support to string lookups"""
 
     if TYPE_CHECKING:
-        # This mixin is only ever combined with ``BaseLookup`` subclasses (see
+        # This mixin is only ever combined with ``DefaultLookup`` subclasses (see
         # the ``MSSQL*`` lookups below), which supply these attributes at
         # runtime. Declared here so the mixin's own methods type-check.
         source: typing.Any

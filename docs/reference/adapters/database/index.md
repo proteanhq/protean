@@ -279,9 +279,10 @@ guide.
 ## Required Lookups
 
 Every provider must register a minimum set of **12 standard lookups** that
-power Protean's filtering API. Protean validates these lookups when it first
-loads a provider. A missing lookup produces a warning. A filter that uses a
-missing lookup raises `NotImplementedError`.
+power Protean's filtering API. Protean checks these lookups when it first
+loads a provider, and raises `ConfigurationError` naming the missing lookups
+when the provider class lacks any of them. A filter that uses a lookup the
+provider does not register raises `NotImplementedError`.
 
 | Lookup | Example |
 |--------|---------|

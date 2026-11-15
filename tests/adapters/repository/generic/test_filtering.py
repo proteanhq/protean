@@ -402,6 +402,22 @@ class TestDAOLookups:
         with pytest.raises(NotImplementedError):
             test_domain.repository_for(Person)._dao.query.filter(age__notexact=3).all()
 
+    def test_unknown_lookup_error_names_the_lookup_and_the_provider(self, test_domain):
+        test_domain.repository_for(Person)._dao.create(
+            id="2", first_name="Murdock", age=7, last_name="John"
+        )
+        provider = test_domain.providers["default"]
+
+        with pytest.raises(NotImplementedError) as exc_info:
+            test_domain.repository_for(Person)._dao.query.filter(
+                first_name__nosuch="x"
+            ).all()
+
+        assert str(exc_info.value) == (
+            f"Lookup 'nosuch' is not registered on provider 'default' "
+            f"({type(provider).__name__})"
+        )
+
 
 @pytest.mark.basic_storage
 class TestDAOLookupRegistration:
@@ -410,20 +426,20 @@ class TestDAOLookupRegistration:
     @pytest.fixture
     def sample_lookup_cls(self):
         from protean.adapters.repository.sqlalchemy import SAProvider
-        from protean.port.dao import BaseLookup
+        from protean.port.dao import LookupPort
 
         @SAProvider.register_lookup
-        class SampleLookup(BaseLookup):
+        class SampleLookup(LookupPort):
             """A simple implementation of lookup class"""
 
             lookup_name = "sample"
 
+            def __init__(self, source, target, *, database_model_cls=None):
+                self.source, self.target = source, target
+                self.database_model_cls = database_model_cls
+
             def as_expression(self):
-                return "{} {} {}".format(
-                    self.process_source(),
-                    "<<<>>>",
-                    self.process_target(),
-                )
+                return "{} {} {}".format(self.source, "<<<>>>", self.target)
 
         return SampleLookup
 

@@ -214,17 +214,25 @@ resolve `gte` into a concrete comparison operation for the target database.
 
 ### Parsing the lookup key
 
-The provider's `_extract_lookup` method splits a composite key into the
-field name and the lookup class:
+`split_lookup_key` in `protean.utils.query` splits a composite key into the
+field name and the lookup name. The provider's `get_lookup` then returns the
+lookup class registered under that name:
 
 ```python
 # fragment
-provider._extract_lookup("age__gte")
-# → ("age", GteLookup)
+split_lookup_key("age__gte")
+# → ("age", "gte")
 
-provider._extract_lookup("name")
-# → ("name", ExactLookup)  # default when no suffix
+split_lookup_key("name")
+# → ("name", "exact")  # default when no suffix
+
+provider.get_lookup("gte")
+# → GteLookup
 ```
+
+`get_lookup` raises `NotImplementedError` naming the lookup and the provider
+when no lookup is registered under the name, or when the registered class does
+not subclass `LookupPort`.
 
 ### Lookup registration
 
@@ -243,28 +251,30 @@ SQLAlchemyProvider.register_lookup(GteLookup)
 # etc.
 ```
 
-### BaseLookup
+### LookupPort
 
-Every lookup extends `BaseLookup` and implements `as_expression()`:
+Every lookup subclasses `LookupPort` from `protean.port.dao`. The Port lists
+only what the framework relies on:
 
 ```python
 # fragment
-class BaseLookup:
-    lookup_name: str    # e.g., "exact", "gte", "contains"
+class LookupPort(Protocol):
+    lookup_name: ClassVar[str]   # e.g., "exact", "gte", "contains"
+    source: Any                  # LHS of the comparison
+    target: Any                  # RHS: comparison value
+    database_model_cls: type[BaseDatabaseModel] | None
 
-    def __init__(self, source, target):
-        self.source = source   # LHS: field/column name
-        self.target = target   # RHS: comparison value
-
-    def process_source(self):
-        """Transform the LHS (e.g., resolve to a column object)."""
-
-    def process_target(self):
-        """Transform the RHS (e.g., quote strings for SQL)."""
-
-    def as_expression(self):
-        """Return a database-specific filter expression."""
+    def __init__(self, source, target, *, database_model_cls=None) -> None: ...
 ```
+
+How a lookup becomes a query is private to the adapter that runs it, so each
+adapter's lookup base class declares its own evaluation method. The memory
+adapter's `MemoryLookup` declares `evaluate()`, which compares a stored value
+with the filter value and returns a boolean. Its `source` is the stored value
+of the field. The SQL and Elasticsearch `DefaultLookup` classes declare
+`as_expression()`, which returns a SQLAlchemy expression or an Elasticsearch
+query. Their `source` is the field name, and they keep `process_source()` and
+`process_target()` to turn the two sides into what the expression needs.
 
 Each database adapter provides its own implementations. For example, the
 memory adapter's `Exact` lookup checks Python equality, while SQLAlchemy's
@@ -283,21 +293,23 @@ depends on it.
 
 By default a lookup's `target` is a literal value. An `F("other_field")`
 target instead names another column of the same row, turning the predicate
-into a column-to-column comparison (`retry_count < max_retries`). Each adapter
-handles it in `process_target`: SQLAlchemy resolves `F` to the column object so
-the comparison renders as native SQL; the memory adapter resolves it per record
-to the referenced attribute; the Elasticsearch adapter raises
-`NotImplementedError`, since the equivalent needs a Painless script query.
-Because `process_target` resolves `F`, each comparison lookup on the memory and
-SQLAlchemy adapters accepts an `F` target without per-lookup changes. The
+into a column-to-column comparison (`retry_count < max_retries`). SQLAlchemy's
+`process_target` resolves `F` to the column object so the comparison renders
+as native SQL. The memory adapter resolves it per record to the referenced
+attribute before it builds the lookup. The Elasticsearch adapter's
+`process_target` raises `NotImplementedError`, since the equivalent needs a
+Painless script query. Because each adapter resolves `F` in one place, each
+comparison lookup on the memory and SQLAlchemy adapters accepts an `F` target
+without per-lookup changes. The
 outbox poll and claim paths use `F` to push `retry_count < max_retries` into
 the database.
 
 ### Lookup support across adapters
 
-Every adapter registers the same core set of lookups (`REQUIRED_LOOKUPS` on
-`BaseProvider`). A provider missing one warns at load, and using it raises
-`NotImplementedError`. Beyond that core set, support varies by adapter, but the
+Every adapter registers the same core set of lookups, `REQUIRED_LOOKUPS` in
+`protean.port.dao`. The provider registry raises `ConfigurationError` for a
+provider class that lacks one, naming the missing lookups. A filter on a lookup
+the provider does not register raises `NotImplementedError`. Beyond that core set, support varies by adapter, but the
 contract is the same everywhere: an unsupported lookup fails loudly and never
 silently returns wrong results.
 
@@ -328,8 +340,9 @@ portable contract.
 
 **Key source files:**
 
-- `src/protean/port/dao.py`: `BaseLookup` base class.
-- `src/protean/utils/query.py`: `RegisterLookupMixin`.
+- `src/protean/port/dao.py`: `LookupPort` and `REQUIRED_LOOKUPS`.
+- `src/protean/utils/query.py`: `split_lookup_key` and `RegisterLookupMixin`.
+- `src/protean/infra/registry.py`: the required-lookup check.
 - `src/protean/adapters/repository/memory/`: Memory lookup implementations.
 - `src/protean/adapters/repository/sqlalchemy/`: SQLAlchemy lookup
   implementations.

@@ -44,6 +44,7 @@ def test_provider_port_declares_the_expected_abstract_members():
         "dao_for",
         "get_connection",
         "get_lookup",
+        "get_lookups",
         "get_session",
         "health",
         "model_for",
