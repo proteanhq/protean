@@ -6,6 +6,7 @@ flags of the reads it calls.
 
 import pytest
 
+from protean.infra.registry import event_stores
 from protean.port.event_store import EventStoreCapabilities
 
 
@@ -63,6 +64,13 @@ def test_a_write_after_clear_starts_the_stream_at_position_0(adapter):
     ] == [(0, {"n": 2})]
 
 
-def test_close_can_be_called_twice(adapter):
-    adapter.close()
-    adapter.close()
+def test_close_can_be_called_twice(adapter_config, test_domain):
+    # A test-owned adapter, so the adapter the plugin clears after the test
+    # stays open.
+    store = event_stores.get(adapter_config["provider"])(
+        "default", test_domain, dict(adapter_config)
+    )
+    store.get_connection()
+
+    store.close()
+    store.close()

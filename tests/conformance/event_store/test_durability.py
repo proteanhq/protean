@@ -1,27 +1,34 @@
-"""A message written before the adapter closes is there for the next adapter.
+"""A message written before an adapter closes is there for the next adapter.
 
-The second adapter comes from the event-store registry with the configuration
-under test and the name of the plugin's adapter, ``default``. The test closes
-it. The plugin then clears and closes the first adapter, which this test has
-already closed.
+The test builds both adapters from the event-store registry with the
+configuration under test and the name of the plugin's adapter, ``default``, so
+the adapter the conformance plugin clears and closes after the test stays open.
 """
+
+from typing import Any
 
 import pytest
 
+from protean.domain import Domain
 from protean.infra.registry import event_stores
-from protean.port.event_store import EventStoreCapabilities
+from protean.port.event_store import BaseEventStore, EventStoreCapabilities
+
+
+def _build(domain: Domain, config: dict[str, Any]) -> BaseEventStore:
+    return event_stores.get(config["provider"])("default", domain, dict(config))
 
 
 @pytest.mark.requires(EventStoreCapabilities.DURABLE)
 def test_a_reopened_store_returns_the_message_written_before_close(
-    adapter, adapter_config, test_domain
+    adapter_config, test_domain
 ):
-    adapter.write_message("user-1", "Counted", {"n": 0})
-    adapter.close()
+    writer = _build(test_domain, adapter_config)
+    try:
+        writer.write_message("user-1", "Counted", {"n": 0})
+    finally:
+        writer.close()
 
-    reopened = event_stores.get(adapter_config["provider"])(
-        "default", test_domain, dict(adapter_config)
-    )
+    reopened = _build(test_domain, adapter_config)
     try:
         rows = reopened.get_stream_messages("user-1")
     finally:

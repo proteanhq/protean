@@ -45,14 +45,17 @@ class TestLastStreamMessage:
 @pytest.mark.requires(EventStoreCapabilities.READ_CATEGORY)
 class TestLastCategoryMessage:
     def test_returns_the_newest_row_across_the_streams_of_the_category(self, adapter):
+        # The newest row goes to the shorter stream, so an adapter that picks
+        # the row with the highest per-stream position returns the wrong one.
         _write(adapter, "user-1", 0)
-        _write(adapter, "user-2", 1)
-        _write(adapter, "user-1", 2)
+        _write(adapter, "user-1", 1)
+        _write(adapter, "user-2", 2)
         _write(adapter, "order-1", 3)
 
         last = adapter.get_last_category_message("user")
 
-        assert last["stream_name"] == "user-1"
+        assert last["stream_name"] == "user-2"
+        assert last["position"] == 0
         assert last["data"] == {"n": 2}
         assert last["global_position"] == max(
             row["global_position"] for row in adapter.get_category_messages("user")
