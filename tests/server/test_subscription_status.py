@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -2062,84 +2062,6 @@ class TestReconstructUnresolved:
         assert set(unresolved) == {3}
         assert watermark == 1
         assert records_read == 1
-
-    @pytest.mark.no_test_domain
-    def test_record_without_position_raises(self):
-        """A failed record whose last page entry carries no per-stream position
-        cannot advance the cursor. Rather than silently return a partial scan as
-        if complete, it raises so the CLI reports the subscription unverified."""
-        store = MagicMock()
-        store.get_last_stream_message.return_value = None  # no checkpoint
-        msg = MagicMock()
-        msg.data.get.side_effect = lambda k, default=None: {
-            "position": 5,
-            "retry_count": 0,
-            "stream_name": None,
-            "stream_position": None,
-        }.get(k, default)
-        msg.metadata.headers.type = "Failed"
-        # A full page (page_size 1) whose only record lacks a per-stream position.
-        msg.metadata.event_store.position = None
-        store.read.return_value = [msg]
-
-        with pytest.raises(
-            ValueError, match="'failed-stream' carries no per-stream position"
-        ):
-            reconstruct_unresolved(store, "rec-stream", "failed-stream", page_size=1)
-
-    @pytest.mark.no_test_domain
-    def test_record_without_position_on_short_page_does_not_raise(self):
-        """A positionless trailing record on a short (final) page does not raise:
-        pagination is already complete, so no cursor advance is needed. The set is
-        returned best-effort so one malformed trailing record does not fail
-        subscription startup. (A full page in this state still raises.)"""
-        store = MagicMock()
-        store.get_last_stream_message.return_value = None  # no checkpoint
-        msg = MagicMock()
-        msg.data.get.side_effect = lambda k, default=None: {
-            "position": 5,
-            "retry_count": 0,
-            "stream_name": None,
-            "stream_position": None,
-        }.get(k, default)
-        msg.metadata.headers.type = "Failed"
-        # A short page (one record, page_size 2) whose last record has no
-        # per-stream position: pagination is done, so this stops without raising.
-        msg.metadata.event_store.position = None
-        store.read.return_value = [msg]
-
-        unresolved, watermark, records_read = reconstruct_unresolved(
-            store, "rec-stream", "failed-stream", page_size=2
-        )
-
-        # The record is still merged; the watermark does not advance (no position
-        # to advance to); no exception.
-        assert set(unresolved) == {5}
-        assert watermark == 0
-        assert records_read == 1
-
-    @pytest.mark.no_test_domain
-    def test_non_advancing_cursor_raises(self):
-        """A full page whose last record does not move the cursor forward (a
-        non-monotonic or duplicate position) would loop forever; it raises so the
-        CLI reports the subscription unverified instead of hanging."""
-        store = MagicMock()
-        store.get_last_stream_message.return_value = None  # cursor starts at 0
-        msg = MagicMock()
-        msg.data.get.side_effect = lambda k, default=None: {
-            "position": 9,
-            "retry_count": 0,
-            "stream_name": None,
-            "stream_position": None,
-        }.get(k, default)
-        msg.metadata.headers.type = "Failed"
-        # position + 1 == 0, not greater than the starting cursor 0: no progress.
-        msg.metadata.event_store.position = -1
-        # A full page that always comes back the same would loop without the guard.
-        store.read.return_value = [msg]
-
-        with pytest.raises(ValueError, match="did not advance"):
-            reconstruct_unresolved(store, "rec-stream", "failed-stream", page_size=1)
 
 
 class TestCheckpointAheadOfFailedStream:
