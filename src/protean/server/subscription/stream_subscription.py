@@ -181,7 +181,7 @@ class StreamSubscription(BaseSubscription):
         # Dead letter queue stream name
         self.dlq_stream = f"{self.stream_category}:dlq"
 
-        # Track retry counts for messages
+        # Retry counts keyed by stream and entry id (see ``_retry_key``)
         self.retry_counts: dict[str, int] = {}
 
         # Get broker from domain
@@ -370,9 +370,9 @@ class StreamSubscription(BaseSubscription):
     def _reclaim_idle_pending(self, stream: str) -> None:
         """Claim the group's idle pending entries on *stream* into this consumer.
 
-        Seeds ``retry_counts`` with each entry's earlier deliveries, so a
-        claimed message keeps its place toward ``max_retries``. A failure is
-        logged and does not stop startup.
+        Seeds ``retry_counts`` with each entry's earlier deliveries, keyed by
+        *stream* and entry id, so a claimed message keeps its place toward
+        ``max_retries``. A failure is logged and does not stop startup.
         """
         assert self.broker is not None, "Broker not initialized"
         try:
@@ -390,7 +390,9 @@ class StreamSubscription(BaseSubscription):
             )
             return
         if counts:
-            self.retry_counts.update(counts)
+            self.retry_counts.update(
+                {self._retry_key(stream, i): c for i, c in counts.items()}
+            )
             logger.info(
                 f"Claimed {len(counts)} idle pending message(s) for "
                 f"{self.subscriber_name} on '{stream}'"
@@ -894,7 +896,7 @@ class StreamSubscription(BaseSubscription):
         ack_result = self.broker.ack(stream, identifier, self.consumer_group)
         if ack_result:
             # Clear retry count if exists
-            self.retry_counts.pop(identifier, None)
+            self.retry_counts.pop(self._retry_key(stream, identifier), None)
 
             # Emit message.acked trace
             if message and message.metadata:
@@ -936,17 +938,25 @@ class StreamSubscription(BaseSubscription):
             stream: The stream the message came from. Defaults to the primary stream.
         """
         stream = stream or self._default_stream
-        retry_count = self._increment_retry_count(identifier)
+        retry_count = self._increment_retry_count(identifier, stream)
 
         if retry_count < self.max_retries:
             await self._retry_message(identifier, retry_count, stream)
         else:
             await self._exhaust_retries(identifier, payload, stream)
 
-    def _increment_retry_count(self, identifier: str) -> int:
-        """Increment and return the retry count for a message."""
-        self.retry_counts[identifier] = self.retry_counts.get(identifier, 0) + 1
-        return self.retry_counts[identifier]
+    @staticmethod
+    def _retry_key(stream: str, identifier: str) -> str:
+        """Return the ``retry_counts`` key for entry *identifier* on *stream*."""
+        # The primary and backfill streams assign ids independently, so the
+        # same id can be pending on both and must not share a counter.
+        return f"{stream}:{identifier}"
+
+    def _increment_retry_count(self, identifier: str, stream: str) -> int:
+        """Increment and return the retry count for a message on *stream*."""
+        key = self._retry_key(stream, identifier)
+        self.retry_counts[key] = self.retry_counts.get(key, 0) + 1
+        return self.retry_counts[key]
 
     async def _retry_message(
         self, identifier: str, retry_count: int, stream: str | None = None
@@ -1032,7 +1042,7 @@ class StreamSubscription(BaseSubscription):
         # DLQ move succeeded (or the DLQ is disabled): ACK to remove the message
         # from the pending list and clear the retry count.
         self.broker.ack(stream, identifier, self.consumer_group)
-        self.retry_counts.pop(identifier, None)
+        self.retry_counts.pop(self._retry_key(stream, identifier), None)
 
     async def move_to_dlq(
         self, identifier: str, payload: dict[str, Any], stream: str | None = None
@@ -1095,7 +1105,9 @@ class StreamSubscription(BaseSubscription):
                 handler=self.subscriber_class_name,
                 metadata={
                     "dlq_stream": dlq_target,
-                    "retry_count": self.retry_counts.get(identifier, self.max_retries),
+                    "retry_count": self.retry_counts.get(
+                        self._retry_key(stream, identifier), self.max_retries
+                    ),
                 },
                 worker_id=self.subscription_id,
                 correlation_id=domain_meta.get("correlation_id"),
@@ -1119,7 +1131,9 @@ class StreamSubscription(BaseSubscription):
                 "consumer_group": self.consumer_group,
                 "consumer": self.consumer_name,
                 "failed_at": payload.get("metadata", {}).get("headers", {}).get("time"),
-                "retry_count": self.retry_counts.get(identifier, self.max_retries),
+                "retry_count": self.retry_counts.get(
+                    self._retry_key(stream, identifier), self.max_retries
+                ),
             },
         }
 

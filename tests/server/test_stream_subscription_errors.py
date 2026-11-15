@@ -18,6 +18,7 @@ from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, String
 from protean.server.engine import Engine
 from protean.server.subscription.stream_subscription import StreamSubscription
+from tests.server.test_trace_correlation import _attach_recording_redis
 
 # ── Domain elements ─────────────────────────────────────────────────────
 
@@ -174,18 +175,18 @@ class TestRetryToDLQRoundTrip:
 
         # Failures 1 and 2 → NACK
         await sub.handle_failed_message(identifier, payload)
-        assert sub.retry_counts[identifier] == 1
+        assert sub.retry_counts[f"test_stream:{identifier}"] == 1
         assert len(sub.broker.nacked) == 1
         assert len(sub.broker.published) == 0
 
         await sub.handle_failed_message(identifier, payload)
-        assert sub.retry_counts[identifier] == 2
+        assert sub.retry_counts[f"test_stream:{identifier}"] == 2
         assert len(sub.broker.nacked) == 2
         assert len(sub.broker.published) == 0
 
         # Failure 3 → DLQ + ACK
         await sub.handle_failed_message(identifier, payload)
-        assert identifier not in sub.retry_counts
+        assert sub.retry_counts == {}
         assert len(sub.broker.published) == 1
         assert sub.broker.published[0][0] == "test_stream:dlq"
         assert len(sub.broker.acked) == 1
@@ -198,7 +199,7 @@ class TestRetryToDLQRoundTrip:
         await sub.handle_failed_message("msg1", {"data": "x"})
 
         # Immediate DLQ (retry_count=1 >= max_retries=1)
-        assert "msg1" not in sub.retry_counts
+        assert sub.retry_counts == {}
         assert len(sub.broker.published) == 1
         assert sub.broker.published[0][0] == "test_stream:dlq"
 
@@ -225,12 +226,198 @@ class TestRetryToDLQRoundTrip:
 
         # One failure → retry count = 1
         await sub.handle_failed_message("msg1", {"data": "x"})
-        assert sub.retry_counts["msg1"] == 1
+        assert sub.retry_counts["test_stream:msg1"] == 1
 
         # Acknowledge (simulating success on re-delivery)
         await sub._acknowledge_message("msg1")
 
-        assert "msg1" not in sub.retry_counts
+        assert sub.retry_counts == {}
+
+
+# ── Tests: Retry counts per stream ───────────────────────────────────────
+
+
+class RecordingBroker:
+    """Records ack, nack and publish calls, and scripts reclaimed counts.
+
+    The inline broker assigns its own ids, so it cannot put the same id on the
+    primary and the backfill stream. On Redis the two streams assign ids
+    independently and can hand out the same one.
+    """
+
+    def __init__(self, reclaimed: dict[str, dict[str, int]] | None = None):
+        self.reclaimed = reclaimed or {}
+        self.acks: list[tuple[str, str]] = []
+        self.nacks: list[tuple[str, str]] = []
+        self.published: list[tuple[str, dict]] = []
+
+    def ack(self, stream, identifier, consumer_group):
+        self.acks.append((stream, identifier))
+        return True
+
+    def nack(self, stream, identifier, consumer_group):
+        self.nacks.append((stream, identifier))
+        return True
+
+    def publish(self, stream, message):
+        self.published.append((stream, message))
+        return "dlq-1"
+
+    def _reclaim_idle_pending(self, stream, consumer_group, consumer_name, idle_ms):
+        return dict(self.reclaimed.get(stream, {}))
+
+
+SHARED_ID = "1-0"
+
+
+def _lanes_sub_on_recording_broker(test_domain, max_retries=3, reclaimed=None):
+    sub = _make_subscription(
+        test_domain, AlwaysFailingHandler, max_retries=max_retries, lanes_enabled=True
+    )
+    sub.broker = RecordingBroker(reclaimed)
+    return sub
+
+
+class TestRetryCountsPerStream:
+    """An id pending on both the primary and the backfill stream keeps one
+    retry count per stream."""
+
+    @pytest.mark.asyncio
+    async def test_primary_ack_keeps_the_backfill_count(self, test_domain):
+        sub = _lanes_sub_on_recording_broker(test_domain)
+        primary_key = f"{sub.stream_category}:{SHARED_ID}"
+        backfill_key = f"{sub.backfill_stream}:{SHARED_ID}"
+
+        await sub.handle_failed_message(
+            SHARED_ID, {"data": "x"}, stream=sub.backfill_stream
+        )
+        assert sub.retry_counts == {backfill_key: 1}
+
+        assert await sub._acknowledge_message(SHARED_ID, stream=sub.stream_category)
+
+        assert sub.broker.acks == [(sub.stream_category, SHARED_ID)]
+        assert sub.retry_counts == {backfill_key: 1}
+        assert primary_key not in sub.retry_counts
+
+    @pytest.mark.asyncio
+    async def test_backfill_ack_keeps_the_primary_count(self, test_domain):
+        sub = _lanes_sub_on_recording_broker(test_domain)
+        primary_key = f"{sub.stream_category}:{SHARED_ID}"
+        backfill_key = f"{sub.backfill_stream}:{SHARED_ID}"
+
+        await sub.handle_failed_message(SHARED_ID, {"data": "x"})
+        assert sub.retry_counts == {primary_key: 1}
+
+        assert await sub._acknowledge_message(SHARED_ID, stream=sub.backfill_stream)
+
+        assert sub.broker.acks == [(sub.backfill_stream, SHARED_ID)]
+        assert sub.retry_counts == {primary_key: 1}
+        assert backfill_key not in sub.retry_counts
+
+    @pytest.mark.asyncio
+    async def test_backfill_entry_reaches_its_dlq_after_max_retries(self, test_domain):
+        sub = _lanes_sub_on_recording_broker(test_domain, max_retries=3)
+        redis = _attach_recording_redis(sub.engine.emitter)
+        primary_key = f"{sub.stream_category}:{SHARED_ID}"
+        backfill_key = f"{sub.backfill_stream}:{SHARED_ID}"
+        # The primary entry with the same id has failed once already.
+        await sub.handle_failed_message(SHARED_ID, {"data": "primary"})
+        assert sub.retry_counts == {primary_key: 1}
+
+        for attempt in (1, 2):
+            await sub.handle_failed_message(
+                SHARED_ID, {"data": "backfill"}, stream=sub.backfill_stream
+            )
+            assert sub.retry_counts == {primary_key: 1, backfill_key: attempt}
+            assert sub.broker.published == []
+
+        sub.retry_counts[primary_key] = 2  # a count the DLQ message must not read
+        await sub.handle_failed_message(
+            SHARED_ID, {"data": "backfill"}, stream=sub.backfill_stream
+        )
+
+        [(dlq_stream, dlq_msg)] = sub.broker.published
+        assert dlq_stream == sub.backfill_dlq_stream
+        assert dlq_msg["data"] == "backfill"
+        assert dlq_msg["_dlq_metadata"]["original_stream"] == sub.backfill_stream
+        assert dlq_msg["_dlq_metadata"]["original_id"] == SHARED_ID
+        assert dlq_msg["_dlq_metadata"]["retry_count"] == 3
+        [dlq_trace] = [t for t in redis.traces() if t["event"] == "message.dlq"]
+        assert dlq_trace["stream"] == sub.backfill_stream
+        assert dlq_trace["metadata"]["retry_count"] == 3
+        assert sub.broker.acks == [(sub.backfill_stream, SHARED_ID)]
+        assert sub.retry_counts == {primary_key: 2}
+
+    @pytest.mark.asyncio
+    async def test_dlq_retry_count_reads_this_streams_count(self, test_domain):
+        """With ``max_retries`` above the count, the DLQ message and trace carry
+        the stream's own count, not the fallback."""
+        sub = _lanes_sub_on_recording_broker(test_domain, max_retries=5)
+        redis = _attach_recording_redis(sub.engine.emitter)
+        sub.retry_counts[f"{sub.stream_category}:{SHARED_ID}"] = 4
+        sub.retry_counts[f"{sub.backfill_stream}:{SHARED_ID}"] = 2
+
+        assert await sub.move_to_dlq(SHARED_ID, {}, stream=sub.backfill_stream)
+
+        [(_, dlq_msg)] = sub.broker.published
+        assert dlq_msg["_dlq_metadata"]["retry_count"] == 2
+        [dlq_trace] = redis.traces()
+        assert dlq_trace["metadata"]["retry_count"] == 2
+
+    def test_reclaimed_counts_are_keyed_by_stream(self, test_domain):
+        sub = _lanes_sub_on_recording_broker(
+            test_domain,
+            reclaimed={
+                "test_stream": {SHARED_ID: 2},
+                "test_stream:backfill": {SHARED_ID: 1},
+            },
+        )
+
+        sub._reclaim_idle_pending(sub.stream_category)
+        sub._reclaim_idle_pending(sub.backfill_stream)
+
+        assert sub.retry_counts == {
+            f"{sub.stream_category}:{SHARED_ID}": 2,
+            f"{sub.backfill_stream}:{SHARED_ID}": 1,
+        }
+
+    @pytest.mark.asyncio
+    async def test_reclaimed_count_carries_toward_max_retries(self, test_domain):
+        sub = _lanes_sub_on_recording_broker(
+            test_domain, max_retries=3, reclaimed={"test_stream": {SHARED_ID: 2}}
+        )
+        sub._reclaim_idle_pending(sub.stream_category)
+
+        await sub.handle_failed_message(SHARED_ID, {"data": "x"})
+
+        [(dlq_stream, dlq_msg)] = sub.broker.published
+        assert dlq_stream == sub.dlq_stream
+        assert dlq_msg["_dlq_metadata"]["retry_count"] == 3
+        assert sub.broker.nacks == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("lanes_enabled", [False, True])
+    async def test_single_stream_entry_dead_letters_on_the_last_failure(
+        self, test_domain, lanes_enabled
+    ):
+        sub = _make_subscription(
+            test_domain,
+            AlwaysFailingHandler,
+            max_retries=3,
+            lanes_enabled=lanes_enabled,
+        )
+        sub.broker = RecordingBroker()
+
+        for _ in range(2):
+            await sub.handle_failed_message(SHARED_ID, {"data": "x"})
+        assert sub.broker.published == []
+        assert sub.broker.nacks == [(sub.stream_category, SHARED_ID)] * 2
+
+        await sub.handle_failed_message(SHARED_ID, {"data": "x"})
+
+        [(dlq_stream, _)] = sub.broker.published
+        assert dlq_stream == sub.dlq_stream
+        assert sub.retry_counts == {}
 
 
 # ── Tests: Priority Lanes DLQ Routing ────────────────────────────────────
@@ -379,7 +566,7 @@ class TestDeserializationDLQ:
         await sub._deserialize_message("bad-msg", {"bad": True}, "test_stream")
 
         # No retry count recorded
-        assert "bad-msg" not in sub.retry_counts
+        assert sub.retry_counts == {}
 
 
 # ── Tests: DLQ Disabled ──────────────────────────────────────────────────
@@ -413,7 +600,7 @@ class TestDLQDisabled:
         # But message was ACKed
         assert len(sub.broker.acked) == 1
         # And retry count cleared
-        assert "msg1" not in sub.retry_counts
+        assert sub.retry_counts == {}
 
 
 # ── Tests: DLQ Publish Failure ───────────────────────────────────────────
@@ -445,7 +632,7 @@ class TestDLQPublishFailure:
         # Not ACKed away; NACKed for redelivery; retry count retained.
         assert len(sub.broker.acked) == 0
         assert len(sub.broker.nacked) == 1
-        assert "msg1" in sub.retry_counts
+        assert "test_stream:msg1" in sub.retry_counts
 
     @pytest.mark.asyncio
     async def test_message_reaches_dlq_after_transient_publish_failure(
@@ -459,12 +646,12 @@ class TestDLQPublishFailure:
 
         await sub.handle_failed_message("msg1", {"data": "x"})
         assert len(sub.broker.acked) == 0  # held, not acked
-        assert "msg1" in sub.retry_counts
+        assert "test_stream:msg1" in sub.retry_counts
 
         await sub.handle_failed_message("msg1", {"data": "x"})
         assert sub.broker.publish.call_count == 2
         assert len(sub.broker.acked) == 1  # acked once the DLQ move succeeded
-        assert "msg1" not in sub.retry_counts
+        assert sub.retry_counts == {}
 
     @pytest.mark.asyncio
     async def test_dlq_publish_failure_backs_off_before_holding(
@@ -512,7 +699,7 @@ class TestDLQPublishFailure:
 
         assert len(sub.broker.acked) == 0
         assert sub.broker.nacked == [(sub.backfill_stream, "msg1", sub.consumer_group)]
-        assert "msg1" in sub.retry_counts
+        assert f"{sub.backfill_stream}:msg1" in sub.retry_counts
 
     @pytest.mark.asyncio
     async def test_nack_failure_after_dlq_failure_is_logged(self, test_domain, caplog):

@@ -343,11 +343,11 @@ async def test_cleanup_keeps_retry_counts(test_domain, engine):
         )
 
         # Add some retry counts
-        subscription.retry_counts["msg-1"] = 2
-        subscription.retry_counts["msg-2"] = 1
+        subscription.retry_counts["user:msg-1"] = 2
+        subscription.retry_counts["user:msg-2"] = 1
 
         assert len(subscription.retry_counts) == 2
 
         await subscription.cleanup()
 
-        assert subscription.retry_counts == {"msg-1": 2, "msg-2": 1}
+        assert subscription.retry_counts == {"user:msg-1": 2, "user:msg-2": 1}
