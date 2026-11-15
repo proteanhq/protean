@@ -809,7 +809,7 @@ def _record_publish_outcome(
     stream_category: str,
     message_type: str,
 ) -> tuple[str, str]:
-    """Mark the row published or failed and commit it.
+    """Mark the row published, failed or abandoned, and commit it.
 
     Returns the row's id and the status it was committed with.
     """

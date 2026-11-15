@@ -1513,7 +1513,10 @@ def _report_handler_failure(
 def _install_process_signal_handlers(
     engine: Engine, signals: tuple[signal.Signals, ...]
 ) -> None:
-    """Install shutdown handlers with ``signal.signal`` (Windows)."""
+    """Install shutdown handlers with ``signal.signal``.
+
+    Used when the loop has no ``add_signal_handler``, as on Windows.
+    """
 
     def _signal_handler(sig: int, frame: Any = None) -> None:
         """Signal handler for non-asyncio signal handling (Windows)"""
@@ -1641,7 +1644,7 @@ def _loop_exception_handler(
 def _start_component_tasks(engine: Engine) -> list[asyncio.Task[Any]]:
     """Start a named task for every subscription, outbox processor and the DLQ task.
 
-    Returns the tasks in the order they were started.
+    Returns the started tasks.
     """
     tasks = []
     for name, subscription in engine._subscriptions.items():

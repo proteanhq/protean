@@ -733,8 +733,9 @@ class _RecordingWorker:
 
 class TestSupervisorMonitorOrder:
     def test_monitor_checks_joins_and_reports_each_worker_in_order(self, caplog):
-        """Each pass checks every worker, joins and reports the exited ones in
-        list order, then sleeps. The loop ends once no worker is left."""
+        """Each pass checks each worker in list order and joins, removes and
+        reports it if it has exited, then sleeps. The loop ends once no worker
+        is left."""
         steps: list[str] = []
         steady = _RecordingWorker("steady", [True, False], 0, steps)
         crashed = _RecordingWorker("crashed", [False], 3, steps)
