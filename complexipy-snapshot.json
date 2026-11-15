@@ -206,28 +206,6 @@
     ]
   },
   {
-    "path": "src/protean/server/subscription/event_store_subscription.py",
-    "file_name": "event_store_subscription.py",
-    "functions": [
-      {
-        "name": "EventStoreSubscription::_gap_safe_batch",
-        "complexity": 16
-      },
-      {
-        "name": "EventStoreSubscription::run_recovery_pass",
-        "complexity": 17
-      },
-      {
-        "name": "EventStoreSubscription::process_batch",
-        "complexity": 37
-      },
-      {
-        "name": "reconstruct_unresolved",
-        "complexity": 38
-      }
-    ]
-  },
-  {
     "path": "src/protean/server/subscription/profiles.py",
     "file_name": "profiles.py",
     "functions": [
