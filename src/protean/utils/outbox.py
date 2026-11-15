@@ -1582,7 +1582,9 @@ def reconcile_outbox(
 
     The return value counts the rows this call wrote, internal and external.
     It leaves out a row skipped because a row with the same ``message_id`` and
-    ``target_broker`` was already saved.
+    ``target_broker`` was already saved. With the in-memory provider it also
+    leaves out a row that the commit drops because another writer committed
+    the same row first.
     """
     if not getattr(domain, "has_outbox", False):
         return 0
@@ -1621,8 +1623,8 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     partition_keys = domain._partition_keys
     backfill_suffix = backfill_suffix_from_config(domain.config)
 
-    created = 0
-    with UnitOfWork():
+    saved: list[Any] = []
+    with UnitOfWork() as uow:
         # The rebuilt rows form one commit, so number them in event store
         # order the way the Unit of Work numbers the events of a commit.
         for sequence_number, message in enumerate(missing):
@@ -1642,7 +1644,7 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                 if broker not in existing_brokers[message.metadata.headers.id]
             ]
 
-            created += _save_rebuilt_rows(
+            saved += _save_rebuilt_rows(
                 outbox_repo,
                 message,
                 sequence_number,
@@ -1651,7 +1653,11 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                 abandon_reason,
             )
 
-    return created
+    # In memory, ``save_if_absent`` only stages a row, and the commit drops it
+    # when another writer committed the same row first. Such a row was not
+    # written by this call.
+    schema_name = outbox_repo._dao.schema_name
+    return sum(1 for row in saved if (schema_name, row.id) not in uow._dropped_rows)
 
 
 # The ids of one broker lookup are sent as bind parameters. MSSQL accepts about
@@ -1770,15 +1776,15 @@ def _save_rebuilt_rows(
     target_brokers: list[str],
     partition_key: str | None,
     abandon_reason: str | None,
-) -> int:
+) -> list[Any]:
     """Save one rebuilt outbox row for *message* per broker in
-    *target_brokers*, and return how many rows were written.
+    *target_brokers*, and return the rows that were saved.
 
     The rows are marked abandoned when *abandon_reason* is set. A row that
-    already exists is skipped and not counted.
+    already exists is skipped and not returned.
     """
     domain_meta = message.metadata.domain
-    created = 0
+    saved = []
     for target_broker in target_brokers:
         # ``priority`` is left at its default: the original request's
         # priority is not stored with the event.
@@ -1800,6 +1806,7 @@ def _save_rebuilt_rows(
         # A live unit of work, or another sweep, may write this row after
         # _messages_missing_internal_row checked for it. Its row is kept and
         # this one skipped.
-        if outbox_repo._dao.save_if_absent(outbox_message) is not None:
-            created += 1
-    return created
+        row = outbox_repo._dao.save_if_absent(outbox_message)
+        if row is not None:
+            saved.append(row)
+    return saved

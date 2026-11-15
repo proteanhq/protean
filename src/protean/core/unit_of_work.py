@@ -154,6 +154,13 @@ class UnitOfWork:
         # then is caught here instead.
         self._pending_idempotency_results: dict[str, Any] = {}
 
+        # ``(schema, identifier)`` of each row written by ``save_if_absent``
+        # that the latest commit dropped, because another writer committed a
+        # row with the same unique key first. Only sessions that stage such
+        # rows (in-memory) report drops. Unlike the state above, it outlives
+        # the commit, so the caller can read it after the block.
+        self._dropped_rows: set[tuple[str, Any]] = set()
+
     @property
     def in_progress(self) -> bool:
         return self._in_progress
@@ -325,6 +332,7 @@ class UnitOfWork:
         self._nested = _uow_stack.top is not None
         self._rollback_only = False
         self._rollback_cause = None
+        self._dropped_rows = set()
         self._in_progress = True
 
         if self._nested:
@@ -647,6 +655,8 @@ class UnitOfWork:
             # already durable.
             for provider_name, session in self._sessions.items():
                 session.commit()
+                # ``dropped_rows`` is an optional part of the session contract.
+                self._dropped_rows.update(getattr(session, "dropped_rows", ()))
                 self._advance_next_versions(provider_name)
 
             self._run_post_commit_work(span, all_events)
