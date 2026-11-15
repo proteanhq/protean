@@ -54,6 +54,12 @@ A provider that implements `RawQueryProviderPort` also implements
 `raw(query, data=None)`, which runs a native query. On a provider without its
 own `raw()`, the `BaseProvider` version raises `NotSupportedError`.
 
+`ProviderPort` also declares the class method `get_lookups()`, which returns
+the lookups the provider registers. `BaseProvider` gets it from
+`RegisterLookupMixin`, so a provider that subclasses `BaseProvider` does not
+define it. A provider that implements `ProviderPort` without `BaseProvider`
+defines it.
+
 ### 2. DAO (Data Access Object)
 
 **Extends**: `protean.port.dao.BaseDAO`
@@ -112,9 +118,16 @@ def from_entity(cls, entity):
 
 ### 4. Lookups
 
-**Extends**: `protean.port.dao.BaseLookup`
+**Extends**: `protean.port.dao.LookupPort`
 
 Lookups translate filter criteria into adapter-native comparison expressions.
+`LookupPort` declares the lookup's `lookup_name`, its `source` and `target`,
+and the `database_model_cls` it receives as a keyword-only constructor
+argument. Your lookup base class sets `source`, `target` and
+`database_model_cls` in its constructor and declares the method your DAO calls
+to turn a lookup into a query. `LookupPort` supplies no constructor body, so a
+lookup class that defines no constructor of its own builds without these
+attributes.
 Every adapter must register
 [12 required lookups](./index.md#required-lookups), including `isnull`
 (`Q(field__isnull=True/False)`), which core framework machinery such as the
@@ -123,13 +136,28 @@ outbox poll path relies on. Register them with the
 
 ```python
 # fragment
+from protean.port.dao import LookupPort
+
+
+class YourLookup(LookupPort):
+    def __init__(self, source, target, *, database_model_cls=None):
+        self.source, self.target = source, target
+        self.database_model_cls = database_model_cls
+
+    def as_expression(self):
+        raise NotImplementedError
+
+
 @YourProvider.register_lookup
-class Exact(BaseLookup):
+class Exact(YourLookup):
     lookup_name = "exact"
 
     def as_expression(self):
-        return self.process_source() == self.process_target()
+        return {self.source: self.target}
 ```
+
+The provider registry raises `ConfigurationError` when it loads a provider
+class that does not register all 12 required lookups.
 
 ### 5. Registration Function
 
@@ -579,8 +607,10 @@ pytest --db-provider=dynamodb --db-uri="http://localhost:8000" \
 3. **Use `_entity_to_dict()`**: Avoid duplicating entity-to-dict conversion
    logic. The helper handles value objects, shadow fields, and associations
    consistently.
-4. **Register All Required Lookups**: Protean validates that all 12 standard
-   lookups are registered. Missing lookups produce warnings at domain init.
+4. **Register All Required Lookups**: The provider registry raises
+   `ConfigurationError` when it loads a provider class that does not register
+   all 12 standard lookups, or registers one as a class that does not subclass
+   `LookupPort`.
 5. **Provide No-Op Sessions**: If your database does not support transactions,
    provide a session with no-op `commit()`, `rollback()`, and `close()`.
 6. **Test with Conformance Suite**: Run `protean test test-adapter` as part

@@ -22,7 +22,7 @@ from protean.exceptions import (
     ValidationError,
 )
 from protean.infra.registry import providers
-from protean.port.dao import BaseDAO, BaseLookup, BoundedDeletePort
+from protean.port.dao import BaseDAO, BoundedDeletePort, LookupPort
 from protean.port.provider import (
     BaseProvider,
     DatabaseCapabilities,
@@ -33,7 +33,7 @@ from protean.port.provider import (
 from protean.utils import _fully_qualified_name, ensure_utc_aware, occ_trace
 from protean.utils.container import Options
 from protean.utils.globals import current_uow
-from protean.utils.query import F, Q
+from protean.utils.query import F, Q, split_lookup_key
 from protean.utils.reflection import fields, id_field
 
 if TYPE_CHECKING:
@@ -511,11 +511,11 @@ class MemoryProvider(BaseProvider, RawQueryProviderPort):
         column-to-column comparisons (e.g. ``retry_count < max_retries``).
         """
         results = {}
-        stripped_key, base_lookup_class = self._extract_lookup(key)
+        stripped_key, lookup_name = split_lookup_key(key)
         # Every lookup registered on ``MemoryProvider`` is a ``MemoryLookup``
-        # (they implement ``evaluate()``); the ABC return type is the wider
-        # ``type[BaseLookup]``, so narrow to the concrete memory lookup here.
-        lookup_class = cast("type[MemoryLookup]", base_lookup_class)
+        # (they implement ``evaluate()``); ``get_lookup`` returns the wider
+        # ``type[LookupPort]``, so narrow to the concrete memory lookup here.
+        lookup_class = cast("type[MemoryLookup]", self.get_lookup(lookup_name))
         null_safe = getattr(lookup_class, "null_safe", False)
         target_is_column = isinstance(value, F)
         target_name = value.name if target_is_column else None
@@ -1098,13 +1098,23 @@ class DictDAO(BaseDAO, BoundedDeletePort):
         return True
 
 
-class MemoryLookup(BaseLookup):
+class MemoryLookup(LookupPort):
     """Base class for Memory provider lookups.
 
     Subclasses implement ``evaluate()`` which returns a boolean result
     by comparing ``self.source`` (stored value) against ``self.target``
     (filter value) directly — no string construction or eval().
     """
+
+    def __init__(
+        self,
+        source: typing.Any,
+        target: typing.Any,
+        *,
+        database_model_cls: type[BaseDatabaseModel] | None = None,
+    ) -> None:
+        self.source, self.target = source, target
+        self.database_model_cls = database_model_cls
 
     def _coerce(self, value: typing.Any) -> typing.Any:
         """Coerce UUID/datetime/date to str for comparison."""
@@ -1131,10 +1141,6 @@ class MemoryLookup(BaseLookup):
     def _matches(self, source: typing.Any, target: typing.Any) -> bool:
         source, target = self._coerce_pair(source, target)
         return bool(source == target)
-
-    def as_expression(self) -> str:
-        """Satisfy BaseLookup ABC — not used by Memory provider."""
-        return ""
 
     def evaluate(self) -> bool:
         """Evaluate the lookup comparison. Override in subclasses."""

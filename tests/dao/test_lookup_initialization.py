@@ -1,25 +1,30 @@
 """Tests for standardized lookup initialization across all adapters.
 
-Phase 6I: Verifies that BaseLookup and all adapter-specific lookups accept
+Verifies that a ``LookupPort`` subclass and all adapter-specific lookups accept
 `database_model_cls` as a keyword-only argument, providing a consistent
 initialization interface regardless of the adapter.
 """
 
+from typing import Any
+
 import pytest
 
-from protean.port.dao import BaseLookup
+from protean.port.dao import LookupPort
 
 
-class TestBaseLookupInitialization:
-    """Test BaseLookup accepts database_model_cls as keyword-only arg."""
+class TestLookupPortSubclassInitialization:
+    """A class that subclasses LookupPort and sets the three attributes."""
 
-    class ConcreteLookup(BaseLookup):
-        """Minimal concrete implementation for testing."""
+    class ConcreteLookup(LookupPort):
+        """Minimal lookup that subclasses the Port directly."""
 
         lookup_name = "test"
 
-        def as_expression(self):
-            return f"{self.source} == {self.target}"
+        def __init__(
+            self, source: Any, target: Any, *, database_model_cls: Any = None
+        ) -> None:
+            self.source, self.target = source, target
+            self.database_model_cls = database_model_cls
 
     def test_init_without_database_model_cls(self):
         """Lookup can be created with just source and target."""
@@ -41,15 +46,44 @@ class TestBaseLookupInitialization:
         with pytest.raises(TypeError):
             self.ConcreteLookup("name", "John", object())
 
-    def test_process_source_default(self):
-        """process_source returns source unchanged by default."""
-        lookup = self.ConcreteLookup("name", "John")
-        assert lookup.process_source() == "name"
+    def test_port_declares_no_evaluation_method(self):
+        """How a lookup becomes a query is private to the adapter."""
+        for member in ("as_expression", "process_source", "process_target"):
+            assert not hasattr(LookupPort, member)
 
-    def test_process_target_default(self):
-        """process_target returns target unchanged by default."""
-        lookup = self.ConcreteLookup("name", "John")
-        assert lookup.process_target() == "John"
+
+class TestAdapterLookupBases:
+    """Each adapter's lookup base class subclasses LookupPort."""
+
+    def test_memory_lookup_subclasses_the_port(self):
+        from protean.adapters.repository.memory import MemoryLookup
+
+        assert LookupPort in MemoryLookup.__mro__
+
+    def test_no_memory_lookup_defines_as_expression(self):
+        from protean.adapters.repository.memory import MemoryLookup, MemoryProvider
+
+        memory_lookups = [
+            lookup
+            for lookup in MemoryProvider.get_lookups().values()
+            if MemoryLookup in lookup.__mro__
+        ]
+        assert memory_lookups
+        for lookup in memory_lookups:
+            assert not hasattr(lookup, "as_expression"), lookup.__name__
+
+    def test_sql_default_lookup_subclasses_the_port(self):
+        from protean.adapters.repository.sqlalchemy import DefaultLookup
+
+        assert LookupPort in DefaultLookup.__mro__
+
+    def test_mssql_lookup_sets_the_three_attributes(self):
+        from protean.adapters.repository.sqlalchemy import MSSQLExact
+
+        sentinel = object()
+        lookup = MSSQLExact("name", "John", database_model_cls=sentinel)
+        assert (lookup.source, lookup.target) == ("name", "John")
+        assert lookup.database_model_cls is sentinel
 
 
 class TestMemoryLookupInitialization:
@@ -121,11 +155,20 @@ class TestSQLAlchemyLookupInitialization:
 
 @pytest.mark.elasticsearch
 class TestElasticsearchLookupInitialization:
-    """Test Elasticsearch lookups use standardized initialization.
+    """Test Elasticsearch lookups use standardized initialization."""
 
-    ES DefaultLookup inherits BaseLookup's abstract as_expression(),
-    so we test via concrete subclasses (Exact, GreaterThan, etc.).
-    """
+    def test_es_default_lookup_subclasses_the_port(self):
+        from protean.adapters.repository.elasticsearch import DefaultLookup
+
+        assert LookupPort in DefaultLookup.__mro__
+
+    def test_es_default_lookup_declares_its_own_as_expression(self):
+        from protean.adapters.repository.elasticsearch import DefaultLookup
+
+        lookup = DefaultLookup("name", "John")
+        assert lookup.process_source() == "name"
+        with pytest.raises(NotImplementedError):
+            lookup.as_expression()
 
     def test_es_lookup_with_database_model_cls_keyword(self):
         """ES lookups accept database_model_cls as keyword arg."""

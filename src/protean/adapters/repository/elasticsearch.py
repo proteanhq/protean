@@ -53,7 +53,7 @@ from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import _ShadowField
 from protean.fields.resolved import ResolvedField
 from protean.infra.registry import providers
-from protean.port.dao import BaseDAO, BaseLookup, BoundedDeletePort
+from protean.port.dao import BaseDAO, BoundedDeletePort, LookupPort
 from protean.port.provider import (
     BaseProvider,
     DatabaseCapabilities,
@@ -63,7 +63,7 @@ from protean.port.provider import (
 from protean.utils import _fully_qualified_name
 from protean.utils.container import Options
 from protean.utils.globals import current_domain, current_uow
-from protean.utils.query import F, Q
+from protean.utils.query import F, Q, split_lookup_key
 from protean.utils.reflection import attributes, id_field
 
 if typing.TYPE_CHECKING:
@@ -377,7 +377,12 @@ def _lookup_expression(
 
     The expression is inverted when ``negated`` is true.
     """
-    stripped_key, lookup_class = dao.provider._extract_lookup(child[0])
+    stripped_key, lookup_name = split_lookup_key(child[0])
+    # Every lookup registered on ``ESProvider`` is a ``DefaultLookup``, which
+    # declares ``as_expression``; ``get_lookup`` returns the wider type.
+    lookup_class = typing.cast(
+        "type[DefaultLookup]", dao.provider.get_lookup(lookup_name)
+    )
     lookup = lookup_class(
         stripped_key,
         child[1],
@@ -1188,12 +1193,27 @@ class ESProvider(BaseProvider, ProviderPort):
                 conn.indices.delete(index=database_model_cls._index._name)
 
 
-class DefaultLookup(BaseLookup):
+class DefaultLookup(LookupPort):
     """Base class with default implementation of expression construction"""
 
-    # ES lookups receive the concrete ES model class, which carries the
-    # precomputed ``_keyword_fields`` set.
-    database_model_cls: type["ElasticsearchModel"] | None
+    def __init__(
+        self,
+        source: _Any,
+        target: _Any,
+        *,
+        database_model_cls: type[BaseDatabaseModel] | None = None,
+    ) -> None:
+        self.source, self.target = source, target
+        self.database_model_cls = database_model_cls
+
+    def as_expression(self) -> _Any:
+        """The Elasticsearch query for this comparison. Each lookup implements
+        it."""
+        raise NotImplementedError
+
+    def process_source(self) -> _Any:
+        """Return the field name the query compares."""
+        return self.source
 
     def process_target(self) -> _Any:
         """Return target with transformations, if any.
@@ -1221,11 +1241,10 @@ class DefaultLookup(BaseLookup):
 
         Uses precomputed field type information from the database model class for efficiency.
         """
-        # Access the precomputed keyword fields from the database model class
-        if self.database_model_cls is not None and hasattr(
-            self.database_model_cls, "_keyword_fields"
-        ):
-            return field_name in self.database_model_cls._keyword_fields
+        # The ES model class carries the precomputed ``_keyword_fields`` set.
+        keyword_fields = getattr(self.database_model_cls, "_keyword_fields", None)
+        if keyword_fields is not None:
+            return field_name in keyword_fields
 
         # Fallback: with explicit Keyword mappings, .keyword subfield is not needed
         # (only Text fields from custom models need .keyword)

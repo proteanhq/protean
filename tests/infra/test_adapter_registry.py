@@ -25,13 +25,17 @@ from protean.infra.registry import (
 )
 from protean.port.broker import BaseBroker
 from protean.port.cache import CachePort
+from protean.port.dao import REQUIRED_LOOKUPS
 from protean.port.event_store import BaseEventStore
 from protean.port.provider import BaseProvider
 from tests.infra.adapters import (
+    PROVIDERS_WITHOUT_LOOKUP,
     CustomBroker,
     CustomCache,
     CustomEventStore,
     CustomProvider,
+    ProviderWithoutInAndIsnull,
+    ProviderWithPlainIsnull,
 )
 from tests.shared import module_unavailable
 
@@ -316,32 +320,54 @@ class TestCompleteness:
 
 @pytest.mark.no_test_domain
 class TestAfterLoad:
-    def test_provider_with_missing_lookups_warns(self, caplog):
+    @pytest.mark.parametrize("lookup_name", sorted(REQUIRED_LOOKUPS))
+    def test_provider_missing_a_required_lookup_is_rejected(self, lookup_name):
+        provider_cls = PROVIDERS_WITHOUT_LOOKUP[lookup_name]
+        assert lookup_name not in provider_cls.get_lookups()
         providers.clear()
         providers._discovered = True
-        providers.register("short", "tests.infra.adapters.ProviderMissingLookups")
-        caplog.set_level(logging.WARNING, logger=LOGGER)
+        providers.register("short", _path(provider_cls))
 
-        providers.get("short")
+        with pytest.raises(ConfigurationError) as exc_info:
+            providers.get("short")
 
-        records = _records_naming(caplog, "short")
-        assert len(records) == 1
-        assert records[0].levelno == logging.WARNING
-        assert records[0].getMessage() == (
-            "Provider 'short' (ProviderMissingLookups) is missing required "
-            "lookups: made_up. Filters using these lookups will raise "
-            "NotImplementedError."
+        assert str(exc_info.value) == (
+            f"Database provider 'short' ({provider_cls.__name__}) does not "
+            f"register required lookups: {lookup_name}."
         )
 
-    def test_provider_with_every_lookup_does_not_warn(self, caplog):
+    def test_error_names_every_missing_lookup(self):
+        providers.clear()
+        providers._discovered = True
+        providers.register("short", _path(ProviderWithoutInAndIsnull))
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            providers.get("short")
+
+        assert str(exc_info.value) == (
+            "Database provider 'short' (ProviderWithoutInAndIsnull) does not "
+            "register required lookups: in, isnull."
+        )
+
+    def test_required_lookup_that_is_not_a_lookup_port_is_rejected(self):
+        providers.clear()
+        providers._discovered = True
+        providers.register("plain", _path(ProviderWithPlainIsnull))
+
+        with pytest.raises(ConfigurationError) as exc_info:
+            providers.get("plain")
+
+        assert str(exc_info.value) == (
+            "Database provider 'plain' (ProviderWithPlainIsnull) registers "
+            "required lookups that do not subclass LookupPort: isnull."
+        )
+
+    def test_provider_with_every_lookup_loads(self):
         providers.clear()
         providers._discovered = True
         providers.register("full", _path(MemoryProvider))
-        caplog.set_level(logging.WARNING, logger=LOGGER)
 
-        providers.get("full")
-
-        assert "missing required lookups" not in caplog.text
+        assert providers.get("full") is MemoryProvider
 
     @pytest.mark.parametrize("registry", [brokers, event_stores, caches])
     def test_other_ports_run_no_after_load_check(self, registry):

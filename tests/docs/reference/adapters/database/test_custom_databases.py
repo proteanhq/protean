@@ -20,6 +20,8 @@ import delegating_provider
 
 from protean.adapters.repository.memory import MemoryProvider
 from protean.exceptions import ObjectNotFoundError
+from protean.infra.registry import providers
+from protean.port.dao import REQUIRED_LOOKUPS
 from protean.port.provider import BaseProvider
 
 pytestmark = pytest.mark.no_test_domain
@@ -33,8 +35,11 @@ def test_page_lists_every_abstract_method():
     assert listed == BaseProvider.__abstractmethods__
 
 
-def test_provider_registers_every_required_lookup():
-    assert delegating_provider.DelegatingProvider.validate_lookups() == []
+def test_registry_accepts_the_delegating_provider():
+    provider_cls = providers.get("delegating_memory")
+
+    assert provider_cls is delegating_provider.DelegatingProvider
+    assert set(provider_cls.get_lookups()) >= REQUIRED_LOOKUPS
 
 
 def test_domain_uses_the_custom_provider():

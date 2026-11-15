@@ -1,5 +1,6 @@
 import pytest
 
+from protean.port.dao import REQUIRED_LOOKUPS
 from protean.port.provider import BaseProvider, DatabaseCapabilities
 
 
@@ -481,14 +482,12 @@ class TestProviderCapabilityChecks:
 
 
 class TestRequiredLookups:
-    """Test suite for REQUIRED_LOOKUPS constant and validate_lookups classmethod."""
+    """``REQUIRED_LOOKUPS`` in ``protean.port.dao`` and the built-in providers."""
 
     def test_required_lookups_is_frozenset(self):
-        """REQUIRED_LOOKUPS should be an immutable frozenset."""
-        assert isinstance(BaseProvider.REQUIRED_LOOKUPS, frozenset)
+        assert isinstance(REQUIRED_LOOKUPS, frozenset)
 
     def test_required_lookups_contains_expected_entries(self):
-        """REQUIRED_LOOKUPS should contain all expected lookup names."""
         expected = {
             "exact",
             "iexact",
@@ -503,70 +502,32 @@ class TestRequiredLookups:
             "in",
             "isnull",
         }
-        assert expected == BaseProvider.REQUIRED_LOOKUPS
+        assert expected == REQUIRED_LOOKUPS
+
+    def test_base_provider_no_longer_carries_the_constant(self):
+        assert not hasattr(BaseProvider, "REQUIRED_LOOKUPS")
 
     def test_memory_provider_has_all_required_lookups(self):
-        """MemoryProvider should register all required lookups."""
         from protean.adapters.repository.memory import MemoryProvider
 
-        missing = MemoryProvider.validate_lookups()
-        assert missing == [], f"MemoryProvider is missing lookups: {missing}"
+        assert set(MemoryProvider.get_lookups()) >= REQUIRED_LOOKUPS
 
     def test_sa_provider_has_all_required_lookups(self):
-        """SAProvider should register all required lookups."""
-        sa = pytest.importorskip("sqlalchemy", reason="SQLAlchemy not available")  # noqa: F841
+        pytest.importorskip("sqlalchemy", reason="SQLAlchemy not available")
         from protean.adapters.repository.sqlalchemy import SAProvider
 
-        missing = SAProvider.validate_lookups()
-        assert missing == [], f"SAProvider is missing lookups: {missing}"
+        assert set(SAProvider.get_lookups()) >= REQUIRED_LOOKUPS
 
     def test_es_provider_has_all_required_lookups(self):
-        """ESProvider should register all required lookups."""
         pytest.importorskip("elasticsearch", reason="Elasticsearch not available")
         from protean.adapters.repository.elasticsearch import ESProvider
 
-        missing = ESProvider.validate_lookups()
-        assert missing == [], f"ESProvider is missing lookups: {missing}"
+        assert set(ESProvider.get_lookups()) >= REQUIRED_LOOKUPS
 
-    def test_validate_lookups_returns_sorted_list(self):
-        """validate_lookups should return a sorted list of missing lookup names."""
-        from protean.port.dao import BaseLookup
-        from protean.utils.query import RegisterLookupMixin
-
-        # Create a minimal provider subclass with only a few lookups registered
-        class PartialProvider(RegisterLookupMixin):
-            REQUIRED_LOOKUPS = BaseProvider.REQUIRED_LOOKUPS
-
-            @classmethod
-            def validate_lookups(cls) -> list[str]:
-                registered = set(cls.get_lookups().keys())
-                return sorted(cls.REQUIRED_LOOKUPS - registered)
-
-        @PartialProvider.register_lookup
-        class ExactOnly(BaseLookup):
-            lookup_name = "exact"
-
-            def as_expression(self):
-                return ""
-
-        missing = PartialProvider.validate_lookups()
-        assert missing == sorted(missing), "Missing lookups should be sorted"
-        assert "exact" not in missing
-        assert "contains" in missing
-
-    def test_validate_lookups_returns_empty_when_all_present(self):
-        """validate_lookups should return empty list when all lookups are registered."""
-        from protean.adapters.repository.memory import MemoryProvider
-
-        assert MemoryProvider.validate_lookups() == []
-
-    def test_current_provider_passes_validation(self, test_domain):
-        """The active test domain provider should have all required lookups."""
+    def test_current_provider_has_all_required_lookups(self, test_domain):
         provider = test_domain.providers["default"]
-        missing = provider.__class__.validate_lookups()
-        assert missing == [], (
-            f"{provider.__class__.__name__} is missing required lookups: {missing}"
-        )
+
+        assert set(provider.get_lookups()) >= REQUIRED_LOOKUPS
 
 
 class TestSchemaMigrationsCapability:

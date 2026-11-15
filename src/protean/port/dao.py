@@ -1531,19 +1531,46 @@ class BaseDAO(metaclass=ABCMeta):
             raise
 
 
-class BaseLookup(metaclass=ABCMeta):
-    """Base Lookup class to implement for each lookup
+REQUIRED_LOOKUPS: frozenset[str] = frozenset(
+    {
+        "exact",
+        "iexact",
+        "contains",
+        "icontains",
+        "startswith",
+        "endswith",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "in",
+        "isnull",
+    }
+)
+"""The lookup names every database provider registers. The provider registry
+raises `ConfigurationError` for a provider class that lacks any of them."""
 
-    Inspired by the lookup mechanism implemented in Django.
 
-    Each lookup, which is simply a data comparison (like `name == 'John'`), is implemented as a subclass of this
-    class, and has to implement the `as_expression()` method to provide the representation that the persistence
-    store needs.
+class LookupPort(Protocol):
+    """One comparison in a filter, such as `name == "John"`.
 
-    Lookups are identified by their names, and the names are stored in the `lookup_name` class variable.
+    `source` is the left side of the comparison and `target` the right side.
+    The SQL and Elasticsearch lookups receive a field name as `source`, and
+    the memory lookups receive the stored value of that field.
+
+    How a lookup becomes a query is private to the adapter that runs it. An
+    adapter's lookup base class subclasses this Protocol explicitly, and the
+    base class constructor sets `source`, `target` and `database_model_cls`.
+    The Protocol supplies no constructor body, so a subclass without its own
+    constructor builds without these attributes.
     """
 
-    lookup_name: ClassVar[str | None] = None
+    lookup_name: ClassVar[str]
+    """The name a filter key uses after `__`, such as `"icontains"`."""
+
+    source: Any
+    target: Any
+    database_model_cls: type[BaseDatabaseModel] | None
 
     def __init__(
         self,
@@ -1551,43 +1578,4 @@ class BaseLookup(metaclass=ABCMeta):
         target: Any,
         *,
         database_model_cls: type[BaseDatabaseModel] | None = None,
-    ) -> None:
-        """Source is LHS and Target is RHS of a comparsion.
-
-        For example, in the expression `name == 'John'`, `name` is source (LHS) and `'John'` is target (RHS).
-        In other words, source is the key/column/attribute to be searched on, and target is the value present in the
-        persistent store.
-
-        :param source: The key/column/attribute (LHS of the comparison)
-        :param target: The value to compare against (RHS of the comparison)
-        :param database_model_cls: Optional database model class for adapter-specific lookups
-        """
-        self.source, self.target = source, target
-        self.database_model_cls = database_model_cls
-
-    def process_source(self) -> Any:
-        """This is a blank implementation that simply returns the source.
-
-        Returns `source` (LHS of the expression).
-
-        You can override this method to manipulate the source when necessary. For example, if you are using a
-        data store that cannot perform case-insensitive queries, it may be useful to always compare in lowercase.
-        """
-        return self.source
-
-    def process_target(self) -> Any:
-        """This is a blank implementation that simply returns the target.
-
-        Returns `target` (RHS of the expression).
-
-        You can override this method to manipulate the target when necessary. A good example of overriding this
-        method is when you are using a data store that needs strings to be enclosed in single quotes.
-        """
-        return self.target
-
-    @abstractmethod
-    def as_expression(self) -> Any:
-        """This methods should return the source and the target in the format required by the persistence store.
-
-        Concrete implementation for this method varies from database to database.
-        """
+    ) -> None: ...
