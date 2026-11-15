@@ -4,6 +4,7 @@ import os
 import secrets
 import socket
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from protean.core.command_handler import BaseCommandHandler
@@ -390,7 +391,7 @@ class StreamSubscription(BaseSubscription):
         primary stream is empty, and within one read the primary messages are
         processed before the backfill messages.
         """
-        batches_processed = 0
+        batches = _BatchCount()
         consecutive_errors = 0
 
         while self.keep_going and not self._quiescing():
@@ -407,12 +408,11 @@ class StreamSubscription(BaseSubscription):
                     started = time.monotonic()
                     self._read_failed = False
                     if self._lanes_enabled:
-                        turn = await _run_lanes_turn(self, batches_processed)
+                        turn = await _run_lanes_turn(self, batches)
                     else:
-                        turn = await _run_standard_turn(self, batches_processed)
+                        turn = await _run_standard_turn(self, batches)
                     if turn.stop:
                         break
-                    batches_processed = turn.batches_processed
                     self._record_tick(started, turn.had_work)
                     if turn.yield_after:
                         await asyncio.sleep(0)
@@ -1056,10 +1056,20 @@ class StreamSubscription(BaseSubscription):
         logger.debug(f"Cleanup completed for subscription: {self.subscriber_name}")
 
 
+@dataclass
+class _BatchCount:
+    """How many batches ``StreamSubscription.poll`` has processed.
+
+    ``poll`` owns the count and the turn helpers add to it after each batch, so
+    a batch counted before a later step of the same turn raises stays counted.
+    """
+
+    value: int = 0
+
+
 class _PollTurn(NamedTuple):
     """What one turn of ``StreamSubscription.poll`` did, for the loop to act on."""
 
-    batches_processed: int
     # The ``had_work`` value for ``_record_tick``.
     had_work: bool | None = None
     # Whether the loop yields to the event loop after recording the tick.
@@ -1069,7 +1079,7 @@ class _PollTurn(NamedTuple):
 
 
 async def _run_lanes_turn(
-    subscription: StreamSubscription, batches_processed: int
+    subscription: StreamSubscription, batches: _BatchCount
 ) -> _PollTurn:
     """Read and process one priority-lanes turn of ``StreamSubscription.poll``."""
     # Step 1: Non-blocking read on primary (production) stream
@@ -1078,11 +1088,9 @@ async def _run_lanes_turn(
     if messages:
         await subscription.process_batch(messages, stream=subscription.stream_category)
         await subscription._maybe_trim(subscription.stream_category)
-        batches_processed += 1
+        batches.value += 1
         # Loop back immediately to check primary again, yielding every 10 batches
-        return _PollTurn(
-            batches_processed, had_work=True, yield_after=batches_processed % 10 == 0
-        )
+        return _PollTurn(had_work=True, yield_after=batches.value % 10 == 0)
 
     # Step 2: Primary empty → one blocking read on both streams.
     # The primary read above awaits, so a drain (or shutdown)
@@ -1091,13 +1099,13 @@ async def _run_lanes_turn(
     # (the primary came back empty), so stopping here drops no
     # message and avoids pulling in a new one.
     if subscription._quiescing():
-        return _PollTurn(batches_processed, stop=True)
+        return _PollTurn(stop=True)
     primary, backfill = await subscription._read_lanes_blocking()
 
     if primary:
         await subscription.process_batch(primary, stream=subscription.stream_category)
         await subscription._maybe_trim(subscription.stream_category)
-        batches_processed += 1
+        batches.value += 1
 
     # The backfill entries are already delivered to this
     # consumer, so they are processed like the rest of one
@@ -1108,18 +1116,17 @@ async def _run_lanes_turn(
     if backfill:
         await subscription.process_batch(backfill, stream=subscription.backfill_stream)
         await subscription._maybe_trim(subscription.backfill_stream)
-        batches_processed += 1
+        batches.value += 1
 
     # Yield control before re-checking primary
     return _PollTurn(
-        batches_processed,
         had_work=subscription._tick_outcome(primary + backfill),
         yield_after=True,
     )
 
 
 async def _run_standard_turn(
-    subscription: StreamSubscription, batches_processed: int
+    subscription: StreamSubscription, batches: _BatchCount
 ) -> _PollTurn:
     """Read and process one standard-mode turn of ``StreamSubscription.poll``."""
     messages = await subscription.get_next_batch_of_messages()
@@ -1128,16 +1135,13 @@ async def _run_standard_turn(
         # No messages available, the blocking read timed out
         # This is normal, just yield control
         return _PollTurn(
-            batches_processed,
             had_work=subscription._tick_outcome(messages),
             yield_after=True,
         )
 
     await subscription.process_batch(messages, stream=subscription.stream_category)
     await subscription._maybe_trim(subscription.stream_category)
-    batches_processed += 1
+    batches.value += 1
     # Yield control only after processing a batch, every 10 batches.
     # This maximizes throughput while maintaining responsiveness
-    return _PollTurn(
-        batches_processed, had_work=True, yield_after=batches_processed % 10 == 0
-    )
+    return _PollTurn(had_work=True, yield_after=batches.value % 10 == 0)

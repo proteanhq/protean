@@ -912,3 +912,72 @@ class TestStreamSubscriptionPollOrder:
             ("process", "test_stream:backfill", ["b-1"]),
         ]
         assert sub.steps[5] == ("read_primary",)
+
+    @staticmethod
+    def _record_sleeps(sub):
+        """Patch the poll loop's ``asyncio.sleep`` to add each wait to ``sub.steps``."""
+        real_sleep = asyncio.sleep
+
+        async def record_sleep(duration):
+            sub.steps.append(("sleep", duration))
+            await real_sleep(0)
+
+        return patch(
+            "protean.server.subscription.stream_subscription.asyncio.sleep",
+            side_effect=record_sleep,
+        )
+
+    @pytest.mark.asyncio
+    async def test_turns_yield_after_the_tick_record(self, domain_setup):
+        """A lanes turn that ends on the blocking read and a standard turn that
+        reads nothing each yield to the event loop after recording the tick."""
+        lanes = _make_recording_subscription(
+            domain_setup, lanes=True, reads=[[], ([("p-1", {})], [])]
+        )
+        standard = _make_recording_subscription(domain_setup, lanes=False, reads=[[]])
+
+        for sub in (lanes, standard):
+            with self._record_sleeps(sub):
+                await sub.poll()
+
+        assert lanes.steps[:6] == [
+            ("read_primary",),
+            ("read_lanes",),
+            ("process", lanes.stream_category, ["p-1"]),
+            ("trim", lanes.stream_category),
+            ("tick", True),
+            ("sleep", 0),
+        ]
+        assert standard.steps[:3] == [("read",), ("tick", False), ("sleep", 0)]
+
+    @pytest.mark.asyncio
+    async def test_a_failed_backfill_keeps_the_primary_batch_counted(
+        self, domain_setup
+    ):
+        """The loop yields every 10 batches. A primary batch processed before
+        the backfill batch of the same turn raised counts toward the 10, so the
+        yield comes after nine more primary batches."""
+        sub = _make_recording_subscription(
+            domain_setup,
+            lanes=True,
+            reads=[
+                [],
+                ([("p-0", {})], [("b-1", {})]),
+                *([(f"p-{n}", {})] for n in range(1, 10)),
+            ],
+        )
+        sub.fail_on = (sub.backfill_stream, "b-1")
+
+        with self._record_sleeps(sub):
+            await sub.poll()
+
+        ninth = sub.steps.index(("process", sub.stream_category, ["p-9"]))
+        assert sub.steps[ninth : ninth + 4] == [
+            ("process", sub.stream_category, ["p-9"]),
+            ("trim", sub.stream_category),
+            ("tick", True),
+            ("sleep", 0),
+        ]
+        # The failed turn backs off for 1s and does not yield.
+        assert ("sleep", 1) in sub.steps[:ninth]
+        assert ("sleep", 0) not in sub.steps[:ninth]
