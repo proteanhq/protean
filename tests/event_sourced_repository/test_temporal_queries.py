@@ -20,7 +20,7 @@ from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import IncorrectUsageError, ObjectNotFoundError
 from protean.fields import Identifier, String
 from protean.fields.basic import Boolean
-from protean.port.event_store import BaseEventStore
+from protean.infra.event_store import _parse_event_time
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
 
@@ -571,22 +571,22 @@ class TestTemporalErrorsAndSafety:
 
 
 class TestParseEventTime:
-    """Tests for ``BaseEventStore._parse_event_time``."""
+    """Tests for ``_parse_event_time``."""
 
     def test_none_returns_none(self):
-        assert BaseEventStore._parse_event_time(None) is None
+        assert _parse_event_time(None) is None
 
     def test_datetime_passthrough(self):
         now = datetime.now(UTC)
-        assert BaseEventStore._parse_event_time(now) is now
+        assert _parse_event_time(now) is now
 
     def test_iso_string_parsed(self):
         dt = datetime(2026, 2, 20, 12, 0, 0, tzinfo=UTC)
-        result = BaseEventStore._parse_event_time(dt.isoformat())
+        result = _parse_event_time(dt.isoformat())
         assert result == dt
 
     def test_unexpected_type_returns_none(self):
-        assert BaseEventStore._parse_event_time(12345) is None
+        assert _parse_event_time(12345) is None
 
 
 class TestGetAtVersionSnapshotExact:

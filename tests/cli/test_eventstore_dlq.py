@@ -429,7 +429,7 @@ class TestEventstoreDlqInspect:
                 "domain": {"kind": "EVENT"},
             },
         )
-        global_position = store.read(category, position=1, no_of_messages=1)[
+        global_position = store.read(category, position=1, limit=1)[
             0
         ].metadata.event_store.global_position
 
@@ -567,7 +567,7 @@ class TestEventstoreDlqInspect:
                 "domain": {"kind": "EVENT"},
             },
         )
-        stored_at = store.read(category, position=0, no_of_messages=1)[
+        stored_at = store.read(category, position=0, limit=1)[
             0
         ].metadata.event_store.global_position
         missing = stored_at - 1

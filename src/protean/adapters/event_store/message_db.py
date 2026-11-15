@@ -143,11 +143,7 @@ class MessageDBStore(BaseEventStore):
     def get_stream_messages(
         self, stream_name: str, position: int = 0, limit: int = 1000
     ) -> list[RawMessage]:
-        return _raw(
-            self.get_connection().read_stream(
-                stream_name, position=position, no_of_messages=limit
-            )
-        )
+        return _raw(self.get_connection().read_stream(stream_name, position, limit))
 
     def get_category_messages(
         self,
@@ -167,8 +163,8 @@ class MessageDBStore(BaseEventStore):
         return _raw(
             self.get_connection().read_category(
                 category,
-                position=position,
-                no_of_messages=limit,
+                position,
+                limit,
                 consumer_group_member=consumer_group_member,
                 consumer_group_size=consumer_group_size,
             )
@@ -180,27 +176,17 @@ class MessageDBStore(BaseEventStore):
         # The client's own ``$all`` query filters ``global_position > position``
         # and so skips a row. Reads include ``position`` (ADR-0024), so supply
         # a query that does.
-        return _raw(
-            self.get_connection().read(
-                "$all", sql=_ALL_SQL, position=position, no_of_messages=limit
-            )
-        )
+        return _raw(self.get_connection().read("$all", _ALL_SQL, position, limit))
 
     def get_last_stream_message(self, stream_name: str) -> RawMessage | None:
         message = self.get_connection().read_last_message(stream_name)
         return cast(RawMessage, message) if message is not None else None
 
     def get_last_category_message(self, category: str) -> RawMessage | None:
-        return _first(
-            self.get_connection().read(
-                category, sql=_LAST_IN_CATEGORY_SQL, no_of_messages=1
-            )
-        )
+        return _first(self.get_connection().read(category, _LAST_IN_CATEGORY_SQL, 0, 1))
 
     def get_last_message(self) -> RawMessage | None:
-        return _first(
-            self.get_connection().read("$all", sql=_LAST_SQL, no_of_messages=1)
-        )
+        return _first(self.get_connection().read("$all", _LAST_SQL, 0, 1))
 
     def stream_ids(self, category: str) -> list[str]:
         """Return unique aggregate identifiers for a stream category.

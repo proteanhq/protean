@@ -142,7 +142,7 @@ class TestCheckEventStore:
 
     def test_unavailable_when_ping_returns_false(self, domain):
         with domain.domain_context():
-            domain.event_store._event_store = _UnreachableEventStore(
+            domain.event_store._adapter = _UnreachableEventStore(
                 "default", domain, domain.config["event_store"]
             )
             status, ok = check_event_store(domain)
@@ -151,7 +151,7 @@ class TestCheckEventStore:
 
     def test_ok_when_ping_returns_true(self, domain):
         with domain.domain_context():
-            domain.event_store._event_store = _ReachableEventStore(
+            domain.event_store._adapter = _ReachableEventStore(
                 "default", domain, domain.config["event_store"]
             )
             status, ok = check_event_store(domain)
@@ -162,7 +162,7 @@ class TestCheckEventStore:
         # When the backing store is ``None`` (before init / misconfigured),
         # the guard returns STATUS_UNAVAILABLE without touching the store.
         with domain.domain_context():
-            domain.event_store._event_store = None
+            domain.event_store._adapter = None
             status, ok = check_event_store(domain)
             assert ok is False
             assert status == STATUS_UNAVAILABLE

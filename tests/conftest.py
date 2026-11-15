@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 import structlog
 
+from protean.infra.event_store import EventStore
 from protean.port.event_store import BaseEventStore
 from tests.logging_isolation import LoggingSnapshot
 from tests.shared import (
@@ -361,18 +362,24 @@ SMALL_READ_PAGE = 10
 def small_read_page(monkeypatch, test_domain):
     """Make one event store read page ``SMALL_READ_PAGE`` rows instead of 1,000.
 
-    Lowers the page-size default of ``BaseEventStore.read``,
-    ``BaseEventStore.read_all``, ``BaseEventStore._read_all_raw``,
-    ``BaseEventStore._read_stream_fully``, ``BaseEventStore._read_raw`` and the
-    configured store's stream, category and all readers, so a test can write a
-    stream longer than one page in a few rows. Writing 1,000 rows to the memory
+    Lowers the page-size default of the ``EventStore`` service readers
+    (``read``, ``read_all``, ``_read_raw``, ``_read_all_raw``,
+    ``_read_stream_fully`` and ``_read_with_snapshot_positions``), the matching
+    ``BaseEventStore`` delegates, and the configured store's stream, category
+    and all readers, so a test can write a stream longer than one page in a few
+    rows. The delegates pass their own default on to the service, so both sets
+    are lowered. Writing 1,000 rows to the memory
     store takes minutes. A caller that passes its own page size, such as
     ``limit=1_000_000``, keeps it.
     """
     store_cls = type(test_domain.event_store.store)
     for func in (
+        EventStore.read,
+        EventStore._read_raw,
+        EventStore._read_with_snapshot_positions,
         BaseEventStore.read,
         BaseEventStore._read_raw,
+        BaseEventStore._read_with_snapshot_positions,
         store_cls.get_stream_messages,
         store_cls.get_category_messages,
         store_cls.get_all_messages,
@@ -382,6 +389,9 @@ def small_read_page(monkeypatch, test_domain):
         monkeypatch.setattr(func, "__defaults__", (*defaults[:-1], SMALL_READ_PAGE))
 
     for func in (
+        EventStore.read_all,
+        EventStore._read_all_raw,
+        EventStore._read_stream_fully,
         BaseEventStore.read_all,
         BaseEventStore._read_all_raw,
         BaseEventStore._read_stream_fully,

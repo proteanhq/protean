@@ -178,7 +178,7 @@ class TestCreateSnapshot:
     def test_raises_when_event_store_not_initialized(self, test_domain):
         # ``_require_event_store`` raises a clear error when the backing
         # store is None (e.g. before ``domain.init()``).
-        test_domain.event_store._event_store = None
+        test_domain.event_store._adapter = None
 
         with pytest.raises(ConfigurationError, match="Event store is not initialized"):
             test_domain.create_snapshot(User, "some-id")

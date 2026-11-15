@@ -10,8 +10,12 @@ nor desync the paging cursor.
 
 from unittest.mock import patch
 
-import protean.port.event_store as event_store_module
+import pytest
+
+import protean.infra.event_store as event_store_module
 from protean.utils.eventing import Message
+
+pytestmark = pytest.mark.eventstore
 
 
 def _metadata(stream_name, message_type, message_id):
@@ -89,7 +93,7 @@ def test_read_all_snapshot_on_page_boundary_drops_no_events(test_domain):
     """
     store = test_domain.event_store.store
     _write_event(store, "user-1", 0)
-    _write_snapshot(store, "user", "1")  # global-position 2, last row of page 1
+    _write_snapshot(store, "user", "1")  # second raw row, last row of page 1
     _write_event(store, "user-1", 1)
     _write_event(store, "user-1", 2)
     _write_event(store, "user-1", 3)
@@ -181,18 +185,19 @@ def test_read_last_message_scan_is_bounded_near_the_tail(test_domain):
     """The snapshot-skip scan reads a bounded window near the tail, never a
     capped scan from the start.
 
-    The old helper read from position 0 with ``no_of_messages=1_000_000`` and
+    The old helper read from position 0 with ``limit=1_000_000`` and
     took the max, which on a store past that cap returns a stale non-tail row.
     Here the window is shrunk to 2, so the scan must start at the tail's
     position and read at most two rows, not from position 0.
     """
     store = test_domain.event_store.store
     for i in range(6):
-        _write_event(store, "user-1", i)  # global positions 1..6
-    _write_snapshot(store, "user", "1")  # tail, global position 7
+        _write_event(store, "user-1", i)
+    _write_snapshot(store, "user", "1")  # the tail row
 
     with patch.object(event_store_module, "_SNAPSHOT_TAIL_WINDOW", 2):
-        with patch.object(store, "_read_raw", wraps=store._read_raw) as spy:
+        service = test_domain.event_store
+        with patch.object(service, "_read_raw", wraps=service._read_raw) as spy:
             last = store.read_last_message("$all")
 
     assert last is not None
@@ -238,16 +243,21 @@ def test_read_with_snapshot_positions_reports_where_snapshots_sat(test_domain):
     ``global_position`` of each snapshot row it skipped, so the gap check can
     count those positions as present. ``read`` returns the same events."""
     store = test_domain.event_store.store
-    _write_event(store, "user-1", 0)  # global position 1
-    _write_snapshot(store, "user", "1")  # global position 2
-    _write_event(store, "user-1", 1)  # global position 3
-    _write_snapshot(store, "user", "2")  # global position 4
+    _write_event(store, "user-1", 0)
+    _write_snapshot(store, "user", "1")
+    _write_event(store, "user-1", 1)
+    _write_snapshot(store, "user", "2")
 
     messages, snapshot_positions = store._read_with_snapshot_positions("$all")
 
     assert _ns(messages) == [0, 1]
-    assert [m.metadata.event_store.global_position for m in messages] == [1, 3]
-    assert snapshot_positions == [2, 4]
+    # Global positions are relative: Message DB does not restart them per test.
+    first = messages[0].metadata.event_store.global_position
+    assert [m.metadata.event_store.global_position for m in messages] == [
+        first,
+        first + 2,
+    ]
+    assert snapshot_positions == [first + 1, first + 3]
     assert _ns(store.read("$all")) == _ns(messages)
 
 
@@ -277,8 +287,11 @@ def test_read_with_snapshot_positions_leaves_out_a_snapshot_with_no_position(
         {"type": "SNAPSHOT", "global_position": 7},
     ]
 
-    with patch.object(store, "_read_raw", return_value=rows + snapshot_rows):
+    with patch.object(
+        test_domain.event_store, "_read_raw", return_value=rows + snapshot_rows
+    ) as fake_read:
         messages, snapshot_positions = store._read_with_snapshot_positions("$all")
 
+    fake_read.assert_called_once()
     assert _ns(messages) == [0]
     assert snapshot_positions == [7]

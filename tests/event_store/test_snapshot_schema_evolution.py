@@ -2,7 +2,7 @@
 
 A snapshot is written straight from the aggregate's serialized state, with no
 schema version and no upcaster path (see
-``BaseEventStore._load_aggregate_current`` and ``create_snapshot``). Change the
+``EventStore._load_aggregate_current`` and ``create_snapshot``). Change the
 aggregate's fields (rename one, remove one, add
 a newly required one) and a snapshot written before the change no longer
 constructs: Pydantic ``extra="forbid"`` rejects the stale key or the missing
@@ -346,7 +346,8 @@ class TestValidSnapshotKeepsFastPath:
         store = test_domain.event_store.store
         snapshot_version = data["_version"]
 
-        with patch.object(store, "_read_raw", wraps=store._read_raw) as spy:
+        service = test_domain.event_store
+        with patch.object(service, "_read_raw", wraps=service._read_raw) as spy:
             store.load_aggregate(User, identifier)
 
         aggregate_reads = [
@@ -424,7 +425,9 @@ class TestFullReplayPaging:
         page1 = [{"position": i} for i in range(1000)]
         page2 = [{"position": i} for i in range(1000, 1500)]
 
-        with patch.object(store, "_read_raw", side_effect=[page1, page2]) as spy:
+        with patch.object(
+            test_domain.event_store, "_read_raw", side_effect=[page1, page2]
+        ) as spy:
             rows = store._read_stream_fully("test::user-x")
 
         assert len(rows) == 1500
@@ -438,7 +441,9 @@ class TestFullReplayPaging:
         store = test_domain.event_store.store
         page1 = [{"position": i} for i in range(1000)]
 
-        with patch.object(store, "_read_raw", side_effect=[page1, []]) as spy:
+        with patch.object(
+            test_domain.event_store, "_read_raw", side_effect=[page1, []]
+        ) as spy:
             rows = store._read_stream_fully("test::user-x")
 
         assert len(rows) == 1000
@@ -454,7 +459,9 @@ class TestFullReplayPaging:
             # An adapter that honors ``limit`` over an endless stream.
             return [{"position": position + k} for k in range(limit)]
 
-        with patch.object(store, "_read_raw", side_effect=fake_read) as spy:
+        with patch.object(
+            test_domain.event_store, "_read_raw", side_effect=fake_read
+        ) as spy:
             rows = store._read_stream_fully("test::user-x", max_rows=1500)
 
         assert len(rows) == 1500
@@ -467,7 +474,9 @@ class TestFullReplayPaging:
         store = test_domain.event_store.store
         page = [{"position": i} for i in range(50, 300)]  # 250 rows, under one page
 
-        with patch.object(store, "_read_raw", side_effect=[page]) as spy:
+        with patch.object(
+            test_domain.event_store, "_read_raw", side_effect=[page]
+        ) as spy:
             rows = store._read_stream_fully("test::user-x", start_position=50)
 
         assert len(rows) == 250
