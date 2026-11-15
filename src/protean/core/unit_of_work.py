@@ -615,7 +615,10 @@ class UnitOfWork:
             # the recorded versions and holds the provider lock until commit,
             # as the SQL row locks do, so no other commit lands in between.
             # Sessions without a flush (Elasticsearch) check versions at commit.
-            for session in self._sessions.values():
+            # Flushing in provider-name order, not enlistment order, takes the
+            # held provider locks in one order in every Unit of Work, so two
+            # that enlist the same providers in opposite orders cannot deadlock.
+            for _, session in sorted(self._sessions.items()):
                 flush = getattr(session, "flush", None)
                 if flush is not None:
                     flush()

@@ -1,10 +1,13 @@
 """``MemorySession.flush`` checks recorded versions, writes nothing, and holds
 the provider lock until the session commits, rolls back or closes."""
 
+import contextlib
 import threading
+from unittest.mock import patch
 
 import pytest
 
+from protean.adapters.repository.memory import MemorySession
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
@@ -220,3 +223,61 @@ def test_no_commit_lands_between_the_flush_and_the_event_append(test_domain):
         m["data"]["name"] for m in store.get_all_messages() if "name" in m["data"]
     ] == ["b"]
     assert _live_value(test_domain, identifier) == 9
+
+
+def test_opposite_enlistment_orders_across_two_providers_do_not_deadlock(
+    test_domain,
+):
+    """Two Units of Work that enlist two memory providers in opposite orders
+    both commit, since each flushes the providers in the same order."""
+
+    class Gauge(BaseAggregate):
+        value: Integer(default=0)
+
+    test_domain.config["databases"]["secondary"] = {"provider": "memory"}
+    test_domain._initialize()
+    test_domain.register(Gauge, provider="secondary")
+    test_domain.init(traverse=False)
+
+    flush = MemorySession.flush
+    flushed = threading.local()
+    both_hold_one_lock = threading.Barrier(2)
+    both_enlisted = threading.Barrier(2)
+
+    def flush_then_wait_for_the_other_thread(session):
+        flush(session)
+        flushed.count = getattr(flushed, "count", 0) + 1
+        if flushed.count == 1:
+            # Without a fixed order each thread now holds one provider lock
+            # and blocks on the other's. With it, the second thread is still
+            # waiting for the first lock, so the barrier times out.
+            with contextlib.suppress(threading.BrokenBarrierError):
+                both_hold_one_lock.wait(timeout=0.5)
+
+    committed = []
+
+    def add_in_order(*aggregates):
+        def run():
+            with test_domain.domain_context(), UnitOfWork():
+                for aggregate in aggregates:
+                    test_domain.repository_for(type(aggregate)).add(aggregate)
+                # A session snapshots its store under the provider lock, so
+                # both threads enlist both providers before either flushes.
+                both_enlisted.wait(timeout=10)
+            committed.append(True)
+
+        # A daemon thread, so a deadlock fails the test without hanging pytest.
+        return threading.Thread(target=run, daemon=True)
+
+    threads = [
+        add_in_order(Counter(value=1), Gauge(value=1)),
+        add_in_order(Gauge(value=2), Counter(value=2)),
+    ]
+    with patch.object(MemorySession, "flush", autospec=True) as patched:
+        patched.side_effect = flush_then_wait_for_the_other_thread
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+
+    assert committed == [True, True]
