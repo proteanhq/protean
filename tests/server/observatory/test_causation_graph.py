@@ -17,7 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from protean.domain import Domain
-from protean.port.event_store import CausationNode
+from protean.infra.causation import CausationNode
 from protean.server.observatory import Observatory
 
 pytestmark = pytest.mark.no_test_domain

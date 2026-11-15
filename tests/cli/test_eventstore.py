@@ -11,7 +11,7 @@ from typer.testing import CliRunner
 
 from protean.cli import app
 from protean.exceptions import ConfigurationError, NoDomainException
-from protean.port.event_store import BaseEventStore, IntegrityReport, IntegrityViolation
+from protean.infra.integrity import IntegrityReport, IntegrityViolation, ViolationKind
 from tests.cli._envelope import assert_envelope
 from tests.shared import change_working_directory_to
 
@@ -23,7 +23,7 @@ runner = CliRunner(env={"COLUMNS": "200"})
 def _mock_domain_with_report(report: IntegrityReport) -> MagicMock:
     """A mock domain whose event store returns ``report`` from ``verify()``."""
     mock_domain = MagicMock()
-    mock_domain.event_store.store.verify.return_value = report
+    mock_domain.event_store.verify.return_value = report
     mock_domain.domain_context.return_value.__enter__.return_value = None
     mock_domain.domain_context.return_value.__exit__.return_value = False
     return mock_domain
@@ -221,7 +221,7 @@ class TestEventStoreVerify:
     def _invoke_with_verify_error(self, error: Exception, *extra_args: str):
         change_working_directory_to("test7")
         mock_domain = MagicMock()
-        mock_domain.event_store.store.verify.side_effect = error
+        mock_domain.event_store.verify.side_effect = error
         mock_domain.domain_context.return_value.__enter__.return_value = None
         mock_domain.domain_context.return_value.__exit__.return_value = False
         with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
@@ -362,23 +362,19 @@ class TestEventStoreVerifyEndToEnd:
 
 @pytest.mark.no_test_domain
 def test_documented_violation_kinds_match_the_constants():
-    """Every ``VERIFY_*`` kind the code can emit is listed in the CLI docs.
+    """Every ``ViolationKind`` the code can emit is listed in the CLI docs.
 
     Guards the hand-maintained kind list in
     ``docs/reference/cli/data/eventstore.md`` against drift as new kinds are
-    added, deriving the code side from the constants rather than a second list.
+    added, deriving the code side from the enum rather than a second list.
     """
     repo_root = Path(__file__).resolve().parents[2]
     doc = (repo_root / "docs/reference/cli/data/eventstore.md").read_text(
         encoding="utf-8"
     )
 
-    kinds = {
-        value
-        for name, value in vars(BaseEventStore).items()
-        if name.startswith("VERIFY_") and isinstance(value, str)
-    }
-    assert kinds, "expected VERIFY_* kind constants on BaseEventStore"
+    kinds = {kind.value for kind in ViolationKind}
+    assert kinds, "expected ViolationKind members"
 
     missing = sorted(kind for kind in kinds if kind not in doc)
     assert not missing, (

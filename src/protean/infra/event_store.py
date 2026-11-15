@@ -4,8 +4,8 @@ An event-store adapter implements `EventStorePort`: it writes rows and reads
 them by stream, category or the whole store. `EventStore` wraps the domain's
 one adapter and builds the features on top of it: appending a domain object,
 reading messages with snapshot rows left out, paging a whole stream, loading an
-aggregate at its latest version or at a point in history, and writing
-snapshots.
+aggregate at its latest version or at a point in history, writing snapshots,
+tracing causation and checking the store's integrity.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from protean.exceptions import (
     ObjectNotFoundError,
     ValidationError,
 )
+from protean.infra import causation, integrity
 from protean.infra.registry import event_stores as event_store_registry
 from protean.integrations.logging import SNAPSHOT_EVENT_DISCARDED, log_snapshot_event
 from protean.ir.diagnostics import DiagnosticCode
@@ -40,6 +41,8 @@ if TYPE_CHECKING:
     from protean.core.command import BaseCommand
     from protean.core.event import BaseEvent
     from protean.domain import Domain
+    from protean.infra.causation import CausationNode
+    from protean.infra.integrity import IntegrityReport
     from protean.port.event_store import BaseEventStore
 
 logger = logging.getLogger(__name__)
@@ -944,3 +947,81 @@ class EventStore:
             count += 1
 
         return count
+
+    # ------------------------------------------------------------------
+    # Causation tracing
+    # ------------------------------------------------------------------
+
+    def trace_causation(self, message_id: str | Message) -> list[Message]:
+        """Return the causation chain from the root message down to ``message_id``.
+
+        Args:
+            message_id: A Protean message ID string (``headers.id``) or
+                a `Message` object.
+
+        Returns:
+            `Message` objects in causal order, root first and the given message
+            last. Empty when ``message_id`` is a `Message` the store does not
+            hold.
+
+        Raises:
+            ValueError: ``message_id`` is a string that no message in the
+                store has, or a `Message` with no ``headers.id``. A `Message`
+                the store does not hold is not looked up and raises nothing.
+        """
+        return causation.trace_causation(self._require_adapter(), message_id)
+
+    def trace_effects(
+        self, message_id: str | Message, *, recursive: bool = True
+    ) -> list[Message]:
+        """Return the messages caused by ``message_id``.
+
+        Args:
+            message_id: A Protean message ID string (``headers.id``) or
+                a `Message` object.
+            recursive: If ``True`` (default), return the full subtree of
+                effects.  If ``False``, return only direct children.
+
+        Returns:
+            `Message` objects caused by the given message, ordered by
+            ``global_position``. The given message itself is not included.
+
+        Raises:
+            ValueError: ``message_id`` is a string that no message in the
+                store has, or a `Message` with no ``headers.id``. A `Message`
+                the store does not hold is not looked up and raises nothing.
+        """
+        return causation.trace_effects(
+            self._require_adapter(), message_id, recursive=recursive
+        )
+
+    def build_causation_tree(self, correlation_id: str) -> CausationNode | None:
+        """Build a full causation tree for a correlation ID.
+
+        Returns the root node of the tree with children recursively populated.
+
+        Args:
+            correlation_id: The correlation ID to trace.
+
+        Returns:
+            Root [`CausationNode`][protean.infra.causation.CausationNode] with
+            children, or ``None`` if no messages found.
+        """
+        return causation.build_causation_tree(self._require_adapter(), correlation_id)
+
+    # ------------------------------------------------------------------
+    # Integrity verification
+    # ------------------------------------------------------------------
+
+    def verify(self) -> IntegrityReport:
+        """Check the store's internal invariants and report every violation.
+
+        Reads the whole store and changes nothing. See
+        [`protean.infra.integrity.verify`][protean.infra.integrity.verify] for
+        the invariants it checks.
+
+        Returns:
+            An [`IntegrityReport`][protean.infra.integrity.IntegrityReport] of
+            the violations found. ``ok`` is ``True`` when there are none.
+        """
+        return integrity.verify(self._require_adapter())

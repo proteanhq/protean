@@ -174,7 +174,7 @@ from a `correlation_id`:
 | `message_type` | `str` | The fully-qualified message type |
 | `kind` | `str` | `"EVENT"` or `"COMMAND"` |
 | `stream` | `str` | The stream name |
-| `time` | <code>str &#124; None</code> | Write timestamp |
+| `time` | <code>str &#124; None</code> | Write timestamp from `isoformat()`, or from `str()` when the stored value has no `isoformat()` |
 | `global_position` | <code>int &#124; None</code> | Global position in the event store |
 | `children` | `list[CausationNode]` | Child messages caused by this message |
 
@@ -250,6 +250,6 @@ operational dashboards and debug delivery issues.
 
     **Internals:** [Causation Chain Traversal](../../concepts/internals/event-sourcing.md#causation-chain-traversal): Algorithm details for the traversal methods.
 
-    **API:** [BaseEventStore](../../api/ports/event-store.md): Auto-generated API reference for `trace_causation`, `trace_effects`, `build_causation_tree`, and `CausationNode`.
+    **API:** [EventStore](../../api/ports/event-store.md#eventstore) and [CausationNode](../../api/ports/event-store.md#causationnode): Auto-generated API reference for `trace_causation`, `trace_effects`, `build_causation_tree`, and the tree node.
 
     **Concept:** [Observability](../../reference/server/observability.md): Real-time tracing and monitoring with the Protean Observatory.

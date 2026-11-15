@@ -1351,7 +1351,7 @@ class TestEventsTraceTree:
     def test_trace_tree_shows_causation_tree(self):
         change_working_directory_to("test7")
 
-        from protean.port.event_store import CausationNode
+        from protean.infra.causation import CausationNode
 
         root_node = CausationNode(
             message_id="test::order:command-abc123-0",
@@ -1373,7 +1373,7 @@ class TestEventsTraceTree:
         )
 
         mock_domain = _mock_domain_with_store()
-        mock_domain.event_store.store.build_causation_tree.return_value = root_node
+        mock_domain.event_store.build_causation_tree.return_value = root_node
 
         with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
@@ -1397,7 +1397,7 @@ class TestEventsTraceTree:
         change_working_directory_to("test7")
 
         mock_domain = _mock_domain_with_store()
-        mock_domain.event_store.store.build_causation_tree.return_value = None
+        mock_domain.event_store.build_causation_tree.return_value = None
 
         with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
@@ -1416,7 +1416,7 @@ class TestEventsTraceTree:
     def test_trace_tree_multi_level_chain(self):
         change_working_directory_to("test7")
 
-        from protean.port.event_store import CausationNode
+        from protean.infra.causation import CausationNode
 
         root_node = CausationNode(
             message_id="cmd-0",
@@ -1458,7 +1458,7 @@ class TestEventsTraceTree:
         )
 
         mock_domain = _mock_domain_with_store()
-        mock_domain.event_store.store.build_causation_tree.return_value = root_node
+        mock_domain.event_store.build_causation_tree.return_value = root_node
 
         with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(

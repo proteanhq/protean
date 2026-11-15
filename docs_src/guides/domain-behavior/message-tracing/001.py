@@ -165,7 +165,7 @@ def show_effects(store, command_id):
 
 
 # --8<-- [start:tree]
-from protean.port.event_store import CausationNode
+from protean.infra.causation import CausationNode
 
 
 def show_tree(store, correlation_id):

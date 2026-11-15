@@ -43,7 +43,7 @@ from protean.utils import DomainObjects
 
 if TYPE_CHECKING:
     from protean.domain import Domain
-    from protean.port.event_store import CausationNode
+    from protean.infra.causation import CausationNode
 
 logger = logging.getLogger(__name__)
 
@@ -511,7 +511,7 @@ def trace(
             )
         else:
             # Tree display (default)
-            root_node = store.build_causation_tree(correlation_id)
+            root_node = derived_domain.event_store.build_causation_tree(correlation_id)
             if root_node is None:
                 print(f"No events found for correlation ID '{correlation_id}'")
                 return

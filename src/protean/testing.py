@@ -98,7 +98,9 @@ if TYPE_CHECKING:
     from protean.core.aggregate import BaseAggregate
     from protean.core.event import BaseEvent
     from protean.domain import Domain
-    from protean.port.event_store import BaseEventStore, CausationNode
+    from protean.infra.causation import CausationNode
+    from protean.port.event_store import BaseEventStore
+from protean.infra.causation import load_correlation_group
 from protean.utils import Processing, fqn
 from protean.utils.eventing import (
     DomainMeta,
@@ -642,7 +644,7 @@ def _events_for_correlation(domain: Domain, correlation_id: str) -> list[Any]:
     objects, ordered by ``global_position``.
     """
     store = _event_store_of(domain)
-    group = store._load_correlation_group(correlation_id)
+    group = load_correlation_group(store, correlation_id)
     group.sort(key=lambda raw: raw.get("global_position", 0))
 
     events: list[Any] = []
@@ -1116,7 +1118,7 @@ def assert_chain(
     """Assert that a correlation chain matches an expected message sequence.
 
     Compares the ``message_type`` of each
-    [`CausationNode`][protean.port.event_store.CausationNode] against the expected
+    [`CausationNode`][protean.infra.causation.CausationNode] against the expected
     names, in order.
 
     Args:

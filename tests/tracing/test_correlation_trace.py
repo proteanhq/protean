@@ -12,7 +12,7 @@ from uuid import uuid4
 
 import pytest
 
-from protean.port.event_store import CausationNode
+from protean.infra.causation import CausationNode
 from protean.testing import assert_chain
 from tests.tracing.elements import (
     ConfirmOrder,

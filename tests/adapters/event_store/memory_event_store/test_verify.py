@@ -3,10 +3,12 @@
 These lock the raw-dict contract ``verify`` depends on (the ``id``, ``position``,
 ``global_position``, ``stream_name``, and ``data`` keys) against the actual
 adapter output. The exhaustive per-branch coverage lives in
-``tests/port/test_event_store_verify.py``.
+``tests/event_store/test_verify.py``.
 """
 
 from datetime import UTC, datetime
+
+from protean.infra.integrity import ViolationKind
 
 
 def _metadata(stream_name, message_type, message_id):
@@ -36,7 +38,7 @@ def test_clean_store_passes(test_domain):
     _seed_two_events(store)
     store.write_message("test::user:snapshot-abc", "SNAPSHOT", {"_version": 1})
 
-    report = store.verify()
+    report = test_domain.event_store.verify()
 
     assert report.ok is True
     assert report.violations == ()
@@ -45,7 +47,7 @@ def test_clean_store_passes(test_domain):
 
 
 def test_empty_store_passes(test_domain):
-    report = test_domain.event_store.store.verify()
+    report = test_domain.event_store.verify()
 
     assert report.ok is True
     assert report.message_count == 0
@@ -59,11 +61,11 @@ def test_duplicate_message_id_is_caught(test_domain):
     # Point the second row's store id at the first, forging a duplicate.
     rows[1]["id"] = rows[0]["id"]
 
-    report = store.verify()
+    report = test_domain.event_store.verify()
 
     assert report.ok is False
     assert len(report.violations) == 1
-    assert report.violations[0].kind == store.VERIFY_DUPLICATE_MESSAGE_ID
+    assert report.violations[0].kind == ViolationKind.DUPLICATE_MESSAGE_ID
     assert report.violations[0].stream == "test::user-abc"
 
 
@@ -85,12 +87,12 @@ def test_position_gap_is_caught_and_named(test_domain):
         }
     )
 
-    report = store.verify()
+    report = test_domain.event_store.verify()
 
     assert report.ok is False
     assert len(report.violations) == 1
     violation = report.violations[0]
-    assert violation.kind == store.VERIFY_POSITION_GAP
+    assert violation.kind == ViolationKind.POSITION_GAP
     assert violation.stream == "test::user-abc"
     assert violation.position == 3
 
@@ -100,12 +102,12 @@ def test_snapshot_ahead_of_stream_head_is_caught(test_domain):
     _seed_two_events(store)  # head position is 1
     store.write_message("test::user:snapshot-abc", "SNAPSHOT", {"_version": 5})
 
-    report = store.verify()
+    report = test_domain.event_store.verify()
 
     assert report.ok is False
     assert len(report.violations) == 1
     violation = report.violations[0]
-    assert violation.kind == store.VERIFY_SNAPSHOT_AHEAD_OF_STREAM
+    assert violation.kind == ViolationKind.SNAPSHOT_AHEAD_OF_STREAM
     assert violation.stream == "test::user:snapshot-abc"
 
 
@@ -123,11 +125,11 @@ def test_message_with_null_data_is_caught(test_domain):
     # Null the body of the middle row (position 1).
     rows[1]["data"] = None
 
-    report = store.verify()
+    report = test_domain.event_store.verify()
 
     assert report.ok is False
     assert len(report.violations) == 1
     violation = report.violations[0]
-    assert violation.kind == store.VERIFY_MALFORMED_MESSAGE
+    assert violation.kind == ViolationKind.MALFORMED_MESSAGE
     assert violation.stream == "test::user-abc"
     assert violation.position == 1

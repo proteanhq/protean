@@ -108,10 +108,8 @@ def verify(
 
     derived_domain = load_domain(domain, as_json=as_json)
     with derived_domain.domain_context():
-        store = derived_domain.event_store.store
-        assert store is not None  # guaranteed by load_domain -> init()
         try:
-            report = store.verify()
+            report = derived_domain.event_store.verify()
         except ConfigurationError as exc:
             # The Message DB adapter opens its first connection inside
             # verify(), so a connection error is raised here. The driver's

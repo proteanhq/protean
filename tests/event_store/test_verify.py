@@ -1,7 +1,7 @@
-"""Port-level tests for ``BaseEventStore.verify()``.
+"""Tests for ``protean.infra.integrity.verify``.
 
-``verify`` is concrete on the port and reads the whole store through the
-``$all`` iterator, so its logic is identical for every adapter. These tests
+``verify`` reads the whole store through the adapter's ``$all`` read, so its
+logic is identical for every adapter. These tests
 drive it against a minimal in-file store whose ``$all`` pages over a preloaded
 list of raw message dicts. That lets each invariant be violated
 deterministically, including corruptions the real adapters do not readily
@@ -11,20 +11,23 @@ write. Those corruptions only arise from an out-of-band restore, which is
 exactly what ``verify`` exists to catch.
 """
 
+import json
 from typing import Any
 
 import pytest
 
-from protean.port.event_store import (
-    BaseEventStore,
-    EventStoreCapabilities,
+from protean.infra.integrity import (
     IntegrityReport,
     IntegrityViolation,
+    ViolationKind,
+    _iter_all_messages,
+    verify,
 )
+from protean.port.event_store import EventStoreCapabilities, EventStorePort
 
 
-class _ListStore(BaseEventStore):
-    """A concrete ``BaseEventStore`` backed by a preloaded list of raw dicts.
+class _ListStore(EventStorePort):
+    """An ``EventStorePort`` backed by a preloaded list of raw dicts.
 
     Only ``$all`` reads are implemented (that is all ``verify`` uses), and they
     page by ``global_position`` exactly like the real adapters, so the iterator's
@@ -119,7 +122,7 @@ def test_clean_store_reports_no_violations():
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is True
     assert report.violations == ()
@@ -128,7 +131,7 @@ def test_clean_store_reports_no_violations():
 
 
 def test_empty_store_is_clean():
-    report = _ListStore([]).verify()
+    report = verify(_ListStore([]))
 
     assert report.ok is True
     assert report.message_count == 0
@@ -143,12 +146,12 @@ def test_duplicate_message_id_is_flagged():
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is False
     assert len(report.violations) == 1
     violation = report.violations[0]
-    assert violation.kind == BaseEventStore.VERIFY_DUPLICATE_MESSAGE_ID
+    assert violation.kind == ViolationKind.DUPLICATE_MESSAGE_ID
     assert violation.stream == "test::user-abc"
     assert violation.position == 1
     assert "dup" in violation.detail
@@ -162,12 +165,12 @@ def test_position_gap_names_stream_and_missing_position():
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is False
     assert len(report.violations) == 1
     violation = report.violations[0]
-    assert violation.kind == BaseEventStore.VERIFY_POSITION_GAP
+    assert violation.kind == ViolationKind.POSITION_GAP
     assert violation.stream == "test::user-abc"
     assert violation.position == 2
     assert "expected 1" in violation.detail
@@ -176,10 +179,10 @@ def test_position_gap_names_stream_and_missing_position():
 def test_position_gap_from_base_is_flagged():
     store = _ListStore([_msg(1, "test::user-abc", 3)])  # first message not at 0
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is False
-    assert report.violations[0].kind == BaseEventStore.VERIFY_POSITION_GAP
+    assert report.violations[0].kind == ViolationKind.POSITION_GAP
     assert "expected 0" in report.violations[0].detail
 
 
@@ -193,11 +196,11 @@ def test_non_monotonic_global_position_is_flagged():
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is False
     kinds = [v.kind for v in report.violations]
-    assert BaseEventStore.VERIFY_NON_MONOTONIC_GLOBAL_POSITION in kinds
+    assert ViolationKind.NON_MONOTONIC_GLOBAL_POSITION in kinds
 
 
 def test_snapshot_ahead_of_stream_head_is_flagged():
@@ -209,12 +212,12 @@ def test_snapshot_ahead_of_stream_head_is_flagged():
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is False
     assert len(report.violations) == 1
     violation = report.violations[0]
-    assert violation.kind == BaseEventStore.VERIFY_SNAPSHOT_AHEAD_OF_STREAM
+    assert violation.kind == ViolationKind.SNAPSHOT_AHEAD_OF_STREAM
     assert violation.stream == "test::user:snapshot-abc"
     assert violation.position is None
     assert "test::user-abc" in violation.detail
@@ -229,7 +232,7 @@ def test_snapshot_at_stream_head_is_clean():
         ]
     )
 
-    assert store.verify().ok is True
+    assert verify(store).ok is True
 
 
 def test_snapshot_without_aggregate_stream_is_flagged():
@@ -237,10 +240,10 @@ def test_snapshot_without_aggregate_stream_is_flagged():
     # non-negative _version is ahead.
     store = _ListStore([_msg(1, "test::user:snapshot-orphan", 0, data={"_version": 0})])
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is False
-    assert report.violations[0].kind == BaseEventStore.VERIFY_SNAPSHOT_AHEAD_OF_STREAM
+    assert report.violations[0].kind == ViolationKind.SNAPSHOT_AHEAD_OF_STREAM
 
 
 def test_snapshot_with_non_int_version_is_flagged_malformed():
@@ -253,11 +256,11 @@ def test_snapshot_with_non_int_version_is_flagged_malformed():
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is False
     assert len(report.violations) == 1
-    assert report.violations[0].kind == BaseEventStore.VERIFY_MALFORMED_SNAPSHOT
+    assert report.violations[0].kind == ViolationKind.MALFORMED_SNAPSHOT
     assert report.violations[0].stream == "test::user:snapshot-abc"
 
 
@@ -269,10 +272,10 @@ def test_snapshot_with_non_dict_data_is_flagged_malformed():
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is False
-    assert report.violations[0].kind == BaseEventStore.VERIFY_MALFORMED_SNAPSHOT
+    assert report.violations[0].kind == ViolationKind.MALFORMED_SNAPSHOT
 
 
 def test_snapshot_with_bool_version_is_flagged_malformed():
@@ -285,10 +288,10 @@ def test_snapshot_with_bool_version_is_flagged_malformed():
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is False
-    assert report.violations[0].kind == BaseEventStore.VERIFY_MALFORMED_SNAPSHOT
+    assert report.violations[0].kind == ViolationKind.MALFORMED_SNAPSHOT
 
 
 def test_most_recent_snapshot_wins_for_head_check():
@@ -305,7 +308,7 @@ def test_most_recent_snapshot_wins_for_head_check():
         ]
     )
 
-    assert store.verify().ok is True
+    assert verify(store).ok is True
 
 
 def test_latest_snapshot_ahead_is_flagged_even_after_a_clean_earlier_one():
@@ -322,10 +325,10 @@ def test_latest_snapshot_ahead_is_flagged_even_after_a_clean_earlier_one():
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is False
-    assert report.violations[0].kind == BaseEventStore.VERIFY_SNAPSHOT_AHEAD_OF_STREAM
+    assert report.violations[0].kind == ViolationKind.SNAPSHOT_AHEAD_OF_STREAM
 
 
 def test_multiple_violations_accumulate_in_one_report():
@@ -343,14 +346,14 @@ def test_multiple_violations_accumulate_in_one_report():
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is False
     kinds = sorted(v.kind for v in report.violations)
     assert kinds == [
-        BaseEventStore.VERIFY_DUPLICATE_MESSAGE_ID,
-        BaseEventStore.VERIFY_POSITION_GAP,
-        BaseEventStore.VERIFY_SNAPSHOT_AHEAD_OF_STREAM,
+        ViolationKind.DUPLICATE_MESSAGE_ID,
+        ViolationKind.POSITION_GAP,
+        ViolationKind.SNAPSHOT_AHEAD_OF_STREAM,
     ]
     assert report.message_count == 5
     assert report.stream_count == 3
@@ -362,14 +365,14 @@ def test_iterator_pages_across_batches():
     messages = [_msg(gp, "test::user-abc", gp - 1) for gp in range(1, 51)]
     store = _ListStore(messages)
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is True
     assert report.message_count == 50
 
     # Force multiple pages with a tiny batch size and confirm every message is
     # yielded exactly once, in order.
-    seen = [m["global_position"] for m in store._iter_all_messages(batch_size=7)]
+    seen = [m["global_position"] for m in _iter_all_messages(store, batch_size=7)]
     assert seen == list(range(1, 51))
 
 
@@ -380,7 +383,7 @@ def test_iterator_pages_across_sparse_global_positions():
     gps = [1, 8, 9, 40, 41, 300, 301, 999]
     store = _ListStore([_msg(gp, "test::user-abc", i) for i, gp in enumerate(gps)])
 
-    seen = [m["global_position"] for m in store._iter_all_messages(batch_size=3)]
+    seen = [m["global_position"] for m in _iter_all_messages(store, batch_size=3)]
 
     assert seen == gps
 
@@ -399,14 +402,14 @@ def test_messages_missing_required_field_are_flagged_malformed():
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is False
     assert report.message_count == 2
     kinds = [v.kind for v in report.violations]
     assert kinds == [
-        BaseEventStore.VERIFY_MALFORMED_MESSAGE,
-        BaseEventStore.VERIFY_MALFORMED_MESSAGE,
+        ViolationKind.MALFORMED_MESSAGE,
+        ViolationKind.MALFORMED_MESSAGE,
     ]
     assert "position" in report.violations[0].detail
     assert "stream_name" in report.violations[1].detail
@@ -423,13 +426,13 @@ def test_malformed_row_still_reports_non_monotonic_global_position():
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is False
     kinds = sorted(v.kind for v in report.violations)
     assert kinds == [
-        BaseEventStore.VERIFY_MALFORMED_MESSAGE,
-        BaseEventStore.VERIFY_NON_MONOTONIC_GLOBAL_POSITION,
+        ViolationKind.MALFORMED_MESSAGE,
+        ViolationKind.NON_MONOTONIC_GLOBAL_POSITION,
     ]
 
 
@@ -443,11 +446,11 @@ def test_non_monotonic_violation_is_reported_before_the_malformed_one():
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert [v.kind for v in report.violations] == [
-        BaseEventStore.VERIFY_NON_MONOTONIC_GLOBAL_POSITION,
-        BaseEventStore.VERIFY_MALFORMED_MESSAGE,
+        ViolationKind.NON_MONOTONIC_GLOBAL_POSITION,
+        ViolationKind.MALFORMED_MESSAGE,
     ]
 
 
@@ -459,11 +462,11 @@ def test_duplicate_id_is_reported_before_the_position_gap_on_one_row():
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert [v.kind for v in report.violations] == [
-        BaseEventStore.VERIFY_DUPLICATE_MESSAGE_ID,
-        BaseEventStore.VERIFY_POSITION_GAP,
+        ViolationKind.DUPLICATE_MESSAGE_ID,
+        ViolationKind.POSITION_GAP,
     ]
 
 
@@ -483,13 +486,13 @@ def test_message_with_null_data_is_flagged_malformed(missing_key):
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is False
     assert report.message_count == 3
     assert len(report.violations) == 1
     violation = report.violations[0]
-    assert violation.kind == BaseEventStore.VERIFY_MALFORMED_MESSAGE
+    assert violation.kind == ViolationKind.MALFORMED_MESSAGE
     assert violation.stream == "test::user-abc"
     assert violation.position == 1
     assert violation.detail == "Message data is NULL."
@@ -511,12 +514,12 @@ def test_message_with_non_object_data_is_flagged_malformed(data, type_name):
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is False
     assert len(report.violations) == 1
     violation = report.violations[0]
-    assert violation.kind == BaseEventStore.VERIFY_MALFORMED_MESSAGE
+    assert violation.kind == ViolationKind.MALFORMED_MESSAGE
     assert violation.stream == "test::user-abc"
     assert violation.position == 1
     assert violation.detail == f"Message data is a {type_name}, not an object."
@@ -532,7 +535,7 @@ def test_message_with_empty_dict_data_is_clean():
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert report.ok is True
     assert report.violations == ()
@@ -546,11 +549,9 @@ def test_snapshot_with_null_data_is_reported_only_as_malformed_snapshot():
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
-    assert [v.kind for v in report.violations] == [
-        BaseEventStore.VERIFY_MALFORMED_SNAPSHOT
-    ]
+    assert [v.kind for v in report.violations] == [ViolationKind.MALFORMED_SNAPSHOT]
 
 
 def test_row_missing_position_with_null_data_reports_only_the_missing_field():
@@ -565,19 +566,48 @@ def test_row_missing_position_with_null_data_reports_only_the_missing_field():
         ]
     )
 
-    report = store.verify()
+    report = verify(store)
 
     assert len(report.violations) == 1
     violation = report.violations[0]
-    assert violation.kind == BaseEventStore.VERIFY_MALFORMED_MESSAGE
+    assert violation.kind == ViolationKind.MALFORMED_MESSAGE
     assert "position" in violation.detail
     assert "NULL" not in violation.detail
 
 
 def test_report_violations_is_an_immutable_tuple():
-    violation = IntegrityViolation(kind="x", stream=None, position=None, detail="d")
+    violation = IntegrityViolation(
+        kind=ViolationKind.POSITION_GAP, stream=None, position=None, detail="d"
+    )
     # A list passed at construction is stored as a tuple, so a caller cannot
     # append to a report after the fact.
     report = IntegrityReport(message_count=1, stream_count=0, violations=[violation])
     assert isinstance(report.violations, tuple)
     assert not hasattr(report.violations, "append")
+
+
+@pytest.mark.parametrize(
+    "kind, value",
+    [
+        (ViolationKind.DUPLICATE_MESSAGE_ID, "duplicate_message_id"),
+        (ViolationKind.POSITION_GAP, "position_gap"),
+        (ViolationKind.NON_MONOTONIC_GLOBAL_POSITION, "non_monotonic_global_position"),
+        (ViolationKind.SNAPSHOT_AHEAD_OF_STREAM, "snapshot_ahead_of_stream"),
+        (ViolationKind.MALFORMED_MESSAGE, "malformed_message"),
+        (ViolationKind.MALFORMED_SNAPSHOT, "malformed_snapshot"),
+    ],
+)
+def test_violation_kind_values_are_the_wire_tokens(kind, value):
+    assert kind.value == value
+
+
+def test_violation_kind_has_exactly_the_six_kinds():
+    assert len(ViolationKind) == 6
+
+
+def test_report_json_writes_the_kind_as_its_plain_string():
+    report = verify(_ListStore([_msg(1, "test::user-abc", 3)]))
+
+    payload = json.loads(json.dumps(report.as_dict()))
+
+    assert payload["violations"][0]["kind"] == "position_gap"

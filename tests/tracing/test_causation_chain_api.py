@@ -1,10 +1,10 @@
-"""Tests for the causation chain traversal API on BaseEventStore.
+"""Tests for the causation chain traversal API on the `EventStore` service.
 
 Verifies:
 1. ``trace_causation()`` walks UP the chain from a message to the root.
 2. ``trace_effects()`` walks DOWN the chain from a message to find effects.
 3. ``build_causation_tree()`` builds a full tree for a correlation ID.
-4. Static helper extractors handle valid and malformed metadata.
+4. The metadata extractors handle valid and malformed metadata.
 5. Edge cases: malformed Messages, broken causation links, malformed raw data.
 """
 
@@ -13,7 +13,8 @@ from uuid import uuid4
 
 import pytest
 
-from protean.port.event_store import BaseEventStore, CausationNode
+from protean.infra import causation
+from protean.infra.causation import CausationNode
 from protean.utils.eventing import Message
 from tests.tracing.elements import (
     ConfirmOrder,
@@ -86,7 +87,7 @@ class TestTraceCausation:
         commands = _read_commands(test_domain, order_id)
         root_cmd = commands[0]
 
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         chain = store.trace_causation(root_cmd.metadata.headers.id)
 
         assert len(chain) == 1
@@ -103,7 +104,7 @@ class TestTraceCausation:
         events = _read_events(test_domain, order_id)
         commands = _read_commands(test_domain, order_id)
 
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         chain = store.trace_causation(events[0].metadata.headers.id)
 
         # Chain should be: PlaceOrder -> OrderPlaced
@@ -120,7 +121,7 @@ class TestTraceCausation:
         )
 
         events = _read_events(test_domain, order_id)
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         chain = store.trace_causation(events[0].metadata.headers.id)
 
         # First message should be the root (no causation_id)
@@ -137,7 +138,7 @@ class TestTraceCausation:
         )
 
         events = _read_events(test_domain, order_id)
-        store = test_domain.event_store.store
+        store = test_domain.event_store
 
         # Pass Message object instead of string
         chain = store.trace_causation(events[0])
@@ -146,7 +147,7 @@ class TestTraceCausation:
     @pytest.mark.eventstore
     def test_unknown_message_id_raises_value_error(self, test_domain):
         """Nonexistent message ID raises ValueError."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         with pytest.raises(ValueError, match="not found in event store"):
             store.trace_causation("nonexistent-message-id")
 
@@ -168,7 +169,7 @@ class TestTraceEffects:
         )
 
         commands = _read_commands(test_domain, order_id)
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         effects = store.trace_effects(commands[0].metadata.headers.id)
 
         # At minimum, OrderPlaced should be an effect of PlaceOrder
@@ -187,7 +188,7 @@ class TestTraceEffects:
         events = _read_events(test_domain, order_id)
         # OrderPlaced has no event handler registered (no auto-confirm here)
         # so it should have no effects
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         effects = store.trace_effects(events[0].metadata.headers.id)
 
         assert effects == []
@@ -201,7 +202,7 @@ class TestTraceEffects:
         )
 
         commands = _read_commands(test_domain, order_id)
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         direct = store.trace_effects(commands[0].metadata.headers.id, recursive=False)
 
         # Direct children of PlaceOrder command = the events it raised
@@ -224,7 +225,7 @@ class TestTraceEffects:
 
         # Get all commands and check effects of the first one
         commands = _read_commands(test_domain, order_id)
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         effects = store.trace_effects(commands[0].metadata.headers.id)
 
         # Verify ordering by checking global_positions are non-decreasing
@@ -245,7 +246,7 @@ class TestTraceEffects:
         )
 
         commands = _read_commands(test_domain, order_id)
-        store = test_domain.event_store.store
+        store = test_domain.event_store
 
         # Pass Message object
         effects = store.trace_effects(commands[0])
@@ -254,7 +255,7 @@ class TestTraceEffects:
     @pytest.mark.eventstore
     def test_unknown_message_id_raises_value_error(self, test_domain):
         """Nonexistent message ID raises ValueError."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         with pytest.raises(ValueError, match="not found in event store"):
             store.trace_effects("nonexistent-message-id")
 
@@ -287,7 +288,7 @@ class TestTraceEffectsWithChain:
         )
 
         commands = _read_commands(test_domain, order_id)
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         effects = store.trace_effects(commands[0].metadata.headers.id)
 
         effect_types = [m.metadata.headers.type for m in effects]
@@ -313,7 +314,7 @@ class TestBuildCausationTree:
             correlation_id=correlation_id,
         )
 
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         root = store.build_causation_tree(correlation_id)
 
         assert root is not None
@@ -334,7 +335,7 @@ class TestBuildCausationTree:
             correlation_id=correlation_id,
         )
 
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         root = store.build_causation_tree(correlation_id)
 
         assert root is not None
@@ -346,7 +347,7 @@ class TestBuildCausationTree:
     @pytest.mark.eventstore
     def test_returns_none_for_unknown_correlation_id(self, test_domain):
         """build_causation_tree returns None for nonexistent correlation ID."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         result = store.build_causation_tree("nonexistent-correlation-id")
         assert result is None
 
@@ -365,7 +366,7 @@ class TestBuildCausationTree:
             correlation_id=correlation_id,
         )
 
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         root = store.build_causation_tree(correlation_id)
 
         assert root is not None
@@ -391,7 +392,7 @@ class TestBuildCausationTree:
             correlation_id=correlation_id,
         )
 
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         root = store.build_causation_tree(correlation_id)
 
         assert root is not None
@@ -408,47 +409,45 @@ class TestBuildCausationTree:
 
 
 class TestHelperExtractors:
-    """Tests for the static metadata extraction helpers on BaseEventStore."""
+    """Tests for the metadata extraction helpers in ``protean.infra.causation``."""
 
     def test_extract_message_id_valid(self, test_domain):
         """Extracts headers.id from a well-formed raw message."""
 
         msg = {"metadata": {"headers": {"id": "test-msg-123"}}}
-        assert BaseEventStore._extract_message_id(msg) == "test-msg-123"
+        assert causation._extract_message_id(msg) == "test-msg-123"
 
     def test_extract_message_id_missing_metadata(self, test_domain):
-        assert BaseEventStore._extract_message_id({}) is None
-        assert BaseEventStore._extract_message_id({"metadata": None}) is None
+        assert causation._extract_message_id({}) is None
+        assert causation._extract_message_id({"metadata": None}) is None
 
     def test_extract_message_id_missing_headers(self, test_domain):
-        assert BaseEventStore._extract_message_id({"metadata": {}}) is None
-        assert (
-            BaseEventStore._extract_message_id({"metadata": {"headers": None}}) is None
-        )
+        assert causation._extract_message_id({"metadata": {}}) is None
+        assert causation._extract_message_id({"metadata": {"headers": None}}) is None
 
     def test_extract_causation_id_valid(self, test_domain):
         msg = {"metadata": {"domain": {"causation_id": "parent-123"}}}
-        assert BaseEventStore._extract_causation_id(msg) == "parent-123"
+        assert causation._extract_causation_id(msg) == "parent-123"
 
     def test_extract_causation_id_none_value(self, test_domain):
         msg = {"metadata": {"domain": {"causation_id": None}}}
-        assert BaseEventStore._extract_causation_id(msg) is None
+        assert causation._extract_causation_id(msg) is None
 
     def test_extract_correlation_id_valid(self, test_domain):
         msg = {"metadata": {"domain": {"correlation_id": "corr-abc"}}}
-        assert BaseEventStore._extract_correlation_id(msg) == "corr-abc"
+        assert causation._extract_correlation_id(msg) == "corr-abc"
 
     def test_extract_from_malformed_metadata(self, test_domain):
         # metadata is not a dict
         msg = {"metadata": "not-a-dict"}
-        assert BaseEventStore._extract_message_id(msg) is None
-        assert BaseEventStore._extract_causation_id(msg) is None
-        assert BaseEventStore._extract_correlation_id(msg) is None
+        assert causation._extract_message_id(msg) is None
+        assert causation._extract_causation_id(msg) is None
+        assert causation._extract_correlation_id(msg) is None
 
         # domain is not a dict
         msg2 = {"metadata": {"domain": "not-a-dict"}}
-        assert BaseEventStore._extract_causation_id(msg2) is None
-        assert BaseEventStore._extract_correlation_id(msg2) is None
+        assert causation._extract_causation_id(msg2) is None
+        assert causation._extract_correlation_id(msg2) is None
 
 
 # ---------------------------------------------------------------------------
@@ -462,24 +461,24 @@ class TestResolveAndLoadGroupEdgeCases:
     @pytest.mark.eventstore
     def test_message_with_no_headers_raises(self, test_domain):
         """A Message with no metadata raises ValueError."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         msg = MagicMock(spec=Message)
         msg.metadata = None
 
         with pytest.raises(ValueError, match="Message has no headers.id"):
-            store._resolve_and_load_group(msg)
+            causation._resolve_and_load_group(store.store, msg)
 
     @pytest.mark.eventstore
     def test_message_with_no_correlation_id_returns_empty_group(self, test_domain):
         """A Message with headers but no domain returns empty group."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         msg = MagicMock(spec=Message)
         msg.metadata = MagicMock()
         msg.metadata.headers = MagicMock()
         msg.metadata.headers.id = "some-msg-id"
         msg.metadata.domain = None
 
-        mid, group = store._resolve_and_load_group(msg)
+        mid, group = causation._resolve_and_load_group(store.store, msg)
         assert mid == "some-msg-id"
         assert group == []
 
@@ -507,7 +506,7 @@ class TestTraceCausationEdgeCases:
         )
 
         events = _read_events(test_domain, order_id)
-        store = test_domain.event_store.store
+        store = test_domain.event_store
 
         # The event's causation_id points to the command.
         # The command's causation_id is None, which exits the while loop
@@ -522,7 +521,7 @@ class TestTraceCausationEdgeCases:
     def test_message_with_no_correlation_returns_only_self(self, test_domain):
         """A Message object with no domain metadata returns empty group,
         leading to an empty chain."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         msg = MagicMock(spec=Message)
         msg.metadata = MagicMock()
         msg.metadata.headers = MagicMock()
@@ -536,11 +535,11 @@ class TestTraceCausationEdgeCases:
     @pytest.mark.eventstore
     def test_group_member_with_no_headers_id_skipped_in_lookup(self, test_domain):
         """A group member with no headers.id is skipped in by_id."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
 
-        original = store._resolve_and_load_group
+        original = causation._resolve_and_load_group
 
-        def _patched(message_id):
+        def _patched(adapter, message_id):
             return "target-msg", [
                 # A valid root message
                 {
@@ -559,13 +558,13 @@ class TestTraceCausationEdgeCases:
                 },
             ]
 
-        store._resolve_and_load_group = _patched
+        causation._resolve_and_load_group = _patched
         try:
             chain = store.trace_causation("target-msg")
             # Should find the root message but skip the malformed one
             assert len(chain) == 1
         finally:
-            store._resolve_and_load_group = original
+            causation._resolve_and_load_group = original
 
 
 # ---------------------------------------------------------------------------
@@ -579,11 +578,11 @@ class TestTraceEffectsEdgeCases:
     @pytest.mark.eventstore
     def test_child_with_no_headers_id_skipped_in_bfs(self, test_domain):
         """A child with no headers.id is skipped during BFS."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
 
-        original = store._resolve_and_load_group
+        original = causation._resolve_and_load_group
 
-        def _patched(message_id):
+        def _patched(adapter, message_id):
             return "root-cmd", [
                 {
                     "type": "RootCmd",
@@ -609,13 +608,13 @@ class TestTraceEffectsEdgeCases:
                 },
             ]
 
-        store._resolve_and_load_group = _patched
+        causation._resolve_and_load_group = _patched
         try:
             effects = store.trace_effects("root-cmd")
             # The child has no headers.id so it's skipped
             assert effects == []
         finally:
-            store._resolve_and_load_group = original
+            causation._resolve_and_load_group = original
 
 
 # ---------------------------------------------------------------------------
@@ -628,11 +627,11 @@ class TestBuildCausationTreeEdgeCases:
 
     def test_tree_with_malformed_metadata_string(self, test_domain):
         """The tree handles metadata that is a string, not a dict."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
 
-        # Monkey-patch _load_correlation_group to return malformed data
-        original = store._load_correlation_group
-        store._load_correlation_group = lambda cid: [
+        # Monkey-patch load_correlation_group to return malformed data
+        original = causation.load_correlation_group
+        causation.load_correlation_group = lambda adapter, cid: [
             {
                 "type": "MalformedEvent",
                 "stream_name": "test-stream",
@@ -648,14 +647,14 @@ class TestBuildCausationTreeEdgeCases:
             assert root.message_type == "MalformedEvent"
             assert root.kind == "?"
         finally:
-            store._load_correlation_group = original
+            causation.load_correlation_group = original
 
     def test_tree_with_malformed_headers_string(self, test_domain):
         """The tree handles headers that is a string, not a dict."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
 
-        original = store._load_correlation_group
-        store._load_correlation_group = lambda cid: [
+        original = causation.load_correlation_group
+        causation.load_correlation_group = lambda adapter, cid: [
             {
                 "type": "MalformedEvent",
                 "stream_name": "test-stream",
@@ -670,14 +669,14 @@ class TestBuildCausationTreeEdgeCases:
             assert root.message_id == "?"
             assert root.kind == "EVENT"
         finally:
-            store._load_correlation_group = original
+            causation.load_correlation_group = original
 
     def test_tree_with_malformed_domain_string(self, test_domain):
         """The tree handles domain that is a string, not a dict."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
 
-        original = store._load_correlation_group
-        store._load_correlation_group = lambda cid: [
+        original = causation.load_correlation_group
+        causation.load_correlation_group = lambda adapter, cid: [
             {
                 "type": "MalformedEvent",
                 "stream_name": "test-stream",
@@ -695,15 +694,15 @@ class TestBuildCausationTreeEdgeCases:
             assert root.message_id == "msg-123"
             assert root.kind == "?"  # Falls back to "?" since domain is malformed
         finally:
-            store._load_correlation_group = original
+            causation.load_correlation_group = original
 
     def test_build_tree_with_message_missing_headers_id(self, test_domain):
         """Message with no headers.id in group: not added to by_id, and skipped
         as a child because _extract_message_id returns None (falsy)."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
 
-        original = store._load_correlation_group
-        store._load_correlation_group = lambda cid: [
+        original = causation.load_correlation_group
+        causation.load_correlation_group = lambda adapter, cid: [
             {
                 "type": "GoodEvent",
                 "stream_name": "test-stream",
@@ -738,12 +737,12 @@ class TestBuildCausationTreeEdgeCases:
             # in the node builder. The root has no children.
             assert len(root.children) == 0
         finally:
-            store._load_correlation_group = original
+            causation.load_correlation_group = original
 
     def test_root_is_the_earliest_message_caused_outside_the_group(self, test_domain):
         """When every message has a causation ID, the root is the earliest
         message whose causation ID points outside the group."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
 
         def raw(message_id, causation_id, position):
             return {
@@ -756,8 +755,8 @@ class TestBuildCausationTreeEdgeCases:
                 },
             }
 
-        original = store._load_correlation_group
-        store._load_correlation_group = lambda cid: [
+        original = causation.load_correlation_group
+        causation.load_correlation_group = lambda adapter, cid: [
             raw("late", "outside-1", 5),
             raw("early", "outside-2", 3),
             raw("child", "early", 4),
@@ -769,12 +768,12 @@ class TestBuildCausationTreeEdgeCases:
             assert root.message_id == "early"
             assert [child.message_id for child in root.children] == ["child"]
         finally:
-            store._load_correlation_group = original
+            causation.load_correlation_group = original
 
     def test_causation_cycle_roots_at_the_first_message(self, test_domain):
         """When the causation IDs form a cycle inside the group, the root is
         the first message of the group and the cycle stops at it."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
 
         def raw(message_id, causation_id, position):
             return {
@@ -787,8 +786,8 @@ class TestBuildCausationTreeEdgeCases:
                 },
             }
 
-        original = store._load_correlation_group
-        store._load_correlation_group = lambda cid: [
+        original = causation.load_correlation_group
+        causation.load_correlation_group = lambda adapter, cid: [
             raw("first", "second", 2),
             raw("second", "first", 1),
         ]
@@ -800,4 +799,4 @@ class TestBuildCausationTreeEdgeCases:
             assert [child.message_id for child in root.children] == ["second"]
             assert root.children[0].children == []
         finally:
-            store._load_correlation_group = original
+            causation.load_correlation_group = original
