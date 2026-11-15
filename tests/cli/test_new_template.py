@@ -1,6 +1,7 @@
 """Comprehensive tests for protean new template generation."""
 
 import re
+from fnmatch import fnmatch
 from pathlib import Path
 
 import pytest
@@ -827,3 +828,28 @@ class TestSqlProjectReadme:
         assert "## Testing" in readme
         assert "Schema Migrations" not in readme
         assert "make db-" not in readme
+
+    @pytest.mark.parametrize("database", SQL_DATABASES)
+    def test_says_how_to_restore_the_tables_after_a_test_run(self, tmp_path, database):
+        readme = (_render(tmp_path, f"database={database}") / "README.md").read_text(
+            encoding="utf-8"
+        )
+        section = readme[readme.index("## Schema Migrations") :]
+        section = section[: section.index("\n## ", 1)]
+
+        assert "drop its tables when they finish" in section
+        assert "Run `uv run protean db setup` to create the tables again." in section
+
+
+class TestGitignore:
+    def test_ignores_the_sqlite_database_file(self, tmp_path):
+        project = _render(tmp_path, "database=sqlite")
+        patterns = (project / ".gitignore").read_text(encoding="utf-8").splitlines()
+        domain_toml = (project / "src" / "shop" / "domain.toml").read_text(
+            encoding="utf-8"
+        )
+        database_file = re.search(r"sqlite:///\./([\w.]+)", domain_toml).group(1)
+
+        assert database_file == "shop.db"
+        assert any(fnmatch(database_file, pattern) for pattern in patterns)
+        assert any(fnmatch(f"{database_file}-journal", pattern) for pattern in patterns)

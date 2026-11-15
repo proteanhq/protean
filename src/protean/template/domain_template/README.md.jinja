@@ -433,7 +433,11 @@ The `migrations/` folder holds the Alembic setup for the `default` database. It 
    make db-check
    ```
 
-Repeat these steps whenever you change a model. Once `migrations/versions/` holds a migration, CI runs `protean db upgrade` and then `protean db check`, and fails when a model change has no migration.
+Repeat these steps whenever you change a model.
+
+The tests use the same database as the app and drop its tables when they finish. Alembic's record of the applied migration stays, so after a test run `make db-upgrade` changes nothing and `make db-check` reports the missing tables. Run `uv run protean db setup` to create the tables again.
+
+Once `migrations/versions/` holds a migration, CI runs `protean db upgrade` and then `protean db check`, and fails when a model change has no migration.
 {%- endif %}
 
 ## Configuration
