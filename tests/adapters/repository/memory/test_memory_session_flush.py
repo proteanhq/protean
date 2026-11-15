@@ -181,8 +181,8 @@ def test_close_after_a_passed_flush_releases_the_lock(test_domain):
 
 def test_no_commit_lands_between_the_flush_and_the_event_append(test_domain):
     """A commit on another thread cannot land between a Unit of Work's flush
-    and its commit, so the Unit of Work never fails after its event is
-    stored."""
+    and its commit, so that commit cannot cause a version conflict after the
+    Unit of Work's event is stored."""
     user = User(id="u1", name="a")
     test_domain.repository_for(User).add(user)
     identifier = _seed(test_domain)
