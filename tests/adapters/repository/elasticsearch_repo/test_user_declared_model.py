@@ -8,6 +8,7 @@ from protean.adapters.repository.elasticsearch import ElasticsearchModel
 from protean.core.aggregate import BaseAggregate
 from protean.core.database_model import BaseDatabaseModel
 from protean.fields import String
+from tests.shared import provider_adapter
 
 
 class Author(BaseAggregate):
@@ -29,8 +30,8 @@ def test_a_user_declared_model_round_trips_an_aggregate(test_domain):
     )
     test_domain.init(traverse=False)
 
-    provider = test_domain.providers["default"]
-    provider.create_schema()
+    adapter = provider_adapter(test_domain)
+    adapter.create_schema()
     try:
         model_cls = test_domain.repository_for(Author)._database_model
         assert issubclass(model_cls, ElasticsearchModel)
@@ -44,4 +45,4 @@ def test_a_user_declared_model_round_trips_an_aggregate(test_domain):
         assert restored.name == "Jane"
         assert restored.about == "Writes novels"
     finally:
-        provider.drop_schema()
+        adapter.drop_schema()
