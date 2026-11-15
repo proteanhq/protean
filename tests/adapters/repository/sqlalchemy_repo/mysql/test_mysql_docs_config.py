@@ -91,7 +91,7 @@ def test_a_documented_config_initializes_a_live_domain(snippet, tmp_path):
     provider = domain.providers["default"]
     try:
         assert isinstance(provider, MysqlProvider)
-        assert provider.is_alive()
+        assert provider.ping()
         # `mariadb+pymysql://` and `mysql+pymysql://` are one provider under two
         # dialect names, and the doc says which scheme selects which.
         assert provider._engine.dialect.name == (

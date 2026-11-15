@@ -5,11 +5,11 @@ import copy
 import json
 import typing
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime
 from itertools import count
 from threading import RLock
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
 from protean.core.database_model import BaseDatabaseModel
@@ -23,12 +23,23 @@ from protean.exceptions import (
 )
 from protean.infra.registry import providers
 from protean.port.dao import BaseDAO, BaseLookup, BoundedDeletePort
-from protean.port.provider import BaseProvider, DatabaseCapabilities
+from protean.port.provider import (
+    BaseProvider,
+    DatabaseCapabilities,
+    ProviderHealth,
+    ProviderPort,
+    RawQueryProviderPort,
+)
 from protean.utils import _fully_qualified_name, ensure_utc_aware, occ_trace
 from protean.utils.container import Options
 from protean.utils.globals import current_uow
 from protean.utils.query import F, Q
 from protean.utils.reflection import fields, id_field
+
+if TYPE_CHECKING:
+    from protean.core.entity import BaseEntity
+    from protean.core.projection import BaseProjection
+    from protean.domain import Domain
 
 
 class _ReverseCompare:
@@ -327,10 +338,10 @@ class MemorySession:
         pass
 
 
-class MemoryProvider(BaseProvider):
+class MemoryProvider(BaseProvider, RawQueryProviderPort):
     """Provider class for Dict Repositories"""
 
-    __database__ = "memory"
+    database_type = "memory"
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
@@ -349,12 +360,9 @@ class MemoryProvider(BaseProvider):
         return DatabaseCapabilities.IN_MEMORY | DatabaseCapabilities.BOUNDED_DELETE
 
     def __init__(
-        self, name: str, domain: typing.Any, conn_info: dict[str, typing.Any]
+        self, name: str, domain: "Domain", config: Mapping[str, typing.Any]
     ) -> None:
-        """Initialize Provider with Connection/Adapter details"""
-
-        # In case of `MemoryProvider`, the `database` value will always be `memory`.
-        super().__init__(name, domain, conn_info)
+        super().__init__(name, domain, config)
 
         # Global in-memory store of dict data.
         self._databases: dict[str, dict[typing.Any, typing.Any]] = defaultdict(dict)
@@ -380,12 +388,16 @@ class MemoryProvider(BaseProvider):
         """Return the dictionary database object"""
         return MemorySession(self, new_connection=True)
 
-    def is_alive(self) -> bool:
-        """Check if the connection is alive"""
+    def ping(self) -> bool:
+        """Always `True`: the store lives in this process."""
         return True
 
-    def _data_reset(self) -> None:
-        """Reset data"""
+    def health(self) -> ProviderHealth:
+        """A health record without a pool: the memory store keeps none."""
+        return ProviderHealth(pool=None)
+
+    def clear(self) -> None:
+        """Remove every record and roll back the active Unit of Work, if any."""
         self._databases = defaultdict(dict)
         self._locks = defaultdict(RLock)
         self._counters = defaultdict(count)
@@ -394,14 +406,17 @@ class MemoryProvider(BaseProvider):
         if current_uow and current_uow.in_progress:
             current_uow.rollback()
 
-    def close(self) -> None:
-        """Close the provider and clean up resources.
+    def model_for(
+        self,
+        entity_cls: "type[BaseEntity | BaseProjection]",
+        model_cls: type[BaseDatabaseModel] | None = None,
+    ) -> type[BaseDatabaseModel]:
+        """The memory model for `entity_cls`, decorating `model_cls` when given."""
+        if model_cls is None:
+            return self._build_model(entity_cls)
+        return self._decorate_model(entity_cls, model_cls)
 
-        For MemoryProvider, this is a no-op since there are no persistent
-        connections or external resources to clean up.
-        """
-
-    def decorate_database_model_class(
+    def _decorate_model(
         self, entity_cls: type[typing.Any], database_model_cls: type[typing.Any]
     ) -> type[typing.Any]:
         cache_key = _fully_qualified_name(entity_cls)
@@ -439,9 +454,7 @@ class MemoryProvider(BaseProvider):
 
             return decorated_database_database_model_cls
 
-    def construct_database_model_class(
-        self, entity_cls: type[typing.Any]
-    ) -> type[typing.Any]:
+    def _build_model(self, entity_cls: type[typing.Any]) -> type[typing.Any]:
         """Return associated, fully-baked Model class"""
         database_model_cls = None
         cache_key = _fully_qualified_name(entity_cls)
@@ -467,11 +480,11 @@ class MemoryProvider(BaseProvider):
         # Set Entity Class as a class level attribute for the Model, to be able to reference later.
         return database_model_cls
 
-    def get_dao(
-        self, entity_cls: type[typing.Any], database_model_cls: type[typing.Any]
+    def dao_for(
+        self, entity_cls: type[typing.Any], model_cls: type[typing.Any]
     ) -> "DictDAO":
         """Return a DAO object configured with a live connection"""
-        return DictDAO(self.domain, self, entity_cls, database_model_cls)
+        return DictDAO(self.domain, self, entity_cls, model_cls)
 
     def _evaluate_lookup(
         self,
@@ -515,7 +528,7 @@ class MemoryProvider(BaseProvider):
 
         return results
 
-    def _raw(self, query: typing.Any, data: typing.Any = None) -> list[typing.Any]:
+    def raw(self, query: typing.Any, data: typing.Any = None) -> list[typing.Any]:
         """Run raw queries on the memory database.
 
         As an example of running ``raw`` queries on a Dict repository, we will run the query
@@ -549,12 +562,6 @@ class MemoryProvider(BaseProvider):
                 items.extend(list(input_db.values()))
 
         return items
-
-    def _create_database_artifacts(self) -> None:
-        """Dummy placeholder. Nothing to do."""
-
-    def _drop_database_artifacts(self) -> None:
-        """Dummy placeholder. Nothing to do."""
 
 
 def _order_key_part(value: typing.Any, is_desc: bool) -> tuple[typing.Any, ...]:
@@ -1071,7 +1078,7 @@ class DictDAO(BaseDAO, BoundedDeletePort):
 
         We will ignore the `data` parameter for this kind of repository.
         """
-        items = self.provider._raw(query, data)
+        items = self.provider.raw(query, data)
         return ResultSet(offset=1, limit=len(items), total=len(items), items=items)
 
     def has_table(self) -> bool:
@@ -1294,3 +1301,6 @@ def register() -> None:
     MemoryProvider is always available as it has no external dependencies.
     """
     providers.register("memory", "protean.adapters.repository.memory.MemoryProvider")
+
+
+_PORT_CHECK: type[ProviderPort] = MemoryProvider

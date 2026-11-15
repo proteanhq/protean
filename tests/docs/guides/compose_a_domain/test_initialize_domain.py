@@ -12,7 +12,7 @@ def test_init_connects_the_default_provider():
     example = load_example("guides/compose-a-domain/initialize-domain/001.py")
 
     assert "default" in example.domain.providers
-    assert example.domain.providers["default"].conn_info["provider"] == "memory"
+    assert example.domain.providers["default"].config["provider"] == "memory"
     assert example.domain.registry.elements == {"aggregates": [example.User]}
 
 
@@ -44,8 +44,8 @@ def test_sqlite_database_becomes_the_default_provider(tmp_path, monkeypatch):
     example = load_example("guides/compose-a-domain/017.py")
 
     provider = example.domain.providers["default"]
-    assert provider.conn_info["provider"] == "sqlite"
-    assert provider.conn_info["database_uri"] == "sqlite:///test.db"
+    assert provider.config["provider"] == "sqlite"
+    assert provider.config["database_uri"] == "sqlite:///test.db"
 
 
 def test_init_resolves_a_part_of_given_as_a_string():

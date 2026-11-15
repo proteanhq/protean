@@ -373,7 +373,7 @@ The generic test suite covers these areas:
 | `test_complex_fields.py` | `basic_storage` | List, Dict, and nested field types |
 | `test_optimistic_locking.py` | `basic_storage` | Version-based concurrency control |
 | `test_provider.py` | `basic_storage` | Provider health checks and data reset |
-| `test_provider_lifecycle.py` | `basic_storage` | Provider init, close, is_alive |
+| `test_provider_lifecycle.py` | `basic_storage` | Provider init, close, ping |
 | `test_transactions.py` | `transactional` | Unit of Work commit/rollback |
 | `test_atomic_transactions.py` | `atomic_transactions` | ACID transaction guarantees |
 | `test_raw_queries.py` | `raw_queries` | Raw query execution |

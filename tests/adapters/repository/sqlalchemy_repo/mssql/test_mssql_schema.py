@@ -22,8 +22,8 @@ class TestMSSQLSchemaHandling:
         assert isinstance(provider, MssqlProvider)
         assert provider._metadata.schema == "dbo"
 
-    def test_custom_schema_configuration_via_conn_info(self):
-        """Test that custom schema can be configured via schema in conn_info"""
+    def test_custom_schema_configuration_via_config(self):
+        """Test that custom schema can be configured via schema in config"""
         domain = Domain("Test MSSQL Custom Schema")
         domain.config["databases"]["custom_schema"] = {
             "provider": "mssql",
@@ -98,13 +98,13 @@ class TestMSSQLSchemaHandling:
 
                 # Create the table
                 provider = domain.providers["default"]
-                provider._create_database_artifacts()
+                provider.create_schema()
 
                 # Now table should exist
                 assert dao.has_table()
 
                 # Clean up
-                provider._drop_database_artifacts()
+                provider.drop_schema()
             finally:
                 domain.providers["default"].close()
 
@@ -133,7 +133,7 @@ class TestMSSQLSchemaHandling:
             try:
                 # Create database artifacts
                 provider = domain.providers["default"]
-                provider._create_database_artifacts()
+                provider.create_schema()
 
                 # Verify table was created with custom name
                 inspector = inspect(provider._engine)
@@ -142,7 +142,7 @@ class TestMSSQLSchemaHandling:
                 assert "unique_mssql_custom_table" in tables
 
                 # Clean up
-                provider._drop_database_artifacts()
+                provider.drop_schema()
             finally:
                 domain.providers["default"].close()
 
@@ -172,9 +172,9 @@ class TestMSSQLSchemaHandling:
 
                 # Clean up any existing tables first
                 with contextlib.suppress(Exception):
-                    provider._drop_database_artifacts()  # Ignore if no tables exist
+                    provider.drop_schema()  # Ignore if no tables exist
 
-                provider._create_database_artifacts()
+                provider.create_schema()
 
                 # Create entity with JSON data
                 entity = MssqlJsonUniqueEntity(
@@ -195,7 +195,7 @@ class TestMSSQLSchemaHandling:
                 assert retrieved.tags == ["tag1", "tag2", "tag3"]
 
                 # Clean up
-                provider._drop_database_artifacts()
+                provider.drop_schema()
             finally:
                 domain.providers["default"].close()
 

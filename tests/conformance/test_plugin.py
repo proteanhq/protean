@@ -351,7 +351,7 @@ class TestResetAndClose:
     @pytest.mark.parametrize(
         "port, clear",
         [
-            ("database", "_data_reset"),
+            ("database", "clear"),
             ("broker", "_data_reset"),
             ("cache", "clear"),
             ("event_store", "_data_reset"),

@@ -115,7 +115,7 @@ class TestDegradedState:
         client = TestClient(app)
 
         for provider in domain.providers.values():
-            provider.is_alive = lambda: False
+            provider.ping = lambda: False
 
         response = client.get("/readyz")
         assert response.status_code == 503
@@ -164,7 +164,7 @@ class TestDegradedState:
             raise ConnectionError("db down")
 
         for provider in domain.providers.values():
-            provider.is_alive = _explode
+            provider.ping = _explode
 
         response = client.get("/readyz")
         assert response.status_code == 503

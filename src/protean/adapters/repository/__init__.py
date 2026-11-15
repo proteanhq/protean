@@ -122,7 +122,7 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
     def _initialize(self, connect: bool = True) -> None:
         """Read config file and initialize providers.
 
-        Each provider is checked with ``is_alive`` unless ``connect`` is False.
+        Each provider is checked with ``ping`` unless ``connect`` is False.
         """
         # Close existing providers before re-initializing to prevent
         # connection leaks (e.g., when domain.init() is called again).
@@ -135,16 +135,16 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
             if "default" not in configured_providers:
                 raise ConfigurationError("You must define a 'default' provider")
 
-            for provider_name, conn_info in configured_providers.items():
-                provider_type = conn_info.get("provider")
+            for provider_name, config in configured_providers.items():
+                provider_type = config.get("provider")
                 provider_cls = provider_registry.get(provider_type)
-                provider = provider_cls(provider_name, self.domain, conn_info)
+                provider = provider_cls(provider_name, self.domain, config)
 
                 # Initialize a connection to check if everything is ok
-                if connect and not provider.is_alive():
+                if connect and not provider.ping():
                     raise ConfigurationError(
                         "Could not connect to database at "
-                        f"{_without_password(conn_info['database_uri'])}"
+                        f"{_without_password(config['database_uri'])}"
                     )
 
                 provider_objects[provider_name] = provider
@@ -210,7 +210,7 @@ class Providers(collections.abc.MutableMapping[str, BaseProvider]):
                 f"Configured providers: {', '.join(configured) or 'none'}"
             )
         provider = self._providers[provider_name]
-        database = provider.__class__.__database__
+        database = provider.database_type
 
         aggregate_name = _fully_qualified_name(part_of)
 

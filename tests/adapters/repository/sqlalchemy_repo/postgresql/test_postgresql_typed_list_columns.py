@@ -47,7 +47,7 @@ def domain():
 
 def column_type(domain, aggregate_cls, attribute):
     provider = domain.providers["default"]
-    table = provider.construct_database_model_class(aggregate_cls).__table__
+    table = provider.model_for(aggregate_cls).__table__
     return table.c[attribute].type.compile(dialect=postgresql.dialect())
 
 

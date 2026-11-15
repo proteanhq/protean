@@ -87,12 +87,12 @@ def stub_dbapi():
 def table_for(aggregate_cls, provider_cls=MssqlProvider, uri=MSSQL_URI):
     """The SQLAlchemy ``Table`` ``provider_cls`` builds for ``aggregate_cls``."""
     domain = host_domain(aggregate_cls)
-    conn_info = {"provider": provider_cls.__database__, "database_uri": uri}
+    config = {"provider": provider_cls.database_type, "database_uri": uri}
     if provider_cls is MssqlProvider:
-        conn_info["module"] = stub_dbapi()
-    provider = provider_cls(name="sql", domain=domain, conn_info=conn_info)
+        config["module"] = stub_dbapi()
+    provider = provider_cls(name="sql", domain=domain, config=config)
     with domain.domain_context():
-        return provider.construct_database_model_class(aggregate_cls).__table__
+        return provider.model_for(aggregate_cls).__table__
 
 
 def sql_server_2016():

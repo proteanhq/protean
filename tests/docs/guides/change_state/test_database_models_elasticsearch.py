@@ -30,11 +30,11 @@ def index_mapping(module, aggregate_cls):
     with module.domain.domain_context():
         index = module.domain.repository_for(aggregate_cls)._database_model._index
         provider = module.domain.providers["default"]
-        provider._create_database_artifacts()
+        provider.create_schema()
         try:
             mapping = provider.get_connection().indices.get_mapping(index=index._name)
         finally:
-            provider._drop_database_artifacts()
+            provider.drop_schema()
     return index._name, mapping[index._name]["mappings"]["properties"]
 
 

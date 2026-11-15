@@ -60,7 +60,7 @@ class TestArrayLookupQueries:
         test_domain.register(Tagged)
         test_domain.init(traverse=False)
         provider = test_domain.providers["default"]
-        provider._create_database_artifacts()
+        provider.create_schema()
 
         repository = test_domain.repository_for(Tagged)
         repository.add(Tagged(name="a", tags=["red", "blue"]))

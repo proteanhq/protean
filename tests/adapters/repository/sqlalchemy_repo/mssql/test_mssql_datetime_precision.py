@@ -59,7 +59,7 @@ class TestDateTimePrecision:
             )
         try:
             with domain.domain_context():
-                provider._create_database_artifacts()
+                provider.create_schema()
 
             occurred_at = column_type(provider, table, "occurred_at")
             assert isinstance(occurred_at, mssql_dialect.DATETIME)

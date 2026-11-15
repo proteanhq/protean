@@ -60,7 +60,10 @@ class TestElasticsearchProvider:
         provider = test_domain.providers["default"]
 
         # Provider-level gate
-        with pytest.raises(NotSupportedError, match="does not support raw queries"):
+        with pytest.raises(
+            NotSupportedError,
+            match=r"'default' \(ESProvider\) does not support raw queries",
+        ):
             provider.raw("SELECT * FROM person")
 
         # QuerySet-level gate
@@ -76,7 +79,7 @@ class TestElasticsearchProvider:
         provider = test_domain.providers["default"]
 
         # Get the database model class for Person
-        person_model_cls = provider.construct_database_model_class(Person)
+        person_model_cls = provider.model_for(Person)
 
         # Verify that keyword fields are cached
         assert hasattr(person_model_cls, "_keyword_fields")
@@ -144,11 +147,11 @@ class CacheLeaderboard(BaseProjection):
 @pytest.mark.elasticsearch
 @pytest.mark.no_test_domain
 class TestCreateArtifactsEventSourcedFilter:
-    """Test that _create_database_artifacts skips event-sourced aggregates."""
+    """Test that create_schema skips event-sourced aggregates."""
 
     def test_create_artifacts_skips_event_sourced_aggregates(self):
         """Event-sourced aggregates use the event store, not ES indices.
-        _create_database_artifacts should skip them and their child entities."""
+        create_schema should skip them and their child entities."""
         domain = initialize_domain(name="ES-EventSourced-Test", root_path=__file__)
 
         # Register a regular aggregate and an event-sourced aggregate with entity
@@ -162,7 +165,7 @@ class TestCreateArtifactsEventSourcedFilter:
             conn = provider.get_connection()
 
             try:
-                provider._create_database_artifacts()
+                provider.create_schema()
 
                 # Person (regular aggregate) should have its index created
                 person_model = domain.repository_for(Person)._database_model
@@ -176,13 +179,13 @@ class TestCreateArtifactsEventSourcedFilter:
                 es_line_item_schema = provider.namespaced_schema_name("es_line_item")
                 assert not conn.indices.exists(index=es_line_item_schema)
             finally:
-                provider._drop_database_artifacts()
+                provider.drop_schema()
 
 
 @pytest.mark.elasticsearch
 @pytest.mark.no_test_domain
 class TestCreateArtifactsCacheBackedProjectionFilter:
-    """Test that _create_database_artifacts skips cache-backed projections."""
+    """Test that create_schema skips cache-backed projections."""
 
     def test_create_artifacts_skips_cache_backed_projection(self):
         """A cache-backed projection carries ``meta_.provider is None``. Before the
@@ -203,7 +206,7 @@ class TestCreateArtifactsCacheBackedProjectionFilter:
 
             try:
                 # Must not raise on the cache projection's ``None`` provider.
-                provider._create_database_artifacts()
+                provider.create_schema()
 
                 # Person (regular aggregate) should have its index created
                 person_model = domain.repository_for(Person)._database_model
@@ -218,10 +221,10 @@ class TestCreateArtifactsCacheBackedProjectionFilter:
                 # Data reset applies the same ownership gate: it must skip the
                 # cache-backed projection (no index to clear) and complete
                 # without raising for the owned aggregate.
-                provider._data_reset()
+                provider.clear()
                 assert conn.indices.exists(index=person_model._index._name)
             finally:
-                provider._drop_database_artifacts()
+                provider.drop_schema()
 
 
 def _base_urls(hosts, **options):
@@ -229,12 +232,12 @@ def _base_urls(hosts, **options):
 
     Building the provider creates the client and opens no connection.
     """
-    conn_info = {
+    config = {
         "provider": "elasticsearch",
         "database_uri": {"hosts": hosts},
         **options,
     }
-    provider = ESProvider("default", Domain(), conn_info)
+    provider = ESProvider("default", Domain(), config)
     return [node.base_url for node in provider._client.transport.node_pool.all()]
 
 
@@ -265,11 +268,11 @@ class TestElasticsearchHostNormalization:
         assert _base_urls(["localhost"], USE_SSL=True) == ["https://localhost:9200"]
 
     def test_credentials_are_kept_when_the_port_is_added(self):
-        conn_info = {
+        config = {
             "provider": "elasticsearch",
             "database_uri": {"hosts": ["http://elastic:secret@es"]},
         }
-        provider = ESProvider("default", Domain(), conn_info)
+        provider = ESProvider("default", Domain(), config)
 
         [node] = provider._client.transport.node_pool.all()
         # The client moves the credentials into an authorization header.

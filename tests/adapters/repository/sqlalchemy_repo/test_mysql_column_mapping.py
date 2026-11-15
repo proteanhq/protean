@@ -86,7 +86,7 @@ def mysql_provider(domain, uri=MYSQL_URI, **config):
     return MysqlProvider(
         name="mysql",
         domain=domain,
-        conn_info={"provider": "mysql", "database_uri": uri, **config},
+        config={"provider": "mysql", "database_uri": uri, **config},
     )
 
 
@@ -97,7 +97,7 @@ def table_for(
     domain = host_domain([aggregate_cls], indexes=indexes, identity_type=identity_type)
     provider = mysql_provider(domain, uri, **config)
     with domain.domain_context():
-        return provider.construct_database_model_class(aggregate_cls).__table__
+        return provider.model_for(aggregate_cls).__table__
 
 
 class Article(BaseAggregate):
@@ -147,7 +147,7 @@ class TestProviderConfiguration:
         assert args["connect_args"]["charset"] == "utf8mb4"
 
     def test_caller_connect_args_cannot_drop_the_charset(self):
-        """``_additional_engine_args`` overlays every unrecognised conn_info key
+        """``_additional_engine_args`` overlays every unrecognised config key
         onto the defaults, so a caller's own ``connect_args`` replaced this
         provider's dict wholesale and took ``charset`` with it — silently
         restoring the 4-byte-character failure the pin exists to prevent."""
@@ -163,7 +163,7 @@ class TestProviderConfiguration:
     def test_collation_is_not_forwarded_to_create_engine(self):
         """It is provider config, not a SQLAlchemy engine argument.
 
-        ``_additional_engine_args`` forwards every unrecognised ``conn_info``
+        ``_additional_engine_args`` forwards every unrecognised ``config``
         key to ``create_engine``, which rejects an unknown keyword, so a
         provider adding a config key has to exclude it explicitly.
         """
@@ -286,7 +286,7 @@ class TestKeyColumnGuards:
         domain = host_domain([Unbounded])
         provider = mysql_provider(domain)
         with domain.domain_context(), pytest.raises(IncorrectUsageError) as exc:
-            provider.construct_database_model_class(Unbounded)
+            provider.model_for(Unbounded)
 
         assert "slug" in str(exc.value)
         assert "max_length" in str(exc.value)
@@ -298,7 +298,7 @@ class TestKeyColumnGuards:
         domain = host_domain([TooWide])
         provider = mysql_provider(domain)
         with domain.domain_context(), pytest.raises(IncorrectUsageError) as exc:
-            provider.construct_database_model_class(TooWide)
+            provider.model_for(TooWide)
 
         assert "slug" in str(exc.value)
         assert "768" in str(exc.value)
@@ -328,7 +328,7 @@ class TestKeyColumnGuards:
         provider = mysql_provider(domain)
 
         with domain.domain_context(), pytest.raises(IncorrectUsageError) as exc:
-            provider.construct_database_model_class(Cart)
+            provider.model_for(Cart)
 
         assert "items" in str(exc.value)
         assert "BLOB" in str(exc.value)
@@ -349,7 +349,7 @@ class TestKeyColumnGuards:
         provider = mysql_provider(domain)
 
         with domain.domain_context():
-            table = provider.construct_database_model_class(Basket).__table__
+            table = provider.model_for(Basket).__table__
 
         assert isinstance(table.c["items"].type, sa_types.PickleType)
 
@@ -696,10 +696,10 @@ class TestDeclaredIndexKeyWidths:
         provider = PostgresqlProvider(
             name="postgresql",
             domain=domain,
-            conn_info={"provider": "postgresql", "database_uri": POSTGRES_URI},
+            config={"provider": "postgresql", "database_uri": POSTGRES_URI},
         )
         with domain.domain_context():
-            table = provider.construct_database_model_class(WideElsewhere).__table__
+            table = provider.model_for(WideElsewhere).__table__
 
         assert "ix_pg" in {index.name for index in table.indexes}
 
@@ -767,7 +767,7 @@ class TestJsonKeyColumns:
             with pytest.raises(IncorrectUsageError) as render_exc:
                 render_index_ddl(Cart, "mysql")
             with pytest.raises(IncorrectUsageError) as live_exc:
-                provider.construct_database_model_class(Cart)
+                provider.model_for(Cart)
 
         assert expected in str(render_exc.value)
         assert expected in str(live_exc.value)
@@ -798,8 +798,8 @@ class TestMappedColumnKeyWidths:
     def table_with_custom_model(aggregate_cls, model_cls, indexes):
         """The table built from a user-declared database model.
 
-        A custom model goes through ``decorate_database_model_class``, not
-        ``construct_database_model_class``, which is the path the repository
+        A custom model goes through ``model_for``, not
+        ``model_for``, which is the path the repository
         takes when an aggregate has a model registered against it.
         """
         domain = host_domain([])
@@ -808,7 +808,7 @@ class TestMappedColumnKeyWidths:
         domain.init(traverse=False)
         provider = mysql_provider(domain)
         with domain.domain_context():
-            decorated = provider.decorate_database_model_class(aggregate_cls, model_cls)
+            decorated = provider.model_for(aggregate_cls, model_cls)
             return decorated.__table__
 
     def test_a_narrowed_column_is_accepted(self):
@@ -897,7 +897,7 @@ class TestMappedColumnKeyWidths:
 
         with pytest.raises(IncorrectUsageError) as exc:
             with domain.domain_context():
-                provider.construct_database_model_class(Writer)
+                provider.model_for(Writer)
 
         assert "bio_text" in str(exc.value)
         assert "3600 bytes" in str(exc.value)
@@ -927,7 +927,7 @@ class TestAssociationColumns:
         domain.init(traverse=False)
         provider = mysql_provider(domain)
         with domain.domain_context():
-            table = provider.construct_database_model_class(Comment).__table__
+            table = provider.model_for(Comment).__table__
             return table, Comment
 
     def test_a_string_identity_reference_is_varchar_255(self):
@@ -1035,9 +1035,7 @@ class TestCustomTableArgs:
         provider = mysql_provider(domain)
 
         with domain.domain_context():
-            table = provider.decorate_database_model_class(
-                Doc, DocCustomModel
-            ).__table__
+            table = provider.model_for(Doc, DocCustomModel).__table__
 
         assert table.kwargs["mysql_charset"] == "utf8mb4"
         assert table.kwargs["mysql_collate"] == _MYSQL_DEFAULT_COLLATION
@@ -1090,7 +1088,7 @@ class TestTableArgs:
         domain = host_domain([Article])
         provider = mysql_provider(domain, uri)
         with domain.domain_context():
-            table = provider.construct_database_model_class(Article).__table__
+            table = provider.model_for(Article).__table__
         ddl = str(CreateTable(table).compile(provider._engine))
 
         expected = (
@@ -1114,7 +1112,7 @@ class TestTableArgs:
         provider = SqliteProvider(
             name="sqlite",
             domain=host_domain([]),
-            conn_info={"provider": "sqlite", "database_uri": "sqlite:///:memory:"},
+            config={"provider": "sqlite", "database_uri": "sqlite:///:memory:"},
         )
 
         assert provider._model_type_options() == {}
@@ -1123,7 +1121,7 @@ class TestTableArgs:
         domain = host_domain([Article])
         provider = mysql_provider(domain, collation="utf8mb4_bin")
         with domain.domain_context():
-            table = provider.construct_database_model_class(Article).__table__
+            table = provider.model_for(Article).__table__
 
         assert table.kwargs["mysql_charset"] == "utf8mb4"
         assert table.kwargs["mysql_collate"] == "utf8mb4_bin"
@@ -1142,7 +1140,7 @@ class TestTableArgs:
         domain = host_domain([Article])
         provider = mysql_provider(domain, uri)
         with domain.domain_context():
-            table = provider.construct_database_model_class(Article).__table__
+            table = provider.model_for(Article).__table__
         ddl = str(CreateTable(table).compile(provider._engine))
 
         assert table.kwargs[f"{dialect}_engine"] == "InnoDB"

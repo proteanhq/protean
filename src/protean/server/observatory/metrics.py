@@ -58,11 +58,12 @@ import logging
 import time
 from collections.abc import Callable
 from functools import partial
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
 
 from fastapi import Response
 
 from protean.domain import Domain
+from protean.port.health import PoolStats
 from protean.utils.telemetry import (
     _TELEMETRY_INIT_KEY,
     create_observation,
@@ -77,6 +78,8 @@ if TYPE_CHECKING:
     from protean.server.subscription_status import SubscriptionStatus
 
 logger = logging.getLogger(__name__)
+
+_PoolStatKey = Literal["size", "checked_out", "overflow", "checked_in"]
 
 _T = TypeVar("_T")
 
@@ -194,14 +197,14 @@ def _collect_projection_statuses(
 
 def _collect_pool_stats(
     domains: list[Domain],
-) -> list[tuple[str, str, dict[str, int]]]:
+) -> list[tuple[str, str, PoolStats]]:
     """Collect connection pool statistics from all providers across domains.
 
-    Returns a list of ``(provider_name, database_type, stats_dict)`` tuples.
+    Returns a list of ``(provider_name, database_type, pool)`` tuples.
     """
 
-    def _do_collect() -> list[tuple[str, str, dict[str, int]]]:
-        results: list[tuple[str, str, dict[str, int]]] = []
+    def _do_collect() -> list[tuple[str, str, PoolStats]]:
+        results: list[tuple[str, str, PoolStats]] = []
         for domain in domains:
             try:
                 _append_provider_pool_stats(results, domain)
@@ -217,9 +220,10 @@ def _collect_pool_stats(
 
 
 def _append_provider_pool_stats(
-    results: list[tuple[str, str, dict[str, int]]], domain: Domain
+    results: list[tuple[str, str, PoolStats]], domain: Domain
 ) -> None:
-    """Append a row for each provider of *domain* that reports pool statistics.
+    """Append a row for each provider of *domain* whose health reports a
+    non-empty pool.
 
     Rows go into *results* one at a time, so a provider that raises leaves the
     rows of the providers before it in place.
@@ -228,10 +232,11 @@ def _append_provider_pool_stats(
         providers = domain.providers
         if providers and providers._providers:
             for name, provider in providers._providers.items():
-                stats = provider.pool_stats()
-                if stats:
-                    db_type = getattr(provider, "__database__", "unknown")
-                    results.append((name, db_type, stats))
+                pool = provider.health().pool
+                # An empty dict carries no counters, so it gets no row either.
+                if pool:
+                    db_type = getattr(provider, "database_type", "unknown")
+                    results.append((name, db_type, pool))
 
 
 def _collect_broker_pool_stats(
@@ -537,7 +542,7 @@ def _subscription_observations(
 
 
 def _register_pool_gauges(meter: Any, domains: list[Domain]) -> None:
-    for stat_key, metric_name, description in [
+    pool_gauges: list[tuple[_PoolStatKey, str, str]] = [
         ("size", "protean.db.pool_size", "Database connection pool size"),
         (
             "checked_out",
@@ -546,7 +551,8 @@ def _register_pool_gauges(meter: Any, domains: list[Domain]) -> None:
         ),
         ("overflow", "protean.db.pool_overflow", "Overflow database connections"),
         ("checked_in", "protean.db.pool_checked_in", "Available database connections"),
-    ]:
+    ]
+    for stat_key, metric_name, description in pool_gauges:
         meter.create_observable_gauge(
             metric_name,
             callbacks=[partial(_pool_observations, domains, stat_key)],
@@ -556,7 +562,7 @@ def _register_pool_gauges(meter: Any, domains: list[Domain]) -> None:
 
 
 def _pool_observations(
-    domains: list[Domain], stat_key: str, _options: Any
+    domains: list[Domain], stat_key: _PoolStatKey, _options: Any
 ) -> list[Any]:
     observations: list[Any] = []
     for name, db_type, stats in _collect_pool_stats(domains):

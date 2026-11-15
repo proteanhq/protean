@@ -400,14 +400,14 @@ def db(test_domain):
     aggregates, entities, and projections.
     """
     # Call provider to create structures
-    test_domain.providers["default"]._create_database_artifacts()
+    test_domain.providers["default"].create_schema()
 
     yield
 
     # Drop structures
-    test_domain.providers["default"]._drop_database_artifacts()
+    test_domain.providers["default"].drop_schema()
 
-    # Remove registry content so that `_data_reset()` called on providers
+    # Remove registry content so that `clear()` called on providers
     #   later (in `run_around_tests`) has no effect
     test_domain.registry._reset()
 
@@ -420,10 +420,10 @@ def run_around_tests(test_domain, request):
         for provider_name in test_domain.providers:
             provider = test_domain.providers[provider_name]
             try:
-                provider._data_reset()
+                provider.clear()
             finally:
                 # Always close provider connections to prevent connection leaks,
-                # even if _data_reset() fails (e.g., tables already dropped)
+                # even if clear() fails (e.g., tables already dropped)
                 provider.close()
 
         for broker_name in test_domain.brokers:

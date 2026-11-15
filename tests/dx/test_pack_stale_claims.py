@@ -149,7 +149,7 @@ def test_a_stale_line_is_reported(line, rule):
     [
         "from protean import current_domain",
         "order = repo.find_by(order_id=event.order_id)",
-        "dao = domain.providers.get_dao(Order)",
+        'provider = domain.providers["default"]',
         "[CQRS](https://docs.proteanhq.com/concepts/architecture/cqrs/)",
         'A string, `part_of="AggregateName"`, also works and resolves at `init`',
         "anything else is rejected at registration with `IncorrectUsageError`.",

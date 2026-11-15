@@ -28,7 +28,7 @@ class TestProviderManagedFlag:
 
     @pytest.mark.no_test_domain
     def test_managed_false_from_config(self):
-        """A provider with ``managed: false`` in conn_info is marked unmanaged."""
+        """A provider with ``managed: false`` in its config is marked unmanaged."""
         domain = Domain(name="Test")
         domain.config["databases"]["unmanaged"] = {
             "provider": "memory",
@@ -60,7 +60,7 @@ class TestProviderManagedFlag:
 class TestSetupDatabaseSkipsUnmanaged:
     @pytest.mark.no_test_domain
     def test_setup_database_skips_unmanaged_provider(self):
-        """setup_database should not call _create_database_artifacts on unmanaged providers."""
+        """setup_database should not call create_schema on unmanaged providers."""
         domain = Domain(name="Test")
         domain.config["databases"]["unmanaged"] = {
             "provider": "memory",
@@ -70,13 +70,13 @@ class TestSetupDatabaseSkipsUnmanaged:
 
         with domain.domain_context():
             unmanaged = domain.providers["unmanaged"]
-            with patch.object(unmanaged, "_create_database_artifacts") as mock_create:
+            with patch.object(unmanaged, "create_schema") as mock_create:
                 domain.setup_database()
                 mock_create.assert_not_called()
 
     @pytest.mark.no_test_domain
     def test_setup_database_calls_managed_provider(self):
-        """setup_database should call _create_database_artifacts on managed providers."""
+        """setup_database should call create_schema on managed providers."""
         domain = Domain(name="Test")
         domain.config["databases"]["secondary"] = {
             "provider": "memory",
@@ -86,7 +86,7 @@ class TestSetupDatabaseSkipsUnmanaged:
 
         with domain.domain_context():
             managed = domain.providers["secondary"]
-            with patch.object(managed, "_create_database_artifacts") as mock_create:
+            with patch.object(managed, "create_schema") as mock_create:
                 domain.setup_database()
                 mock_create.assert_called_once()
 
@@ -97,7 +97,7 @@ class TestSetupDatabaseSkipsUnmanaged:
 class TestDropDatabaseSkipsUnmanaged:
     @pytest.mark.no_test_domain
     def test_drop_database_skips_unmanaged_provider(self):
-        """drop_database should not call _drop_database_artifacts on unmanaged providers."""
+        """drop_database should not call drop_schema on unmanaged providers."""
         domain = Domain(name="Test")
         domain.config["databases"]["unmanaged"] = {
             "provider": "memory",
@@ -107,19 +107,19 @@ class TestDropDatabaseSkipsUnmanaged:
 
         with domain.domain_context():
             unmanaged = domain.providers["unmanaged"]
-            with patch.object(unmanaged, "_drop_database_artifacts") as mock_drop:
+            with patch.object(unmanaged, "drop_schema") as mock_drop:
                 domain.drop_database()
                 mock_drop.assert_not_called()
 
     @pytest.mark.no_test_domain
     def test_drop_database_calls_managed_provider(self):
-        """drop_database should call _drop_database_artifacts on managed providers."""
+        """drop_database should call drop_schema on managed providers."""
         domain = Domain(name="Test")
         domain.init(traverse=False)
 
         with domain.domain_context():
             managed = domain.providers["default"]
-            with patch.object(managed, "_drop_database_artifacts") as mock_drop:
+            with patch.object(managed, "drop_schema") as mock_drop:
                 domain.drop_database()
                 mock_drop.assert_called_once()
 
@@ -130,7 +130,7 @@ class TestDropDatabaseSkipsUnmanaged:
 class TestTruncateDatabaseSkipsUnmanaged:
     @pytest.mark.no_test_domain
     def test_truncate_database_skips_unmanaged_provider(self):
-        """truncate_database should not call _data_reset on unmanaged providers."""
+        """truncate_database should not call clear on unmanaged providers."""
         domain = Domain(name="Test")
         domain.config["databases"]["unmanaged"] = {
             "provider": "memory",
@@ -140,24 +140,22 @@ class TestTruncateDatabaseSkipsUnmanaged:
 
         with domain.domain_context():
             unmanaged = domain.providers["unmanaged"]
-            with patch.object(unmanaged, "_data_reset") as mock_reset:
-                # Also patch _create_database_artifacts to avoid side effects
-                with patch.object(
-                    unmanaged, "_create_database_artifacts"
-                ) as mock_create:
+            with patch.object(unmanaged, "clear") as mock_reset:
+                # Also patch create_schema to avoid side effects
+                with patch.object(unmanaged, "create_schema") as mock_create:
                     domain.truncate_database()
                     mock_reset.assert_not_called()
                     mock_create.assert_not_called()
 
     @pytest.mark.no_test_domain
     def test_truncate_database_calls_managed_provider(self):
-        """truncate_database should call _data_reset on managed providers."""
+        """truncate_database should call clear on managed providers."""
         domain = Domain(name="Test")
         domain.init(traverse=False)
 
         with domain.domain_context():
             managed = domain.providers["default"]
-            with patch.object(managed, "_data_reset") as mock_reset:
+            with patch.object(managed, "clear") as mock_reset:
                 domain.truncate_database()
                 mock_reset.assert_called_once()
 
@@ -215,7 +213,7 @@ class TestSetupOutboxSkipsUnmanaged:
 
         with domain.domain_context():
             unmanaged = domain.providers["unmanaged"]
-            with patch.object(unmanaged, "_create_database_artifacts") as mock_create:
+            with patch.object(unmanaged, "create_schema") as mock_create:
                 domain.setup_outbox()
                 mock_create.assert_not_called()
 
@@ -242,9 +240,9 @@ class TestMixedManagedUnmanaged:
             unmanaged = domain.providers["unmanaged_extra"]
 
             with (
-                patch.object(unmanaged, "_create_database_artifacts") as mock_create,
-                patch.object(unmanaged, "_data_reset") as mock_reset,
-                patch.object(unmanaged, "_drop_database_artifacts") as mock_drop,
+                patch.object(unmanaged, "create_schema") as mock_create,
+                patch.object(unmanaged, "clear") as mock_reset,
+                patch.object(unmanaged, "drop_schema") as mock_drop,
             ):
                 domain.setup_database()
                 domain.truncate_database()

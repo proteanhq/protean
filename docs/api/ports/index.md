@@ -8,13 +8,13 @@ For concrete adapter documentation, see
 
 <div class="grid cards" markdown>
 
--   **:material-database: BaseProvider**
+-   **:material-database: ProviderPort**
 
     ---
 
     Database provider interface for persistence adapters.
 
-    [:material-arrow-right-box: BaseProvider](provider.md)
+    [:material-arrow-right-box: ProviderPort](provider.md)
 
 -   **:material-message-flash: BaseBroker**
 

@@ -1,6 +1,6 @@
 """Tests for explicit Elasticsearch field mapping from entity/aggregate attributes.
 
-Verifies that construct_database_model_class() builds proper ES mappings
+Verifies that model_for() builds proper ES mappings
 for each Protean field type, and that custom @domain.model fields take
 precedence over auto-generated mappings.
 """
@@ -44,7 +44,7 @@ class MappedAggregate(BaseAggregate):
 def _get_mapping_props(test_domain, entity_cls) -> dict:
     """Helper to extract field mapping properties as a dict of {name: type_string}"""
     provider = test_domain.providers["default"]
-    model_cls = provider.construct_database_model_class(entity_cls)
+    model_cls = provider.model_for(entity_cls)
     mapping_dict = model_cls._index._mapping.to_dict()
     return mapping_dict.get("properties", {})
 
@@ -186,7 +186,7 @@ class TestShadowAndReferenceFieldMapping:
 
 @pytest.mark.elasticsearch
 class TestCustomModelAutoFillsGaps:
-    """Test that decorate_database_model_class auto-maps unmapped attributes."""
+    """Test that model_for auto-maps unmapped attributes."""
 
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
@@ -229,7 +229,7 @@ class TestCustomModelAutoFillsGaps:
 
 @pytest.mark.elasticsearch
 class TestCustomModelWithSettings:
-    """Test decorate_database_model_class with provider-level SETTINGS."""
+    """Test model_for with provider-level SETTINGS."""
 
     @pytest.fixture(autouse=True)
     def register_with_settings(self, test_domain):

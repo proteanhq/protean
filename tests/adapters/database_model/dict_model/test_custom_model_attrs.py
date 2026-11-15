@@ -1,5 +1,5 @@
 """Tests verifying that custom model attributes survive dynamic class
-creation via ``type()`` in ``decorate_database_model_class``."""
+creation via ``type()`` in ``model_for``."""
 
 import pytest
 

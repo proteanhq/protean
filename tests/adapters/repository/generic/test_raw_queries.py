@@ -44,7 +44,7 @@ class TestRawQueries:
 
         provider = test_domain.providers["default"]
         # Build a provider-appropriate query
-        db_class = provider.__class__.__database__
+        db_class = provider.__class__.database_type
         if db_class == "memory":
             query = '{"first_name": "John"}'
         else:

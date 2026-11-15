@@ -125,7 +125,7 @@ should fail liveness.
   library. It is deliberately minimal (no keep-alive, no chunked transfer, no
   compression) but it is our responsibility to maintain. If we later need HTTPS
   or HTTP/2 on the probe port, we will have to rewrite the probe server.
-- Readiness checks call `provider.is_alive()`, `broker.ping()`,
+- Readiness checks call `provider.ping()`, `broker.ping()`,
   `cache.ping()`, and the event store's equivalent on every
   `GET /readyz`. Probes every 5 seconds add ping load to every
   adapter. For high-throughput systems this is negligible; for

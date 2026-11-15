@@ -62,7 +62,7 @@ def build(provider_cls, provider: str, uri: str, domain):
     return provider_cls(
         name="orders",
         domain=domain,
-        conn_info={"provider": provider, "database_uri": uri},
+        config={"provider": provider, "database_uri": uri},
     )
 
 
@@ -228,7 +228,7 @@ class TestExplicitModuleSkipsTheCheck:
         engine = provider_cls(
             name="orders",
             domain=test_domain,
-            conn_info={"provider": provider, "database_uri": uri, "module": dbapi},
+            config={"provider": provider, "database_uri": uri, "module": dbapi},
         )._engine
 
         assert engine.dialect.dbapi is dbapi

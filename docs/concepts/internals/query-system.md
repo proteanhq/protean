@@ -41,8 +41,8 @@ Access Object. The DAO is constructed lazily and cached:
 
 ```
 BaseRepository._dao
-    → provider.get_dao(entity_cls, database_model_cls)
-        → ConcreteDAO(domain, provider, entity_cls, database_model_cls)
+    → provider.dao_for(entity_cls, model_cls)
+        → ConcreteDAO(domain, provider, entity_cls, model_cls)
 ```
 
 The repository exposes methods named in domain terms (`add`, `get`, `query`,
@@ -233,7 +233,7 @@ Each database provider registers its own lookup implementations using
 
 ```python
 # fragment
-class SQLAlchemyProvider(BaseProvider):
+class SQLAlchemyProvider(BaseProvider, RawQueryProviderPort):
     ...
 
 # During adapter initialization:

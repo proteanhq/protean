@@ -334,11 +334,11 @@ def db(test_domain: Domain) -> Iterator[None]:
     Auto-injected for tests marked with ``database`` or any
     capability marker via ``pytest_collection_modifyitems``.
     """
-    test_domain.providers["default"]._create_database_artifacts()
+    test_domain.providers["default"].create_schema()
 
     yield
 
-    test_domain.providers["default"]._drop_database_artifacts()
+    test_domain.providers["default"].drop_schema()
     test_domain.registry._reset()
 
 
@@ -351,7 +351,7 @@ def run_around_tests(test_domain: Domain | None) -> Iterator[None]:
         for provider_name in test_domain.providers:
             provider = test_domain.providers[provider_name]
             try:
-                provider._data_reset()
+                provider.clear()
             finally:
                 provider.close()
 

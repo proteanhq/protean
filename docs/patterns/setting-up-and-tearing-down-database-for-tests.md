@@ -55,9 +55,9 @@ Every Protean adapter exposes lifecycle methods designed for exactly this separa
 
 | Method | Purpose |
 |--------|---------|
-| `provider._create_database_artifacts()` | Create tables, indexes, and constraints for all registered aggregates, entities, and projections |
-| `provider._drop_database_artifacts()` | Drop all tables and schema objects |
-| `provider._data_reset()` | Truncate all tables, preserving schema |
+| `provider.create_schema()` | Create tables, indexes, and constraints for all registered aggregates, entities, and projections |
+| `provider.drop_schema()` | Drop all tables and schema objects |
+| `provider.clear()` | Truncate all tables, preserving schema |
 
 ### Brokers (`domain.brokers`)
 
@@ -351,10 +351,10 @@ def setup_database():
     domain.init()
     with domain.domain_context():
         for provider in domain.providers.values():
-            provider._create_database_artifacts()
+            provider.create_schema()
         yield
         for provider in domain.providers.values():
-            provider._drop_database_artifacts()
+            provider.drop_schema()
 
 # Tests leak data into each other:
 def test_create_order():
@@ -367,7 +367,7 @@ def test_no_orders_exist():
     assert len(orders.items) == 0  # FAILS: order from previous test
 ```
 
-Fix: use `DomainFixture.domain_context()`, which resets all data automatically. Or add a `function`-scoped `clean_data` fixture that calls `_data_reset()` on all providers, all brokers, and the event store.
+Fix: use `DomainFixture.domain_context()`, which resets all data automatically. Or add a `function`-scoped `clean_data` fixture that calls `clear()` on all providers and `_data_reset()` on all brokers and the event store.
 
 ### Recreating Schema Per Test
 
@@ -379,13 +379,13 @@ def setup_database():
     domain.init()
     with domain.domain_context():
         for provider in domain.providers.values():
-            provider._create_database_artifacts()
+            provider.create_schema()
         yield
         for provider in domain.providers.values():
-            provider._drop_database_artifacts()
+            provider.drop_schema()
 ```
 
-A fixture that recreates the schema per test is correct but slow. If you have 500 tests, you create and drop the entire schema 500 times. Use `DomainFixture` (which is session-scoped) or move schema operations to `scope="session"` and use `_data_reset()` per test instead.
+A fixture that recreates the schema per test is correct but slow. If you have 500 tests, you create and drop the entire schema 500 times. Use `DomainFixture` (which is session-scoped) or move schema operations to `scope="session"` and use `provider.clear()` per test instead.
 
 ### Forgetting Broker and Event Store Cleanup
 
@@ -396,7 +396,7 @@ A fixture that recreates the schema per test is correct but slow. If you have 50
 def clean_data():
     yield
     for provider in domain.providers.values():
-        provider._data_reset()
+        provider.clear()
     # Broker still has messages from the previous test!
 ```
 
@@ -433,7 +433,7 @@ The recommended approach is to use `DomainFixture` from `protean.integrations.py
 | Schema creation | `domain.setup_database()` | Once per session |
 | Schema teardown | `domain.drop_database()` | Once per session |
 | Data truncation | `domain.truncate_database()` | On demand |
-| Data cleanup (database) | `provider._data_reset()` | After every test |
+| Data cleanup (database) | `provider.clear()` | After every test |
 | Data cleanup (broker) | `broker._data_reset()` | After every test |
 | Data cleanup (event store) | `event_store.store._data_reset()` | After every test |
 

@@ -504,7 +504,7 @@ class TestCheckEnvironmentErrors:
             }
         }
         project.write(ORDER)
-        monkeypatch.setattr(MemoryProvider, "is_alive", lambda self: False)
+        monkeypatch.setattr(MemoryProvider, "ping", lambda self: False)
 
         result = project.run("check")
 

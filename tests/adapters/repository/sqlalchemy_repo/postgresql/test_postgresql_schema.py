@@ -20,8 +20,8 @@ class TestPostgreSQLSchemaHandling:
         assert isinstance(provider, PostgresqlProvider)
         assert provider._metadata.schema == "public"
 
-    def test_custom_schema_configuration_via_conn_info(self):
-        """Test that custom schema can be configured via schema in conn_info"""
+    def test_custom_schema_configuration_via_config(self):
+        """Test that custom schema can be configured via schema in config"""
         domain = Domain("Test Custom Schema")
         domain.config["databases"]["custom_schema"] = {
             "provider": "postgresql",
@@ -95,13 +95,13 @@ class TestPostgreSQLSchemaHandling:
 
                 # Create the table
                 provider = domain.providers["default"]
-                provider._create_database_artifacts()
+                provider.create_schema()
 
                 # Now table should exist
                 assert dao.has_table()
 
                 # Clean up
-                provider._drop_database_artifacts()
+                provider.drop_schema()
             finally:
                 domain.providers["default"].close()
 
@@ -128,7 +128,7 @@ class TestPostgreSQLSchemaHandling:
             try:
                 # Create database artifacts
                 provider = domain.providers["default"]
-                provider._create_database_artifacts()
+                provider.create_schema()
 
                 # Verify table was created with custom name
                 inspector = inspect(provider._engine)
@@ -138,7 +138,7 @@ class TestPostgreSQLSchemaHandling:
                 assert "unique_custom_table_name" in tables
 
                 # Clean up
-                provider._drop_database_artifacts()
+                provider.drop_schema()
             finally:
                 domain.providers["default"].close()
 
@@ -218,14 +218,14 @@ class TestPostgreSQLSchemaHandling:
                 provider = domain.providers["default"]
 
                 # Create artifacts
-                provider._create_database_artifacts()
+                provider.create_schema()
 
                 # Verify table exists
                 dao = domain.repository_for(DropTestEntity)._dao
                 assert dao.has_table()
 
                 # Drop artifacts
-                provider._drop_database_artifacts()
+                provider.drop_schema()
 
                 # Verify table no longer exists
                 assert not dao.has_table()

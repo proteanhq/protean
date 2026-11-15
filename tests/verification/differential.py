@@ -112,7 +112,7 @@ def build_parity_domain(
     """Build a domain with a single ``Account`` aggregate on one provider.
 
     Returns the domain and its (already-materialized) repository; the repository
-    is built once here rather than per replay, since ``_data_reset`` clears the
+    is built once here rather than per replay, since ``clear`` empties the
     *provider*, not the repository.
 
     ``bug`` swaps in a deliberately broken Memory DAO, used only to plant a
@@ -137,7 +137,7 @@ def build_parity_domain(
     with domain.domain_context():
         repo = domain.repository_for(account_cls)
         _ = repo._dao  # materialize the model before creating tables
-        domain.providers["default"]._create_database_artifacts()
+        domain.providers["default"].create_schema()
 
     return domain, repo
 
@@ -188,17 +188,17 @@ _MEMORY_BUGS: dict[str, type[DictDAO]] = {
 def _install_memory_bug(provider: MemoryProvider, bug: str) -> None:
     """Point a Memory provider instance at a broken DAO.
 
-    Patches the instance's ``get_dao`` before any repository materializes its
+    Patches the instance's ``dao_for`` before any repository materializes its
     DAO, so every ``Account`` DAO the domain hands out is the broken one.
     """
     dao_cls = _MEMORY_BUGS[bug]
 
-    def get_dao(
+    def dao_for(
         entity_cls: type[typing.Any], database_model_cls: type[typing.Any]
     ) -> DictDAO:
         return dao_cls(provider.domain, provider, entity_cls, database_model_cls)
 
-    provider.get_dao = get_dao  # type: ignore[method-assign]
+    provider.dao_for = dao_for  # type: ignore[method-assign]
 
 
 # --- Operations -----------------------------------------------------------
@@ -382,7 +382,7 @@ def run_history(
     """
     observations: list[Observation] = []
     with domain.domain_context():
-        domain.providers["default"]._data_reset()
+        domain.providers["default"].clear()
         for index, operation in enumerate(history):
             try:
                 observations.append((index, *operation.apply(repo)))

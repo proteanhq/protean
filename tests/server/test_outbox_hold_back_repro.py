@@ -101,13 +101,13 @@ def domain():
 
     with domain.domain_context():
         provider = domain.providers["default"]
-        provider._create_database_artifacts()
+        provider.create_schema()
         domain.brokers["default"]._data_reset()
         try:
             yield domain
         finally:
             domain.brokers["default"]._data_reset()
-            provider._drop_database_artifacts()
+            provider.drop_schema()
 
 
 async def _processor(domain: Domain, worker_id: str) -> OutboxProcessor:

@@ -2,7 +2,7 @@
 
 Database providers abstract the underlying persistence technology, allowing
 Protean to support various databases without changing domain or application
-logic. Each provider implements the `BaseProvider` interface and declares the
+logic. Each provider implements `ProviderPort` and declares the
 capabilities it supports.
 
 ## Overview
@@ -196,10 +196,11 @@ true when the provider declares at least one of them:
 On the memory provider, `results` holds one record, Ada's.
 
 !!!note
-    Methods that require a specific capability (like `raw()`) automatically
-    check for it and raise `NotSupportedError` if the provider does not declare
-    the required capability. You only need to check capabilities explicitly when
-    writing code that adapts its behavior based on what is available.
+    `QuerySet.raw()` checks for `RAW_QUERIES` and raises `NotSupportedError`
+    when the provider does not declare it. A provider without its own `raw()`,
+    such as Elasticsearch, raises `NotSupportedError` from `provider.raw()`.
+    You only need to check capabilities explicitly when writing code that
+    adapts its behavior based on what is available.
 
 ### Provider Capability Matrix
 
@@ -326,7 +327,7 @@ Providers may register additional lookups beyond this required set.
    `@domain.database_model` when you need to customize column types, indices, or other
    database-specific details.
 
-6. **Monitor provider health**: Use `provider.is_alive()` to verify
+6. **Monitor provider health**: Use `provider.ping()` to verify
    connectivity during health checks.
 
 ## Indexes

@@ -336,7 +336,7 @@ class TestInUoWOptimisticConcurrency:
 
 class TestDataResetUnderActiveUoW:
     def test_data_reset_rolls_back_a_dangling_uow_without_deadlock(self, uow_domain):
-        """``_data_reset`` rolls back a leaked in-progress UoW before deleting, so a
+        """``clear`` rolls back a leaked in-progress UoW before deleting, so a
         UoW holding row locks from a flushed write does not deadlock the reset."""
         provider = uow_domain.providers["default"]
         repo = uow_domain.repository_for(Wallet)
@@ -347,7 +347,7 @@ class TestDataResetUnderActiveUoW:
         repo._dao.query.filter(name="leaked").all()
 
         # Must not block on the lock: it rolls the dangling UoW back first.
-        provider._data_reset()
+        provider.clear()
 
         assert uow.in_progress is False
         assert _rows(uow_domain, "wallet") == 0

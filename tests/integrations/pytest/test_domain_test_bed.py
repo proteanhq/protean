@@ -37,27 +37,27 @@ class TestSetup:
             mock_init.assert_called_once()
 
     def test_creates_database_artifacts(self, domain):
-        """setup() calls _create_database_artifacts on each provider."""
+        """setup() calls create_schema on each provider."""
         bed = DomainFixture(domain)
         mock_provider = mock.MagicMock()
 
         with mock.patch.object(domain, "init"):
             domain.providers = {"default": mock_provider}
             bed.setup()
-            mock_provider._create_database_artifacts.assert_called_once()
+            mock_provider.create_schema.assert_called_once()
 
 
 class TestTeardown:
     """Tests for DomainFixture.teardown()."""
 
     def test_drops_database_artifacts(self, domain):
-        """teardown() calls _drop_database_artifacts on each provider."""
+        """teardown() calls drop_schema on each provider."""
         bed = DomainFixture(domain)
         mock_provider = mock.MagicMock()
         domain.providers = {"default": mock_provider}
 
         bed.teardown()
-        mock_provider._drop_database_artifacts.assert_called_once()
+        mock_provider.drop_schema.assert_called_once()
 
 
 class TestDomainContext:
@@ -92,7 +92,7 @@ class TestDomainContext:
         with bed.domain_context():
             pass
 
-        mock_provider._data_reset.assert_called_once()
+        mock_provider.clear.assert_called_once()
 
     def test_resets_brokers(self, domain):
         """Context manager resets all brokers on exit."""
@@ -141,7 +141,7 @@ class TestDomainContext:
             raise RuntimeError("test failure")
 
         # Cleanup still happens
-        mock_provider._data_reset.assert_called_once()
+        mock_provider.clear.assert_called_once()
         mock_broker._data_reset.assert_called_once()
         mock_event_store.store._data_reset.assert_called_once()
 
@@ -226,10 +226,10 @@ class TestDomainContextIsolation:
         finally:
             _restore_ctx_stack(top_before)
 
-        provider_a._data_reset.assert_called_once()
+        provider_a.clear.assert_called_once()
         broker_a._data_reset.assert_called_once()
         store_a._data_reset.assert_called_once()
-        provider_b._data_reset.assert_not_called()
+        provider_b.clear.assert_not_called()
         broker_b._data_reset.assert_not_called()
         store_b._data_reset.assert_not_called()
 
@@ -295,7 +295,7 @@ class TestDomainContextIsolation:
 
     def test_context_is_popped_when_a_reset_raises(self, domain):
         provider, _broker, _store = _mock_stores(domain)
-        provider._data_reset.side_effect = RuntimeError("reset failed")
+        provider.clear.side_effect = RuntimeError("reset failed")
         bed = DomainFixture(domain)
         teardown = mock.Mock()
         domain.teardown_domain_context(teardown)

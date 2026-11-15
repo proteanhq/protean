@@ -13,7 +13,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ConfigurationError
 from protean.fields import String
 from protean.infra.registry import providers as provider_registry
-from protean.port.provider import BaseProvider, DatabaseCapabilities
+from protean.port.provider import ProviderHealth
 
 
 class User(BaseAggregate):
@@ -35,11 +35,11 @@ def db(test_domain):
     test_domain.register(User)
     test_domain.init(traverse=False)
 
-    test_domain.providers["default"]._create_database_artifacts()
+    test_domain.providers["default"].create_schema()
 
     yield
 
-    test_domain.providers["default"]._drop_database_artifacts()
+    test_domain.providers["default"].drop_schema()
     test_domain.registry._reset()
 
 
@@ -56,7 +56,7 @@ class TestBasicProvider:
     def test_connection_to_db_is_successful(self, test_domain):
         """Test connection to database"""
         provider = test_domain.providers["default"]
-        assert provider.is_alive()
+        assert provider.ping()
 
     def test_provider_name(self, test_domain):
         """Test that provider name is correctly set"""
@@ -66,127 +66,36 @@ class TestBasicProvider:
     def test_provider_has_database_setting(self, test_domain):
         """Test that provider has a database setting"""
         provider = test_domain.providers["default"]
-        assert hasattr(provider.__class__, "__database__")
-        assert provider.__class__.__database__ is not None
+        assert hasattr(provider.__class__, "database_type")
+        assert provider.__class__.database_type is not None
 
+    def test_health_reports_a_pool_only_for_sql_databases(self, test_domain):
+        """``pool`` carries counters for a SQL database on a file or server
+        engine, which pools through a ``QueuePool``. Memory and Elasticsearch
+        report no pool counters."""
+        provider = test_domain.providers["default"]
+        health = provider.health()
 
-class TestLifecycleMethodsAbstractContract:
-    """Test that BaseProvider declares lifecycle methods as abstract."""
-
-    def test_lifecycle_methods_are_abstract(self):
-        """_data_reset, _create_database_artifacts, _drop_database_artifacts,
-        and _raw must be declared as abstract methods on BaseProvider."""
-        abstract_methods = BaseProvider.__abstractmethods__
-        assert "_data_reset" in abstract_methods
-        assert "_create_database_artifacts" in abstract_methods
-        assert "_drop_database_artifacts" in abstract_methods
-        assert "_raw" in abstract_methods
-
-    def test_subclass_missing_data_reset_cannot_be_instantiated(self):
-        """A provider subclass that omits _data_reset cannot be instantiated."""
-
-        class IncompleteProvider(BaseProvider):
-            @property
-            def capabilities(self) -> DatabaseCapabilities:
-                return DatabaseCapabilities.BASIC_STORAGE
-
-            def get_session(self): ...
-            def get_connection(self): ...
-            def is_alive(self) -> bool: ...
-            def close(self): ...
-            def get_dao(self, entity_cls, database_model_cls): ...
-            def decorate_database_model_class(self, entity_cls, database_model_cls): ...
-            def construct_database_model_class(self, entity_cls): ...
-            def _raw(self, query, data=None): ...
-            # _data_reset intentionally omitted
-            def _create_database_artifacts(self) -> None: ...
-            def _drop_database_artifacts(self) -> None: ...
-
-        with pytest.raises(TypeError, match="_data_reset"):
-            IncompleteProvider("test", None, {})
-
-    def test_subclass_missing_create_artifacts_cannot_be_instantiated(self):
-        """A provider subclass that omits _create_database_artifacts
-        cannot be instantiated."""
-
-        class IncompleteProvider(BaseProvider):
-            @property
-            def capabilities(self) -> DatabaseCapabilities:
-                return DatabaseCapabilities.BASIC_STORAGE
-
-            def get_session(self): ...
-            def get_connection(self): ...
-            def is_alive(self) -> bool: ...
-            def close(self): ...
-            def get_dao(self, entity_cls, database_model_cls): ...
-            def decorate_database_model_class(self, entity_cls, database_model_cls): ...
-            def construct_database_model_class(self, entity_cls): ...
-            def _raw(self, query, data=None): ...
-            def _data_reset(self) -> None: ...
-            # _create_database_artifacts intentionally omitted
-            def _drop_database_artifacts(self) -> None: ...
-
-        with pytest.raises(TypeError, match="_create_database_artifacts"):
-            IncompleteProvider("test", None, {})
-
-    def test_subclass_missing_drop_artifacts_cannot_be_instantiated(self):
-        """A provider subclass that omits _drop_database_artifacts
-        cannot be instantiated."""
-
-        class IncompleteProvider(BaseProvider):
-            @property
-            def capabilities(self) -> DatabaseCapabilities:
-                return DatabaseCapabilities.BASIC_STORAGE
-
-            def get_session(self): ...
-            def get_connection(self): ...
-            def is_alive(self) -> bool: ...
-            def close(self): ...
-            def get_dao(self, entity_cls, database_model_cls): ...
-            def decorate_database_model_class(self, entity_cls, database_model_cls): ...
-            def construct_database_model_class(self, entity_cls): ...
-            def _raw(self, query, data=None): ...
-            def _data_reset(self) -> None: ...
-            def _create_database_artifacts(self) -> None: ...
-
-            # _drop_database_artifacts intentionally omitted
-
-        with pytest.raises(TypeError, match="_drop_database_artifacts"):
-            IncompleteProvider("test", None, {})
-
-    def test_complete_subclass_can_be_instantiated(self):
-        """A provider subclass implementing all abstract methods
-        can be instantiated successfully."""
-
-        class CompleteProvider(BaseProvider):
-            @property
-            def capabilities(self) -> DatabaseCapabilities:
-                return DatabaseCapabilities.BASIC_STORAGE
-
-            def get_session(self): ...
-            def get_connection(self): ...
-            def is_alive(self) -> bool:
-                return True
-
-            def close(self): ...
-            def get_dao(self, entity_cls, database_model_cls): ...
-            def decorate_database_model_class(self, entity_cls, database_model_cls): ...
-            def construct_database_model_class(self, entity_cls): ...
-            def _raw(self, query, data=None): ...
-            def _data_reset(self) -> None: ...
-            def _create_database_artifacts(self) -> None: ...
-            def _drop_database_artifacts(self) -> None: ...
-
-        provider = CompleteProvider("test", None, {})
-        assert provider.name == "test"
+        assert isinstance(health, ProviderHealth)
+        if provider.database_type in ("postgresql", "sqlite", "mssql", "mysql"):
+            assert health.pool is not None
+            assert set(health.pool) == {
+                "size",
+                "checked_out",
+                "overflow",
+                "checked_in",
+            }
+            assert all(isinstance(value, int) for value in health.pool.values())
+        else:
+            assert health.pool is None
 
 
 @pytest.mark.basic_storage
 class TestLifecycleMethodsIntegration:
     """Test that lifecycle methods work correctly through the domain."""
 
-    def test_data_reset_clears_persisted_data(self, test_domain, user_cls):
-        """_data_reset flushes data so previously persisted records
+    def test_clear_removes_persisted_data(self, test_domain, user_cls):
+        """clear flushes data so previously persisted records
         are no longer retrievable."""
         test_domain.repository_for(user_cls).add(
             user_cls(name="Alice", email="alice@example.com")
@@ -194,19 +103,19 @@ class TestLifecycleMethodsIntegration:
         assert test_domain.repository_for(user_cls)._dao.query.all().total == 1
 
         provider = test_domain.providers["default"]
-        provider._data_reset()
+        provider.clear()
 
         assert test_domain.repository_for(user_cls)._dao.query.all().total == 0
 
-    def test_create_database_artifacts_is_idempotent(self, test_domain):
-        """Calling _create_database_artifacts multiple times does not error."""
+    def test_create_schema_is_idempotent(self, test_domain):
+        """Calling create_schema multiple times does not error."""
         provider = test_domain.providers["default"]
         # Should not raise on repeated calls
-        provider._create_database_artifacts()
-        provider._create_database_artifacts()
+        provider.create_schema()
+        provider.create_schema()
 
     def test_domain_setup_database_delegates_to_provider(self, test_domain, user_cls):
-        """domain.setup_database() delegates to provider._create_database_artifacts()."""
+        """domain.setup_database() delegates to provider.create_schema()."""
         # setup_database should succeed without error (idempotent)
         test_domain.setup_database()
 
@@ -219,7 +128,7 @@ class TestLifecycleMethodsIntegration:
     def test_domain_truncate_database_delegates_to_provider(
         self, test_domain, user_cls
     ):
-        """domain.truncate_database() delegates to provider._data_reset()."""
+        """domain.truncate_database() delegates to provider.clear()."""
         test_domain.repository_for(user_cls).add(
             user_cls(name="Charlie", email="charlie@example.com")
         )
@@ -230,7 +139,7 @@ class TestLifecycleMethodsIntegration:
         assert test_domain.repository_for(user_cls)._dao.query.all().total == 0
 
     def test_domain_drop_database_delegates_to_provider(self, test_domain):
-        """domain.drop_database() delegates to provider._drop_database_artifacts()."""
+        """domain.drop_database() delegates to provider.drop_schema()."""
         # Should succeed without error
         test_domain.drop_database()
 

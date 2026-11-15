@@ -539,9 +539,13 @@ endpoint. See [Observability](./observability.md).
 | `protean.subscription.pending_messages` | Observable gauge | `domain`, `handler`, `stream`, `type` |
 | `protean.outbox.pending_count` | Observable gauge | `domain` |
 
-`BaseProvider.pool_stats()` returns `{size, checked_out, overflow,
-checked_in}`. SQLAlchemy providers return live counts; memory and
-Elasticsearch providers return an empty dict.
+The gauges read `provider.health().pool`, which holds `{size, checked_out,
+overflow, checked_in}`. SQLAlchemy providers return live counts from the
+engine's `QueuePool`. An in-memory SQLite database uses a pool that keeps no
+counts, so its provider returns `None`. The memory provider keeps no connection
+pool, and the Elasticsearch client reports no pool counts, so both return `None`.
+The gauges skip every provider that returns `None` or an empty dict, and read a
+missing count as `0`.
 
 ## Shutdown sequence
 

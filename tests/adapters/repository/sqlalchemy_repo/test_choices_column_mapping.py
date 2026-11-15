@@ -105,19 +105,19 @@ def provider_for(dialect, domain):
         return SqliteProvider(
             name="sqlite",
             domain=domain,
-            conn_info={"provider": "sqlite", "database_uri": "sqlite:///:memory:"},
+            config={"provider": "sqlite", "database_uri": "sqlite:///:memory:"},
         )
     if dialect == "postgresql":
         return PostgresqlProvider(
             name="postgresql",
             domain=domain,
-            conn_info={"provider": "postgresql", "database_uri": POSTGRES_URI},
+            config={"provider": "postgresql", "database_uri": POSTGRES_URI},
         )
     uri = MARIADB_URI if dialect == "mariadb" else MYSQL_URI
     return MysqlProvider(
         name="mysql",
         domain=domain,
-        conn_info={"provider": "mysql", "database_uri": uri},
+        config={"provider": "mysql", "database_uri": uri},
     )
 
 
@@ -125,7 +125,7 @@ def table_and_engine(aggregate_cls, dialect):
     domain = host_domain([aggregate_cls])
     provider = provider_for(dialect, domain)
     with domain.domain_context():
-        table = provider.construct_database_model_class(aggregate_cls).__table__
+        table = provider.model_for(aggregate_cls).__table__
     return table, provider._engine
 
 

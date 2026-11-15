@@ -1,27 +1,33 @@
 # --8<-- [start:full]
 # --8<-- [start:provider]
+from collections.abc import Mapping
 from typing import Any
 
 from protean import Domain
 from protean.adapters.repository.memory import MemoryProvider
 from protean.fields import String
 from protean.infra.registry import providers
-from protean.port.provider import BaseProvider, DatabaseCapabilities
+from protean.port.provider import (
+    BaseProvider,
+    DatabaseCapabilities,
+    ProviderHealth,
+    RawQueryProviderPort,
+)
 
 
-class DelegatingProvider(BaseProvider):
+class DelegatingProvider(BaseProvider, RawQueryProviderPort):
     """A provider that hands every operation to an in-memory MemoryProvider.
 
     Replace the delegate calls with calls to your database client.
     """
 
     # The database name Protean reads to pick database-specific behavior
-    __database__ = "delegating_memory"
+    database_type = "delegating_memory"
 
-    def __init__(self, name: str, domain: Domain, conn_info: dict[str, Any]) -> None:
-        super().__init__(name, domain, conn_info)
+    def __init__(self, name: str, domain: Domain, config: Mapping[str, Any]) -> None:
+        super().__init__(name, domain, config)
         # Initialize your database client here
-        self._delegate = MemoryProvider(name, domain, conn_info)
+        self._delegate = MemoryProvider(name, domain, config)
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
@@ -35,38 +41,27 @@ class DelegatingProvider(BaseProvider):
     def get_connection(self) -> Any:
         return self._delegate.get_connection()
 
-    def is_alive(self) -> bool:
-        return self._delegate.is_alive()
+    def ping(self) -> bool:
+        return self._delegate.ping()
 
-    def close(self) -> None:
-        self._delegate.close()
+    def health(self) -> ProviderHealth:
+        return self._delegate.health()
 
     # Data access objects and database models
-    def get_dao(self, entity_cls: type[Any], database_model_cls: type[Any]) -> Any:
-        return self._delegate.get_dao(entity_cls, database_model_cls)
+    def dao_for(self, entity_cls: type[Any], model_cls: type[Any]) -> Any:
+        return self._delegate.dao_for(entity_cls, model_cls)
 
-    def construct_database_model_class(self, entity_cls: type[Any]) -> type[Any]:
-        return self._delegate.construct_database_model_class(entity_cls)
-
-    def decorate_database_model_class(
-        self, entity_cls: type[Any], database_model_cls: type[Any]
+    def model_for(
+        self, entity_cls: type[Any], model_cls: type[Any] | None = None
     ) -> type[Any]:
-        return self._delegate.decorate_database_model_class(
-            entity_cls, database_model_cls
-        )
+        return self._delegate.model_for(entity_cls, model_cls)
 
     # Raw queries and lifecycle
-    def _raw(self, query: Any, data: Any = None) -> Any:
-        return self._delegate._raw(query, data)
+    def raw(self, query: Any, data: Any = None) -> Any:
+        return self._delegate.raw(query, data)
 
-    def _data_reset(self) -> None:
-        self._delegate._data_reset()
-
-    def _create_database_artifacts(self) -> None:
-        self._delegate._create_database_artifacts()
-
-    def _drop_database_artifacts(self) -> None:
-        self._delegate._drop_database_artifacts()
+    def clear(self) -> None:
+        self._delegate.clear()
 
 
 # Register the lookups the delegate understands, so none of the required ones are missing

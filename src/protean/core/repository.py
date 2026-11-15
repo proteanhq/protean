@@ -75,24 +75,11 @@ class BaseRepository(Element, OptionsMixin):
         entity_models = self._domain._database_models.get(
             _fully_qualified_name(self.meta_.part_of), {}
         )
-        database_type = self._provider.__class__.__database__
+        database_type = self._provider.database_type
         custom_model_cls = entity_models.get(database_type) or entity_models.get(None)
 
-        if custom_model_cls:
-            # Get the decorated model class.
-            #   This is a no-op if the provider decides that the model is fully-baked
-            database_model_cls = self._provider.decorate_database_model_class(
-                self.meta_.part_of, custom_model_cls
-            )
-        else:
-            # No model was associated with the aggregate/entity explicitly.
-            #   So ask the Provider to bake a new model, initialized properly for this aggregate
-            #   and return it
-            database_model_cls = self._provider.construct_database_model_class(
-                self.meta_.part_of
-            )
-
-        return database_model_cls
+        # The provider decorates a custom model, or builds one when there is none.
+        return self._provider.model_for(self.meta_.part_of, custom_model_cls)
 
     @property
     @lru_cache
@@ -104,7 +91,7 @@ class BaseRepository(Element, OptionsMixin):
         as hard deletion and test teardown.
         """
         # Fixate on Model class at the domain level because an explicit model may have been registered
-        dao: BaseDAO = self._provider.get_dao(self.meta_.part_of, self._database_model)
+        dao: BaseDAO = self._provider.dao_for(self.meta_.part_of, self._database_model)
         return dao
 
     def _delete_in_batches(self, criteria: Q, batch_size: int) -> int:

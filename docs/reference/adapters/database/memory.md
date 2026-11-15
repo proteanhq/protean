@@ -111,7 +111,7 @@ string.
 - **No Distribution**: All data lives in a single Python process. Cannot
   scale across multiple processes or machines.
 - **No Schema Management**: There are no tables or indices to create or
-  drop. `_create_database_artifacts()` and `_drop_database_artifacts()` are
+  drop. `create_schema()` and `drop_schema()` are
   no-ops.
 - **No Native JSON/Array**: Complex fields are stored as serialized Python
   objects, not as native database types.
@@ -134,7 +134,7 @@ In production, switch the provider:
 `${DATABASE_URL|...}` reads the URI from the `DATABASE_URL` environment
 variable, and uses the value after `|` when it is not set.
 
-All providers implement the same `BaseProvider` interface, so your domain code
+All providers implement the same `ProviderPort` protocol, so your domain code
 stays the same when you switch providers. To switch, update the configuration,
 and Protean uses the new provider.
 

@@ -514,9 +514,9 @@ def emitted_ddl(model_cls, dialect):
 def model_entry(provider, element, model):
     try:
         if model is None:
-            model_cls = provider.construct_database_model_class(element)
+            model_cls = provider.model_for(element)
         else:
-            model_cls = provider.decorate_database_model_class(element, model)
+            model_cls = provider.model_for(element, model)
     except (ConfigurationError, IncorrectUsageError) as exc:
         return error_entry(exc)
     return emitted_ddl(model_cls, provider._engine.dialect)
@@ -538,7 +538,7 @@ def generate_ddl(dialects):
                 provider = provider_cls(
                     name=dialect_name,
                     domain=domain,
-                    conn_info={"provider": dialect_name, "database_uri": uri},
+                    config={"provider": dialect_name, "database_uri": uri},
                 )
                 for element, kwargs in registrations:
                     entry = {

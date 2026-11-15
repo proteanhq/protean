@@ -217,7 +217,7 @@ def migration_provider(domain: Domain, provider_name: str) -> BaseProvider:
             else "No configured provider declares it."
         )
         raise ConfigurationError(
-            f"Provider '{provider_name}' ({provider.__database__}) does not "
+            f"Provider '{provider_name}' ({provider.database_type}) does not "
             "support schema migrations. Migration commands need a provider "
             f"that declares SCHEMA_MIGRATIONS. {alternatives}"
         )

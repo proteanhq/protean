@@ -36,7 +36,7 @@ def test_raw_query_reads_the_users_table():
 
     with example.domain.domain_context():
         provider = example.domain.providers["default"]
-        provider._create_database_artifacts()
+        provider.create_schema()
         try:
             repo = example.domain.repository_for(example.User)
             repo.add(example.User(name="Ada", age=36))
@@ -45,7 +45,7 @@ def test_raw_query_reads_the_users_table():
             rows = [(row.name, row.age) for row in example.users_older_than(21)]
             nobody = list(example.users_older_than(99))
         finally:
-            provider._drop_database_artifacts()
+            provider.drop_schema()
 
     assert rows == [("Ada", 36)]
     assert nobody == []
