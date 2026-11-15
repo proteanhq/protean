@@ -1339,9 +1339,8 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     partition_keys = domain._partition_keys
     backfill_suffix = backfill_suffix_from_config(domain.config)
 
-<<<<<<< HEAD
-    created = 0
-    with UnitOfWork():
+    saved: list[Any] = []
+    with UnitOfWork() as uow:
         for message in missing:
             message_id = message.metadata.headers.id
             domain_meta = message.metadata.domain
@@ -1359,16 +1358,6 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                     message_id,
                     abandon_reason,
                 )
-=======
-    saved: list[Any] = []
-    with UnitOfWork() as uow:
-        # The rebuilt rows form one commit, so number them in event store
-        # order the way the Unit of Work numbers the events of a commit.
-        for sequence_number, message in enumerate(missing):
-            partition_key, abandon_reason = _rebuilt_partition_key_or_reason(
-                message, partition_keys, backfill_suffix
-            )
->>>>>>> 4ecf02c8 (Leave rows the memory commit dropped out of the reconcile count (#2242))
 
             # The unit of work writes one row per external broker for a
             # ``published`` event, all in the same commit as the internal row.
@@ -1382,7 +1371,6 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                 if broker not in existing_brokers[message_id]
             ]
 
-<<<<<<< HEAD
             for target_broker in target_brokers:
                 outbox_message = Outbox.create_message(
                     message_id=message_id,
@@ -1402,18 +1390,9 @@ def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
                 # A live unit of work, or another sweep, may write this row
                 # after _messages_missing_internal_row checked for it. Its row
                 # is kept and this one skipped.
-                if outbox_repo._dao.save_if_absent(outbox_message) is not None:
-                    created += 1
-=======
-            saved += _save_rebuilt_rows(
-                outbox_repo,
-                message,
-                sequence_number,
-                target_brokers,
-                partition_key,
-                abandon_reason,
-            )
->>>>>>> 4ecf02c8 (Leave rows the memory commit dropped out of the reconcile count (#2242))
+                row = outbox_repo._dao.save_if_absent(outbox_message)
+                if row is not None:
+                    saved.append(row)
 
     # In memory, ``save_if_absent`` only stages a row, and the commit drops it
     # when another writer committed the same row first. Such a row was not
@@ -1506,72 +1485,3 @@ def _messages_missing_internal_row(
         return [], {}
 
     return missing, existing_brokers
-<<<<<<< HEAD
-=======
-
-
-def _rebuilt_partition_key_or_reason(
-    message: Any, partition_keys: dict[str, str], backfill_suffix: str
-) -> tuple[str | None, str | None]:
-    """Return the rebuilt ``partition_key`` of *message* and None, or None and
-    the reason its rows are saved as abandoned when the key cannot be computed."""
-    try:
-        return (
-            _rebuilt_partition_key(message, partition_keys, backfill_suffix),
-            None,
-        )
-    except (DeserializationError, ValidationError) as exc:
-        # A row without its key would be published to the base
-        # category, where no partitioned handler reads it.
-        abandon_reason = f"partition_key could not be computed: {exc}"
-        logger.error(
-            "outbox.reconcile: saving the row(s) for message %s as "
-            "abandoned, because its %s",
-            message.metadata.headers.id,
-            abandon_reason,
-        )
-        return None, abandon_reason
-
-
-def _save_rebuilt_rows(
-    outbox_repo: Any,
-    message: Any,
-    sequence_number: int,
-    target_brokers: list[str],
-    partition_key: str | None,
-    abandon_reason: str | None,
-) -> list[Any]:
-    """Save one rebuilt outbox row for *message* per broker in
-    *target_brokers*, and return the rows that were saved.
-
-    The rows are marked abandoned when *abandon_reason* is set. A row that
-    already exists is skipped and not returned.
-    """
-    domain_meta = message.metadata.domain
-    saved = []
-    for target_broker in target_brokers:
-        # ``priority`` is left at its default: the original request's
-        # priority is not stored with the event.
-        outbox_message = Outbox.create_message(
-            message_id=message.metadata.headers.id,
-            stream_name=message.metadata.headers.stream,
-            message_type=message.metadata.headers.type,
-            data=message.data,
-            metadata=message.metadata,
-            correlation_id=getattr(domain_meta, "correlation_id", None),
-            causation_id=getattr(domain_meta, "causation_id", None),
-            sequence_number=sequence_number,
-            target_broker=target_broker,
-            partition_key=partition_key,
-            stream_category=getattr(domain_meta, "stream_category", None),
-        )
-        if abandon_reason is not None:
-            outbox_message.mark_abandoned(abandon_reason, cause="Invalid partition key")
-        # A live unit of work, or another sweep, may write this row after
-        # _messages_missing_internal_row checked for it. Its row is kept and
-        # this one skipped.
-        row = outbox_repo._dao.save_if_absent(outbox_message)
-        if row is not None:
-            saved.append(row)
-    return saved
->>>>>>> 4ecf02c8 (Leave rows the memory commit dropped out of the reconcile count (#2242))

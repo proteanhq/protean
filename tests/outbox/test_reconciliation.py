@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 from sqlalchemy import text
 
-from protean.adapters.repository.memory import MemorySession
+from protean.adapters.repository.memory import DictDAO, MemorySession
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
@@ -1809,7 +1809,8 @@ class TestOverlappingSweepsInMemory:
     def _sweep_a_with_sweep_b_inside(self, domain, monkeypatch):
         """Run sweep A. Once A has staged its rows, run sweep B to completion
         in another thread. Return A's count, B's count and the rows A staged."""
-        real_save_rebuilt_rows = outbox_module._save_rebuilt_rows
+        real_save_if_absent = DictDAO.save_if_absent
+        real_commit = UnitOfWork.commit
         staged_by_a = []
         sweep_b_results = []
         sweep_b_errors = []
@@ -1820,17 +1821,22 @@ class TestOverlappingSweepsInMemory:
             except Exception as exc:  # reported by the assertion below
                 sweep_b_errors.append(exc)
 
-        def save_then_let_b_commit(*args):
-            rows = real_save_rebuilt_rows(*args)
+        def record_a_rows(dao, entity_obj, **kwargs):
+            row = real_save_if_absent(dao, entity_obj, **kwargs)
+            if threading.current_thread() is threading.main_thread() and row:
+                staged_by_a.append(row)
+            return row
+
+        def let_b_commit_first(uow):
             if threading.current_thread() is threading.main_thread():
-                staged_by_a.extend(rows)
                 thread = threading.Thread(target=sweep_b)
                 thread.start()
                 thread.join(timeout=30)
                 assert not thread.is_alive()
-            return rows
+            real_commit(uow)
 
-        monkeypatch.setattr(outbox_module, "_save_rebuilt_rows", save_then_let_b_commit)
+        monkeypatch.setattr(DictDAO, "save_if_absent", record_a_rows)
+        monkeypatch.setattr(UnitOfWork, "commit", let_b_commit_first)
         sweep_a_result = reconcile_outbox(domain)
 
         assert sweep_b_errors == []
@@ -1903,7 +1909,7 @@ class TestOverlappingSweepsInMemory:
         with domain.domain_context():
             outbox_repo = domain._get_outbox_repo("default")
             outbox_cls = outbox_repo._dao.entity_cls
-            sweep_dao = domain.providers["default"].dao_for(
+            sweep_dao = domain.providers["default"].get_dao(
                 outbox_cls, outbox_repo._database_model
             )
             real_commit = MemorySession.commit
