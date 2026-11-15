@@ -733,8 +733,8 @@ def _abandon_invalid_partition_key(
     # between claim and here (``get`` raises) or the commit loses an
     # OCC race on a reclaimed row, swallow it and report the row rejected so the
     # poisoned row does not abort the rest of the batch in
-    # ``process_batch`` and throttle the poll loop. The row stays
-    # PENDING and is re-evaluated on the next claim.
+    # ``process_batch`` and throttle the poll loop. The claim left the row
+    # PROCESSING, and it is claimed and checked again once its lock expires.
     try:
         with UnitOfWork():
             fresh = outbox_repo.get(message.id)
