@@ -77,7 +77,7 @@ class ProductInventoryProjector:
 ## Key rules
 
 1. **projector_for required**: Projector must be associated with a projection: `@domain.projector(projector_for=MyProjection, ...)`
-2. **aggregates or stream_categories required**: Must specify event source: `aggregates=[Product]` or `stream_categories=[Product.meta_.stream_category]`. A stream category is domain-qualified (`<domain>::<aggregate>`, such as `inventory::product`), so a bare `"product"` never matches. Derive it from the aggregate
+2. **aggregates or stream_categories required**: Must specify event source: `aggregates=[Product]` or `stream_categories=[Product.meta_.stream_category]`. A stream category is domain-qualified (`<domain>::<aggregate>`, such as `inventory::product`). A bare `"product"` gets the domain prefix, but it keeps its value when the aggregate is renamed or sets its own category. Derive it from the aggregate
 3. **Use @on decorator**: Each handler method is decorated with `@on(EventClass)`, imported with `from protean.core.projector import on` (not from protean directly)
 4. **Handler methods take self and event**: Signature: `def method_name(self, event: EventClass)`
 5. **No return values**: Projector methods do NOT return values (CQRS pattern)

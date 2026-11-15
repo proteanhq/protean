@@ -116,7 +116,7 @@ Cross-aggregate projections are eventually consistent. The projection may briefl
 
 ## Projector configuration
 
-The `aggregates` parameter lists every contributing aggregate class, as above. Alternatively, use `stream_categories` for explicit stream names. Derive each name from its aggregate. The real category is qualified by the domain name (`<domain>::customer`), so a bare `"customer"` matches no stream.
+The `aggregates` parameter lists every contributing aggregate class, as above. Alternatively, use `stream_categories` for explicit stream names. Derive each name from its aggregate. The real category is qualified by the domain name (`<domain>::customer`). A bare `"customer"` gets the domain prefix, but it keeps its value when the aggregate is renamed or sets its own category.
 
 ```python
 # fragment
