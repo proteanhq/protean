@@ -1,8 +1,8 @@
 """The domain's ``EventStore`` service against the configured store.
 
 The service holds the adapter, answers ``category_head_position`` and loads
-aggregates. The ``BaseEventStore`` methods that ``.store`` still exposes hand
-their call to the service.
+aggregates. The reading, writing, loading and snapshot methods that ``.store``
+still exposes hand their call to the service.
 """
 
 from uuid import uuid4
@@ -10,11 +10,13 @@ from uuid import uuid4
 import pytest
 
 from protean.adapters.event_store.memory import MemoryEventStore
+from protean.adapters.event_store.message_db import MessageDBStore
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ObjectNotFoundError
 from protean.fields import Identifier, Integer
+from protean.port.event_store import SNAPSHOT_TYPE
 
 pytestmark = pytest.mark.eventstore
 
@@ -85,8 +87,9 @@ def test_store_is_the_adapter(test_domain):
 
     assert service._adapter is not None
     assert service.store is service._adapter
-    if test_domain.config["event_store"]["provider"] == "memory":
-        assert isinstance(service._adapter, MemoryEventStore)
+    expected = {"memory": MemoryEventStore, "message_db": MessageDBStore}
+    provider = test_domain.config["event_store"]["provider"]
+    assert type(service._adapter) is expected[provider]
 
 
 class TestCategoryHeadPosition:
@@ -115,6 +118,21 @@ class TestCategoryHeadPosition:
         newest = service._get_all_messages()[-1]["global_position"]
         assert service.category_head_position("$all") == newest
         assert service.category_head_position("counter") < newest
+
+    def test_stream_name_head_is_the_newest_row_of_that_stream(self, test_domain):
+        service = test_domain.event_store
+        service._write_message("counter-1", "Ticked", {"n": 0}, _metadata("counter-1"))
+        service._write_message("counter-2", "Ticked", {"n": 1}, _metadata("counter-2"))
+
+        newest_in_one = service._get_stream_messages("counter-1")[-1]
+        assert (
+            service.category_head_position("counter-1")
+            == (newest_in_one["global_position"])
+        )
+        assert (
+            service.store.stream_head_position("counter-1")
+            == (newest_in_one["global_position"])
+        )
 
 
 class TestStoreDelegates:
@@ -148,6 +166,15 @@ class TestStoreDelegates:
         assert test_domain.event_store.store.stream_head_position("counter") == 11
         assert calls == ["counter"]
 
+    @pytest.mark.parametrize("keyword", ["no_of" + "_messages", "sql"])
+    def test_read_rejects_removed_keywords(self, test_domain, keyword):
+        # The old row-count name is built from parts so a search of the
+        # repository for it finds no call that still uses it.
+        with pytest.raises(TypeError, match=keyword):
+            test_domain.event_store.read("counter", **{keyword: 5})
+        with pytest.raises(TypeError, match=keyword):
+            test_domain.event_store.store.read("counter", **{keyword: 5})
+
 
 class TestLoadAggregateAtVersion:
     def test_at_version_two_is_the_state_after_the_third_event(self, test_domain):
@@ -164,5 +191,43 @@ class TestLoadAggregateAtVersion:
     def test_at_version_past_the_head_raises(self, test_domain):
         identifier = _counter_with_events(test_domain, 5)
 
-        with pytest.raises(ObjectNotFoundError):
+        with pytest.raises(ObjectNotFoundError, match="Latest version is 4"):
+            test_domain.event_store.load_aggregate(Counter, identifier, at_version=7)
+
+
+class TestLoadAggregateAtVersionFromSnapshot:
+    def _counter_with_marked_snapshot(self, test_domain):
+        """Persist a 5-event counter and a snapshot at version 2 whose value
+        no replay produces, so a result that carries it came from the snapshot."""
+        identifier = _counter_with_events(test_domain, 5)
+        snapshot = test_domain.event_store.load_aggregate(
+            Counter, identifier, at_version=2
+        ).to_dict()
+        snapshot["value"] = 100
+        test_domain.event_store._write_message(
+            f"{Counter.meta_.stream_category}:snapshot-{identifier}",
+            SNAPSHOT_TYPE,
+            snapshot,
+        )
+        return identifier
+
+    def test_snapshot_at_or_before_the_version_is_the_starting_state(self, test_domain):
+        identifier = self._counter_with_marked_snapshot(test_domain)
+
+        counter = test_domain.event_store.load_aggregate(
+            Counter, identifier, at_version=3
+        )
+
+        assert counter._version == 3
+        # The fourth event (a tick to 3) applies on top of the snapshot.
+        assert counter.value == 3
+        at_snapshot = test_domain.event_store.load_aggregate(
+            Counter, identifier, at_version=2
+        )
+        assert at_snapshot.value == 100
+
+    def test_version_past_the_head_raises_on_the_snapshot_path(self, test_domain):
+        identifier = self._counter_with_marked_snapshot(test_domain)
+
+        with pytest.raises(ObjectNotFoundError, match="Latest version is 4"):
             test_domain.event_store.load_aggregate(Counter, identifier, at_version=7)

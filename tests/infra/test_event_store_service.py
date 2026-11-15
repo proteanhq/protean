@@ -3,7 +3,7 @@
 ``_read_raw`` and ``_read_last_raw`` take one stream name and pick a member from
 it: ``$all`` reads the whole store, a name with no ``-`` reads a category, and
 any other name reads one stream. ``category_head_position`` follows the same
-rule for ``$all``. Each forwarder reaches the adapter member it names, and every
+rule. Each forwarder reaches the adapter member it names, and every
 call that reaches the adapter raises ``ConfigurationError`` before
 ``domain.init()`` builds it.
 """
@@ -194,6 +194,12 @@ class TestCategoryHeadPosition:
 
         assert _service(adapter).category_head_position("test::user") == 17
         assert adapter.calls == [("get_last_category_message", ("test::user",))]
+
+    def test_a_stream_name_reads_the_newest_row_of_that_stream(self):
+        adapter = _RecordingAdapter(last_global_position=9)
+
+        assert _service(adapter).category_head_position("test::user-1") == 9
+        assert adapter.calls == [("get_last_stream_message", ("test::user-1",))]
 
 
 class TestForwarders:

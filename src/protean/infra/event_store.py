@@ -222,7 +222,8 @@ class EventStore:
         ConfigurationError: From every feature method and forwarder that reaches
             the adapter, when `domain.init()` has not built it yet. The error
             carries the code `CONFIG_EVENT_STORE_NOT_INITIALIZED`. `store`,
-            `close` and the static `category` need no adapter and never raise.
+            `close` and the static `category` need no adapter and do not
+            raise `ConfigurationError`.
     """
 
     def __init__(self, domain: Domain) -> None:
@@ -551,17 +552,17 @@ class EventStore:
 
         Args:
             category: A category, such as ``test::user``, or ``$all`` for the
-                whole store.
+                whole store. A stream name, such as ``test::user-1``, gives
+                the newest message of that one stream.
 
         Returns:
             The ``global_position`` of the newest row, or ``-1`` when the
             category has no rows.
         """
-        adapter = self._require_adapter()
-        if category == "$all":
-            message = adapter.get_last_message()
-        else:
-            message = adapter.get_last_category_message(category)
+        # A subscription whose category names one stream passes that stream
+        # here, so a name with a ``-`` reads the stream through the
+        # ``_read_raw`` scope rule; Message DB finds no category of that name.
+        message = self._read_last_raw(category)
         return message["global_position"] if message else -1
 
     # ------------------------------------------------------------------

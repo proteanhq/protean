@@ -79,6 +79,22 @@ def test_read_all_exact_multiple_of_page_size(test_domain):
     assert spy.call_count == 3
 
 
+def test_read_all_stops_after_a_short_page(test_domain):
+    """A store that is not a multiple of ``page_size`` ends on its short last
+    page, with no extra empty read after it."""
+    store = test_domain.event_store.store
+    page_size = 5
+    _write_n(store, "counter-1", page_size * 2 + 2)
+
+    service = test_domain.event_store
+    with patch.object(service, "_read_raw", wraps=service._read_raw) as spy:
+        paged = list(store.read_all("$all", page_size=page_size))
+
+    assert len(paged) == page_size * 2 + 2
+    # Two full pages, then the short page of two rows ends the read.
+    assert spy.call_count == 3
+
+
 def test_read_all_page_size_one(test_domain):
     """``page_size=1`` reads one row at a time without looping or dropping.
 

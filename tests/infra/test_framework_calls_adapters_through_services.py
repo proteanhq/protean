@@ -1,10 +1,13 @@
 """Framework code calls an adapter through its service, never through ``_adapter``.
 
-A service in ``protean.infra`` owns its adapter as ``_adapter`` and is the only
-code that calls members on it. This test parses every module under
-``src/protean`` outside ``protean/infra`` and ``protean/adapters`` and fails on
-a call of the form ``<expr>._adapter.<member>(...)``. Reading ``_adapter`` (an
-identity check, ``isinstance``) is allowed.
+A service in ``protean.infra`` owns its adapter as ``_adapter``. This test
+parses every module under ``src/protean`` outside ``protean/infra`` and
+``protean/adapters`` and fails on a call of the form
+``<expr>._adapter.<member>(...)``. Reading ``_adapter`` (an identity check,
+``isinstance``) is allowed. The test does not catch an alias of ``_adapter``,
+a ``getattr`` call, or a call through ``domain.event_store.store``; framework
+code still reaches the adapter through ``.store`` until those callers move to
+the service.
 """
 
 import ast

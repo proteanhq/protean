@@ -294,9 +294,14 @@ class EventStorePort(Protocol):
 
 
 class BaseEventStore(EventStorePort):
-    """The event-store features, built on the `EventStorePort` members.
+    """The base class of every event-store adapter.
 
-    Each event-store adapter subclasses this class and implements the Port.
+    Each adapter subclasses it and implements the `EventStorePort` members.
+    Its `read`, `read_all`, `read_last_message`, `stream_head_position`,
+    `append`, `load_aggregate`, `create_snapshot` and `create_snapshots` call
+    the domain's `EventStore` service, so they act on the domain's adapter,
+    `self.domain.event_store._adapter`, not on this instance. The causation
+    tracing methods and `verify` still read this instance.
     """
 
     def __init__(self, name: str, domain: Domain, config: Mapping[str, Any]) -> None:
