@@ -242,13 +242,13 @@ async def test_successful_message_acknowledgment(
             actual_msg_id = messages[0][0]
 
             # Add a retry count to verify it gets cleared
-            subscription.retry_counts[actual_msg_id] = 2
+            subscription.retry_counts[f"orders:{actual_msg_id}"] = 2
 
             # Test acknowledgment with real message ID
             result = await subscription._acknowledge_message(actual_msg_id)
 
             assert result is True
-            assert actual_msg_id not in subscription.retry_counts  # Should be cleared
+            assert f"orders:{actual_msg_id}" not in subscription.retry_counts  # Cleared
 
 
 # Test Batch Processing
@@ -361,13 +361,13 @@ def test_retry_count_increment(test_domain, engine):
         )
 
         # Test retry count increment
-        count1 = subscription._increment_retry_count("msg-retry-test")
+        count1 = subscription._increment_retry_count("msg-retry-test", "orders")
         assert count1 == 1
-        assert subscription.retry_counts["msg-retry-test"] == 1
+        assert subscription.retry_counts["orders:msg-retry-test"] == 1
 
-        count2 = subscription._increment_retry_count("msg-retry-test")
+        count2 = subscription._increment_retry_count("msg-retry-test", "orders")
         assert count2 == 2
-        assert subscription.retry_counts["msg-retry-test"] == 2
+        assert subscription.retry_counts["orders:msg-retry-test"] == 2
 
 
 @pytest.mark.redis
@@ -436,7 +436,7 @@ async def test_exhaust_retries_workflow(test_domain, engine):
         subscription.broker.publish = track_publish
 
         # Set up retry count
-        subscription.retry_counts["msg-exhaust"] = 2
+        subscription.retry_counts["orders:msg-exhaust"] = 2
 
         # Create test payload
         test_payload = {"test": "data"}
@@ -447,7 +447,7 @@ async def test_exhaust_retries_workflow(test_domain, engine):
         # Verify DLQ and ack behavior
         assert len(dlq_messages) == 1
         assert len(ack_calls) == 1
-        assert "msg-exhaust" not in subscription.retry_counts
+        assert "orders:msg-exhaust" not in subscription.retry_counts
 
 
 # Test DLQ Message Format
@@ -462,7 +462,7 @@ def test_dlq_message_metadata(test_domain, engine):
         )
 
         # Set up retry count
-        subscription.retry_counts["msg-dlq-test"] = 3
+        subscription.retry_counts["orders:msg-dlq-test"] = 2
 
         # Create test payload with metadata
         test_payload = {
@@ -482,7 +482,7 @@ def test_dlq_message_metadata(test_domain, engine):
         assert dlq_meta["consumer_group"] == subscription.consumer_group
         assert dlq_meta["consumer"] == subscription.consumer_name
         assert dlq_meta["failed_at"] == "2024-01-01T10:00:00Z"
-        assert dlq_meta["retry_count"] == 3
+        assert dlq_meta["retry_count"] == 2
 
         # Original payload should be preserved
         assert dlq_message["data"] == test_payload["data"]

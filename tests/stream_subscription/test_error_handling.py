@@ -247,7 +247,7 @@ async def test_retry_exhaustion_moves_to_dlq(test_domain, engine, valid_test_eve
 
         # First failure - should retry
         await subscription.handle_failed_message(identifier, payload)
-        assert subscription.retry_counts.get(identifier, 0) == 1
+        assert subscription.retry_counts.get(f"test_failing:{identifier}", 0) == 1
         assert len(dlq_messages) == 0  # Not in DLQ yet
 
         # Second failure - should move to DLQ (max_retries=2)
@@ -255,7 +255,7 @@ async def test_retry_exhaustion_moves_to_dlq(test_domain, engine, valid_test_eve
 
         # After second failure, it should move to DLQ since max_retries=2
         # The retry count should be cleared after moving to DLQ
-        assert identifier not in subscription.retry_counts
+        assert f"test_failing:{identifier}" not in subscription.retry_counts
         assert len(dlq_messages) == 1
         assert dlq_messages[0][0] == "test_failing:dlq"
         assert "_dlq_metadata" in dlq_messages[0][1]
