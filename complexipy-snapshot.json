@@ -160,19 +160,5 @@
         "complexity": 41
       }
     ]
-  },
-  {
-    "path": "src/protean/server/supervisor.py",
-    "file_name": "supervisor.py",
-    "functions": [
-      {
-        "name": "_worker_entry",
-        "complexity": 16
-      },
-      {
-        "name": "Supervisor::_monitor",
-        "complexity": 17
-      }
-    ]
   }
 ]

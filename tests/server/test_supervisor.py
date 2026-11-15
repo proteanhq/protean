@@ -712,6 +712,66 @@ class TestSupervisorMonitorEdgeCases:
         assert len(supervisor.workers) == 0
 
 
+class _RecordingWorker:
+    """Worker stand-in that answers ``is_alive`` from a script and records each call."""
+
+    def __init__(self, name: str, alive: list[bool], exitcode: int, steps: list):
+        self.name = name
+        self.pid = 100
+        self.exitcode = exitcode
+        self._alive = iter(alive)
+        self._steps = steps
+
+    def is_alive(self) -> bool:
+        alive = next(self._alive)
+        self._steps.append(f"alive:{self.name}:{alive}")
+        return alive
+
+    def join(self, timeout: float) -> None:
+        self._steps.append(f"join:{self.name}:{timeout}")
+
+
+class TestSupervisorMonitorOrder:
+    def test_monitor_checks_joins_and_reports_each_worker_in_order(self, caplog):
+        """Each pass checks every worker, joins and reports the exited ones in
+        list order, then sleeps. The loop ends once no worker is left."""
+        steps: list[str] = []
+        steady = _RecordingWorker("steady", [True, False], 0, steps)
+        crashed = _RecordingWorker("crashed", [False], 3, steps)
+        supervisor = Supervisor(domain_path="d", num_workers=2)
+        supervisor.workers = [steady, crashed]
+
+        class _ListHandler(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                steps.append(f"log:{record.getMessage()}")
+
+        handler = _ListHandler()
+        supervisor_logger = logging.getLogger("protean.server.supervisor")
+        supervisor_logger.addHandler(handler)
+        try:
+            with (
+                patch("time.sleep", side_effect=lambda _: steps.append("sleep")),
+                caplog.at_level(logging.INFO, logger="protean.server.supervisor"),
+            ):
+                supervisor._monitor()
+        finally:
+            supervisor_logger.removeHandler(handler)
+
+        assert steps == [
+            "alive:steady:True",
+            "alive:crashed:False",
+            "join:crashed:1",
+            "log:Worker crashed (PID 100) exited with code 3",
+            "sleep",
+            "alive:steady:False",
+            "join:steady:1",
+            "log:Worker steady exited cleanly",
+            "sleep",
+        ]
+        assert supervisor.workers == []
+        assert supervisor.exit_code == 1
+
+
 class TestSupervisorRun:
     def test_run_spawns_workers_and_monitors(self):
         """run() installs the signal handlers, spawns and starts every worker,

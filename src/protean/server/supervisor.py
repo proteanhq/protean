@@ -496,18 +496,7 @@ class Supervisor:
         """
         try:
             while self.workers and not self._shutting_down:
-                for worker in list(self.workers):
-                    if not worker.is_alive():
-                        worker.join(timeout=1)
-                        self.workers.remove(worker)
-                        if worker.exitcode != 0 and not self._shutting_down:
-                            logger.error(
-                                f"Worker {worker.name} (PID {worker.pid}) "
-                                f"exited with code {worker.exitcode}"
-                            )
-                            self.exit_code = 1
-                        else:
-                            logger.info(f"Worker {worker.name} exited cleanly")
+                _reap_exited_workers(self)
                 time.sleep(0.5)
         except KeyboardInterrupt:
             if not self._shutting_down:
@@ -556,6 +545,36 @@ class Supervisor:
             self.workers.remove(worker)
 
         logger.info("All workers have been shut down")
+
+
+def _reap_exited_workers(supervisor: Supervisor) -> None:
+    """Join and remove each worker that has exited, and log how it exited.
+
+    A worker that exits with a non-zero code before shutdown starts sets the
+    supervisor's exit code to 1.
+    """
+    for worker in list(supervisor.workers):
+        if not worker.is_alive():
+            worker.join(timeout=1)
+            supervisor.workers.remove(worker)
+            if worker.exitcode != 0 and not supervisor._shutting_down:
+                logger.error(
+                    f"Worker {worker.name} (PID {worker.pid}) "
+                    f"exited with code {worker.exitcode}"
+                )
+                supervisor.exit_code = 1
+            else:
+                logger.info(f"Worker {worker.name} exited cleanly")
+
+
+def _log_overrides(log_level: str | None, log_format: str | None) -> dict[str, Any]:
+    """Return the ``level`` and ``format`` arguments that are set, for ``configure_logging``."""
+    overrides: dict[str, Any] = {}
+    if log_level is not None:
+        overrides["level"] = log_level
+    if log_format is not None:
+        overrides["format"] = log_format
+    return overrides
 
 
 def _build_queue_listener(
@@ -692,12 +711,7 @@ def _worker_entry(
     elif log_level is None and log_format is None:
         configure_logging(level=os.getenv("PROTEAN_LOG_LEVEL", "INFO"))
     else:
-        bootstrap: dict[str, Any] = {}
-        if log_level is not None:
-            bootstrap["level"] = log_level
-        if log_format is not None:
-            bootstrap["format"] = log_format
-        configure_logging(**bootstrap)
+        configure_logging(**_log_overrides(log_level, log_format))
 
     worker_logger = logging.getLogger(f"protean.server.worker-{worker_id}")
     worker_logger.info(f"Worker {worker_id} (PID {os.getpid()}) starting...")
@@ -716,12 +730,7 @@ def _worker_entry(
         # listener should mirror, and so the filters it attaches to root can
         # be copied onto the QueueHandler.
         if log_config is None:
-            log_overrides: dict[str, str] = {}
-            if log_level is not None:
-                log_overrides["level"] = log_level
-            if log_format is not None:
-                log_overrides["format"] = log_format
-            domain.configure_logging(**log_overrides)
+            domain.configure_logging(**_log_overrides(log_level, log_format))
 
         # Multi-worker mode: replace direct handlers with a QueueHandler so
         # records are serialized through the supervisor's listener. Done after
