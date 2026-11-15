@@ -141,7 +141,9 @@ def _resolve_and_load_group(
         Tuple of ``(resolved_message_id, correlation_group)``.
 
     Raises:
-        ValueError: If the message cannot be found in the event store.
+        ValueError: ``message_id`` is a string that no message in the store
+            has, or a `Message` with no ``headers.id``. A `Message` the store
+            does not hold is not looked up and raises nothing.
     """
     if isinstance(message_id, Message):
         mid, cid = _ids_from_message(message_id)
@@ -167,10 +169,13 @@ def trace_causation(
 
     Returns:
         `Message` objects in causal order, root first and the given message
-        last.
+        last. Empty when ``message_id`` is a `Message` the store does not
+        hold.
 
     Raises:
-        ValueError: If the message cannot be found in the event store.
+        ValueError: ``message_id`` is a string that no message in the store
+            has, or a `Message` with no ``headers.id``. A `Message` the store
+            does not hold is not looked up and raises nothing.
     """
     mid, group = _resolve_and_load_group(adapter, message_id)
 
@@ -217,7 +222,9 @@ def trace_effects(
         ``global_position``. The given message itself is not included.
 
     Raises:
-        ValueError: If the message cannot be found in the event store.
+        ValueError: ``message_id`` is a string that no message in the store
+            has, or a `Message` with no ``headers.id``. A `Message` the store
+            does not hold is not looked up and raises nothing.
     """
     mid, group = _resolve_and_load_group(adapter, message_id)
 

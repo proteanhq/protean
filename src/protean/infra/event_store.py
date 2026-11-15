@@ -961,10 +961,13 @@ class EventStore:
 
         Returns:
             `Message` objects in causal order, root first and the given message
-            last.
+            last. Empty when ``message_id`` is a `Message` the store does not
+            hold.
 
         Raises:
-            ValueError: If the message cannot be found in the event store.
+            ValueError: ``message_id`` is a string that no message in the
+                store has, or a `Message` with no ``headers.id``. A `Message`
+                the store does not hold is not looked up and raises nothing.
         """
         return causation.trace_causation(self._require_adapter(), message_id)
 
@@ -984,7 +987,9 @@ class EventStore:
             ``global_position``. The given message itself is not included.
 
         Raises:
-            ValueError: If the message cannot be found in the event store.
+            ValueError: ``message_id`` is a string that no message in the
+                store has, or a `Message` with no ``headers.id``. A `Message`
+                the store does not hold is not looked up and raises nothing.
         """
         return causation.trace_effects(
             self._require_adapter(), message_id, recursive=recursive
