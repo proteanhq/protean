@@ -28,7 +28,9 @@ pytestmark = pytest.mark.no_test_domain
 def test_page_lists_every_abstract_method():
     page = (DOCS / "reference/adapters/broker/custom-brokers.md").read_text()
     section = page.split("## Architecture")[1].split("A broker that does not")[0]
-    listed = set(re.findall(r"`(\w+)`", section)) - {"BaseBroker", "BrokerPort"}
+    # The prose above the list names flags and fallbacks, so read the list only.
+    method_list = section.split("implements these methods")[1]
+    listed = set(re.findall(r"`(\w+)`", method_list))
 
     assert listed == BrokerPort.__abstractmethods__ | BaseBroker.__abstractmethods__
 
