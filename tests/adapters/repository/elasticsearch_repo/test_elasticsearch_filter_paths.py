@@ -42,11 +42,6 @@ class TestFilterPaths:
         with pytest.raises(DatabaseError, match="Result window is too large"):
             dao._filter(Q(age__gte=10), offset=1, limit=None, order_by=["nonexistent"])
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="the filter builder starts from match_all, and match_all OR x "
-        "matches every document",
-    )
     def test_or_of_plain_criteria_matches_either_criterion(self, dao):
         result = dao._filter(Q(first_name="Athos") | Q(age=50))
 
@@ -55,11 +50,6 @@ class TestFilterPaths:
             "Athos",
         ]
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="the filter builder starts from match_all, and match_all OR x "
-        "matches every document",
-    )
     def test_or_with_a_nested_criterion_matches_either_side(self, dao):
         result = dao._filter(
             Q(first_name="Athos") | (Q(age=50) & Q(last_name="Musketeer"))
@@ -69,3 +59,39 @@ class TestFilterPaths:
             "Aramis",
             "Athos",
         ]
+
+    def test_or_with_an_unmatched_side_matches_only_the_other_side(self, dao):
+        result = dao._filter(Q(first_name="Athos") | Q(age=99))
+
+        assert [item.first_name for item in result.items] == ["Athos"]
+
+    def test_or_with_a_nested_or_matches_every_side(self, dao):
+        result = dao._filter(Q(first_name="Athos") | (Q(age=40) | Q(age=50)))
+
+        assert sorted(item.first_name for item in result.items) == [
+            "Aramis",
+            "Athos",
+            "Porthos",
+        ]
+
+    def test_count_with_an_or_counts_only_matching_documents(self, dao):
+        assert dao._count(Q(first_name="Athos") | Q(age=50)) == 2
+
+    def test_update_all_with_an_or_updates_only_matching_documents(self, dao):
+        updated = dao._update_all(
+            Q(first_name="Athos") | Q(age=50), last_name="Updated"
+        )
+
+        assert updated == 2
+        result = dao._filter(Q(last_name="Updated"))
+        assert sorted(item.first_name for item in result.items) == [
+            "Aramis",
+            "Athos",
+        ]
+
+    def test_delete_all_with_an_or_deletes_only_matching_documents(self, dao):
+        deleted = dao._delete_all(Q(first_name="Athos") | Q(age=50))
+
+        assert deleted == 2
+        remaining = dao._filter(Q())
+        assert [item.first_name for item in remaining.items] == ["Porthos"]
