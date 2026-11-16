@@ -317,55 +317,33 @@ class ElasticsearchDAO(BaseDAO):
         parts = [
             self._build_filters(child)
             if isinstance(child, Q)
-            else _lookup_expression(self, child, criteria.negated)
+            else self._lookup_expression(child, criteria.negated)
             for child in criteria.children
         ]
         if not parts:
             return query.Q()
 
-<<<<<<< HEAD
-        if criteria.connector == criteria.AND:
-            for child in criteria.children:
-                if isinstance(child, Q):
-                    composed_query = composed_query & self._build_filters(child)
-                else:
-                    stripped_key, lookup_class = self.provider._extract_lookup(child[0])
-                    lookup = lookup_class(
-                        stripped_key,
-                        child[1],
-                        database_model_cls=self.database_model_cls,
-                    )
-                    expression = lookup.as_expression()
-                    if criteria.negated:
-                        assert expression is not None
-                        composed_query = composed_query & ~expression
-                    else:
-                        composed_query = composed_query & expression
-        else:
-            for child in criteria.children:
-                if isinstance(child, Q):
-                    composed_query = composed_query | self._build_filters(child)
-                else:
-                    stripped_key, lookup_class = self.provider._extract_lookup(child[0])
-                    lookup = lookup_class(
-                        stripped_key,
-                        child[1],
-                        database_model_cls=self.database_model_cls,
-                    )
-                    expression = lookup.as_expression()
-                    if criteria.negated:
-                        assert expression is not None
-                        composed_query = composed_query | ~expression
-                    else:
-                        composed_query = composed_query | expression
-
-        return composed_query
-=======
         # Combine from the first child. Starting from ``query.Q()``, which is
         # ``match_all``, breaks OR: ``match_all | x`` matches every document.
         combine = operator.and_ if criteria.connector == criteria.AND else operator.or_
         return functools.reduce(combine, parts)
->>>>>>> 3e87f27a (Fix Elasticsearch OR filters that match every document (#2264))
+
+    def _lookup_expression(self, child: tuple[str, _Any], negated: bool) -> _Any:
+        """The query expression for one ``(lookup key, value)`` criterion.
+
+        The expression is inverted when ``negated`` is true.
+        """
+        stripped_key, lookup_class = self.provider._extract_lookup(child[0])
+        lookup = lookup_class(
+            stripped_key,
+            child[1],
+            database_model_cls=self.database_model_cls,
+        )
+        expression = lookup.as_expression()
+        if negated:
+            assert expression is not None
+            return ~expression
+        return expression
 
     def _filter(
         self,

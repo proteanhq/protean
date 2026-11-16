@@ -107,7 +107,7 @@ class TestFilterPaths:
         assert [item.first_name for item in remaining.items] == ["Porthos"]
 
     def test_delete_top_with_an_or_deletes_only_matching_documents(self, dao):
-        deleted = dao.delete_top(Q(first_name="Athos") | Q(age=50), limit=10)
+        deleted = dao._delete_top(Q(first_name="Athos") | Q(age=50), limit=10)
 
         assert deleted == 2
         remaining = dao._filter(Q())
