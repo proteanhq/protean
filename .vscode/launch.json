@@ -55,7 +55,7 @@
             "module": "pytest",
             "justMyCode": false,
             "args": [
-                "tests/adapters/database/sqlalchemy_repo/sqlite/test_provider.py::TestProviders::test_provider_raw",
+                "tests/adapters/database/sqlalchemy_repo/sqlite/test_sqlite_provider.py::TestSqliteDatabase::test_sqlite_raw_queries_with_sql",
                 "--sqlite"
             ]
         },
@@ -97,7 +97,7 @@
             "module": "pytest",
             "justMyCode": false,
             "args": [
-                "tests/adapters/database/test_generic.py::TestConcurrency::test_expected_version_error_on_version_mismatch",
+                "tests/adapters/database/generic/test_persistence.py::TestConcurrency::test_expected_version_error_on_version_mismatch",
                 "--db=ELASTICSEARCH"
             ]
         },
@@ -138,9 +138,9 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/adapters/database/test_dao.py::TestDAORetrievalFunctionality::test_comparisons_using_different_operators",
+                "tests/adapters/database/generic/test_filtering.py::TestDAOLookups::test_comparisons_using_different_operators",
                 "-m",
-                "database",
+                "basic_storage",
                 "--db=MSSQL",
                 "-sv"
             ]
@@ -151,9 +151,9 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/adapters/database/test_dao.py::TestDAORetrievalFunctionality::test_filtering_of_database_records",
+                "tests/adapters/database/generic/test_filtering.py::TestDAOFilterFunctionality::test_filtering_of_database_records",
                 "-m",
-                "database",
+                "basic_storage",
                 "--db=ELASTICSEARCH",
                 "-sv"
             ]
@@ -164,8 +164,8 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/adapters/database/test_generic.py::TestPersistenceViaRepository::test_that_aggregate_can_be_persisted_with_repository",
-                "--db=elasticsearch",
+                "tests/adapters/database/generic/test_persistence.py::TestPersistenceViaRepository::test_that_aggregate_can_be_persisted_with_repository",
+                "--db=ELASTICSEARCH",
                 "-sv"
             ]
         }
