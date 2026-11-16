@@ -24,6 +24,12 @@ class TicketOpened(BaseEvent):
     title = String()
 
 
+@pytest.fixture(scope="session")
+def db_config():
+    # The ``steps`` fixture traces the memory adapter's session and DAO.
+    return {"provider": "memory"}
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.config["enable_outbox"] = True
