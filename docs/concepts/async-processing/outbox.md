@@ -268,7 +268,7 @@ Each outbox message carries lock metadata:
 1. The worker calls `claim_batch()`, which selects and claims eligible
    messages in one step. A message is eligible under the rules in the `claim`
    example above: it is `PENDING`, `FAILED` and due for retry, or `PROCESSING`
-   under an expired lock, and it has retries left. Through `_claim()`, each
+   under an expired lock, and it has retries left. Through `claim()`, each
    claim sets the status to `PROCESSING` and records the worker ID and lock
    expiry.
 2. `claim_batch()` returns only the messages this worker won. A message that

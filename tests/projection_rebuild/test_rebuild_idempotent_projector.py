@@ -298,7 +298,7 @@ class TestRebuildIdempotentProjectorRelational:
             calls.append(criteria)
             raise RuntimeError("marker delete failed")
 
-        monkeypatch.setattr(marker_dao, "_delete_all", _boom)
+        monkeypatch.setattr(marker_dao, "delete_all", _boom)
 
         with pytest.raises(RuntimeError, match="marker delete failed"):
             test_domain.rebuild_projection(Tally)

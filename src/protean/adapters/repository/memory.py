@@ -21,8 +21,15 @@ from protean.exceptions import (
     ObjectNotFoundError,
     ValidationError,
 )
+from protean.infra.dao import _unique_key_indexes
 from protean.infra.registry import providers
-from protean.port.dao import BaseDAO, BoundedDeletePort, LookupPort
+from protean.port.dao import (
+    BoundedDeletePort,
+    DAOPort,
+    InsertIfAbsentPort,
+    LookupPort,
+    RawQueryDAOPort,
+)
 from protean.port.provider import (
     BaseProvider,
     DatabaseCapabilities,
@@ -30,6 +37,7 @@ from protean.port.provider import (
     ProviderHealth,
     ProviderPort,
     RawQueryProviderPort,
+    SessionProtocol,
 )
 from protean.utils import _fully_qualified_name, ensure_utc_aware, occ_trace
 from protean.utils.container import Options
@@ -193,8 +201,9 @@ class MemorySession:
     #                      live store must still hold for the commit to apply
     #   ``if_absent``      ``(schema, identifier)`` -> a check that tells whether
     #                      a live record holds the row's unique key; the commit
-    #                      drops a row ``DictDAO.save_if_absent`` wrote when a
-    #                      record that holds its key was committed first
+    #                      drops a row ``DictDAO``'s ``*_if_absent`` members
+    #                      wrote when a record that holds its key was
+    #                      committed first
     #   ``dropped``        ``(schema, identifier)`` of each row the latest
     #                      commit dropped that way; a commit resets it
     #   ``flush_held``     ``True`` while a passed :meth:`flush` holds ``lock``
@@ -308,7 +317,7 @@ class MemorySession:
         self._db["if_absent"].clear()
 
     def _drop_rows_whose_key_is_taken(self, live: dict[str, typing.Any]) -> None:
-        """Drop each row written by ``save_if_absent`` whose unique key a live
+        """Drop each row written by an ``*_if_absent`` member whose unique key a live
         record now holds. Another session committed that record after this
         session checked the key."""
         ops = self._db["ops"]
@@ -414,7 +423,8 @@ class MemoryProvider(BaseProvider, RawQueryProviderPort):
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
-        """Basic storage, simulated transactions, real optimistic locking, and bounded deletes.
+        """Basic storage, simulated transactions, real optimistic locking, bounded
+        deletes, and writes that skip a row whose unique key is taken.
 
         ``OPTIMISTIC_LOCKING`` is a genuine guarantee here, not just for the
         sequential case: on the version-guarded write path (``repository.add``
@@ -426,7 +436,11 @@ class MemoryProvider(BaseProvider, RawQueryProviderPort):
         the concurrency boundary, so independent child changes are guarded only
         through the root's version; see ``docs/reference/guarantees.md``.
         """
-        return DatabaseCapabilities.IN_MEMORY | DatabaseCapabilities.BOUNDED_DELETE
+        return (
+            DatabaseCapabilities.IN_MEMORY
+            | DatabaseCapabilities.BOUNDED_DELETE
+            | DatabaseCapabilities.INSERT_IF_ABSENT
+        )
 
     def __init__(
         self, name: str, domain: "Domain", config: Mapping[str, typing.Any]
@@ -456,6 +470,24 @@ class MemoryProvider(BaseProvider, RawQueryProviderPort):
     def get_connection(self, session_cls: typing.Any = None) -> MemorySession:
         """Return the dictionary database object"""
         return MemorySession(self, new_connection=True)
+
+    def new_session(self) -> MemorySession:
+        """Return a session over a new copy of the store, for one standalone
+        operation."""
+        return MemorySession(self, new_connection=True)
+
+    def commit(self, session: SessionProtocol) -> None:
+        """Merge ``session``'s changes into the store.
+
+        Raises:
+            ExpectedVersionError: A row the session version-checked was
+                changed by another session's commit.
+        """
+        session.commit()
+
+    def rollback(self, session: SessionProtocol) -> None:
+        """Discard ``session``'s changes."""
+        session.rollback()
 
     def ping(self) -> bool:
         """Always `True`: the store lives in this process."""
@@ -556,8 +588,8 @@ class MemoryProvider(BaseProvider, RawQueryProviderPort):
     def dao_for(
         self, entity_cls: type[typing.Any], model_cls: type[typing.Any]
     ) -> "DictDAO":
-        """Return a DAO object configured with a live connection"""
-        return DictDAO(self.domain, self, entity_cls, model_cls)
+        """Return the adapter DAO for ``entity_cls``."""
+        return DictDAO(self, entity_cls, model_cls)
 
     def _evaluate_lookup(
         self,
@@ -679,28 +711,44 @@ def _compound_sort_key(
     return tuple(key_parts)
 
 
-class DictDAO(BaseDAO, BoundedDeletePort):
+class DictDAO(DAOPort, RawQueryDAOPort, BoundedDeletePort, InsertIfAbsentPort):
     """A repository for storing data in a dictionary"""
+
+    provider: "MemoryProvider"
+
+    def __init__(
+        self,
+        provider: "MemoryProvider",
+        entity_cls: type["BaseEntity"],
+        database_model_cls: type[DatabaseModelPort],
+    ) -> None:
+        self.provider = provider
+        self.entity_cls = entity_cls
+        self.database_model_cls = database_model_cls
+        self.schema_name = entity_cls.meta_.schema_name
 
     def __repr__(self) -> str:
         return f"DictDAO <{self.entity_cls.__name__}>"
 
+    def _identifier(self, model_obj: dict[str, typing.Any]) -> typing.Any:
+        """The identifier ``model_obj`` is stored under."""
+        id_fld = id_field(self.entity_cls)
+        assert id_fld is not None and id_fld.field_name is not None
+        return model_obj[id_fld.field_name]
+
     def _set_auto_fields(
-        self, model_obj: dict[str, typing.Any]
+        self, session: MemorySession, model_obj: dict[str, typing.Any]
     ) -> dict[str, typing.Any]:
         """Set the values of the auto field using counter"""
-        conn = self._get_session()
-        assert conn is not None
-
         for field_name, field_obj in fields(self.entity_cls).items():
             is_auto_increment = getattr(field_obj, "increment", False)
             if is_auto_increment:
                 counter_key = f"{self.schema_name}_{field_name}"
                 if not (field_name in model_obj and model_obj[field_name] is not None):
                     # Increment the counter and it should start from 1
-                    counter = next(conn._db["counters"][counter_key])
+                    counter = next(session._db["counters"][counter_key])
                     if not counter:
-                        counter = next(conn._db["counters"][counter_key])
+                        counter = next(session._db["counters"][counter_key])
 
                     model_obj[field_name] = counter
 
@@ -743,7 +791,7 @@ class DictDAO(BaseDAO, BoundedDeletePort):
         # ``_unique_key_indexes`` leaves them out. Enforcing a partial unique
         # index globally would reject rows that are valid on PostgreSQL/SQLite,
         # where the `where` predicate excludes them from the constraint.
-        for index in self._unique_key_indexes():
+        for index in _unique_key_indexes(self.entity_cls):
             keys = [self._storage_key(f) for f in index.fields]
             values = [model_obj.get(k) for k in keys]
 
@@ -767,8 +815,8 @@ class DictDAO(BaseDAO, BoundedDeletePort):
     ) -> None:
         """Raise if ``model_obj`` collides with another record on a unique index.
 
-        Uses the rules of :meth:`_unique_index_collision`. ``_update_all`` and
-        ``_claim`` do not run this check.
+        Uses the rules of :meth:`_unique_index_collision`. ``update_all`` and
+        the claim do not run this check.
 
         Raises:
             ValidationError: Keyed by the index's field names joined with ``_``.
@@ -790,87 +838,109 @@ class DictDAO(BaseDAO, BoundedDeletePort):
             }
         )
 
-    def save_if_absent(
-        self, entity_obj: typing.Any, *, apply_hooks: bool = True
-    ) -> typing.Any:
-        """Save ``entity_obj`` unless another row already holds its unique key.
+    def _committed_rows(
+        self, db: dict[str, typing.Any]
+    ) -> dict[typing.Any, typing.Any]:
+        """The provider's committed rows of this schema that the session
+        whose store is ``db`` neither wrote nor deleted."""
+        # The session's own copy holds the rows it wrote or deleted, so the
+        # committed view leaves those rows out.
+        return {
+            record_id: record
+            for record_id, record in self.provider._databases.get(
+                self.schema_name, {}
+            ).items()
+            if (self.schema_name, record_id) not in db["ops"]
+        }
 
-        See :meth:`BaseDAO.save_if_absent`. The check and the save run under
-        the provider lock. The check reads both the committed store and this
-        session's copy of it, so it also sees a row that another session
+    def _key_taken(
+        self, db: dict[str, typing.Any], model_obj: dict[str, typing.Any]
+    ) -> bool:
+        """Whether a committed row or a row in the session copy ``db`` holds
+        a unique key of ``model_obj``.
+
+        Reading the committed store also finds a row that another session
         committed after this session started. A row in the session's copy
         holds its key even when another session has since deleted it, because
-        ``save`` checks the key against that same copy.
-
-        Inside a Unit of Work the row is only staged. When another session
-        commits a row with the same key before this one commits, the commit
-        drops this row and keeps the other. This method has already returned
-        the entity in that case, so the commit records the dropped row in the
-        session's ``dropped_rows``.
+        ``insert`` and ``update`` check the key against that same copy.
         """
-        conn = self._get_session()
-        assert conn is not None
+        identifier = self._identifier(model_obj)
+        return any(
+            self._unique_index_collision(model_obj, records, identifier) is not None
+            for records in (self._committed_rows(db), db["data"][self.schema_name])
+        )
 
-        id_fld = id_field(self.entity_cls)
-        assert id_fld is not None and id_fld.field_name is not None
-        identifier = getattr(entity_obj, id_fld.field_name)
-        model_obj = self.database_model_cls.from_entity(entity_obj)
-
-        def key_taken(records: dict[typing.Any, typing.Any]) -> bool:
-            return (
-                self._unique_index_collision(model_obj, records, identifier) is not None
-            )
+    def _drop_at_commit_if_key_taken(
+        self, session: MemorySession, model_obj: dict[str, typing.Any]
+    ) -> None:
+        """Make ``session``'s commit drop the row written for ``model_obj``
+        when another session commits a row with the same unique key first."""
 
         def staged_key_taken(
             record: dict[str, typing.Any], records: dict[typing.Any, typing.Any]
         ) -> bool:
             return self._unique_index_collision(record, records, None) is not None
 
-        provider = cast(MemoryProvider, self.provider)
-        with conn._db["lock"]:
-            # This session's own copy holds the rows it wrote or deleted, so
-            # the committed view leaves those rows out.
-            committed = {
-                record_id: record
-                for record_id, record in provider._databases.get(
-                    self.schema_name, {}
-                ).items()
-                if (self.schema_name, record_id) not in conn._db["ops"]
-            }
-            if key_taken(committed) or key_taken(conn._db["data"][self.schema_name]):
-                return None
-            saved = self.save(entity_obj, apply_hooks=apply_hooks)
-            if not self._is_standalone:
-                # Register under the identifier ``save`` assigned, which an
-                # ``Auto(increment=True)`` field only has after the save. The
-                # commit checks the record as last written, after the hooks
-                # and any later save in this session.
-                conn.write_if_absent(
-                    self.schema_name,
-                    getattr(saved, id_fld.field_name),
-                    staged_key_taken,
-                )
-            return saved
+        # Register under the identifier the write assigned, which an
+        # ``Auto(increment=True)`` field only has after ``insert``. The commit
+        # checks the record as last written, after any later write in this
+        # session.
+        session.write_if_absent(
+            self.schema_name, self._identifier(model_obj), staged_key_taken
+        )
 
-    def _create(self, model_obj: typing.Any) -> typing.Any:
+    def insert_if_absent(self, session: SessionProtocol, model: typing.Any) -> bool:
+        """Write ``model`` as a new row unless another row holds one of its
+        unique keys.
+
+        The check and the write run under the provider lock. The check reads
+        both the committed store and this session's copy of it, as
+        :meth:`_key_taken` states.
+
+        Inside a Unit of Work the row is only staged. When another session
+        commits a row with the same key before this one commits, the commit
+        drops this row and keeps the other, and records the dropped row in the
+        session's ``dropped_rows``.
+        """
+        memory_session = cast(MemorySession, session)
+        with memory_session._db["lock"]:
+            if self._key_taken(memory_session._db, model):
+                return False
+            self.insert(session, model)
+            self._drop_at_commit_if_key_taken(memory_session, model)
+        return True
+
+    def update_if_absent(
+        self,
+        session: SessionProtocol,
+        model: typing.Any,
+        *,
+        expected_version: int | None = None,
+    ) -> bool:
+        """Write ``model`` over its stored row unless another row holds one of
+        its unique keys, with the checks :meth:`insert_if_absent` states."""
+        memory_session = cast(MemorySession, session)
+        with memory_session._db["lock"]:
+            if self._key_taken(memory_session._db, model):
+                return False
+            self.update(session, model, expected_version=expected_version)
+            self._drop_at_commit_if_key_taken(memory_session, model)
+        return True
+
+    def insert(self, session: SessionProtocol, model: typing.Any) -> typing.Any:
         """Write a record to the dict repository"""
-        conn = self._get_session()
-        assert conn is not None
+        memory_session = cast(MemorySession, session)
 
         # Update the value of the counters
-        model_obj = self._set_auto_fields(model_obj)
+        model_obj = self._set_auto_fields(memory_session, model)
 
         # Add the entity to the repository
-        id_fld = id_field(self.entity_cls)
-        assert id_fld is not None
-        identifier = model_obj[id_fld.field_name]
-        with conn._db["lock"]:
+        identifier = self._identifier(model_obj)
+        with memory_session._db["lock"]:
             self._check_unique_indexes(
-                model_obj, conn._db["data"][self.schema_name], identifier
+                model_obj, memory_session._db["data"][self.schema_name], identifier
             )
-            conn.write(self.schema_name, identifier, model_obj, is_new=True)
-
-        self._commit_if_standalone(conn)
+            memory_session.write(self.schema_name, identifier, model_obj, is_new=True)
 
         return model_obj
 
@@ -879,10 +949,7 @@ class DictDAO(BaseDAO, BoundedDeletePort):
     ) -> dict[typing.Any, typing.Any]:
         """Recursive function to filter items from dictionary"""
         # Filter the dictionary objects based on the filters
-        # ``_evaluate_lookup`` is defined on ``MemoryProvider``; ``self.provider``
-        # is typed as the wider ``BaseProvider`` on the DAO, and a ``DictDAO`` is
-        # only ever wired to a ``MemoryProvider``, so narrow here.
-        provider = cast(MemoryProvider, self.provider)
+        provider = self.provider
         negated = criteria.negated
         input_db = None
 
@@ -911,14 +978,16 @@ class DictDAO(BaseDAO, BoundedDeletePort):
 
         return input_db
 
-    def _filter(
+    def filter(
         self,
+        session: SessionProtocol,
         criteria: Q,
+        *,
         offset: int = 0,
         limit: int = 10,
         order_by: Sequence[str] = (),
         with_total: bool = True,
-        fields: list[str] | None = None,
+        fields: Sequence[str] | None = None,
     ) -> ResultSet:
         """Read the repository and return results as per the filter.
 
@@ -927,8 +996,7 @@ class DictDAO(BaseDAO, BoundedDeletePort):
         the requested subset is selected when the caller builds ``Record``
         objects via ``to_records``. Records are returned whole here.
         """
-        conn = self._get_session()
-        assert conn is not None
+        conn = cast(MemorySession, session)
 
         if criteria.children:
             items = list(
@@ -955,20 +1023,21 @@ class DictDAO(BaseDAO, BoundedDeletePort):
 
         return result
 
-    def _update(
-        self, model_obj: typing.Any, expected_version: int | None = None
+    def update(
+        self,
+        session: SessionProtocol,
+        model: typing.Any,
+        *,
+        expected_version: int | None = None,
     ) -> typing.Any:
         """Update the entity record in the dictionary.
 
         When ``expected_version`` is set, the version check and write happen
         atomically under the database lock.
         """
-        conn = self._get_session()
-        assert conn is not None
-
-        id_fld = id_field(self.entity_cls)
-        assert id_fld is not None
-        identifier = model_obj[id_fld.field_name]
+        conn = cast(MemorySession, session)
+        model_obj = model
+        identifier = self._identifier(model_obj)
         with conn._db["lock"]:
             # Check if object is present
             if identifier not in conn._db["data"][self.schema_name]:
@@ -1005,54 +1074,47 @@ class DictDAO(BaseDAO, BoundedDeletePort):
 
             conn.write(self.schema_name, identifier, model_obj)
 
-        self._commit_if_standalone(conn)
-
         return model_obj
 
-    def _update_all(self, criteria: Q, *args: typing.Any, **kwargs: typing.Any) -> int:
+    def update_all(
+        self, session: SessionProtocol, criteria: Q, values: Mapping[str, typing.Any]
+    ) -> int:
         """Update all objects satisfying the criteria"""
-        conn = self._get_session()
-        assert conn is not None
+        conn = cast(MemorySession, session)
 
         items = self._filter_items(criteria, conn._db["data"][self.schema_name])
 
         update_count = 0
         for key in items:
             item = items[key]
-            item.update(*args)
-            item.update(kwargs)
+            item.update(values)
             conn.write(self.schema_name, key, item)
 
             update_count += 1
-
-        self._commit_if_standalone(conn)
 
         return update_count
 
     def claim_lock(self) -> RLock:
         """The provider's lock, held by the portable claim and bounded delete.
 
-        The memory adapter has no row-level locking, and its ``_update_all`` is
+        The memory adapter has no row-level locking, and its ``update_all`` is
         not atomic across threads (it reads-then-writes). Holding the provider's
         lock across the whole read-and-claim section serializes concurrent
         claimers in-process, which is the strongest guarantee the single-process
         memory store can offer.
 
-        The lock is a reentrant ``RLock``: ``_update_all`` commits standalone,
-        and :meth:`MemorySession.commit` re-acquires the same lock on this
-        thread to run its compare-and-set, so it must nest without deadlocking.
+        The lock is a reentrant ``RLock``: a standalone ``update_all`` is
+        committed while the claim holds the lock, and
+        :meth:`MemorySession.commit` re-acquires the same lock on this thread
+        to run its compare-and-set, so it must nest without deadlocking.
         """
-        provider = cast(MemoryProvider, self.provider)
-        return provider._locks[provider.name]
+        return self.provider._locks[self.provider.name]
 
-    def _delete(self, model_obj: typing.Any) -> typing.Any:
+    def delete(self, session: SessionProtocol, model: typing.Any) -> typing.Any:
         """Delete the entity record in the dictionary"""
-        conn = self._get_session()
-        assert conn is not None
-
-        id_fld = id_field(self.entity_cls)
-        assert id_fld is not None
-        identifier = model_obj[id_fld.field_name]
+        conn = cast(MemorySession, session)
+        model_obj = model
+        identifier = self._identifier(model_obj)
         with conn._db["lock"]:
             # Check if object is present
             if identifier not in conn._db["data"][self.schema_name]:
@@ -1063,14 +1125,11 @@ class DictDAO(BaseDAO, BoundedDeletePort):
 
             conn.delete(self.schema_name, identifier)
 
-        self._commit_if_standalone(conn)
-
         return model_obj
 
-    def _count(self, criteria: Q) -> int:
+    def count(self, session: SessionProtocol, criteria: Q) -> int:
         """Count items matching ``criteria`` without materializing entities."""
-        conn = self._get_session()
-        assert conn is not None
+        conn = cast(MemorySession, session)
 
         records = conn._db["data"].get(self.schema_name, {})
         if criteria.children:
@@ -1079,6 +1138,7 @@ class DictDAO(BaseDAO, BoundedDeletePort):
 
     def delete_top(
         self,
+        session: SessionProtocol,
         criteria: Q,
         limit: int,
         order_by: str | None = None,
@@ -1089,8 +1149,7 @@ class DictDAO(BaseDAO, BoundedDeletePort):
         writer cannot remove or insert rows between selecting the batch and
         deleting it, the same guarantee :meth:`claim_lock` gives a claim.
         """
-        conn = self._get_session()
-        assert conn is not None
+        conn = cast(MemorySession, session)
 
         with conn._db["lock"]:
             records = conn._db["data"].get(self.schema_name, {})
@@ -1112,14 +1171,11 @@ class DictDAO(BaseDAO, BoundedDeletePort):
             for identifier in to_delete:
                 conn.delete(self.schema_name, identifier)
 
-        self._commit_if_standalone(conn)
-
         return len(to_delete)
 
-    def _delete_all(self, criteria: Q | None = None) -> int:
+    def delete_all(self, session: SessionProtocol, criteria: Q | None = None) -> int:
         """Delete the dictionary object by its criteria"""
-        conn = self._get_session()
-        assert conn is not None
+        conn = cast(MemorySession, session)
         items: dict[typing.Any, typing.Any] | list[typing.Any] = []
 
         if criteria:
@@ -1139,11 +1195,11 @@ class DictDAO(BaseDAO, BoundedDeletePort):
                 for identifier in items:
                     conn.delete(self.schema_name, identifier)
 
-        self._commit_if_standalone(conn)
-
         return len(items)
 
-    def _raw(self, query: typing.Any, data: typing.Any = None) -> ResultSet:
+    def raw(
+        self, session: SessionProtocol, query: typing.Any, data: typing.Any = None
+    ) -> ResultSet:
         """Run raw query on Repository.
 
         For this stand-in repository, the query string is a json string that contains kwargs
@@ -1385,3 +1441,4 @@ def register() -> None:
 
 _PORT_CHECK: type[ProviderPort] = MemoryProvider
 _MODEL_PORT_CHECK: type[DatabaseModelPort] = MemoryModel
+_DAO_PORT_CHECK: type[DAOPort] = DictDAO

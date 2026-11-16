@@ -1000,7 +1000,7 @@ class atomic_change:
 
 
 class _pre_persist_change(atomic_change):
-    """The block ``BaseDAO.save`` runs each pre-persist hook in.
+    """The block ``DAO.save`` runs each pre-persist hook in.
 
     An ``auto_now`` stamp or an enricher's audit field is not a business
     change, so the ``@invariant.pre`` checks, which guard a business change

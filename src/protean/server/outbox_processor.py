@@ -29,7 +29,7 @@ def _in_group_commit_order(messages: list[Outbox], lanes: OutboxLanes) -> list[O
 
     The built-in claim already returns a group's rows in commit order: it
     skips a row whose earlier group rows do not sort ahead of it in claim
-    order. A DAO that overrides ``_claim`` gives no such promise, so the
+    order. An adapter with its own ``claim`` gives no such promise, so the
     publish loop does not rely on it. Each group's rows are sorted by commit
     order and put back into the positions that group already holds in the
     batch. Rows with no group keep their positions.
@@ -390,9 +390,9 @@ class OutboxProcessor(BaseSubscription):
 
         # Cleanup is a bulk infrastructure delete with no cross-aggregate
         # atomicity to preserve, so it runs outside a Unit of Work. That lets
-        # ``_delete_top`` commit each batch standalone (via
-        # ``_commit_if_standalone``) instead of accumulating a single oversized
-        # transaction across every batch — the whole point of batching.
+        # ``delete_top`` commit each batch in its own standalone session
+        # instead of accumulating a single oversized transaction across every
+        # batch, which is the purpose of batching.
         try:
             cleanup_result = self.outbox_repo.cleanup_old_messages(
                 published_retention_hours=self.cleanup_config[

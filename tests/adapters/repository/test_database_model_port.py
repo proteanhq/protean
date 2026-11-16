@@ -13,7 +13,7 @@ from protean.adapters.repository.sqlalchemy import SqlalchemyModel
 from protean.core.aggregate import BaseAggregate
 from protean.core.database_model import BaseDatabaseModel
 from protean.fields import String
-from protean.port.dao import BaseDAO
+from protean.infra.dao import _stored_value
 from protean.port.provider import DatabaseModelPort
 
 PORT_SIGNATURES = {
@@ -136,19 +136,15 @@ class _AttributeModel:
 
 class TestStoredValue:
     def test_the_default_reads_through_the_models_get_value(self):
-        dao = SimpleNamespace(database_model_cls=MemoryModel)
-
-        assert BaseDAO._stored_value(dao, {"name": "John"}, "name") == "John"
+        assert _stored_value(MemoryModel, {"name": "John"}, "name") == "John"
 
     def test_the_default_reads_an_attribute_without_get_value(self):
-        dao = SimpleNamespace(database_model_cls=_AttributeModel)
-
         record = SimpleNamespace(name="John")
-        assert BaseDAO._stored_value(dao, record, "name") == "John"
+        assert _stored_value(_AttributeModel, record, "name") == "John"
 
     def test_the_memory_dao_reads_a_dict_key(self, test_domain):
         test_domain.register(Person)
         test_domain.init(traverse=False)
         dao = test_domain.repository_for(Person)._dao
 
-        assert dao._stored_value({"name": "John"}, "name") == "John"
+        assert _stored_value(dao.database_model_cls, {"name": "John"}, "name") == "John"

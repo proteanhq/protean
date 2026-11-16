@@ -1,6 +1,6 @@
 """The SQLAlchemy OCC commit path emits the trace the spec checks (:issue:`#1382`).
 
-The version-guarded ``_update`` observes the same compare-and-set ``specs/OCC.tla``
+The version-guarded ``update`` observes the same compare-and-set ``specs/OCC.tla``
 models: a standalone update flushes ``UPDATE ... SET _version = base + 1 WHERE
 _version = base`` and, if the row's live version already moved past the base, the
 version check rejects it as an ``ExpectedVersionError``. With the recorder active,
@@ -14,8 +14,8 @@ observations.
 
 The updates go through the DAO directly rather than ``repository.add`` because
 ``add`` wraps its own Unit of Work, which defers the version-guarded flush to the
-UoW commit; the standalone DAO path flushes inside ``_update``, where the outcome
-is observable.
+UoW commit; the standalone DAO path commits through ``SAProvider.commit``, where
+the outcome is observable.
 """
 
 import pytest
@@ -95,7 +95,7 @@ def test_update_emits_committed_then_conflicted(trace_domain):
 
 def test_update_through_a_unit_of_work_records_nothing(trace_domain):
     """Under a UnitOfWork the version-guarded flush is deferred to the UoW commit,
-    so ``_update`` cannot observe the compare-and-set outcome. Both SQL emits are
+    so the standalone commit path never sees the compare-and-set outcome. Both SQL emits are
     gated on the standalone path for that reason, so a UoW update records nothing
     rather than a half-observed event (:issue:`#1382`)."""
     repo = trace_domain.repository_for(OCCTraceCounter)
@@ -117,9 +117,10 @@ def test_update_through_a_unit_of_work_records_nothing(trace_domain):
 def _provoke_standalone_flush_conflict(domain, monkeypatch):
     """Return a ``save()`` that hits a standalone flush-time version conflict.
 
-    A standalone ``_update`` reads and flushes back to back, so there is no window
+    A standalone ``update`` reads and commits back to back, so there is no window
     to race it single-threaded. This injects an out-of-band version bump *between*
-    the read and the flush by wrapping ``_commit_if_standalone``, making the flush's
+    the read and the flush by wrapping ``SAProvider.commit`` for the session that
+    holds the pending update, making the flush's
     ``WHERE _version = 0`` match zero rows deterministically (the same trick as
     ``test_flush_time_version_conflict_raises_expected_version_error``, adapted to
     the standalone path)."""
@@ -133,10 +134,12 @@ def _provoke_standalone_flush_conflict(domain, monkeypatch):
     entity.value = 7
 
     provider = provider_adapter(domain, "default")
-    dao_cls = type(repo._dao)
-    real_commit = dao_cls._commit_if_standalone
+    provider_cls = type(provider)
+    real_commit = provider_cls.commit
 
-    def bump_then_commit(self, conn):
+    def bump_then_commit(self, session):
+        if not session.dirty:
+            return real_commit(self, session)
         with provider._engine.connect() as other:
             other.execute(
                 text(
@@ -145,9 +148,9 @@ def _provoke_standalone_flush_conflict(domain, monkeypatch):
                 {"id": str(counter_id)},
             )
             other.commit()
-        return real_commit(self, conn)
+        return real_commit(self, session)
 
-    monkeypatch.setattr(dao_cls, "_commit_if_standalone", bump_then_commit)
+    monkeypatch.setattr(provider_cls, "commit", bump_then_commit)
     return counter_id, lambda: repo._dao.save(entity)
 
 

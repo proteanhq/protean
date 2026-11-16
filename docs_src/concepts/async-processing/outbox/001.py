@@ -36,7 +36,7 @@ def claim(dao, message, worker_id, now):
         & (Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now))
         & Q(retry_count__lt=F("max_retries"))
     )
-    claimed_count = dao._update_all(
+    claimed_count = dao.update_all(
         eligible,
         {
             "status": "processing",

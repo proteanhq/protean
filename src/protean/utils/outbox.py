@@ -16,7 +16,8 @@ from protean.core.index import Index
 from protean.core.repository import BaseRepository
 from protean.exceptions import DeserializationError, ValidationError
 from protean.fields import Auto
-from protean.port.dao import HoldBack, _earlier_than
+from protean.infra.dao import _earlier_than
+from protean.port.dao import HoldBack
 from protean.utils import (
     DomainObjects,
     OptionalStdlibDatetime,
@@ -793,7 +794,7 @@ class OutboxRepository(BaseRepository):
 
         Each claimed row is set to ``PROCESSING`` and locked by *worker_id* for
         *lock_duration_minutes*. The claim follows the
-        :meth:`~protean.port.dao.BaseDAO._claim` contract.
+        :meth:`~protean.infra.dao.DAO.claim` contract.
 
         A message is ready when:
 
@@ -829,7 +830,7 @@ class OutboxRepository(BaseRepository):
 
         claimed = cast(
             list[Outbox],
-            self._dao._claim(
+            self._dao.claim(
                 criteria=self._eligibility_criteria(now, target_broker),
                 claim_fields={
                     "status": OutboxStatus.PROCESSING.value,
@@ -987,7 +988,7 @@ class OutboxRepository(BaseRepository):
             )
         }
         guard = Q(id=row.id, status=read_status, retry_count=read_retry_count)
-        return self._dao._update_all(guard, values) > 0
+        return self._dao.update_all(guard, values) > 0
 
     def find_published(self, limit: int | None = PAGE_SIZE) -> list[Outbox]:
         """Find messages that have been successfully published.

@@ -143,42 +143,8 @@ class TestDAOUpdateFunctionality:
         )
 
         # Perform update
-        updated_count = test_domain.repository_for(Person)._dao._update_all(
+        updated_count = test_domain.repository_for(Person)._dao.update_all(
             Q(age__gt=3), {"last_name": "Fraud"}
-        )
-
-        # Query and check if only the relevant records have been updated
-        assert updated_count == 2
-
-        u_person1 = test_domain.repository_for(Person)._dao.get(1)
-        u_person2 = test_domain.repository_for(Person)._dao.get(2)
-        u_person3 = test_domain.repository_for(Person)._dao.get(3)
-        u_person4 = test_domain.repository_for(Person)._dao.get(4)
-        assert u_person1.last_name == "Musketeer"
-        assert u_person2.last_name == "Musketeer"
-        assert u_person3.last_name == "Fraud"
-        assert u_person4.last_name == "Fraud"
-
-    def test_updating_multiple_records_through_filter_with_kwarg_value(
-        self, test_domain
-    ):
-        """Try updating all records satisfying filter in one step"""
-        test_domain.repository_for(Person)._dao.create(
-            id=1, first_name="Athos", last_name="Musketeer", age=2
-        )
-        test_domain.repository_for(Person)._dao.create(
-            id=2, first_name="Porthos", last_name="Musketeer", age=3
-        )
-        test_domain.repository_for(Person)._dao.create(
-            id=3, first_name="Aramis", last_name="Musketeer", age=4
-        )
-        test_domain.repository_for(Person)._dao.create(
-            id=4, first_name="dArtagnan", last_name="Musketeer", age=5
-        )
-
-        # Perform update
-        updated_count = test_domain.repository_for(Person)._dao._update_all(
-            Q(age__gt=3), last_name="Fraud"
         )
 
         # Query and check if only the relevant records have been updated

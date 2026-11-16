@@ -22,7 +22,7 @@ Application code
 Repository           Domain-facing API: add(), get(), custom methods
     │
     ▼
-DAO (BaseDAO)        Database-facing API: filter, create, update, delete
+DAO service          Database-facing API: filter, create, update, delete
     │
     ▼
 QuerySet             Lazy query builder: chains filter/exclude/limit/order_by
@@ -41,13 +41,18 @@ Access Object. The DAO is constructed lazily and cached:
 
 ```
 BaseRepository._dao
-    → provider.dao_for(entity_cls, model_cls)
-        → ConcreteDAO(domain, provider, entity_cls, model_cls)
+    → DAO(domain, provider, adapter)
+        adapter = provider.dao_for(entity_cls, model_cls)
+            → ConcreteDAO(provider, entity_cls, model_cls)
 ```
+
+The `DAO` service wraps the adapter DAO that the provider returns. The service
+picks the session for each operation and passes it to the adapter. The adapter
+runs the operation in that session and never commits it.
 
 The repository exposes methods named in domain terms (`add`, `get`, `query`,
 `find_by`, and custom methods). The DAO exposes methods named in database terms
-(`_filter`, `_count`, `_create`, `_update`, `_delete`). Custom repository
+(`filter`, `count`, `insert`, `update`, `delete` on the adapter). Custom repository
 methods use `self.query` and `self.find_by` (which delegate to the internal
 `_dao`) to build queries.
 
@@ -55,10 +60,11 @@ methods use `self.query` and `self.find_by` (which delegate to the internal
 
 - `src/protean/core/repository.py`: `BaseRepository` with `add()`, `get()`,
   `_dao` property, and `_sync_children()` for cascading child entities.
-- `src/protean/port/dao.py`: `BaseDAO` with lifecycle methods (`get`,
-  `find_by`, `exists`, `create`, `save`, `update`, `delete`) and abstract
-  methods for concrete implementations (`_filter`, `_count`, `_create`,
-  `_update`, `_delete`, `_raw`).
+- `src/protean/infra/dao.py`: the `DAO` service with lifecycle methods
+  (`get`, `find_by`, `exists`, `create`, `save`, `update`, `delete`).
+- `src/protean/port/dao.py`: `DAOPort`, with the methods concrete adapters
+  implement (`filter`, `count`, `insert`, `update`, `delete`), and the
+  optional ports such as `RawQueryDAOPort`.
 
 ### DAO → QuerySet
 
@@ -89,11 +95,12 @@ children = base.filter(age__lt=18)           # QuerySet 3 (clone of 1)
 ### QuerySet → Provider → Database
 
 When a QuerySet is evaluated (via `.all()`, iteration, `len()`, etc.), it
-calls the DAO's `_filter` method:
+calls the `DAO` service's `_filter`, which opens a session and calls the
+adapter's `filter`:
 
 ```python
 # fragment
-results = self._owner_dao._filter(
+results = dao._filter(
     self._criteria,     # Q object tree
     self._offset,       # int
     self._limit,        # int or None
@@ -105,13 +112,13 @@ The concrete DAO implementation (e.g., `DictDAO` for memory, `SADAO` for
 SQLAlchemy) recursively walks the Q object tree, resolves each lookup using
 the provider's lookup registry, and builds a database-specific query.
 
-`_filter` accepts a `with_total` flag (default `True`). When `with_total` is
+`filter` accepts a `with_total` flag (default `True`). When `with_total` is
 `False`, the caller only needs `ResultSet.items`. Adapters may then skip an
 expensive total-count computation (such as SQL's separate wrapped `COUNT`
 query) and report only the size of the returned page. Adapters that derive the
 total for free (memory, Elasticsearch) may continue to populate it.
 
-`_filter` also accepts an optional `fields` argument (a list of attribute
+`filter` also accepts an optional `fields` argument (a list of attribute
 names) set via `QuerySet.only()`. When `fields` is present, the adapter fetches
 only those columns (SQLAlchemy `load_only`, Elasticsearch `_source` filtering;
 the memory store selects when building the result). The QuerySet then builds
@@ -121,8 +128,8 @@ field-selection path runs no invariants and does no event-position sync or Unit
 of Work tracking. Skipping that work keeps the field-selection path cheap and
 leaves the domain model uncompromised.
 
-Counting takes a lighter path that bypasses `_filter` entirely. `count()` on a
-QuerySet calls the DAO's `_count` method with only the Q object tree. The
+Counting takes a lighter path that bypasses `filter` entirely. `count()` on a
+QuerySet calls the adapter's `count` method with only the Q object tree. The
 concrete DAO issues a single `SELECT COUNT(*)` (SQLAlchemy `func.count()`,
 memory `len` over the filtered set, Elasticsearch's `_count` API) with no
 projection wrapper and no entity materialization. `offset`, `limit`, and
@@ -563,10 +570,12 @@ aggregate in the meantime), an `ExpectedVersionError` is raised.
 
 ```python
 # fragment
-# In BaseDAO.save():
-if entity_obj._version != -1:
-    # existing entity → check version
-    self._validate_and_update_version(entity_obj)
+# In DAO.save():
+if entity_obj.element_type == DomainObjects.AGGREGATE:
+    expected_version = self._validate_and_update_version(entity_obj)
 ```
 
-**Key source file:** `src/protean/port/dao.py`
+The service passes `expected_version` to the adapter's `update`, which checks
+the stored version and writes in one step.
+
+**Key source file:** `src/protean/infra/dao.py`

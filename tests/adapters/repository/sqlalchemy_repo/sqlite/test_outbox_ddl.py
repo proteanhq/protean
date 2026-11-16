@@ -34,7 +34,7 @@ def outbox_columns(test_domain):
     provider = provider_adapter(test_domain, "default")
     provider._metadata.create_all(provider._engine)
     # Start from a clean slate when run in isolation against a persistent db.
-    dao._delete_all()
+    dao.delete_all()
     return dao.database_model_cls.__table__.columns
 
 

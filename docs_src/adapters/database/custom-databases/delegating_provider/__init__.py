@@ -38,6 +38,18 @@ class DelegatingProvider(BaseProvider, RawQueryProviderPort):
     def get_session(self) -> Any:
         return self._delegate.get_session()
 
+    def new_session(self) -> Any:
+        return self._delegate.new_session()
+
+    def commit(self, session: Any) -> None:
+        self._delegate.commit(session)
+
+    def rollback(self, session: Any) -> None:
+        self._delegate.rollback(session)
+
+    def flush(self, session: Any) -> None:
+        self._delegate.flush(session)
+
     def get_connection(self) -> Any:
         return self._delegate.get_connection()
 

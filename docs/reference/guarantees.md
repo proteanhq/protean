@@ -78,8 +78,8 @@ lock, so aggregate-level concurrency tests can run against it.
 
 ### No double claim
 
-For queue-style claiming, such as the outbox, each backend's `_claim`
-implementation claims each row once, as the `_claim` contract (ADR-0013)
+For queue-style claiming, such as the outbox, each backend's `claim`
+implementation claims each row once, as the `claim` contract (ADR-0013)
 requires. PostgreSQL uses `SELECT … FOR UPDATE SKIP LOCKED`. Every other
 backend uses a guarded read-then-update, which gives the same guarantee but
 blocks where PostgreSQL skips.

@@ -133,7 +133,7 @@ def test_a_claim_breaks_order_ties_by_the_integer_id_value():
         try:
             repo.add(TiedJob(seq=0))
             repo.add(TiedJob(seq=0))
-            claimed = dao._claim(
+            claimed = dao.claim(
                 Q(status="ready"),
                 {"status": "claimed"},
                 limit=10,

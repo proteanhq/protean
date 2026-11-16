@@ -12,7 +12,9 @@ class TestESQuery:
 
     def test_construction_of_single_attribute_filter(self, test_domain):
         q1 = test_domain.repository_for(Person)._dao.query.filter(first_name="Jane")
-        assert q1._owner_dao._build_filters(q1._criteria) == Term(first_name="Jane")
+        assert q1._owner_dao._adapter._build_filters(q1._criteria) == Term(
+            first_name="Jane"
+        )
 
     def test_construction_of_filter_with_two_attributes(self, test_domain):
         q1 = test_domain.repository_for(Person)._dao.query.filter(
@@ -24,15 +26,15 @@ class TestESQuery:
             .filter(last_name="Doe")
         )
 
-        filters1 = q1._owner_dao._build_filters(q1._criteria)
-        filters2 = q2._owner_dao._build_filters(q2._criteria)
+        filters1 = q1._owner_dao._adapter._build_filters(q1._criteria)
+        filters2 = q2._owner_dao._adapter._build_filters(q2._criteria)
 
         assert filters1 == Bool(must=[Term(first_name="Jane"), Term(last_name="Doe")])
         assert filters2 == Bool(must=[Term(first_name="Jane"), Term(last_name="Doe")])
 
     def test_construction_of_single_attribute_negation_filter(self, test_domain):
         q1 = test_domain.repository_for(Person)._dao.query.exclude(first_name="Jane")
-        assert q1._owner_dao._build_filters(q1._criteria) == Bool(
+        assert q1._owner_dao._adapter._build_filters(q1._criteria) == Bool(
             must_not=[Term(first_name="Jane")]
         )
 
@@ -46,8 +48,8 @@ class TestESQuery:
             .exclude(last_name="Doe")
         )
 
-        filters1 = q1._owner_dao._build_filters(q1._criteria)
-        filters2 = q2._owner_dao._build_filters(q2._criteria)
+        filters1 = q1._owner_dao._adapter._build_filters(q1._criteria)
+        filters2 = q2._owner_dao._adapter._build_filters(q2._criteria)
 
         assert filters1 == Bool(
             must_not=[Term(first_name="Jane"), Term(last_name="Doe")]
@@ -64,7 +66,7 @@ class TestESQuery:
             ._dao.query.filter(last_name="Doe")
             .exclude(age=3)
         )
-        filters1 = q1._owner_dao._build_filters(q1._criteria)
+        filters1 = q1._owner_dao._adapter._build_filters(q1._criteria)
         assert filters1 == Bool(must=[Term(last_name="Doe")], must_not=[Term(age=3)])
 
     def test_construction_with_combined_filter_and_exclude_with_exclude_coming_first(
@@ -75,5 +77,5 @@ class TestESQuery:
             ._dao.query.exclude(age=3)
             .filter(last_name="Doe")
         )
-        filters1 = q1._owner_dao._build_filters(q1._criteria)
+        filters1 = q1._owner_dao._adapter._build_filters(q1._criteria)
         assert filters1 == Bool(must=[Term(last_name="Doe")], must_not=[Term(age=3)])

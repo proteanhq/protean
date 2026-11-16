@@ -388,13 +388,13 @@ class TestMarkerCleanup:
         # Spy on the batched delete so we can prove batching, not just totals:
         # an unbatched single DELETE would also delete all 5.
         calls: list[int] = []
-        original = repo._dao._delete_top
+        original = repo._dao.delete_top
 
         def _spy(criteria, limit):
             calls.append(limit)
             return original(criteria, limit)
 
-        monkeypatch.setattr(repo._dao, "_delete_top", _spy)
+        monkeypatch.setattr(repo._dao, "delete_top", _spy)
 
         assert repo.cleanup_old_markers(retention_hours=168, batch_size=2) == 5
         # 5 rows drained in three passes deleting (2, 2, 1) rows — bounded, not

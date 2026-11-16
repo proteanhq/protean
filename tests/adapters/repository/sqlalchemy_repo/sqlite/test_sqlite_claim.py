@@ -1,7 +1,7 @@
-"""SQLite coverage for ``_claim``.
+"""SQLite coverage for ``claim``.
 
 SQLite has no row-level locking or ``SKIP LOCKED``, so the SQLite provider
-does not declare ``NATIVE_CLAIM`` and ``_claim`` takes the portable path,
+does not declare ``NATIVE_CLAIM`` and ``claim`` takes the portable path,
 which is correct because SQLite serializes writers. The claim contract itself
 is covered by the generic claim tests.
 """
@@ -13,7 +13,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.domain import Domain
 from protean.fields import Auto, DateTime, Integer, String
-from protean.port import dao as dao_module
+from protean.infra import dao as dao_module
 from protean.port.dao import HoldBack
 from protean.port.provider import DatabaseCapabilities
 from protean.utils.query import Q
@@ -40,7 +40,7 @@ def claim_domain(test_domain):
     provider._metadata.create_all(provider._engine)
     # Start each test from a clean slate — rows persist across tests in this
     # module (the table is shared and not dropped between tests).
-    dao._delete_all()
+    dao.delete_all()
     yield test_domain
 
 
@@ -53,7 +53,7 @@ def _seed(domain, count, status="ready"):
 @pytest.mark.sqlite
 class TestSqliteClaim:
     def test_claim_takes_the_portable_path(self, claim_domain, monkeypatch):
-        """SQLite does not declare ``NATIVE_CLAIM``, so ``_claim`` runs
+        """SQLite does not declare ``NATIVE_CLAIM``, so ``claim`` runs
         ``portable_claim`` and never the DAO's single-statement ``claim``."""
         _seed(claim_domain, 3)
         dao = claim_domain.repository_for(ClaimJob)._dao
@@ -70,9 +70,9 @@ class TestSqliteClaim:
             raise AssertionError("claim must not run without NATIVE_CLAIM")
 
         monkeypatch.setattr(dao_module, "portable_claim", spy)
-        monkeypatch.setattr(dao, "claim", fail)
+        monkeypatch.setattr(dao._adapter, "claim", fail)
 
-        claimed = dao._claim(
+        claimed = dao.claim(
             Q(status="ready"),
             {"status": "claimed", "locked_by": "w1"},
             limit=2,
@@ -125,7 +125,7 @@ class TestSqliteClaimHoldBackWithIntegerIdentity:
             other = IntKeyedJob(seq=2, key="k2")
             repo.add(other)
 
-            update_all = dao._update_all
+            update_all = dao.update_all
 
             def another_worker_takes_the_head(criteria, values):
                 # Another worker claims the head row between this call's read
@@ -134,9 +134,9 @@ class TestSqliteClaimHoldBackWithIntegerIdentity:
                     return 0
                 return update_all(criteria, values)
 
-            monkeypatch.setattr(dao, "_update_all", another_worker_takes_the_head)
+            monkeypatch.setattr(dao, "update_all", another_worker_takes_the_head)
 
-            claimed = dao._claim(
+            claimed = dao.claim(
                 Q(status="ready"),
                 {"status": "claimed"},
                 limit=10,

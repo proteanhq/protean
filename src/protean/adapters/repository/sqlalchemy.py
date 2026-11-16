@@ -47,7 +47,7 @@ from sqlalchemy import types as sa_types
 from sqlalchemy.dialects import mssql, mysql
 from sqlalchemy.dialects import sqlite as sqlite_dialect
 from sqlalchemy.dialects.mysql import mariadb as mariadb_dialect
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import CursorResult, Engine
 from sqlalchemy.engine.url import URL, make_url
 from sqlalchemy.exc import ArgumentError, DatabaseError, IntegrityError
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
@@ -66,21 +66,23 @@ from protean.exceptions import (
     ExpectedVersionError,
     IncorrectUsageError,
     ObjectNotFoundError,
-    ValidationError,
 )
 from protean.fields.association import Reference, _ReferenceField
 from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import ValueObject, _ShadowField
 from protean.fields.resolved import ResolvedField
 from protean.fields.spec import _UNSET, FieldSpec
+from protean.infra.dao import _unique_key_criteria
 from protean.infra.registry import providers
 from protean.port.dao import (
-    BaseDAO,
     BoundedDeletePort,
     ClaimCandidatesPort,
+    DAOPort,
     HoldBack,
+    InsertIfAbsentPort,
     LookupPort,
     NativeClaimPort,
+    RawQueryDAOPort,
 )
 from protean.port.health import PoolStats
 from protean.port.provider import (
@@ -91,10 +93,10 @@ from protean.port.provider import (
     ProviderPort,
     RawQueryProviderPort,
     SchemaMigrator,
+    SessionProtocol,
 )
 from protean.utils import (
     Database,
-    DomainObjects,
     IdentityStrategy,
     IdentityType,
     _fully_qualified_name,
@@ -1909,7 +1911,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
         # flush emits ``UPDATE … WHERE _version = :loaded`` and raises
         # ``StaleDataError`` when a concurrent commit already advanced the
         # version. Protean owns the version value (version_id_generator=False)
-        # via ``BaseDAO._validate_and_update_version``, so the guard rides the
+        # via ``DAO._validate_and_update_version``, so the guard rides the
         # UnitOfWork's real transaction and raises on a concurrent bump
         # (ADR-0013, ADR-0027).
         version_col = cls.__dict__.get("_version")
@@ -1968,46 +1970,33 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
         return cls(**item_dict)
 
 
-def _refuse_unexpected_version(
-    dao: "SADAO",
-    conn: typing.Any,
-    db_item: typing.Any,
-    identifier: typing.Any,
-    expected_version: int,
-) -> None:
-    """Refuse an update whose stored row is not at ``expected_version``.
+# The key in a session's ``info`` dict under which ``SADAO.update`` keeps the
+# stream and base version of each row it version-checked while ``occ_trace`` is
+# active. ``SAProvider`` reads the rows to record the outcome of the commit.
+_OCC_TRACE_ROWS = "protean_occ_trace_rows"
 
-    Rolls back a standalone connection before raising.
 
-    Raises:
-        ExpectedVersionError: The stored version differs from
-            ``expected_version``.
+def _record_stale_conflict(rows: Mapping[str, int]) -> None:
+    """Record ``conflicted`` for the row a ``StaleDataError`` names.
+
+    SQLAlchemy does not say which row lost the race, so the record is made only
+    when the session version-checked exactly one row.
     """
-    stored_version = getattr(db_item, "_version", None)
-    if stored_version != expected_version:
-        # Only a standalone update observes the whole compare-and-set here;
-        # under a UnitOfWork the version-guarded flush is deferred to the UoW
-        # commit, so the outcome resolves there, not in ``_update``. Record
-        # only what this path truthfully sees, so the SQLAlchemy log is a
-        # coherent standalone trace and never a half-observed UoW one.
-        if occ_trace.is_active() and dao._is_standalone:
-            # Raw conflict observation: the version this writer read as its
-            # base, and the row's live version that no longer matches it.
-            occ_trace.record(
-                stream=f"{dao.schema_name}:{identifier}",
-                base=expected_version,
-                outcome="conflicted",
-                version_after=stored_version,
-            )
-        dao._rollback_if_standalone(conn)
-        raise ExpectedVersionError(
-            f"Wrong expected version: {expected_version} "
-            f"(Aggregate: {dao.entity_cls.__name__}({identifier}), "
-            f"Version: {stored_version})"
+    if len(rows) == 1:
+        ((stream, base),) = rows.items()
+        occ_trace.record(
+            stream=stream, base=base, outcome="conflicted", version_after=None
         )
 
 
-class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
+class SADAO(
+    DAOPort,
+    RawQueryDAOPort,
+    InsertIfAbsentPort,
+    NativeClaimPort,
+    ClaimCandidatesPort,
+    BoundedDeletePort,
+):
     """DAO implementation for Databases compliant with SQLAlchemy"""
 
     # An ``SADAO`` is always constructed with an ``SAProvider`` (see
@@ -2017,34 +2006,19 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
     provider: "SAProvider"
     database_model_cls: type[SqlalchemyModel]
 
+    def __init__(
+        self,
+        provider: "SAProvider",
+        entity_cls: type["BaseEntity"],
+        database_model_cls: type[SqlalchemyModel],
+    ) -> None:
+        self.provider = provider
+        self.entity_cls = entity_cls
+        self.database_model_cls = database_model_cls
+        self.schema_name = entity_cls.meta_.schema_name
+
     def __repr__(self) -> str:
         return f"SQLAlchemyDAO <{self.entity_cls.__name__}>"
-
-    def _get_session(self) -> typing.Any:
-        """Returns an active connection to the persistence store.
-
-        - If there is an active transaction, the connection associated with the transaction (in the UoW) is returned
-        - If the DAO has been explicitly instructed to work outside a UoW (with the help of `_outside_uow`), or if
-            there are no active transactions, a new connection is retrieved from the provider and returned.
-
-        Overridden here instead of using the version in `BaseDAO` because the connection needs to be started
-            with a call to `begin()` if it is not yet active (checked with `is_active`)
-        """
-        if current_uow and not self._outside_uow:
-            return current_uow.get_session(self.provider.name)
-        elif self._outside_uow:
-            # Create a session directly from the session factory, bypassing
-            # the scoped_session registry, so it is independent of any active
-            # UoW session and only sees committed data.
-            new_connection = self.provider._session_factory()
-            if not new_connection.is_active:
-                new_connection.begin()
-            return new_connection
-        else:
-            new_connection = self.provider.get_connection()
-            if not new_connection.is_active:
-                new_connection.begin()
-            return new_connection
 
     def _build_filters(self, criteria: Q, model: typing.Any = None) -> typing.Any:
         """Recursively Build the filters from the criteria object.
@@ -2078,18 +2052,19 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
             return true()
         return func(*params)
 
-    def _filter(
+    def filter(
         self,
+        session: SessionProtocol,
         criteria: Q,
+        *,
         offset: int = 0,
         limit: int = 10,
         order_by: Sequence[str] = (),
         with_total: bool = True,
-        fields: list[str] | None = None,
+        fields: Sequence[str] | None = None,
     ) -> ResultSet:
         """Filter objects from the sqlalchemy database"""
-        conn = self._get_session()
-        assert conn is not None
+        conn = typing.cast(Session, session)
         qs = conn.query(self.database_model_cls)
 
         # Restrict the columns loaded to the selected fields (plus the primary
@@ -2156,62 +2131,27 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
             # read, and a concurrent commit already advanced the version. That is
             # an optimistic-concurrency conflict, so surface it as
             # ``ExpectedVersionError`` for the version-retry path, matching
-            # ``_flush`` and the UnitOfWork commit.
+            # ``SAProvider.flush`` and the UnitOfWork commit.
             raise ExpectedVersionError(str(exc)) from None
         except Exception:  # logs any query failure, then re-raises
             logger.exception("repository.sqlalchemy.filter_failed")
             raise
-        finally:
-            self._commit_if_standalone(conn)
 
         return result
 
-    def _flush(self) -> None:
-        """Run the pending writes inside the current transaction, without
-        committing.
-
-        After it returns, a saved parent row exists for the child inserts that
-        reference it, and a database-assigned ``Auto(increment=True)`` key is
-        set on the model.
-
-        Raises:
-            ExpectedVersionError: The flush hit an optimistic-concurrency
-                conflict, such as a row whose version a concurrent commit
-                already advanced. A standalone session is rolled back first.
-        """
-        # Protean emits no ``ForeignKey`` or ``relationship`` metadata for
-        # ``Reference`` fields, so the ORM cannot order parent-before-child
-        # inserts. Callers flush after a parent so databases that check foreign
-        # keys immediately (MSSQL, MySQL/InnoDB) accept the child inserts.
-        conn = self._get_session()
-        try:
-            conn.flush()
-        except StaleDataError as exc:
-            # SQLAlchemy also raises ``StaleDataError`` for a delete whose row a
-            # concurrent writer already removed, which is the same kind of
-            # conflict.
-            self._rollback_if_standalone(conn)
-            raise ExpectedVersionError(str(exc)) from None
-
-    def _create(self, model_obj: typing.Any) -> typing.Any:
+    def insert(self, session: SessionProtocol, model: typing.Any) -> typing.Any:
         """Add a new record to the sqlalchemy database"""
-        conn = self._get_session()
-        assert conn is not None
+        typing.cast(Session, session).add(model)
+        return model
 
-        conn.add(model_obj)
-        self._commit_if_standalone(conn)
+    def insert_if_absent(self, session: SessionProtocol, model: typing.Any) -> bool:
+        """Add ``model`` as a new row unless another row holds one of its
+        unique keys.
 
-        return model_obj
-
-    def save_if_absent(
-        self, entity_obj: typing.Any, *, apply_hooks: bool = True
-    ) -> typing.Any:
-        """Save ``entity_obj`` unless another row already holds its unique key.
-
-        See :meth:`BaseDAO.save_if_absent`. The database's unique index decides
-        a race between two writers. Inside a Unit of Work the write runs in a
-        savepoint, so a rejected write rolls back only the savepoint and the
-        rest of the transaction carries on, and this method returns ``None``.
+        The database's unique index decides a race between two writers. The
+        INSERT runs in a savepoint, so a rejected write rolls back only the
+        savepoint, the rest of the transaction carries on, and this method
+        returns ``False``.
 
         After a rejected write, this method looks for the row that holds the
         key. Under READ COMMITTED that read sees a row another transaction has
@@ -2223,34 +2163,63 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
         Raises:
             IntegrityError: The database rejected the write, and this
                 transaction sees no other row that holds the unique key.
-            ValidationError: ``save`` rejected the entity, and this
-                transaction sees no other row that holds the unique key.
         """
-        before = self._save_state(entity_obj)
-        session = None if self._is_standalone else self._get_session()
-        if session is not None:
-            self._begin_sqlite_transaction(session)
-            # ``begin_nested`` flushes pending writes before it opens the
-            # savepoint. Flush them here, so an error in an earlier write is
-            # raised as it is and not taken for this row's key collision.
-            session.flush()
-        try:
-            if session is None:
-                return self.save(entity_obj, apply_hooks=apply_hooks)
+        return self._write_in_savepoint(
+            typing.cast(Session, session),
+            functools.partial(self.insert, session, model),
+            model,
+        )
 
+    def update_if_absent(
+        self,
+        session: SessionProtocol,
+        model: typing.Any,
+        *,
+        expected_version: int | None = None,
+    ) -> bool:
+        """Write ``model`` over its stored row unless another row holds one of
+        its unique keys, as :meth:`insert_if_absent` describes.
+
+        Raises:
+            IntegrityError: The database rejected the write, and this
+                transaction sees no other row that holds the unique key.
+            ObjectNotFoundError: No row has the model's identifier.
+            ExpectedVersionError: The stored version differs from
+                ``expected_version``.
+        """
+        write = functools.partial(
+            self.update, session, model, expected_version=expected_version
+        )
+        return self._write_in_savepoint(typing.cast(Session, session), write, model)
+
+    def _write_in_savepoint(
+        self, session: Session, write: Callable[[], typing.Any], model: typing.Any
+    ) -> bool:
+        """Run ``write`` and flush it inside a savepoint. Return ``False`` when
+        the database rejects it and another row holds a unique key of
+        ``model``."""
+        self._begin_sqlite_transaction(session)
+        # ``begin_nested`` flushes pending writes before it opens the
+        # savepoint. Flush them here, so an error in an earlier write is
+        # raised as it is and not taken for this row's key collision.
+        session.flush()
+        try:
             with session.begin_nested():
-                self.save(entity_obj, apply_hooks=apply_hooks)
-                # Run the INSERT now, inside the savepoint, so a rejection
+                write()
+                # Run the statement now, inside the savepoint, so a rejection
                 # rolls back the savepoint and not the whole transaction.
-                session.flush()
-            return entity_obj
-        except (IntegrityError, ValidationError):
-            # ``save`` raises ``ValidationError`` before any INSERT when a key
-            # field is also declared ``unique=True`` and its value is taken.
-            if not self._unique_key_taken(entity_obj):
+                self.provider.flush(session)
+        except IntegrityError:
+            if not self._key_held_elsewhere(session, model):
                 raise
-            self._forget_save(entity_obj, before)
-            return None
+            return False
+        return True
+
+    def _key_held_elsewhere(self, session: Session, model: typing.Any) -> bool:
+        """Whether another row that ``session`` sees holds a unique key of
+        ``model``."""
+        criteria = _unique_key_criteria(self.entity_cls, self.database_model_cls, model)
+        return criteria is not None and self.count(session, criteria) > 0
 
     def _begin_sqlite_transaction(self, session: Session) -> None:
         """Open the transaction on a SQLite connection that has none yet."""
@@ -2266,155 +2235,112 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
         ):
             dbapi_connection.execute("BEGIN")
 
-    def _save_state(
-        self, entity_obj: typing.Any
-    ) -> tuple[bool, int | None, typing.Any, bool]:
-        """Capture what :meth:`_forget_save` restores: whether the entity is
-        new, an aggregate's version, the instance the Unit of Work tracks
-        under its identifier, and whether the Unit of Work has saved that
-        instance."""
-        if entity_obj.element_type != DomainObjects.AGGREGATE:
-            return entity_obj.state_.is_new, None, None, False
-        tracked = self._tracked_in_uow(entity_obj)
-        return (
-            entity_obj.state_.is_new,
-            entity_obj._version,
-            tracked,
-            tracked is not None and current_uow._is_saved(tracked),
-        )
-
-    def _forget_save(
-        self, entity_obj: typing.Any, before: tuple[bool, int | None, typing.Any, bool]
-    ) -> None:
-        """Undo what ``save`` changed on ``entity_obj``, for a write the
-        database then rejected."""
-        was_new, version, tracked, was_saved = before
-        if was_new:
-            entity_obj.state_.mark_new()
-        if version is None:
-            return
-        entity_obj._version = version
-        # A DAO working outside the Unit of Work never changed its tracking,
-        # and the instance it tracks may be another copy the Unit of Work saved.
-        if self._is_standalone:
-            return
-        if not was_saved:
-            current_uow._discard_from_identity_map(
-                entity_obj, keep_tracked=tracked is not None
-            )
-        if tracked is not None:
-            # ``save`` replaced the tracked instance with ``entity_obj``.
-            current_uow._add_to_identity_map(tracked)
-
-    def _update(
-        self, model_obj: typing.Any, expected_version: int | None = None
+    def update(
+        self,
+        session: SessionProtocol,
+        model: typing.Any,
+        *,
+        expected_version: int | None = None,
     ) -> typing.Any:
-        """Write the changed attributes of ``model_obj`` to its stored row.
+        """Write the changed attributes of ``model`` to its stored row.
 
-        Outside a Unit of Work the write is committed before the method
-        returns. Inside one it is part of the Unit of Work's transaction, hidden
-        from other connections until that commits and rolled back with it (see
+        The write is part of ``session``'s transaction, hidden from other
+        connections until that commits and rolled back with it (see
         ADR-0027).
 
         Args:
-            model_obj: The model holding the new values.
+            session: The session to write in.
+            model: The model holding the new values.
             expected_version: The version the caller read, or ``None`` to skip
                 the read-time version check.
 
         Raises:
             ObjectNotFoundError: No row has the model's identifier.
             ExpectedVersionError: The stored version differs from
-                ``expected_version``, or a concurrent commit advanced the
-                version after this read. Inside a Unit of Work the second case
-                is raised when the Unit of Work commits.
+                ``expected_version``. When a concurrent commit advances the
+                version after this read, ``SAProvider.flush`` or
+                ``SAProvider.commit`` raises it instead.
         """
-        conn = self._get_session()
-        assert conn is not None
+        conn = typing.cast(Session, session)
 
         entity_id_field = id_field(self.entity_cls)
         assert entity_id_field is not None
         assert entity_id_field.attribute_name is not None
         id_attr = entity_id_field.attribute_name
 
-        identifier = getattr(model_obj, id_attr)
+        identifier = getattr(model, id_attr)
         db_item = conn.get(self.database_model_cls, identifier)
 
         if db_item is None:
-            self._rollback_if_standalone(conn)
             raise ObjectNotFoundError(
                 f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                 f"does not exist."
             )
 
         if expected_version is not None:
-            _refuse_unexpected_version(
-                self, conn, db_item, identifier, expected_version
-            )
+            self._check_version(conn, db_item, identifier, expected_version)
 
         for attribute in attributes(self.entity_cls):
-            if attribute != id_attr and getattr(model_obj, attribute) != getattr(
+            if attribute != id_attr and getattr(model, attribute) != getattr(
                 db_item, attribute
             ):
-                setattr(db_item, attribute, getattr(model_obj, attribute))
+                setattr(db_item, attribute, getattr(model, attribute))
 
-        try:
-            self._commit_if_standalone(conn)
-        except StaleDataError as exc:
-            # A standalone commit flushes the version-guarded UPDATE immediately.
-            # If a concurrent writer advanced the version between this read and the
-            # flush, the UPDATE matches zero rows and SQLAlchemy raises
-            # StaleDataError. Translate it to ExpectedVersionError, matching the UoW
-            # commit and the _flush/_filter/_count paths, so callers see one
-            # optimistic-concurrency error everywhere.
-            if occ_trace.is_active() and expected_version is not None:
-                # The losing writer conflicted; the connection is rolled back and
-                # closed, so the resulting version is not readable here.
+        return model
+
+    def _check_version(
+        self,
+        session: Session,
+        db_item: typing.Any,
+        identifier: typing.Any,
+        expected_version: int,
+    ) -> None:
+        """Refuse an update whose stored row is not at ``expected_version``.
+
+        While ``occ_trace`` is active, a refused update records ``conflicted``,
+        and a passed check keeps the row's stream and base in ``session.info``
+        for ``SAProvider`` to record the commit's outcome.
+
+        Raises:
+            ExpectedVersionError: The stored version differs from
+                ``expected_version``.
+        """
+        stream = f"{self.schema_name}:{identifier}"
+        stored_version = getattr(db_item, "_version", None)
+        if stored_version != expected_version:
+            if occ_trace.is_active():
+                # Raw conflict observation: the version this writer read as
+                # its base, and the row's live version that no longer matches.
                 occ_trace.record(
-                    stream=f"{self.schema_name}:{identifier}",
+                    stream=stream,
                     base=expected_version,
                     outcome="conflicted",
-                    version_after=None,
+                    version_after=stored_version,
                 )
-            raise ExpectedVersionError(str(exc)) from None
-
-        if (
-            occ_trace.is_active()
-            and expected_version is not None
-            and self._is_standalone
-        ):
-            # The standalone commit above flushed the version-guarded UPDATE and
-            # returned without a StaleDataError, so this writer committed. The guard
-            # is guaranteed to advance the row from ``expected_version`` to
-            # ``expected_version + 1``; the connection is closed by now, so record
-            # that value rather than reading the detached row back.
-            occ_trace.record(
-                stream=f"{self.schema_name}:{identifier}",
-                base=expected_version,
-                outcome="committed",
-                version_after=expected_version + 1,
+            raise ExpectedVersionError(
+                f"Wrong expected version: {expected_version} "
+                f"(Aggregate: {self.entity_cls.__name__}({identifier}), "
+                f"Version: {stored_version})"
             )
-        return model_obj
+        if occ_trace.is_active():
+            # The first base seen for a row is the one the commit advances.
+            session.info.setdefault(_OCC_TRACE_ROWS, {}).setdefault(
+                stream, expected_version
+            )
 
-    def _update_all(
-        self, criteria: Q, *args: typing.Any, **kwargs: typing.Any
-    ) -> typing.Any:
+    def update_all(
+        self, session: SessionProtocol, criteria: Q, values: Mapping[str, typing.Any]
+    ) -> int:
         """Update all objects satisfying the criteria"""
-        conn = self._get_session()
-        assert conn is not None
+        conn = typing.cast(Session, session)
         qs = conn.query(self.database_model_cls).filter(self._build_filters(criteria))
+        # ``Query.update`` keys its values by column or column name.
+        values_by_column: dict[typing.Any, typing.Any] = dict(values)
         try:
-            values = {}
-            if args:
-                values = args[
-                    0
-                ]  # `args[0]` is required because `*args` is sent as a tuple
-            values.update(kwargs)
-            updated_count = qs.update(values)
+            updated_count: int = qs.update(values_by_column)
         except DatabaseError:
             logger.exception("repository.sqlalchemy.update_all_failed")
             raise
-        finally:
-            self._commit_if_standalone(conn)
 
         return updated_count
 
@@ -2573,6 +2499,7 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
 
     def claim_candidates(
         self,
+        session: SessionProtocol,
         criteria: Q,
         limit: int,
         offset: int,
@@ -2595,27 +2522,23 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
             .offset(offset)
         )
 
-        conn = self._get_session()
-        assert conn is not None
-        try:
-            candidates = []
-            for row in conn.execute(stmt).all():
-                entity = self.database_model_cls.to_entity(row)
-                entity.state_.mark_retrieved()
-                candidates.append(entity)
-        finally:
-            self._commit_if_standalone(conn)
+        candidates = []
+        for row in typing.cast(Session, session).execute(stmt).all():
+            entity = self.database_model_cls.to_entity(row)
+            entity.state_.mark_retrieved()
+            candidates.append(entity)
         return candidates
 
     def claim(
         self,
+        session: SessionProtocol,
         criteria: Q,
         claim_fields: Mapping[str, typing.Any],
         limit: int,
         order_by: Sequence[str] = (),
         hold_back: HoldBack | None = None,
     ) -> "list[BaseEntity]":
-        """Claim rows as :meth:`BaseDAO._claim` describes, in one
+        """Claim rows as :meth:`protean.infra.dao.DAO.claim` describes, in one
         ``UPDATE … RETURNING`` statement over a ``FOR UPDATE SKIP LOCKED``
         sub-select, with or without ``hold_back``.
 
@@ -2657,8 +2580,7 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
 
         stmt = update(table).where(claimable).values(**claim_fields).returning(table)
 
-        conn = self._get_session()
-        assert conn is not None
+        conn = typing.cast(Session, session)
         try:
             # Core ``Row`` objects support attribute access by column name,
             # which is what ``to_entity`` (via ``getattr``) expects.
@@ -2684,60 +2606,52 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
         except DatabaseError:
             logger.exception("repository.sqlalchemy.claim_atomically_failed")
             raise
-        finally:
-            self._commit_if_standalone(conn)
 
         return claimed
 
-    def _delete(self, model_obj: typing.Any) -> typing.Any:
+    def delete(self, session: SessionProtocol, model: typing.Any) -> typing.Any:
         """Delete the entity record in the database"""
-        conn = self._get_session()
-        assert conn is not None
+        conn = typing.cast(Session, session)
 
         entity_id_field = id_field(self.entity_cls)
         assert entity_id_field is not None
         assert entity_id_field.attribute_name is not None
 
         # Fetch the record from database
-        identifier = getattr(model_obj, entity_id_field.attribute_name)
+        identifier = getattr(model, entity_id_field.attribute_name)
         db_item = conn.get(self.database_model_cls, identifier)
 
         if db_item is None:
-            self._rollback_if_standalone(conn)
             raise ObjectNotFoundError(
                 f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                 f"does not exist."
             )
 
         conn.delete(db_item)
-        self._commit_if_standalone(conn)
 
-        return model_obj
+        return model
 
-    def _count(self, criteria: Q) -> int:
+    def count(self, session: SessionProtocol, criteria: Q) -> int:
         """Count rows matching ``criteria`` via ``SELECT COUNT(*)``.
 
         Avoids the wrapped subquery generated by ``query.count()`` on a
         full-entity query by using ``query(func.count())`` directly.
         """
-        conn = self._get_session()
-        assert conn is not None
+        conn = typing.cast(Session, session)
         try:
             qs = conn.query(func.count()).select_from(self.database_model_cls)
             if criteria.children:
                 qs = qs.filter(self._build_filters(criteria))
             return qs.scalar() or 0
         except StaleDataError as exc:
-            # See ``_filter``: an autoflushed version-guarded UPDATE lost the race,
-            # so report it as the optimistic-concurrency error.
+            # See ``filter``: an autoflushed version-guarded UPDATE lost the
+            # race, so report it as the optimistic-concurrency error.
             raise ExpectedVersionError(str(exc)) from None
-        finally:
-            self._commit_if_standalone(conn)
 
-    def _delete_all(self, criteria: Q | None = None) -> int:
-        """Delete a record from the sqlalchemy database"""
-        conn = self._get_session()
-        assert conn is not None
+    def delete_all(self, session: SessionProtocol, criteria: Q | None = None) -> int:
+        """Delete the records matching ``criteria``, or every record when
+        ``criteria`` is ``None``."""
+        conn = typing.cast(Session, session)
 
         del_count: int = 0
         if criteria:
@@ -2752,13 +2666,12 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
         except DatabaseError:
             logger.exception("repository.sqlalchemy.delete_all_failed")
             raise
-        finally:
-            self._commit_if_standalone(conn)
 
         return del_count
 
     def delete_top(
         self,
+        session: SessionProtocol,
         criteria: Q,
         limit: int,
         order_by: str | None = None,
@@ -2775,26 +2688,25 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
         table, id_col, inner = self._bounded_id_select(criteria, limit, order_by)
         stmt = delete(table).where(id_col.in_(inner.scalar_subquery()))
 
-        conn = self._get_session()
-        assert conn is not None
         try:
-            result = conn.execute(stmt)
+            # A DELETE runs as a cursor result, which carries ``rowcount``.
+            result = typing.cast(
+                CursorResult[typing.Any], typing.cast(Session, session).execute(stmt)
+            )
             rowcount: int = result.rowcount or 0
             return rowcount
         except DatabaseError:
             logger.exception("repository.sqlalchemy.delete_top_failed")
             raise
-        finally:
-            self._commit_if_standalone(conn)
 
-    def _raw(self, query: typing.Any, data: typing.Any = None) -> ResultSet:
+    def raw(
+        self, session: SessionProtocol, query: typing.Any, data: typing.Any = None
+    ) -> ResultSet:
         """Run a raw query on the repository and return entity objects"""
         assert isinstance(query, str)
 
-        conn = self._get_session()
-        assert conn is not None
         try:
-            results = conn.execute(text(query))
+            results = typing.cast(Session, session).execute(text(query))
 
             entity_items = []
             for item in results:
@@ -2811,8 +2723,6 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
         except DatabaseError:
             logger.exception("repository.sqlalchemy.raw_query_failed")
             raise
-        finally:
-            self._commit_if_standalone(conn)
 
         return result
 
@@ -3077,6 +2987,75 @@ class SAProvider(BaseProvider, RawQueryProviderPort):
 
         return conn
 
+    def new_session(self) -> Session:
+        """A new session with an open transaction.
+
+        The session comes from the session factory, outside the scoped
+        session registry, so it shares no state with a session a Unit of Work
+        holds and sees only committed data.
+        """
+        session: Session = self._execute_database_specific_connection_statements(
+            self._session_factory()
+        )
+        if not session.is_active:
+            session.begin()
+        return session
+
+    def commit(self, session: SessionProtocol) -> None:
+        """Commit ``session``.
+
+        While ``occ_trace`` is active, a commit records ``committed`` for each
+        row the session's updates version-checked.
+
+        Raises:
+            ExpectedVersionError: A concurrent commit advanced the version of a
+                row this session updates.
+        """
+        conn = typing.cast(Session, session)
+        rows: dict[str, int] = conn.info.pop(_OCC_TRACE_ROWS, {})
+        try:
+            conn.commit()
+        except StaleDataError as exc:
+            _record_stale_conflict(rows)
+            raise ExpectedVersionError(str(exc)) from None
+        for stream, base in rows.items():
+            occ_trace.record(
+                stream=stream, base=base, outcome="committed", version_after=base + 1
+            )
+
+    def rollback(self, session: SessionProtocol) -> None:
+        """Roll back ``session``."""
+        conn = typing.cast(Session, session)
+        conn.info.pop(_OCC_TRACE_ROWS, None)
+        conn.rollback()
+
+    def flush(self, session: SessionProtocol) -> None:
+        """Run the pending writes inside the current transaction, without
+        committing.
+
+        After it returns, a saved parent row exists for the child inserts that
+        reference it, and a database-assigned ``Auto(increment=True)`` key is
+        set on the model.
+
+        Raises:
+            ExpectedVersionError: The flush hit an optimistic-concurrency
+                conflict, such as a row whose version a concurrent commit
+                already advanced.
+        """
+        # Protean emits no ``ForeignKey`` or ``relationship`` metadata for
+        # ``Reference`` fields, so the ORM cannot order parent-before-child
+        # inserts. Callers flush after a parent so databases that check foreign
+        # keys immediately (MSSQL, MySQL/InnoDB) accept the child inserts.
+        conn = typing.cast(Session, session)
+        try:
+            conn.flush()
+        except StaleDataError as exc:
+            # SQLAlchemy also raises ``StaleDataError`` for a delete whose row a
+            # concurrent writer already removed, which is the same kind of
+            # conflict.
+            _record_stale_conflict(conn.info.get(_OCC_TRACE_ROWS, {}))
+            raise ExpectedVersionError(str(exc)) from None
+
     def ping(self) -> bool:
         """Whether a ``SELECT 1`` on the session from `get_connection()` succeeds."""
         conn = None
@@ -3317,8 +3296,8 @@ class SAProvider(BaseProvider, RawQueryProviderPort):
         return database_model_cls
 
     def dao_for(self, entity_cls: typing.Any, model_cls: typing.Any) -> "SADAO":
-        """Return a DAO object configured with a live connection"""
-        return SADAO(self.domain, self, entity_cls, model_cls)
+        """Return the adapter DAO for ``entity_cls`` and its model class."""
+        return SADAO(self, entity_cls, model_cls)
 
     def raw(self, query: typing.Any, data: typing.Any = None) -> typing.Any:
         """Run raw query on Provider"""
@@ -3434,6 +3413,7 @@ class PostgresqlProvider(SAProvider):
             | DatabaseCapabilities.NATIVE_CLAIM
             | DatabaseCapabilities.BOUNDED_DELETE
             | DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES
+            | DatabaseCapabilities.INSERT_IF_ABSENT
         )
 
     def _get_database_specific_engine_args(self) -> dict[str, typing.Any]:
@@ -3491,6 +3471,7 @@ class SqliteProvider(SAProvider):
             | DatabaseCapabilities.SCHEMA_MIGRATIONS
             | DatabaseCapabilities.BOUNDED_DELETE
             | DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES
+            | DatabaseCapabilities.INSERT_IF_ABSENT
         )
 
     def _get_database_specific_engine_args(self) -> dict[str, typing.Any]:
@@ -3625,6 +3606,7 @@ class MssqlProvider(SAProvider):
             | DatabaseCapabilities.NATIVE_ARRAY
             | DatabaseCapabilities.BOUNDED_DELETE
             | DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES
+            | DatabaseCapabilities.INSERT_IF_ABSENT
         )
 
     def _get_database_specific_engine_args(self) -> dict[str, typing.Any]:
@@ -3708,6 +3690,7 @@ class MysqlProvider(SAProvider):
             | DatabaseCapabilities.SCHEMA_MIGRATIONS
             | DatabaseCapabilities.NATIVE_JSON
             | DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES
+            | DatabaseCapabilities.INSERT_IF_ABSENT
         )
 
     @property
@@ -4225,3 +4208,4 @@ _PORT_CHECK = SqliteProvider
 _PORT_CHECK = MssqlProvider
 _PORT_CHECK = MysqlProvider
 _MODEL_PORT_CHECK: type[DatabaseModelPort] = SqlalchemyModel
+_DAO_PORT_CHECK: type[DAOPort] = SADAO

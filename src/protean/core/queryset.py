@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from protean.core.entity import BaseEntity
     from protean.core.unit_of_work import UnitOfWork
     from protean.domain import Domain
-    from protean.port.dao import BaseDAO
+    from protean.infra.dao import DAO
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class QuerySet:
 
     def __init__(
         self,
-        owner_dao: "BaseDAO",
+        owner_dao: "DAO",
         domain: "Domain",
         entity_cls: type["BaseEntity"],
         criteria: Q | None = None,
@@ -345,7 +345,8 @@ class QuerySet:
         self._result_cache = None
 
         # Call the read method of the dao
-        results = self._owner_dao._filter(
+        dao = self._owner_dao
+        results = dao._filter(
             self._criteria,
             self._offset,
             self._limit,
@@ -389,7 +390,8 @@ class QuerySet:
         projecting columns or materializing entities. Ignores ``offset``,
         ``limit``, and ``order_by`` since they do not affect the row count.
         """
-        return self._owner_dao._count(self._criteria)
+        dao = self._owner_dao
+        return dao._count(self._criteria)
 
     def update(self, *data: Any, apply_hooks: bool = True, **kwargs: Any) -> int:
         """Update every matching aggregate and return how many matched.
@@ -400,7 +402,7 @@ class QuerySet:
             persist each one with ``repository.add()`` instead.
 
         Applies the values to each matched aggregate through
-        ``BaseDAO.update()``, which takes the same ``*data``, ``apply_hooks``
+        ``DAO.update()``, which takes the same ``*data``, ``apply_hooks``
         and keyword arguments. Each aggregate is saved on its own, with its own
         version check. Outside a Unit of Work, an error on one aggregate, such
         as ``ExpectedVersionError``, leaves the aggregates before it saved.
@@ -459,7 +461,8 @@ class QuerySet:
         self._result_cache = None
 
         # Call the raw method of the repository
-        results = self._owner_dao._raw(query, data)
+        dao = self._owner_dao
+        results = dao._raw(query, data)
 
         # Convert the returned results to entity and return it
         entity_items = []

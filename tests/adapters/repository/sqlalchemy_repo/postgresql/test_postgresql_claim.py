@@ -1,5 +1,5 @@
 """PostgreSQL coverage for ``SADAO.claim``, the ``FOR UPDATE SKIP LOCKED``
-single-statement claim that ``_claim`` runs because the PostgreSQL provider
+single-statement claim that ``DAO.claim`` runs because the PostgreSQL provider
 declares ``NATIVE_CLAIM``. The claim contract itself is covered by the generic
 claim tests."""
 
@@ -38,7 +38,7 @@ def claim_domain(test_domain):
     provider._metadata.create_all(provider._engine)
     # Start each test from a clean slate — rows persist across tests in this
     # module (the table is shared and not dropped between tests).
-    dao._delete_all()
+    dao.delete_all()
     yield test_domain
 
 
@@ -55,7 +55,7 @@ def keyed_claim_domain(test_domain):
     dao = test_domain.repository_for(KeyedClaimJob)._dao
     provider = provider_adapter(test_domain, "default")
     provider._metadata.create_all(provider._engine)
-    dao._delete_all()
+    dao.delete_all()
     yield test_domain
 
 
@@ -75,7 +75,7 @@ class TestPostgresClaim:
         engine = provider_adapter(claim_domain, "default")._engine
 
         with assert_query_count(1, engine) as statements:
-            claimed = dao._claim(
+            claimed = dao.claim(
                 Q(status="ready"),
                 {"status": "claimed", "locked_by": "w1"},
                 limit=2,
@@ -99,7 +99,7 @@ class TestPostgresClaim:
         engine = provider_adapter(keyed_claim_domain, "default")._engine
 
         with assert_query_count(1, engine) as statements:
-            claimed = dao._claim(
+            claimed = dao.claim(
                 Q(status="ready"),
                 {"status": "claimed"},
                 limit=10,
@@ -134,7 +134,7 @@ class TestPostgresClaim:
                 dao = claim_domain.repository_for(ClaimJob)._dao
                 start.wait()
                 while True:
-                    claimed = dao._claim(
+                    claimed = dao.claim(
                         Q(status="ready"),
                         {"status": "claimed", "locked_by": f"w{idx}"},
                         limit=3,

@@ -29,22 +29,22 @@ class TestPortableClaimRace:
             first_name="Athos", last_name=tag, age=0
         )
         meet = threading.Barrier(2, timeout=10)
-        update_all = ElasticsearchDAO._update_all
+        update_all = ElasticsearchDAO.update_all
 
-        def update_after_meeting(self, criteria, *args, **kwargs):
+        def update_after_meeting(self, session, criteria, values):
             # Both claimers have read the row before either updates it.
             meet.wait()
-            return update_all(self, criteria, *args, **kwargs)
+            return update_all(self, session, criteria, values)
 
         # Patched on the class: each repository_for call builds a new DAO.
-        monkeypatch.setattr(ElasticsearchDAO, "_update_all", update_after_meeting)
+        monkeypatch.setattr(ElasticsearchDAO, "update_all", update_after_meeting)
         outcomes: dict[int, object] = {}
 
         def worker(idx: int) -> None:
             with test_domain.domain_context():
                 dao = test_domain.repository_for(Person)._dao
                 try:
-                    rows = dao._claim(Q(last_name=tag, age=0), {"age": 1}, limit=1)
+                    rows = dao.claim(Q(last_name=tag, age=0), {"age": 1}, limit=1)
                     outcomes[idx] = [row.id for row in rows]
                 except DatabaseError as exc:
                     outcomes[idx] = exc

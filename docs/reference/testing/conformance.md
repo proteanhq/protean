@@ -400,8 +400,8 @@ The generic test suite covers these areas:
 | `test_filtering.py` | `basic_storage`, `transactional` | Filtering, lookups (incl. `isnull`, `lt`/`lte`), and `F()` column comparison |
 | `test_queryset.py` | `basic_storage` | QuerySet chaining, pagination, `count()`, `only()` projection |
 | `test_ordering.py` | `basic_storage` | Server-side result ordering |
-| `test_bulk_operations.py` | `basic_storage` | `_update_all()`, `_delete_all()`, `_delete_top()` |
-| `test_claim.py` | `transactional`, `atomic_transactions` | `_claim()` find-and-claim correctness and no-double-claim |
+| `test_bulk_operations.py` | `basic_storage` | `update_all()`, `delete_all()`, `delete_top()` |
+| `test_claim.py` | `transactional`, `atomic_transactions` | `claim()` find-and-claim correctness and no-double-claim |
 | `test_persistence.py` | `basic_storage` | End-to-end aggregate persistence |
 | `test_value_objects.py` | `basic_storage` | Value object embedding and retrieval |
 | `test_associations.py` | `basic_storage` | HasOne, HasMany, Reference associations |
@@ -430,12 +430,12 @@ for the rationale.
 | `only()` projection | `basic_storage` | all |
 | `isnull` lookup | `basic_storage` | all |
 | `lt` / `lte` lookups | `basic_storage` | all |
-| `_delete_top` bounded delete | `basic_storage` | all |
+| `delete_top` bounded delete | `basic_storage` | all |
 | `F()` column comparison | `transactional` | in-memory + SQL |
-| `_claim` correctness | `transactional` | in-memory + SQL |
-| `_claim` no-double-claim (concurrent) | `atomic_transactions` | SQL only |
+| `claim` correctness | `transactional` | in-memory + SQL |
+| `claim` no-double-claim (concurrent) | `atomic_transactions` | SQL only |
 
-`F()` and `_claim` are gated above `basic_storage` because Elasticsearch does not
+`F()` and `claim` are gated above `basic_storage` because Elasticsearch does not
 support them: it raises `NotImplementedError` for `F`-bearing predicates, and its
 document-versioning makes it unsuitable as a concurrent claim store. A provider
 that declares only `basic_storage` (like Elasticsearch) is therefore never asked

@@ -4,7 +4,7 @@ When another writer commits a row with the same unique key before the Unit of
 Work commits, the commit drops the staged row. These tests check that the
 commit compares the key the staged row holds when the commit runs, and leaves
 alone a staged row the Unit of Work deleted. One test checks that the portable
-``BaseDAO`` default compares the key as a custom database model stores it.
+check-then-save compares the key as a custom database model stores it.
 """
 
 import pytest
@@ -14,7 +14,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.index import Index
 from protean.core.unit_of_work import UnitOfWork
 from protean.fields import Auto, String
-from protean.port.dao import BaseDAO
+from protean.infra.dao import DAO
 from tests.shared import provider_adapter
 
 
@@ -54,7 +54,8 @@ def _outside_dao(test_domain, cls):
     """A DAO of its own that writes outside the Unit of Work, so the flag does
     not stick to the repository's shared DAO."""
     repo = test_domain.repository_for(cls)
-    dao = provider_adapter(test_domain, "default").dao_for(cls, repo._database_model)
+    provider = provider_adapter(test_domain, "default")
+    dao = DAO(test_domain, provider, provider.dao_for(cls, repo._database_model))
     return dao.outside_uow()
 
 
@@ -99,7 +100,7 @@ def test_default_compares_the_key_the_database_model_stores(test_domain):
     dao = test_domain.repository_for(UpperKeyedRow)._dao
     dao.save(UpperKeyedRow(key="bolt"))
 
-    assert BaseDAO.save_if_absent(dao, UpperKeyedRow(key="bolt")) is None
+    assert dao._save_if_key_free(UpperKeyedRow(key="bolt"), apply_hooks=True) is None
     assert dao.query.filter(key="BOLT").count() == 1
 
 

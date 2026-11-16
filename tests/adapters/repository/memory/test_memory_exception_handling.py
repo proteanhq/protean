@@ -1,12 +1,14 @@
-"""Test Memory Provider exception handling during database operations"""
-
-from unittest.mock import MagicMock, patch
+"""A failed commit of a standalone memory operation rolls back, closes the
+session, re-raises the commit's own exception, and leaves the store
+unchanged."""
 
 import pytest
 
 from protean import UnitOfWork
+from protean.adapters.repository.memory import MemorySession
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Integer, String
+from protean.infra.dao import DAO
 from protean.utils.query import Q
 
 
@@ -20,245 +22,160 @@ def register_elements(test_domain):
     test_domain.register(ExceptionTestEntity)
 
 
-def test_create_operation_exception_handling_without_uow(test_domain):
-    """Test exception handling during create operation when not in UoW"""
+class FailingSession(MemorySession):
+    """A memory session whose commit raises ``error`` when the session holds
+    a pending write, and that records each commit, rollback and close."""
+
+    def __init__(self, provider, events, error):
+        super().__init__(provider, new_connection=True)
+        self.events = events
+        self.error = error
+
+    def commit(self):
+        if self._db["ops"]:
+            self.events.append("commit")
+            raise self.error
+        super().commit()
+
+    def rollback(self):
+        self.events.append("rollback")
+        super().rollback()
+
+    def close(self):
+        self.events.append("close")
+        super().close()
+
+
+class FailingProvider:
+    """Delegates to the real memory provider, and hands out sessions whose
+    write commits fail."""
+
+    def __init__(self, provider, error):
+        self._provider = provider
+        self.error = error
+        self.events: list[str] = []
+
+    def __getattr__(self, name):
+        return getattr(self._provider, name)
+
+    def new_session(self):
+        return FailingSession(self._provider, self.events, self.error)
+
+    def commit(self, session):
+        session.commit()
+
+    def rollback(self, session):
+        session.rollback()
+
+
+def _failing_dao(test_domain, error):
+    repo = test_domain.repository_for(ExceptionTestEntity)
+    provider = FailingProvider(repo._provider, error)
+    adapter = repo._provider.dao_for(ExceptionTestEntity, repo._database_model)
+    return DAO(test_domain, provider, adapter), provider
+
+
+def _stored(test_domain):
     dao = test_domain.repository_for(ExceptionTestEntity)._dao
-
-    # Create a test entity
-    entity = ExceptionTestEntity(name="Test", value=100)
-    model_dict = dao.database_model_cls.from_entity(entity)
-
-    # Mock the session's commit method to raise an exception
-    with patch.object(dao, "_get_session") as mock_get_session:
-        mock_session = MagicMock()
-        mock_session._db = {
-            "data": {"exception_test_entity": {}},
-            "lock": MagicMock(),
-            "counters": {},
-        }
-        mock_get_session.return_value = mock_session
-
-        # Make commit raise an exception
-        mock_session.commit.side_effect = Exception("Simulated commit error")
-
-        # _commit_if_standalone re-raises the original exception
-        with pytest.raises(Exception, match="Simulated commit error"):
-            dao._create(model_dict)
-
-        # Verify rollback was called
-        mock_session.rollback.assert_called_once()
-        mock_session.close.assert_called_once()
+    rows = dao.query.order_by("name").all().items
+    return [(row.name, row.value) for row in rows]
 
 
-def test_update_operation_exception_handling_without_uow(test_domain):
-    """Test exception handling during update operation when not in UoW"""
-    # First create an entity
-    entity = ExceptionTestEntity(name="Original", value=50)
-    test_domain.repository_for(ExceptionTestEntity).add(entity)
-
-    dao = test_domain.repository_for(ExceptionTestEntity)._dao
-
-    # Update the entity
-    entity.name = "Updated"
-    model_dict = dao.database_model_cls.from_entity(entity)
-
-    # Mock the session's commit method to raise an exception
-    with patch.object(dao, "_get_session") as mock_get_session:
-        mock_session = MagicMock()
-        mock_session._db = {
-            "data": {"exception_test_entity": {entity.id: model_dict}},
-            "lock": MagicMock(),
-        }
-        mock_get_session.return_value = mock_session
-
-        # Make commit raise an exception
-        mock_session.commit.side_effect = Exception("Simulated update commit error")
-
-        # _commit_if_standalone re-raises the original exception
-        with pytest.raises(Exception, match="Simulated update commit error"):
-            dao._update(model_dict)
-
-        # Verify rollback was called
-        mock_session.rollback.assert_called_once()
-        mock_session.close.assert_called_once()
+def _seed(test_domain, *pairs):
+    repo = test_domain.repository_for(ExceptionTestEntity)
+    entities = [ExceptionTestEntity(name=name, value=value) for name, value in pairs]
+    for entity in entities:
+        repo.add(entity)
+    return entities
 
 
-def test_update_all_operation_exception_handling_without_uow(test_domain):
-    """Test exception handling during update_all operation when not in UoW"""
-    # Create test entities
-    entity1 = ExceptionTestEntity(name="Test1", value=10)
-    entity2 = ExceptionTestEntity(name="Test2", value=20)
-    test_domain.repository_for(ExceptionTestEntity).add(entity1)
-    test_domain.repository_for(ExceptionTestEntity).add(entity2)
-
-    dao = test_domain.repository_for(ExceptionTestEntity)._dao
-
-    # Mock the session's commit method to raise an exception
-    with patch.object(dao, "_get_session") as mock_get_session:
-        mock_session = MagicMock()
-        mock_session._db = {
-            "data": {
-                "exception_test_entity": {
-                    entity1.id: {"id": entity1.id, "name": "Test1", "value": 10},
-                    entity2.id: {"id": entity2.id, "name": "Test2", "value": 20},
-                }
-            },
-            "lock": MagicMock(),
-        }
-        mock_get_session.return_value = mock_session
-
-        # Mock _filter_items to return some items
-        with patch.object(dao, "_filter_items") as mock_filter:
-            mock_filter.return_value = {
-                entity1.id: {"id": entity1.id, "name": "Test1", "value": 10}
-            }
-
-            # Make commit raise an exception
-            mock_session.commit.side_effect = Exception(
-                "Simulated update_all commit error"
-            )
-
-            # _commit_if_standalone re-raises the original exception
-            with pytest.raises(Exception, match="Simulated update_all commit error"):
-                dao._update_all(Q(name="Test1"), value=100)
-
-            # Verify rollback was called
-            mock_session.rollback.assert_called_once()
-            mock_session.close.assert_called_once()
+def _write_commit_ends(events):
+    """The events of the session whose write commit failed."""
+    return events[events.index("commit") :]
 
 
-def test_delete_operation_exception_handling_without_uow(test_domain):
-    """Test exception handling during delete operation when not in UoW"""
-    # Create an entity
-    entity = ExceptionTestEntity(name="ToDelete", value=75)
-    test_domain.repository_for(ExceptionTestEntity).add(entity)
+def test_failed_insert_commit_rolls_back_and_stores_nothing(test_domain):
+    dao, provider = _failing_dao(test_domain, RuntimeError("insert commit error"))
 
-    dao = test_domain.repository_for(ExceptionTestEntity)._dao
-    model_dict = dao.database_model_cls.from_entity(entity)
+    with pytest.raises(RuntimeError, match="insert commit error"):
+        dao.save(ExceptionTestEntity(name="Test", value=100))
 
-    # Mock the session's commit method to raise an exception
-    with patch.object(dao, "_get_session") as mock_get_session:
-        mock_session = MagicMock()
-        mock_session._db = {
-            "data": {"exception_test_entity": {entity.id: model_dict}},
-            "lock": MagicMock(),
-        }
-        mock_get_session.return_value = mock_session
-
-        # Make commit raise an exception
-        mock_session.commit.side_effect = Exception("Simulated delete commit error")
-
-        # _commit_if_standalone re-raises the original exception
-        with pytest.raises(Exception, match="Simulated delete commit error"):
-            dao._delete(model_dict)
-
-        # Verify rollback was called
-        mock_session.rollback.assert_called_once()
-        mock_session.close.assert_called_once()
+    assert _write_commit_ends(provider.events) == ["commit", "rollback", "close"]
+    assert _stored(test_domain) == []
 
 
-def test_delete_all_operation_exception_handling_without_uow(test_domain):
-    """Test exception handling during delete_all operation when not in UoW"""
-    # Create test entities
-    entity1 = ExceptionTestEntity(name="ToDelete1", value=10)
-    entity2 = ExceptionTestEntity(name="ToDelete2", value=20)
-    test_domain.repository_for(ExceptionTestEntity).add(entity1)
-    test_domain.repository_for(ExceptionTestEntity).add(entity2)
+def test_failed_update_commit_rolls_back_and_keeps_the_stored_row(test_domain):
+    (entity,) = _seed(test_domain, ("Original", 50))
+    dao, provider = _failing_dao(test_domain, RuntimeError("update commit error"))
+    loaded = dao.get(entity.id)
+    loaded.name = "Updated"
 
-    dao = test_domain.repository_for(ExceptionTestEntity)._dao
+    with pytest.raises(RuntimeError, match="update commit error"):
+        dao.save(loaded)
 
-    # Mock the session's commit method to raise an exception
-    with patch.object(dao, "_get_session") as mock_get_session:
-        mock_session = MagicMock()
-        mock_session._db = {
-            "data": {
-                "exception_test_entity": {
-                    entity1.id: {"id": entity1.id, "name": "ToDelete1", "value": 10},
-                    entity2.id: {"id": entity2.id, "name": "ToDelete2", "value": 20},
-                }
-            },
-            "lock": MagicMock(),
-        }
-        mock_get_session.return_value = mock_session
-
-        # Mock _filter_items to return some items
-        with patch.object(dao, "_filter_items") as mock_filter:
-            mock_filter.return_value = {
-                entity1.id: {"id": entity1.id, "name": "ToDelete1", "value": 10}
-            }
-
-            # Make commit raise an exception
-            mock_session.commit.side_effect = Exception(
-                "Simulated delete_all commit error"
-            )
-
-            # _commit_if_standalone re-raises the original exception
-            with pytest.raises(Exception, match="Simulated delete_all commit error"):
-                dao._delete_all(Q(name="ToDelete1"))
-
-            # Verify rollback was called
-            mock_session.rollback.assert_called_once()
-            mock_session.close.assert_called_once()
+    assert _write_commit_ends(provider.events) == ["commit", "rollback", "close"]
+    assert _stored(test_domain) == [("Original", 50)]
 
 
-def test_operations_within_uow_do_not_trigger_exception_handling(test_domain):
-    """Test that operations within UoW do not trigger the exception handling paths"""
+def test_failed_update_all_commit_rolls_back(test_domain):
+    _seed(test_domain, ("Test1", 10), ("Test2", 20))
+    dao, provider = _failing_dao(test_domain, RuntimeError("update_all error"))
+
+    with pytest.raises(RuntimeError, match="update_all error"):
+        dao.update_all(Q(name="Test1"), {"value": 100})
+
+    assert _write_commit_ends(provider.events) == ["commit", "rollback", "close"]
+    assert _stored(test_domain) == [("Test1", 10), ("Test2", 20)]
+
+
+def test_failed_delete_commit_rolls_back_and_keeps_the_row(test_domain):
+    (entity,) = _seed(test_domain, ("ToDelete", 75))
+    dao, provider = _failing_dao(test_domain, RuntimeError("delete commit error"))
+
+    with pytest.raises(RuntimeError, match="delete commit error"):
+        dao.delete(entity)
+
+    assert _write_commit_ends(provider.events) == ["commit", "rollback", "close"]
+    assert _stored(test_domain) == [("ToDelete", 75)]
+
+
+def test_failed_delete_all_commit_rolls_back(test_domain):
+    _seed(test_domain, ("ToDelete1", 10), ("ToDelete2", 20))
+    dao, provider = _failing_dao(test_domain, RuntimeError("delete_all error"))
+
+    with pytest.raises(RuntimeError, match="delete_all error"):
+        dao.delete_all(Q(name="ToDelete1"))
+
+    assert _write_commit_ends(provider.events) == ["commit", "rollback", "close"]
+    assert _stored(test_domain) == [("ToDelete1", 10), ("ToDelete2", 20)]
+
+
+def test_a_read_commits_normally(test_domain):
+    """The failure is tied to pending writes: a read's commit succeeds."""
+    _seed(test_domain, ("Read", 1))
+    dao, provider = _failing_dao(test_domain, RuntimeError("never raised"))
+
+    assert [row.name for row in dao.query.all().items] == ["Read"]
+    assert provider.events == ["close"]
+
+
+def test_a_write_inside_a_uow_uses_the_uow_session(test_domain):
+    """Inside a Unit of Work the provider opens no session, so its failing
+    commit is never reached; the Unit of Work commits the write."""
+    dao, provider = _failing_dao(test_domain, RuntimeError("never raised"))
+
     with UnitOfWork():
-        dao = test_domain.repository_for(ExceptionTestEntity)._dao
+        dao.save(ExceptionTestEntity(name="UoWTest", value=123))
 
-        # Mock session to raise exception on commit
-        with patch.object(dao, "_get_session") as mock_get_session:
-            mock_session = MagicMock()
-            mock_session._db = {
-                "data": {"exception_test_entity": {}},
-                "lock": MagicMock(),
-                "counters": {},
-            }
-            mock_get_session.return_value = mock_session
-
-            # Make commit raise an exception
-            mock_session.commit.side_effect = Exception("Should not be called in UoW")
-
-            # Create entity within UoW - should not trigger exception handling
-            entity = ExceptionTestEntity(name="UoWTest", value=123)
-            model_dict = dao.database_model_cls.from_entity(entity)
-
-            # This should NOT raise an exception because we're in UoW
-            result = dao._create(model_dict)
-
-            # Verify commit was not called (because we're in UoW)
-            mock_session.commit.assert_not_called()
-            mock_session.rollback.assert_not_called()
-            mock_session.close.assert_not_called()
-
-            # Verify the model was returned
-            assert result is not None
+    assert provider.events == []
+    assert _stored(test_domain) == [("UoWTest", 123)]
 
 
-def test_exception_preserves_original_exception_details(test_domain):
-    """Test that commit failure re-raises the original exception"""
-    dao = test_domain.repository_for(ExceptionTestEntity)._dao
+def test_the_original_exception_is_re_raised(test_domain):
+    original = ValueError("Original error message")
+    dao, _ = _failing_dao(test_domain, original)
 
-    # Create a test entity
-    entity = ExceptionTestEntity(name="Test", value=100)
-    model_dict = dao.database_model_cls.from_entity(entity)
+    with pytest.raises(ValueError) as exc:
+        dao.save(ExceptionTestEntity(name="Test", value=100))
 
-    # Custom exception with specific details
-    original_exception = ValueError("Original error message")
-
-    with patch.object(dao, "_get_session") as mock_get_session:
-        mock_session = MagicMock()
-        mock_session._db = {
-            "data": {"exception_test_entity": {}},
-            "lock": MagicMock(),
-            "counters": {},
-        }
-        mock_get_session.return_value = mock_session
-        mock_session.commit.side_effect = original_exception
-
-        with pytest.raises(ValueError, match="Original error message"):
-            dao._create(model_dict)
-
-        # Verify rollback and close were still called
-        mock_session.rollback.assert_called_once()
-        mock_session.close.assert_called_once()
+    assert exc.value is original
