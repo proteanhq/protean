@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from protean.core.unit_of_work import UnitOfWork
 from protean.port.broker import BaseBroker, BrokerCapabilities
@@ -290,23 +290,7 @@ class OutboxProcessor(BaseSubscription):
             span.set_attribute("protean.outbox.processor_id", self.subscription_id)
             span.set_attribute("protean.outbox.is_external", self.is_external)
 
-            # Propagate correlation/causation IDs only when uniform across the batch
-            if messages:
-                correlation_ids = {
-                    msg.correlation_id for msg in messages if msg.correlation_id
-                }
-                causation_ids = {
-                    msg.causation_id for msg in messages if msg.causation_id
-                }
-
-                if len(correlation_ids) == 1:
-                    span.set_attribute(
-                        "protean.correlation_id", next(iter(correlation_ids))
-                    )
-                if len(causation_ids) == 1:
-                    span.set_attribute(
-                        "protean.causation_id", next(iter(causation_ids))
-                    )
+            _set_uniform_batch_ids(span, messages)
 
             successful_count = 0
             released_count = 0
@@ -451,72 +435,10 @@ class OutboxProcessor(BaseSubscription):
         assert self.outbox_repo is not None, "Outbox repository not initialized"
         assert self.broker is not None, "Broker not initialized"
 
-        # Backstop (ADR-0028 decision 3): partition keys are validated at record
-        # creation, so an invalid key on a row that reaches here is a corrupt or
-        # legacy row. It only matters when the broker actually partitions (else
-        # the key is ignored during routing); there, abandon it at once —
-        # terminal, no retry — rather than retrying forever. The abandoned row
-        # keeps its key, so it holds that key's later rows until an operator
-        # retries or discards it; other keys keep flowing.
-        #
-        # Check ``is not None`` rather than truthiness: ``None`` is the
-        # legitimate value for a non-partitioned category and must skip
-        # validation, but an empty string is never legitimate (a fresh row
-        # can't get one — ``invalid_partition_key_reason`` blocks it at
-        # creation) and must still hit the check below rather than being
-        # treated the same as "no key".
-        if message.partition_key is not None and self.broker.has_capability(
-            BrokerCapabilities.STREAM_PARTITIONING
-        ):
-            reason = invalid_partition_key_reason(
-                message.partition_key, self._backfill_suffix
-            )
-            if reason:
-                # Guard the abandon transaction: if the row was cleaned up
-                # between claim and here (``get`` raises) or the commit loses an
-                # OCC race on a reclaimed row, swallow it and return False so the
-                # poisoned row does not abort the rest of the batch in
-                # ``process_batch`` and throttle the poll loop. The row stays
-                # PENDING and is re-evaluated on the next claim.
-                try:
-                    with UnitOfWork():
-                        fresh = self.outbox_repo.get(message.id)
-                        fresh.mark_abandoned(
-                            f"Invalid partition key: {reason}",
-                            cause="Invalid partition key",
-                        )
-                        self.outbox_repo.add(fresh)
-                # a failed abandon must not abort the batch; logged, row retried
-                except Exception:
-                    logger.exception(
-                        "outbox.invalid_partition_key_abandon_failed",
-                        extra={"message_id": message.message_id[:8]},
-                    )
-                    return False
-                logger.warning(
-                    "outbox.invalid_partition_key",
-                    extra={
-                        "message_id": message.message_id[:8],
-                        "partition_key": message.partition_key,
-                        "reason": reason,
-                    },
-                )
-                return False
+        if _abandon_invalid_partition_key(self, self.outbox_repo, message):
+            return False
 
-        stream_category: str = (
-            message.metadata_.domain.stream_category
-            if message.metadata_
-            and message.metadata_.domain
-            and message.metadata_.domain.stream_category
-            else "unknown"
-        )
-        message_type: str = (
-            message.metadata_.headers.type
-            if message.metadata_
-            and message.metadata_.headers
-            and message.metadata_.headers.type
-            else "unknown"
-        )
+        stream_category, message_type = _outbox_labels(message)
 
         tracer = get_tracer(self.engine.domain)
         with tracer.start_as_current_span(
@@ -524,15 +446,9 @@ class OutboxProcessor(BaseSubscription):
             record_exception=False,
             set_status_on_exception=False,
         ) as span:
-            span.set_attribute("protean.outbox.message_id", message.message_id)
-            span.set_attribute("protean.outbox.stream_category", stream_category)
-            span.set_attribute("protean.outbox.message_type", message_type)
-            span.set_attribute("protean.outbox.is_external", self.is_external)
-            span.set_attribute("protean.outbox.processor_id", self.subscription_id)
-            if message.correlation_id:
-                span.set_attribute("protean.correlation_id", message.correlation_id)
-            if message.causation_id:
-                span.set_attribute("protean.causation_id", message.causation_id)
+            _set_publish_span_attributes(
+                self, span, message, stream_category, message_type
+            )
 
             try:
                 # Publish to the broker BEFORE opening a UnitOfWork. Publishing is
@@ -544,80 +460,16 @@ class OutboxProcessor(BaseSubscription):
                 # publishing needs only the row's data/metadata, already loaded.
                 publish_success, publish_error = await self._publish_message(message)
 
-                # Record the outcome in a short transaction (no await inside).
-                with UnitOfWork():
-                    # Re-fetch to bind the row to this UoW and read its current
-                    # persisted state before transitioning it.
-                    message = self.outbox_repo.get(message.id)
-
-                    # Update final status based on broker publish result
-                    metrics = get_domain_metrics(self.engine.domain)
-                    if publish_success:
-                        # One clock reading drives both the published-at
-                        # timestamp and the latency measurement below.
-                        now = self.engine.domain.clock.now()
-                        message.mark_published(now=now)
-                        logger.debug(
-                            "outbox.message_published",
-                            extra={
-                                "stream": message.stream_name,
-                                "message_id": message.message_id[:8],
-                            },
-                        )
-
-                        # Record OTel metrics for published message
-                        metrics.outbox_published.add(1)
-                        # Compute outbox latency from created_at to now
-                        if hasattr(message, "created_at") and message.created_at:
-                            created = ensure_utc_aware(message.created_at)
-                            latency_s = (now - created).total_seconds()
-                            if latency_s >= 0:
-                                metrics.outbox_latency.record(latency_s)
-
-                        # Emit trace event — distinguish internal from external
-                        trace_event = (
-                            "outbox.external_published"
-                            if self.is_external
-                            else "outbox.published"
-                        )
-                        self.engine.emitter.emit(
-                            event=trace_event,
-                            stream=stream_category,
-                            message_id=message.message_id,
-                            message_type=message_type,
-                            payload=message.data,
-                            worker_id=self.subscription_id,
-                            correlation_id=message.correlation_id,
-                            causation_id=message.causation_id,
-                        )
-                    else:
-                        self._mark_message_failed(message, publish_error)
-                        logger.warning(
-                            "outbox.publish_failed",
-                            extra={
-                                "message_id": message.message_id[:8],
-                                "error_type": type(publish_error).__name__
-                                if publish_error
-                                else None,
-                                "error": str(publish_error) if publish_error else None,
-                            },
-                        )
-                        # Record OTel metrics for failed message
-                        metrics.outbox_failed.add(1)
-                        if publish_error is not None:
-                            set_span_error(span, publish_error)
-
-                    # Save the final status
-                    self.outbox_repo.add(message)
-
-                    # Capture the terminal status inside the UoW, while the session is
-                    # live, for the trace emit after commit: reading it post-commit
-                    # could touch an expired attribute on a closed session, and the
-                    # record() argument is evaluated even when the recorder is inactive.
-                    marked_id = str(message.id)
-                    marked_status = message.status
-
-                    # UnitOfWork commits here - either all operations succeed or all rollback
+                marked_id, marked_status = _record_publish_outcome(
+                    self,
+                    self.outbox_repo,
+                    message,
+                    span,
+                    publish_success,
+                    publish_error,
+                    stream_category,
+                    message_type,
+                )
 
                 # Trace-validation seam: the terminal mark, emitted only after the
                 # UnitOfWork has durably committed, so the recorded status is a
@@ -643,21 +495,7 @@ class OutboxProcessor(BaseSubscription):
                 )
                 # Transaction automatically rolls back on exception
 
-                # Try to save the error state in a separate transaction
-                try:
-                    with UnitOfWork():
-                        # Reload message to get fresh state (in case transaction rolled back)
-                        fresh_message = self.outbox_repo.get(message.id)
-                        if fresh_message:
-                            self._mark_message_failed(fresh_message, exc)
-                            self.outbox_repo.add(fresh_message)
-                # the row stays for the next claim; logged with traceback
-                except Exception:
-                    logger.exception(
-                        "outbox.status_save_failed",
-                        extra={"message_id": message.message_id[:8]},
-                    )
-
+                _save_processing_error(self, self.outbox_repo, message, exc)
                 return False
 
     async def _publish_message(self, message: Outbox) -> tuple[bool, Exception | None]:
@@ -843,4 +681,242 @@ class OutboxProcessor(BaseSubscription):
             worker_id=self.subscription_id,
             correlation_id=message.correlation_id,
             causation_id=message.causation_id,
+        )
+
+
+def _set_uniform_batch_ids(span: Any, messages: list[Outbox]) -> None:
+    """Tag the batch span with the correlation and causation ids its messages share."""
+    # Propagate correlation/causation IDs only when uniform across the batch
+    correlation_ids = {msg.correlation_id for msg in messages if msg.correlation_id}
+    causation_ids = {msg.causation_id for msg in messages if msg.causation_id}
+
+    if len(correlation_ids) == 1:
+        span.set_attribute("protean.correlation_id", next(iter(correlation_ids)))
+    if len(causation_ids) == 1:
+        span.set_attribute("protean.causation_id", next(iter(causation_ids)))
+
+
+def _abandon_invalid_partition_key(
+    processor: OutboxProcessor, outbox_repo: OutboxRepository, message: Outbox
+) -> bool:
+    """Abandon a row whose partition key the broker cannot route.
+
+    Returns whether the row was rejected. A rejected row is not published,
+    whether or not the abandon itself was saved.
+    """
+    assert processor.broker is not None, "Broker not initialized"
+
+    # Backstop (ADR-0028 decision 3): partition keys are validated at record
+    # creation, so an invalid key on a row that reaches here is a corrupt or
+    # legacy row. It only matters when the broker actually partitions (else
+    # the key is ignored during routing); there, abandon it at once —
+    # terminal, no retry — rather than retrying forever. The abandoned row
+    # keeps its key, so it holds that key's later rows until an operator
+    # retries or discards it; other keys keep flowing.
+    #
+    # Check ``is not None`` rather than truthiness: ``None`` is the
+    # legitimate value for a non-partitioned category and must skip
+    # validation, but an empty string is never legitimate (a fresh row
+    # can't get one — ``invalid_partition_key_reason`` blocks it at
+    # creation) and must still hit the check below rather than being
+    # treated the same as "no key".
+    if message.partition_key is None or not processor.broker.has_capability(
+        BrokerCapabilities.STREAM_PARTITIONING
+    ):
+        return False
+    reason = invalid_partition_key_reason(
+        message.partition_key, processor._backfill_suffix
+    )
+    if not reason:
+        return False
+    # Guard the abandon transaction: if the row was cleaned up
+    # between claim and here (``get`` raises) or the commit loses an
+    # OCC race on a reclaimed row, swallow it and report the row rejected so the
+    # poisoned row does not abort the rest of the batch in
+    # ``process_batch`` and throttle the poll loop. The claim left the row
+    # PROCESSING, and it is claimed and checked again once its lock expires.
+    try:
+        with UnitOfWork():
+            fresh = outbox_repo.get(message.id)
+            fresh.mark_abandoned(
+                f"Invalid partition key: {reason}",
+                cause="Invalid partition key",
+            )
+            outbox_repo.add(fresh)
+    # a failed abandon must not abort the batch; logged, row retried
+    except Exception:
+        logger.exception(
+            "outbox.invalid_partition_key_abandon_failed",
+            extra={"message_id": message.message_id[:8]},
+        )
+        return True
+    logger.warning(
+        "outbox.invalid_partition_key",
+        extra={
+            "message_id": message.message_id[:8],
+            "partition_key": message.partition_key,
+            "reason": reason,
+        },
+    )
+    return True
+
+
+def _outbox_labels(message: Outbox) -> tuple[str, str]:
+    """Return the row's stream category and message type, or ``"unknown"`` for each."""
+    stream_category: str = (
+        message.metadata_.domain.stream_category
+        if message.metadata_
+        and message.metadata_.domain
+        and message.metadata_.domain.stream_category
+        else "unknown"
+    )
+    message_type: str = (
+        message.metadata_.headers.type
+        if message.metadata_
+        and message.metadata_.headers
+        and message.metadata_.headers.type
+        else "unknown"
+    )
+    return stream_category, message_type
+
+
+def _set_publish_span_attributes(
+    processor: OutboxProcessor,
+    span: Any,
+    message: Outbox,
+    stream_category: str,
+    message_type: str,
+) -> None:
+    """Tag the publish span with the row's identity and the processor's."""
+    span.set_attribute("protean.outbox.message_id", message.message_id)
+    span.set_attribute("protean.outbox.stream_category", stream_category)
+    span.set_attribute("protean.outbox.message_type", message_type)
+    span.set_attribute("protean.outbox.is_external", processor.is_external)
+    span.set_attribute("protean.outbox.processor_id", processor.subscription_id)
+    if message.correlation_id:
+        span.set_attribute("protean.correlation_id", message.correlation_id)
+    if message.causation_id:
+        span.set_attribute("protean.causation_id", message.causation_id)
+
+
+def _record_publish_outcome(
+    processor: OutboxProcessor,
+    outbox_repo: OutboxRepository,
+    message: Outbox,
+    span: Any,
+    publish_success: bool,
+    publish_error: Exception | None,
+    stream_category: str,
+    message_type: str,
+) -> tuple[str, str]:
+    """Mark the row published, failed or abandoned, and commit it.
+
+    Returns the row's id and the status it was committed with.
+    """
+    # Record the outcome in a short transaction (no await inside).
+    with UnitOfWork():
+        # Re-fetch to bind the row to this UoW and read its current
+        # persisted state before transitioning it.
+        message = outbox_repo.get(message.id)
+
+        # Update final status based on broker publish result
+        metrics = get_domain_metrics(processor.engine.domain)
+        if publish_success:
+            _mark_published(processor, message, metrics, stream_category, message_type)
+        else:
+            processor._mark_message_failed(message, publish_error)
+            logger.warning(
+                "outbox.publish_failed",
+                extra={
+                    "message_id": message.message_id[:8],
+                    "error_type": type(publish_error).__name__
+                    if publish_error
+                    else None,
+                    "error": str(publish_error) if publish_error else None,
+                },
+            )
+            # Record OTel metrics for failed message
+            metrics.outbox_failed.add(1)
+            if publish_error is not None:
+                set_span_error(span, publish_error)
+
+        # Save the final status
+        outbox_repo.add(message)
+
+        # Capture the terminal status inside the UoW, while the session is
+        # live, for the trace emit after commit: reading it post-commit
+        # could touch an expired attribute on a closed session, and the
+        # record() argument is evaluated even when the recorder is inactive.
+        marked_id = str(message.id)
+        marked_status = message.status
+
+        # UnitOfWork commits here - either all operations succeed or all rollback
+    return marked_id, marked_status
+
+
+def _mark_published(
+    processor: OutboxProcessor,
+    message: Outbox,
+    metrics: Any,
+    stream_category: str,
+    message_type: str,
+) -> None:
+    """Mark the row published, record its metrics and emit the published event."""
+    # One clock reading drives both the published-at
+    # timestamp and the latency measurement below.
+    now = processor.engine.domain.clock.now()
+    message.mark_published(now=now)
+    logger.debug(
+        "outbox.message_published",
+        extra={
+            "stream": message.stream_name,
+            "message_id": message.message_id[:8],
+        },
+    )
+
+    # Record OTel metrics for published message
+    metrics.outbox_published.add(1)
+    # Compute outbox latency from created_at to now
+    if hasattr(message, "created_at") and message.created_at:
+        created = ensure_utc_aware(message.created_at)
+        latency_s = (now - created).total_seconds()
+        if latency_s >= 0:
+            metrics.outbox_latency.record(latency_s)
+
+    # Emit trace event — distinguish internal from external
+    trace_event = (
+        "outbox.external_published" if processor.is_external else "outbox.published"
+    )
+    processor.engine.emitter.emit(
+        event=trace_event,
+        stream=stream_category,
+        message_id=message.message_id,
+        message_type=message_type,
+        payload=message.data,
+        worker_id=processor.subscription_id,
+        correlation_id=message.correlation_id,
+        causation_id=message.causation_id,
+    )
+
+
+def _save_processing_error(
+    processor: OutboxProcessor,
+    outbox_repo: OutboxRepository,
+    message: Outbox,
+    exc: Exception,
+) -> None:
+    """Mark the row failed in a fresh transaction after an unexpected error."""
+    # Try to save the error state in a separate transaction
+    try:
+        with UnitOfWork():
+            # Reload message to get fresh state (in case transaction rolled back)
+            fresh_message = outbox_repo.get(message.id)
+            if fresh_message:
+                processor._mark_message_failed(fresh_message, exc)
+                outbox_repo.add(fresh_message)
+    # the row stays for the next claim; logged with traceback
+    except Exception:
+        logger.exception(
+            "outbox.status_save_failed",
+            extra={"message_id": message.message_id[:8]},
         )

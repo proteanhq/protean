@@ -7,8 +7,8 @@ import secrets
 import socket
 import time
 from collections.abc import Iterable
-from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from enum import Enum, StrEnum
+from typing import TYPE_CHECKING, Any, NamedTuple
 from uuid import uuid4
 
 from protean.core.command_handler import BaseCommandHandler
@@ -18,7 +18,7 @@ from protean.port.event_store import BaseEventStore, row_data
 from protean.utils import checkpoint_trace, fqn, recovery_trace
 from protean.utils.backoff import AdaptiveBackoff
 from protean.utils.dlq import failed_positions_stream, recovery_checkpoint_stream
-from protean.utils.eventing import Message, MessageType
+from protean.utils.eventing import Message, MessageType, Metadata
 
 from . import BaseSubscription
 
@@ -91,26 +91,7 @@ def reconstruct_unresolved(
         ValueError: If a full page ends in a record with no per-stream position, or
             the per-stream position does not move forward between pages.
     """
-    watermark = 0
-    unresolved: dict[int, dict[str, Any]] = {}
-
-    checkpoint = store.get_last_stream_message(recovery_checkpoint_stream)
-    if checkpoint:
-        stored_watermark = row_data(checkpoint).get("watermark", 0)
-        # A corrupt checkpoint can carry a non-integer watermark (a float, a
-        # string, or a bool, which is an int subclass). Used as a read cursor it
-        # would skip failed-position records: a store compares 1.5 or True against
-        # integer positions, so it reads past position 0 (and 1) and returns an
-        # incomplete set as if clean. Treat any non-integer watermark like a
-        # missing one and re-read the whole failed stream from the start, which
-        # rebuilds the set from the authoritative records rather than trusting the
-        # corrupt cursor.
-        if isinstance(stored_watermark, bool) or not isinstance(stored_watermark, int):
-            watermark = 0
-        else:
-            watermark = stored_watermark
-        snapshot = row_data(checkpoint).get("unresolved", {})
-        unresolved = {int(pos): info for pos, info in snapshot.items()}
+    watermark, unresolved = _load_recovery_checkpoint(store, recovery_checkpoint_stream)
 
     cursor = watermark
     records_read = 0
@@ -122,63 +103,124 @@ def reconstruct_unresolved(
         if not page:
             break
         for msg in page:
-            pos = msg.data.get("position")
-            headers = msg.metadata.headers if msg.metadata else None
-            record_type = headers.type if headers else None
-            if pos is None or record_type is None:
-                continue
-            if record_type in (
-                FailedPositionStatus.RESOLVED.value,
-                FailedPositionStatus.EXHAUSTED.value,
-                FailedPositionStatus.PURGED.value,
-            ):
-                unresolved.pop(pos, None)
-            elif record_type == FailedPositionStatus.FAILED.value:
-                unresolved[pos] = {
-                    "retry_count": msg.data.get("retry_count", 0),
-                    "stream_name": msg.data.get("stream_name"),
-                    "stream_position": msg.data.get("stream_position"),
-                }
+            _merge_failed_position_record(unresolved, msg)
         records_read += len(page)
         short_page = len(page) < page_size
 
-        last = page[-1]
-        event_store = last.metadata.event_store if last.metadata else None
-        if event_store is None or event_store.position is None:
-            if short_page:
-                # Pagination is already complete (a short page is the last one),
-                # so there is no next page to fetch and no cursor advance is
-                # needed. Stop with the current watermark: the records here are
-                # already merged, and a next rebuild re-reads from it. This keeps a
-                # single malformed trailing record from failing subscription
-                # startup.
-                break
-            # A full page whose last record has no per-stream position cannot
-            # advance the cursor, and more records could follow. Stopping here
-            # would silently return a partial reconstruction as if the stream had
-            # been read to the end. Raise instead, so ``protean recover`` reports
-            # the subscription unverified rather than passing or resetting an
-            # incomplete set.
-            raise ValueError(
-                f"Failed-positions record in {failed_positions_stream!r} carries "
-                f"no per-stream position; cannot page the recovery stream."
-            )
-        next_cursor = event_store.position + 1
-        if next_cursor <= cursor:
-            # The cursor did not move forward (a non-monotonic or duplicate
-            # position). On a full page that would re-read the same page forever,
-            # so raise rather than loop; the caller reports the subscription
-            # unverified.
-            raise ValueError(
-                f"Failed-positions stream {failed_positions_stream!r} did not "
-                f"advance past position {cursor}; cannot page the recovery stream."
-            )
+        next_cursor = _next_failed_page_cursor(
+            page, cursor, short_page, failed_positions_stream
+        )
+        if next_cursor is None:
+            break
         watermark = next_cursor
         cursor = next_cursor
         if short_page:
             break
 
     return unresolved, watermark, records_read
+
+
+def _load_recovery_checkpoint(
+    store: BaseEventStore, recovery_checkpoint_stream: str
+) -> tuple[int, dict[int, dict[str, Any]]]:
+    """Return the recovery checkpoint's watermark and ``unresolved`` snapshot.
+
+    Returns ``(0, {})`` when the stream holds no checkpoint, and a watermark of
+    0 when the stored one is not an integer.
+    """
+    checkpoint = store.get_last_stream_message(recovery_checkpoint_stream)
+    if not checkpoint:
+        return 0, {}
+
+    stored_watermark = row_data(checkpoint).get("watermark", 0)
+    # A corrupt checkpoint can carry a non-integer watermark (a float, a
+    # string, or a bool, which is an int subclass). Used as a read cursor it
+    # would skip failed-position records: a store compares 1.5 or True against
+    # integer positions, so it reads past position 0 (and 1) and returns an
+    # incomplete set as if clean. Treat any non-integer watermark like a
+    # missing one and re-read the whole failed stream from the start, which
+    # rebuilds the set from the authoritative records rather than trusting the
+    # corrupt cursor.
+    if isinstance(stored_watermark, bool) or not isinstance(stored_watermark, int):
+        watermark = 0
+    else:
+        watermark = stored_watermark
+    snapshot = row_data(checkpoint).get("unresolved", {})
+    return watermark, {int(pos): info for pos, info in snapshot.items()}
+
+
+def _merge_failed_position_record(
+    unresolved: dict[int, dict[str, Any]], msg: Message
+) -> None:
+    """Apply one failed-positions record to ``unresolved`` in place.
+
+    A ``Failed`` record adds or updates its position. A ``Resolved``,
+    ``Exhausted`` or ``Purged`` record removes it. A record with no position or
+    no type changes nothing.
+    """
+    pos = msg.data.get("position")
+    headers = msg.metadata.headers if msg.metadata else None
+    record_type = headers.type if headers else None
+    if pos is None or record_type is None:
+        return
+    if record_type in (
+        FailedPositionStatus.RESOLVED.value,
+        FailedPositionStatus.EXHAUSTED.value,
+        FailedPositionStatus.PURGED.value,
+    ):
+        unresolved.pop(pos, None)
+    elif record_type == FailedPositionStatus.FAILED.value:
+        unresolved[pos] = {
+            "retry_count": msg.data.get("retry_count", 0),
+            "stream_name": msg.data.get("stream_name"),
+            "stream_position": msg.data.get("stream_position"),
+        }
+
+
+def _next_failed_page_cursor(
+    page: list[Message], cursor: int, short_page: bool, failed_positions_stream: str
+) -> int | None:
+    """Return the read cursor just past ``page``.
+
+    Returns ``None`` when the last record of a short page carries no per-stream
+    position, which ends the read with the current watermark.
+
+    Raises:
+        ValueError: If a full page ends in a record with no per-stream position,
+            or the cursor does not move forward.
+    """
+    last = page[-1]
+    event_store = last.metadata.event_store if last.metadata else None
+    if event_store is None or event_store.position is None:
+        if short_page:
+            # Pagination is already complete (a short page is the last one),
+            # so there is no next page to fetch and no cursor advance is
+            # needed. Stop with the current watermark: the records here are
+            # already merged, and a next rebuild re-reads from it. This keeps a
+            # single malformed trailing record from failing subscription
+            # startup.
+            return None
+        # A full page whose last record has no per-stream position cannot
+        # advance the cursor, and more records could follow. Stopping here
+        # would silently return a partial reconstruction as if the stream had
+        # been read to the end. Raise instead, so ``protean recover`` reports
+        # the subscription unverified rather than passing or resetting an
+        # incomplete set.
+        raise ValueError(
+            f"Failed-positions record in {failed_positions_stream!r} carries "
+            f"no per-stream position; cannot page the recovery stream."
+        )
+    next_cursor = event_store.position + 1
+    if next_cursor <= cursor:
+        # The cursor did not move forward (a non-monotonic or duplicate
+        # position). On a full page that would re-read the same page forever,
+        # so raise rather than loop; the caller reports the subscription
+        # unverified.
+        raise ValueError(
+            f"Failed-positions stream {failed_positions_stream!r} did not "
+            f"advance past position {cursor}; cannot page the recovery stream."
+        )
+    return next_cursor
 
 
 def write_recovery_checkpoint_record(
@@ -924,30 +966,12 @@ class EventStoreSubscription(BaseSubscription):
         now = time.monotonic()
         entry_cursor = self.current_position
         present = {position for position, _ in positioned} | snapshots
-        highest = max(present)
-        abandoned: list[int] = []  # holes stepped over this batch (Checkpoint trace)
         # ``global_position`` is 1-based, so a fresh subscription (current == -1)
         # expects position 1, not 0 — clamp to the sequence floor so the first
         # real position is not mistaken for a gap.
-        expected = max(self.current_position + 1, 1)
-        safe = self.current_position
-        while expected <= highest:
-            if expected in present:
-                self._gap_first_seen.pop(expected, None)
-                safe = expected
-            else:
-                first_seen = self._gap_first_seen.setdefault(expected, now)
-                if now - first_seen < self.gap_timeout_seconds:
-                    break  # hold — wait for the gap to fill
-                logger.warning(
-                    f"[{self.subscriber_class_name}] Abandoning gap at "
-                    f"global_position {expected} after {self.gap_timeout_seconds}s "
-                    f"(assumed rolled back)"
-                )
-                self._gap_first_seen.pop(expected, None)
-                abandoned.append(expected)
-                safe = expected
-            expected += 1
+        safe, abandoned = _walk_gap_frontier(
+            self, max(self.current_position + 1, 1), present, now
+        )
 
         if checkpoint_trace.is_active():
             # Raw observation of this batch's gap-safe advance for spec-conformance
@@ -1018,108 +1042,17 @@ class EventStoreSubscription(BaseSubscription):
                 )
                 continue
 
-            message_type = message.metadata.headers.type or "unknown"
-            message_id = message.metadata.headers.id or "unknown"
-            short_id = message_id[:8]
-            position = message.metadata.event_store.global_position
-
-            # Log the message being picked up, with payload
-            logger.info(
-                f"[{self.subscriber_class_name}] "
-                f"Received {message_type} (ID: {short_id}..., pos: {position})\n"
-                f"  Payload: {message.to_dict()}"
+            received = _received_message(
+                message, message.metadata, message.metadata.event_store.global_position
             )
-
-            # Skip synchronous messages — they were already handled inline
-            if not (message.metadata.domain and message.metadata.domain.asynchronous):
-                logger.info(
-                    f"[{self.subscriber_class_name}] "
-                    f"{message_type} (pos: {position}): already processed inline"
-                )
-                # A skipped sync message is a non-failed advance past the cursor,
-                # the same transition the spec models as HandleOk. Emit before the
-                # cursor write so a durable flush lands after it in the log.
-                recovery_trace.record(action="handle_ok", position=position)
-                await self.update_read_position(position)
+            skip = await _skip_handled_message(self, received, idempotency_store)
+            if skip is _HandledSkip.IDEMPOTENT:
+                successful_count += 1
+            if skip is not _HandledSkip.NOT_SKIPPED:
                 continue
 
-            # Check idempotency store for already-processed commands
-            idempotency_key = (
-                message.metadata.headers.idempotency_key
-                if message.metadata.headers
-                else None
-            )
-            if idempotency_key and idempotency_store.is_active:
-                existing = idempotency_store.check(idempotency_key)
-                if existing and existing.get("status") == "success":
-                    logger.info(
-                        f"[{self.subscriber_class_name}] "
-                        f"{message_type} (ID: {short_id}...): already processed (idempotent)"
-                    )
-                    # An idempotent skip is a non-failed advance (already handled),
-                    # the same HandleOk transition the spec models. Emit before the
-                    # cursor write so a durable flush lands after it in the log.
-                    recovery_trace.record(action="handle_ok", position=position)
-                    await self.update_read_position(position)
-                    successful_count += 1
-                    continue
-
-            # Process the message and get a success/failure result
-            is_successful = await self.engine.handle_message(
-                self.handler, message, worker_id=self.subscription_id
-            )
-
-            if not is_successful:
-                logger.warning(
-                    f"[{self.subscriber_class_name}] "
-                    f"Failed {message_type} (ID: {short_id}..., pos: {position})"
-                )
-                recovery_trace.record(action="fail", position=position)
-                # Record the failure durably BEFORE advancing the cursor past it
-                # (see specs/Recovery.tla): the recovery record has to be durable
-                # first, or a crash in the gap would drop the message.
-                if self.enable_recovery:
-                    stream_name = (
-                        message.metadata.headers.stream
-                        if message.metadata.headers
-                        else None
-                    )
-                    stream_position = (
-                        message.metadata.event_store.position
-                        if message.metadata.event_store
-                        else None
-                    )
-                    await self._record_failed_position(
-                        position,
-                        message_type,
-                        message_id,
-                        stream_name=stream_name,
-                        stream_position=stream_position,
-                    )
-
-            # The in-memory cursor advances past this message: HandleOk for a handled
-            # message, Advance for a failed one (after its record, if recovery is
-            # enabled). Emit before the cursor write below so a durable flush
-            # (write_position emits it) lands after the advance in the log —
-            # Recovery!Flush requires cursorDur < cursorMem.
-            recovery_trace.record(
-                action="handle_ok" if is_successful else "advance", position=position
-            )
-
-            # Advance the cursor after any failure record (non-blocking, to avoid a
-            # poison pill). With recovery enabled the record above is already
-            # durable; with it disabled a failed message is intentionally dropped.
-            await self.update_read_position(position)
-
-            if is_successful:
+            if await _handle_and_advance(self, received, idempotency_store):
                 successful_count += 1
-                logger.info(
-                    f"[{self.subscriber_class_name}] "
-                    f"Completed {message_type} (ID: {short_id}..., pos: {position})"
-                )
-                # Record success in the idempotency store for future dedup
-                if idempotency_key and idempotency_store.is_active:
-                    idempotency_store.record_success(idempotency_key, True)
 
         return successful_count
 
@@ -1365,125 +1298,8 @@ class EventStoreSubscription(BaseSubscription):
                 )
                 break
 
-            retry_count = info.get("retry_count", 0)
-            stream_name = info.get("stream_name")
-            stream_position = info.get("stream_position")
-
-            # Increment retry count
-            new_retry_count = retry_count + 1
-
-            if new_retry_count > self.max_retries:
-                # Exhausted — mark as permanently failed
-                logger.warning(
-                    f"[{self.subscriber_class_name}] Position {position} exhausted "
-                    f"after {self.max_retries} retries"
-                )
-                await self._write_recovery_status(
-                    position,
-                    FailedPositionStatus.EXHAUSTED,
-                    new_retry_count,
-                    stream_name=stream_name,
-                    stream_position=stream_position,
-                )
-                # Remove from in-memory tracking
-                self._failed_positions.pop(position, None)
-
-                # The recovery pass took this position terminal without delivering
-                # it (exhausted) — the spec's Recover with delivered = FALSE.
-                recovery_trace.record(
-                    action="recover", position=position, delivered=False
-                )
-
-                # Emit handler.failed trace for exhausted position
-                self.engine.emitter.emit(
-                    event="handler.failed",
-                    stream=self.stream_category,
-                    message_id=f"pos-{position}",
-                    message_type="recovery",
-                    status="exhausted",
-                    handler=self.subscriber_class_name,
-                    error=f"Exhausted after {self.max_retries} retries",
-                    worker_id=self.subscription_id,
-                )
-                continue
-
-            # Re-read the original message from the event store, using the record's
-            # specific stream/position when present and otherwise the category
-            # stream. ``protean recover`` reads through the same helper, so it
-            # flags exactly the positions this re-read cannot find.
-            messages = await asyncio.to_thread(
-                read_recovery_message, self.store, self.stream_category, position, info
-            )
-
-            if not messages:
-                logger.warning(
-                    f"[{self.subscriber_class_name}] Could not find message at "
-                    f"position {position} for recovery"
-                )
-                continue
-
-            message = messages[0]
-
-            # Resolve message type/id defensively — a re-read message always
-            # carries metadata, but the type allows None, so fall back to
-            # "unknown" (matching the ``or "unknown"`` intent below).
-            headers = message.metadata.headers if message.metadata else None
-            recovered_message_type = (headers.type if headers else None) or "unknown"
-            recovered_message_id = (headers.id if headers else None) or "unknown"
-
-            # Apply retry delay
-            if self.retry_delay_seconds > 0:
-                await asyncio.sleep(self.retry_delay_seconds)
-
-            # Retry the handler
-            logger.info(
-                f"[{self.subscriber_class_name}] Retrying position {position} "
-                f"(attempt {new_retry_count}/{self.max_retries})"
-            )
-
-            is_successful = await self.engine.handle_message(
-                self.handler, message, worker_id=self.subscription_id
-            )
-
-            if is_successful:
-                logger.info(
-                    f"[{self.subscriber_class_name}] Recovered position {position}"
-                )
-                await self._write_recovery_status(
-                    position,
-                    FailedPositionStatus.RESOLVED,
-                    new_retry_count,
-                    message_type=recovered_message_type,
-                    message_id=recovered_message_id,
-                    stream_name=stream_name,
-                    stream_position=stream_position,
-                )
-                self._failed_positions.pop(position, None)
+            if await _recover_position(self, position, info):
                 recovered_count += 1
-
-                # The recovery pass delivered and resolved this position — the
-                # spec's Recover with delivered = TRUE.
-                recovery_trace.record(
-                    action="recover", position=position, delivered=True
-                )
-            else:
-                # Still failing — update in-memory state and write new Failed record
-                logger.warning(
-                    f"[{self.subscriber_class_name}] Position {position} still failing "
-                    f"(attempt {new_retry_count}/{self.max_retries})"
-                )
-                self._failed_positions[position] = {
-                    "retry_count": new_retry_count,
-                    "stream_name": stream_name,
-                    "stream_position": stream_position,
-                }
-                await self._record_failed_position(
-                    position,
-                    recovered_message_type,
-                    recovered_message_id,
-                    stream_name=stream_name,
-                    stream_position=stream_position,
-                )
 
         return recovered_count
 
@@ -1644,3 +1460,352 @@ class EventStoreSubscription(BaseSubscription):
             None
         """
         await self.update_current_position_to_store()
+
+
+class _HandledSkip(Enum):
+    """Whether ``process_batch`` skipped a message it did not need to handle."""
+
+    NOT_SKIPPED = "not_skipped"
+    # Not asynchronous: already handled inline, not counted as successful.
+    INLINE = "inline"
+    # Idempotency key already recorded as a success: counted as successful.
+    IDEMPOTENT = "idempotent"
+
+
+class _ReceivedMessage(NamedTuple):
+    """A message from the batch with the fields ``process_batch`` logs and checks."""
+
+    message: Message
+    metadata: Metadata
+    position: int
+    message_type: str
+    message_id: str
+    short_id: str
+    idempotency_key: str | None
+
+
+def _received_message(
+    message: Message, metadata: Metadata, position: int
+) -> _ReceivedMessage:
+    """Read the fields ``process_batch`` needs from a message, once."""
+    message_id = metadata.headers.id or "unknown"
+    return _ReceivedMessage(
+        message=message,
+        metadata=metadata,
+        position=position,
+        message_type=metadata.headers.type or "unknown",
+        message_id=message_id,
+        short_id=message_id[:8],
+        idempotency_key=metadata.headers.idempotency_key if metadata.headers else None,
+    )
+
+
+async def _skip_handled_message(
+    subscription: EventStoreSubscription,
+    received: _ReceivedMessage,
+    idempotency_store: Any,
+) -> _HandledSkip:
+    """Log the message, and advance past it when it needs no handling.
+
+    A message that is not asynchronous, or whose idempotency key is already
+    recorded as ``success``, gets a ``handle_ok`` trace record and a cursor
+    write, in that order.
+    """
+    metadata, position = received.metadata, received.position
+
+    # Log the message being picked up, with payload
+    logger.info(
+        f"[{subscription.subscriber_class_name}] "
+        f"Received {received.message_type} (ID: {received.short_id}..., pos: {position})\n"
+        f"  Payload: {received.message.to_dict()}"
+    )
+
+    # Skip synchronous messages — they were already handled inline
+    if not (metadata.domain and metadata.domain.asynchronous):
+        logger.info(
+            f"[{subscription.subscriber_class_name}] "
+            f"{received.message_type} (pos: {position}): already processed inline"
+        )
+        # A skipped sync message is a non-failed advance past the cursor,
+        # the same transition the spec models as HandleOk. Emit before the
+        # cursor write so a durable flush lands after it in the log.
+        recovery_trace.record(action="handle_ok", position=position)
+        await subscription.update_read_position(position)
+        return _HandledSkip.INLINE
+
+    # Check idempotency store for already-processed commands
+    if received.idempotency_key and idempotency_store.is_active:
+        existing = idempotency_store.check(received.idempotency_key)
+        if existing and existing.get("status") == "success":
+            logger.info(
+                f"[{subscription.subscriber_class_name}] "
+                f"{received.message_type} (ID: {received.short_id}...): "
+                f"already processed (idempotent)"
+            )
+            # An idempotent skip is a non-failed advance (already handled),
+            # the same HandleOk transition the spec models. Emit before the
+            # cursor write so a durable flush lands after it in the log.
+            recovery_trace.record(action="handle_ok", position=position)
+            await subscription.update_read_position(position)
+            return _HandledSkip.IDEMPOTENT
+
+    return _HandledSkip.NOT_SKIPPED
+
+
+async def _handle_and_advance(
+    subscription: EventStoreSubscription,
+    received: _ReceivedMessage,
+    idempotency_store: Any,
+) -> bool:
+    """Hand the message to the engine, then advance the cursor past it.
+
+    Returns whether the engine handled the message successfully.
+    """
+    position = received.position
+
+    # Process the message and get a success/failure result
+    is_successful = await subscription.engine.handle_message(
+        subscription.handler, received.message, worker_id=subscription.subscription_id
+    )
+
+    if not is_successful:
+        await _record_handler_failure(subscription, received)
+
+    # The in-memory cursor advances past this message: HandleOk for a handled
+    # message, Advance for a failed one (after its record, if recovery is
+    # enabled). Emit before the cursor write below so a durable flush
+    # (write_position emits it) lands after the advance in the log —
+    # Recovery!Flush requires cursorDur < cursorMem.
+    recovery_trace.record(
+        action="handle_ok" if is_successful else "advance", position=position
+    )
+
+    # Advance the cursor after any failure record (non-blocking, to avoid a
+    # poison pill). With recovery enabled the record above is already
+    # durable; with it disabled a failed message is intentionally dropped.
+    await subscription.update_read_position(position)
+
+    if is_successful:
+        logger.info(
+            f"[{subscription.subscriber_class_name}] "
+            f"Completed {received.message_type} (ID: {received.short_id}..., pos: {position})"
+        )
+        # Record success in the idempotency store for future dedup
+        if received.idempotency_key and idempotency_store.is_active:
+            idempotency_store.record_success(received.idempotency_key, True)
+
+    return is_successful
+
+
+async def _record_handler_failure(
+    subscription: EventStoreSubscription, received: _ReceivedMessage
+) -> None:
+    """Log a failed message and, with recovery enabled, write its ``Failed`` record."""
+    metadata, position = received.metadata, received.position
+    logger.warning(
+        f"[{subscription.subscriber_class_name}] "
+        f"Failed {received.message_type} (ID: {received.short_id}..., pos: {position})"
+    )
+    recovery_trace.record(action="fail", position=position)
+    # Record the failure durably BEFORE advancing the cursor past it
+    # (see specs/Recovery.tla): the recovery record has to be durable
+    # first, or a crash in the gap would drop the message.
+    if not subscription.enable_recovery:
+        return
+    stream_name = metadata.headers.stream if metadata.headers else None
+    stream_position = metadata.event_store.position if metadata.event_store else None
+    await subscription._record_failed_position(
+        position,
+        received.message_type,
+        received.message_id,
+        stream_name=stream_name,
+        stream_position=stream_position,
+    )
+
+
+def _walk_gap_frontier(
+    subscription: EventStoreSubscription, expected: int, present: set[int], now: float
+) -> tuple[int, list[int]]:
+    """Walk up from ``expected`` through ``present`` and settle the safe watermark.
+
+    A missing position younger than ``gap_timeout_seconds`` stops the walk; an
+    older one is abandoned and stepped over.
+
+    Returns:
+        The highest settled position (``current_position`` when none settles),
+        and the holes abandoned on the way, in ascending order.
+    """
+    highest = max(present)
+    abandoned: list[int] = []  # holes stepped over this batch (Checkpoint trace)
+    safe = subscription.current_position
+    while expected <= highest:
+        if expected in present:
+            subscription._gap_first_seen.pop(expected, None)
+            safe = expected
+        else:
+            first_seen = subscription._gap_first_seen.setdefault(expected, now)
+            if now - first_seen < subscription.gap_timeout_seconds:
+                break  # hold — wait for the gap to fill
+            logger.warning(
+                f"[{subscription.subscriber_class_name}] Abandoning gap at "
+                f"global_position {expected} after "
+                f"{subscription.gap_timeout_seconds}s (assumed rolled back)"
+            )
+            subscription._gap_first_seen.pop(expected, None)
+            abandoned.append(expected)
+            safe = expected
+        expected += 1
+    return safe, abandoned
+
+
+async def _recover_position(
+    subscription: EventStoreSubscription, position: int, info: dict[str, Any]
+) -> bool:
+    """Retry one failed position, or mark it ``Exhausted`` past ``max_retries``.
+
+    Returns whether the retry resolved the position.
+    """
+    # Increment retry count
+    new_retry_count = info.get("retry_count", 0) + 1
+
+    if new_retry_count > subscription.max_retries:
+        await _exhaust_position(subscription, position, info, new_retry_count)
+        return False
+
+    # Re-read the original message from the event store, using the record's
+    # specific stream/position when present and otherwise the category
+    # stream. ``protean recover`` reads through the same helper, so it
+    # flags exactly the positions this re-read cannot find.
+    messages = await asyncio.to_thread(
+        read_recovery_message,
+        subscription.store,
+        subscription.stream_category,
+        position,
+        info,
+    )
+
+    if not messages:
+        logger.warning(
+            f"[{subscription.subscriber_class_name}] Could not find message at "
+            f"position {position} for recovery"
+        )
+        return False
+
+    return await _retry_recovered_message(
+        subscription, position, info, new_retry_count, messages[0]
+    )
+
+
+async def _exhaust_position(
+    subscription: EventStoreSubscription,
+    position: int,
+    info: dict[str, Any],
+    new_retry_count: int,
+) -> None:
+    """Write an ``Exhausted`` record for a position and stop tracking it."""
+    # Exhausted — mark as permanently failed
+    logger.warning(
+        f"[{subscription.subscriber_class_name}] Position {position} exhausted "
+        f"after {subscription.max_retries} retries"
+    )
+    await subscription._write_recovery_status(
+        position,
+        FailedPositionStatus.EXHAUSTED,
+        new_retry_count,
+        stream_name=info.get("stream_name"),
+        stream_position=info.get("stream_position"),
+    )
+    # Remove from in-memory tracking
+    subscription._failed_positions.pop(position, None)
+
+    # The recovery pass took this position terminal without delivering
+    # it (exhausted) — the spec's Recover with delivered = FALSE.
+    recovery_trace.record(action="recover", position=position, delivered=False)
+
+    # Emit handler.failed trace for exhausted position
+    subscription.engine.emitter.emit(
+        event="handler.failed",
+        stream=subscription.stream_category,
+        message_id=f"pos-{position}",
+        message_type="recovery",
+        status="exhausted",
+        handler=subscription.subscriber_class_name,
+        error=f"Exhausted after {subscription.max_retries} retries",
+        worker_id=subscription.subscription_id,
+    )
+
+
+async def _retry_recovered_message(
+    subscription: EventStoreSubscription,
+    position: int,
+    info: dict[str, Any],
+    new_retry_count: int,
+    message: Message,
+) -> bool:
+    """Hand a re-read message to the engine and record the outcome.
+
+    On success writes a ``Resolved`` record; on failure writes a fresh
+    ``Failed`` record with the new retry count. Returns whether it succeeded.
+    """
+    stream_name = info.get("stream_name")
+    stream_position = info.get("stream_position")
+
+    # Resolve message type/id defensively — a re-read message always
+    # carries metadata, but the type allows None, so fall back to
+    # "unknown" (matching the ``or "unknown"`` intent below).
+    headers = message.metadata.headers if message.metadata else None
+    recovered_message_type = (headers.type if headers else None) or "unknown"
+    recovered_message_id = (headers.id if headers else None) or "unknown"
+
+    # Apply retry delay
+    if subscription.retry_delay_seconds > 0:
+        await asyncio.sleep(subscription.retry_delay_seconds)
+
+    # Retry the handler
+    logger.info(
+        f"[{subscription.subscriber_class_name}] Retrying position {position} "
+        f"(attempt {new_retry_count}/{subscription.max_retries})"
+    )
+
+    is_successful = await subscription.engine.handle_message(
+        subscription.handler, message, worker_id=subscription.subscription_id
+    )
+
+    if is_successful:
+        logger.info(
+            f"[{subscription.subscriber_class_name}] Recovered position {position}"
+        )
+        await subscription._write_recovery_status(
+            position,
+            FailedPositionStatus.RESOLVED,
+            new_retry_count,
+            message_type=recovered_message_type,
+            message_id=recovered_message_id,
+            stream_name=stream_name,
+            stream_position=stream_position,
+        )
+        subscription._failed_positions.pop(position, None)
+
+        # The recovery pass delivered and resolved this position — the
+        # spec's Recover with delivered = TRUE.
+        recovery_trace.record(action="recover", position=position, delivered=True)
+        return True
+
+    # Still failing — update in-memory state and write new Failed record
+    logger.warning(
+        f"[{subscription.subscriber_class_name}] Position {position} still failing "
+        f"(attempt {new_retry_count}/{subscription.max_retries})"
+    )
+    subscription._failed_positions[position] = {
+        "retry_count": new_retry_count,
+        "stream_name": stream_name,
+        "stream_position": stream_position,
+    }
+    await subscription._record_failed_position(
+        position,
+        recovered_message_type,
+        recovered_message_id,
+        stream_name=stream_name,
+        stream_position=stream_position,
+    )
+    return False

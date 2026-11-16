@@ -19,6 +19,7 @@ from protean import Domain
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError
 from protean.fields import String
 from protean.port.broker import BrokerCapabilities
@@ -54,6 +55,11 @@ class DLQMaintHandler(BaseEventHandler):
 
 class DLQMaintOtherHandler(BaseEventHandler):
     pass
+
+
+class DLQMaintFeed(BaseSubscriber):
+    def __call__(self, data: dict) -> None:
+        pass
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
@@ -546,6 +552,40 @@ class TestEngineDLQMaintenanceIntegration:
 
             engine = Engine(domain, test_mode=True)
             assert engine._dlq_maintenance is None
+
+    @pytest.mark.no_test_domain
+    def test_engine_run_starts_each_kind_of_component_in_order(self, caplog):
+        """run() starts the handler subscriptions, then the broker
+        subscriptions, then the outbox processors, then the DLQ maintenance
+        task."""
+        domain = _setup_domain()
+        domain.config["server"]["dlq"]["enabled"] = True
+        # Stream subscriptions turn on the outbox, so the engine wires an
+        # outbox processor.
+        domain.config["server"]["default_subscription_type"] = "stream"
+        # The maintenance loop sleeps between cycles, so shutdown cancels it
+        # once this drain window ends.
+        domain.config["server"]["drain_timeout"] = 0.1
+        with domain.domain_context():
+            domain.register(DLQMaintFeed, stream="partner-feed", broker="default")
+            _register_handler(domain)
+            domain.setup_database()
+
+            engine = Engine(domain, test_mode=True)
+            with caplog.at_level(logging.INFO, logger="protean.server.engine"):
+                engine.run()
+
+        started = [
+            r.getMessage()
+            for r in caplog.records
+            if r.getMessage().endswith("_started")
+        ]
+        assert started == [
+            "engine.subscription_started",
+            "engine.broker_subscription_started",
+            "engine.outbox_processor_started",
+            "engine.dlq_maintenance_started",
+        ]
 
 
 class TestDLQMaintenanceShutdown:
