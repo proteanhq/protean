@@ -27,7 +27,9 @@ The Protean repository has one folder per port under `tests/conformance/`:
 so you do not register it.
 
 The `cache` folder holds the cache suite. Each of its tests names the
-`CacheCapabilities` flags it needs. The `database`, `broker` and `event_store`
+`CacheCapabilities` flags it needs. The `event_store` folder holds the
+event-store suite, described in
+[The event-store suite](#the-event-store-suite). The `database` and `broker`
 folders each hold one placeholder test until their port's suite moves in. The
 database suite is still in `tests/adapters/repository/generic/`, and
 `protean test test-adapter` runs it. For the other three ports,
@@ -112,6 +114,35 @@ For a `requires_any` marker the reason names every flag, joined by `or`. An
 adapter with no `capabilities` member skips every marked test with the reason
 `<adapter> declares no capabilities`.
 
+### The event-store suite
+
+The tests in `tests/conformance/event_store/` call only the members of the
+event-store port, so they run unchanged against any event store. Each module
+names the `EventStoreCapabilities` flag it needs:
+
+| Module | Flag | What it checks |
+|--------|------|----------------|
+| `test_write.py` | `WRITE` | Stream and global positions, and what a stored row holds |
+| `test_read_stream.py` | `READ_STREAM` | Reads of one stream: order, paging by stream position, `limit` |
+| `test_read_category.py` | `READ_CATEGORY` | Exact category match, order and paging by global position, `limit` |
+| `test_read_all.py` | `READ_ALL` | Reads across every stream in global order |
+| `test_last_message.py` | `READ_STREAM`, `READ_CATEGORY` or `READ_ALL` | The newest row of a stream, a category or the store. Each class names the flag of its read. |
+| `test_stream_ids.py` | `READ_CATEGORY` | The stream ids of a category, sorted and each listed once |
+| `test_expected_version.py` | `EXPECTED_VERSION` | Stale versions raise and write nothing; concurrent writers with one version commit one row |
+| `test_category_commit_order.py` | `CATEGORY_COMMIT_ORDER` | A category read taken while writers run is a prefix of the final read |
+| `test_consumer_groups.py` | `CONSUMER_GROUPS` | Group members split a category into disjoint sets of streams |
+| `test_durability.py` | `DURABLE` | Rows written before `close()` are read by a new adapter |
+| `test_schema.py` | `SCHEMA_MANAGEMENT` | `create_schema()` and `drop_schema()` |
+| `test_lifecycle.py` | none; the `clear()` tests need `WRITE` and the flags of the reads they call | `capabilities`, `ping()`, `health()`, `get_connection()`, `clear()` and `close()` |
+
+The memory event store skips the `CONSUMER_GROUPS`, `DURABLE` and
+`SCHEMA_MANAGEMENT` tests. Message DB skips the `SCHEMA_MANAGEMENT` tests.
+
+```bash
+# Run the event-store suite against Message DB
+pytest tests/conformance --port event_store --adapter message_db
+```
+
 ## CLI: `protean test test-adapter`
 
 The quickest way to test an adapter is the `test-adapter` CLI command:
@@ -194,6 +225,10 @@ protean test test-adapter --provider=memory \
 
 # Test the memory event store
 protean test test-adapter --port=event_store --provider=memory
+
+# Test the Message DB event store against a test-only database
+protean test test-adapter --port=event_store --provider=message_db \
+    --uri="postgresql://message_store@localhost:5433/message_store"
 
 # Test the Redis broker against a test-only Redis database
 protean test test-adapter --port=broker --provider=redis \

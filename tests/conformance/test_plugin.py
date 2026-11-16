@@ -642,3 +642,69 @@ class TestTheCacheSuite:
         assert found["test_add_then_get_round_trips"] == "passed"
         skipped = [reason for reason in found.values() if reason != "passed"]
         assert skipped == ["forgetful does not declare SHARED"]
+
+
+REGISTER_STALE_WRITE_EVENT_STORE = """
+from protean.infra.registry import event_stores
+
+event_stores.register(
+    "stale_write", "tests.conformance.stale_write_event_store.StaleWriteEventStore"
+)
+"""
+
+
+@pytest.fixture
+def event_store_suite(tmp_path: Path) -> Path:
+    """The real event-store suite, with a store that ignores the expected version."""
+    root = tmp_path / "conformance"
+    root.mkdir()
+    (root / "__init__.py").write_text("")
+    shutil.copy(PLUGIN, root / "conftest.py")
+    shutil.copytree(
+        CONFORMANCE_DIR / "event_store",
+        root / "event_store",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    (tmp_path / "conftest.py").write_text(REGISTER_STALE_WRITE_EVENT_STORE)
+    (tmp_path / "pytest.ini").write_text("[pytest]\naddopts = --strict-markers\n")
+    return tmp_path
+
+
+class TestTheEventStoreSuite:
+    def test_fails_a_store_that_declares_expected_version_and_ignores_it(
+        self, event_store_suite
+    ):
+        result = run(
+            event_store_suite,
+            "conformance/event_store",
+            "--port",
+            "event_store",
+            "--adapter",
+            "stale_write",
+        )
+
+        assert result.returncode == 1, result.stdout + result.stderr
+        failed = {
+            line.split(" - ")[0].removeprefix("FAILED ")
+            for line in result.stdout.splitlines()
+            if line.startswith("FAILED ")
+        }
+        module = "conformance/event_store/test_expected_version.py"
+        assert failed == {
+            f"{module}::{name}"
+            for name in (
+                "test_version_minus_one_on_a_stream_with_rows_raises_and_writes_nothing",
+                "test_a_stale_version_raises_and_writes_nothing[behind]",
+                "test_a_stale_version_raises_and_writes_nothing[ahead]",
+                "test_a_stale_version_on_one_stream_leaves_other_streams_writable",
+                "test_two_writers_with_the_same_version_commit_exactly_one_row",
+                "test_fifty_writers_get_one_success_per_expected_version",
+            )
+        }
+        found = outcomes(result)
+        assert found["test_the_current_version_writes_at_the_next_position"] == (
+            "passed"
+        )
+        assert found["test_returns_only_the_streams_of_the_exact_category[plain]"] == (
+            "passed"
+        )
