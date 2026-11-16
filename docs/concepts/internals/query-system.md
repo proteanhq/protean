@@ -180,18 +180,26 @@ Q(country="CA") | Q(country="US")
     └── Node(connector=AND, children=[("country", "US")])
 ```
 
-Negation wraps the node and flips the `negated` flag:
+Negation builds a new node with the `negated` flag set. A single condition
+becomes a direct child of the new node:
 
 ```
 ~Q(country="US")
 
+→ Node(connector=AND, negated=True, children=[("country", "US")])
+```
+
+A node with several conditions stays whole as a nested child:
+
+```
+~Q(country="US", age__gte=18)
+
 → Node(connector=AND, negated=True)
-    └── Node(connector=AND, children=[("country", "US")])
+    └── Node(connector=AND, children=[("country", "US"), ("age__gte", 18)])
 ```
 
 A negated node negates each of its conditions, and it negates each nested node
-as a whole. `~` keeps a multi-condition node whole as a nested child, so
-`~(Q(a=1) & Q(b=2))` and `~Q(a=1, b=2)` mean "not both". `exclude(a=1, b=2)`
+as a whole. So `~(Q(a=1) & Q(b=2))` and `~Q(a=1, b=2)` mean "not both". `exclude(a=1, b=2)`
 builds one negated node that holds both conditions, so it drops a record that
 matches either one.
 
