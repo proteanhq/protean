@@ -5,7 +5,9 @@ A provider flag (``RAW_QUERIES``, ``NATIVE_CLAIM``,
 ``FILTERED_CLAIM_CANDIDATES``, ``BOUNDED_DELETE``, ``INSERT_IF_ABSENT``)
 selects the adapter's operation. Building the service for an adapter class that
 does not subclass the matching port raises ``ConfigurationError``. The portable
-operations run inside ``claim_lock()``.
+claim and the portable bounded delete run inside ``claim_lock()``. The portable
+``save_if_absent`` checks the key and saves with no lock; only the adapter's
+``INSERT_IF_ABSENT`` write runs inside ``claim_lock()``.
 """
 
 import threading
