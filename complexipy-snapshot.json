@@ -38,40 +38,6 @@
     ]
   },
   {
-    "path": "src/protean/core/entity.py",
-    "file_name": "entity.py",
-    "functions": [
-      {
-        "name": "BaseEntity::_update_data",
-        "complexity": 17
-      },
-      {
-        "name": "BaseEntity::__setattr__",
-        "complexity": 29
-      },
-      {
-        "name": "entity_factory",
-        "complexity": 32
-      },
-      {
-        "name": "BaseEntity::_maybe_inject_auto_id",
-        "complexity": 38
-      },
-      {
-        "name": "BaseEntity::_run_invariants",
-        "complexity": 45
-      },
-      {
-        "name": "BaseEntity::__init__",
-        "complexity": 46
-      },
-      {
-        "name": "BaseEntity::model_post_init",
-        "complexity": 46
-      }
-    ]
-  },
-  {
     "path": "src/protean/core/event.py",
     "file_name": "event.py",
     "functions": [
@@ -88,20 +54,6 @@
       {
         "name": "validate_indexes",
         "complexity": 27
-      }
-    ]
-  },
-  {
-    "path": "src/protean/core/projection.py",
-    "file_name": "projection.py",
-    "functions": [
-      {
-        "name": "BaseProjection::__init__",
-        "complexity": 27
-      },
-      {
-        "name": "BaseProjection::model_post_init",
-        "complexity": 33
       }
     ]
   },
