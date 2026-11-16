@@ -6,7 +6,7 @@ Pass every option as a keyword argument to the decorator:
 
 ```python
 @domain.aggregate(
-    provider="default",
+    database="default",
     schema_name="order_records"
 )
 class Order:
@@ -86,7 +86,7 @@ Use it for a natural identifier such as a SKU, an email or an account number. If
 
 ---
 
-### `provider`
+### `database`
 
 **Type:** `str`
 **Default:** `"default"`
@@ -109,13 +109,13 @@ database_uri = "http://localhost:9200"
 ```
 
 ```python
-# Use specific provider
-@domain.aggregate(provider="orders_db")
+# Use a specific database
+@domain.aggregate(database="orders_db")
 class Order:
     ...
 
 # Another aggregate uses different database
-@domain.aggregate(provider="analytics_db")
+@domain.aggregate(database="analytics_db")
 class OrderReport:
     ...
 ```

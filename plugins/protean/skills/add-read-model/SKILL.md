@@ -244,7 +244,7 @@ An event can be delivered more than once. As written, this projector adds the am
 | Storage | Option | Best for |
 |---------|--------|----------|
 | **Database** | `@domain.projection` (default) | Durable data, complex queries, reporting |
-| **Database (specific)** | `@domain.projection(provider="postgres")` | Explicit provider selection |
+| **Database (specific)** | `@domain.projection(database="postgres")` | Explicit provider selection |
 | **Cache** | `@domain.projection(cache="redis")` | Fast reads, session data, ephemeral views |
 
 ## Common mistakes

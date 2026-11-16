@@ -319,7 +319,7 @@ Pass options to the decorator:
 ```python
 @domain.aggregate(
     auto_add_id_field=False,    # Control automatic ID field
-    provider="default",         # Provider name from the domain config's `databases` section
+    database="default",         # Database name from the domain config's `databases` section
     schema_name="customer_orders",  # Table/collection name
     stream_category="order"     # Event sourcing stream category
 )

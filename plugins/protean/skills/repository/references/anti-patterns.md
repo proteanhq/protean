@@ -163,7 +163,7 @@ with domain.domain_context():
 @handle(PlaceOrder)
 def handle_place_order(self, command):
     # Wrong! Bypassing the repository
-    provider = domain.providers["default"]
+    provider = domain.databases["default"]
     provider.raw(
         "INSERT INTO orders (order_id, status) VALUES (:order_id, 'placed')",
         {"order_id": command.order_id},
