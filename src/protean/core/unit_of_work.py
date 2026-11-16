@@ -1,8 +1,8 @@
 import logging
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Protocol, Self, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, Self, cast
 
 from protean.exceptions import (
     ConfigurationError,
@@ -26,6 +26,7 @@ from protean.utils.telemetry import (
 if TYPE_CHECKING:
     from protean.core.aggregate import BaseAggregate
     from protean.port.database import SessionProtocol
+    from protean.utils.outbox import Outbox, OutboxRepository
 
 
 class _UoWStack(Protocol):
@@ -431,158 +432,22 @@ class UnitOfWork:
 
     def _do_commit(self, span: Any) -> None:
         """Internal commit logic wrapped by the ``protean.uow.commit`` span."""
-        from protean.domain.context import has_domain_context  # noqa: PLC0415
-        from protean.utils.outbox import (  # noqa: PLC0415
-            DEFAULT_TARGET_BROKER,
-            Outbox,
-            OutboxRepository,
-            backfill_suffix_from_config,
-        )
-
         # Gather all events from identity map using helper method
         all_events = self._gather_events()
 
-        # Record events raised for the access log wide event
-        if has_domain_context():
-            event_names = [
-                event.__class__.__name__
-                for events in all_events.values()
-                for event in events
-            ]
-            prev = getattr(g, "_access_log_events_raised", None) or []
-            g._access_log_events_raised = prev + event_names
+        _record_events_raised(all_events)
 
         # Compute event count for span attribute
         total_events = sum(len(events) for events in all_events.values())
         span.set_attribute("protean.uow.event_count", total_events)
 
-        # Warn if multiple aggregate *classes* raised events in this UoW.
-        # DDD prescribes one aggregate per transaction; modifying multiple
-        # aggregates is a design smell (consider using domain events for
-        # cross-aggregate coordination instead).
-        aggregate_classes_with_events: set[type] = set()
-        for _, item in self._items_to_commit():
-            if item._events:
-                aggregate_classes_with_events.add(type(item))
-        if len(aggregate_classes_with_events) > 1:
-            class_names = sorted(cls.__name__ for cls in aggregate_classes_with_events)
-            logger.warning(
-                "Multiple aggregate types modified in a single UnitOfWork: %s. "
-                "Consider limiting each transaction to one aggregate and using "
-                "domain events for cross-aggregate coordination.",
-                ", ".join(class_names),
-            )
-
-        # Read the processing priority from the current context.
-        # This is set by domain.process() or by a processing_priority() context manager.
-        priority = current_priority()
+        _warn_multiple_aggregate_types(self)
 
         # Build the outbox rows for this transaction. They are built here, and
         # their pre-persist hooks (timestamp stamping) run here, so a raising
         # hook fails the commit before anything is appended.
         # The rows are saved after the event-store append below.
-        #
-        # Iterate over providers that have events (not over sessions) because
-        # event-sourced aggregates are added to the identity map without
-        # opening a database session — their state lives in the event store,
-        # not in a relational table.  We still need a session for the outbox
-        # INSERT, so one is lazily initialised here when missing.
-        outbox_rows: list[tuple[OutboxRepository, Outbox]] = []
-        if self.domain.has_outbox:
-            outbox_config = self.domain.config.get("outbox", {})
-            internal_broker = outbox_config.get("broker", DEFAULT_TARGET_BROKER)
-            external_brokers: list[str] = outbox_config.get("external_brokers", [])
-
-            # Partition-per-key routing (ADR-0028): categories a sequential_by
-            # handler declared, and the configured backfill suffix the key must
-            # not collide with (read here, not hardcoded, so a custom suffix is
-            # honored). Both are inert when no handler opts in.
-            partition_keys = self.domain._partition_keys
-            backfill_suffix = backfill_suffix_from_config(self.domain.config)
-            # Always tag the internal row with the configured internal broker.
-            # The composite (message_id, target_broker) unique index relies on
-            # target_broker never being NULL: PostgreSQL and SQLite treat NULLs
-            # as distinct in a UNIQUE index, so a NULL target_broker would
-            # defeat message_id idempotency. Published events additionally get
-            # one row per external broker below.
-
-            for provider_name, events in all_events.items():
-                if not events:
-                    continue
-
-                # Ensure a database session exists for this provider.
-                # For event-sourced aggregates no DAO call was made during
-                # persistence, so the session may not have been created yet.
-                if provider_name not in self._sessions:
-                    self._initialize_session(provider_name)
-
-                outbox_repo = self.domain._get_outbox_repo(provider_name)
-
-                # Each event's position within this provider's part of the
-                # commit, written to ``sequence_number`` so rows of equal
-                # priority and equal ``created_at`` still claim in event order.
-                # Each provider has its own outbox table, so the count starts
-                # at 0 per provider; an event's external rows share its number.
-                for sequence_number, event in enumerate(events):
-                    # Extract trace context for outbox denormalized fields
-                    correlation_id = None
-                    causation_id = None
-                    stream_category = None
-                    if event._metadata and event._metadata.domain:
-                        correlation_id = event._metadata.domain.correlation_id
-                        causation_id = event._metadata.domain.causation_id
-                        stream_category = event._metadata.domain.stream_category
-
-                    # Partition key for per-key sequential routing (ADR-0028).
-                    # Extracted and validated here, synchronously in the caller's
-                    # transaction: a bad value fails the caller's operation now
-                    # and never enters the outbox (decision 3). Non-partitioned
-                    # categories leave it None.
-                    partition_key = self._extract_partition_key(
-                        event, partition_keys, backfill_suffix
-                    )
-
-                    # Internal outbox row (always created)
-                    outbox_message = Outbox.create_message(
-                        message_id=event._metadata.headers.id,
-                        stream_name=event._metadata.headers.stream,
-                        message_type=event._metadata.headers.type,
-                        data=event.payload,
-                        metadata=event._metadata,
-                        priority=priority,
-                        correlation_id=correlation_id,
-                        causation_id=causation_id,
-                        sequence_number=sequence_number,
-                        target_broker=internal_broker,
-                        partition_key=partition_key,
-                        stream_category=stream_category,
-                    )
-                    outbox_repo._dao._apply_pre_persist_hooks(outbox_message)
-                    outbox_rows.append((outbox_repo, outbox_message))
-
-                    # External outbox rows for published events — one per
-                    # external broker.  Each row is processed independently
-                    # by its own OutboxProcessor instance.
-                    if external_brokers and getattr(
-                        event.__class__.meta_, "published", False
-                    ):
-                        for ext_broker in external_brokers:
-                            ext_outbox = Outbox.create_message(
-                                message_id=event._metadata.headers.id,
-                                stream_name=event._metadata.headers.stream,
-                                message_type=event._metadata.headers.type,
-                                data=event.payload,
-                                metadata=event._metadata,
-                                priority=priority,
-                                correlation_id=correlation_id,
-                                causation_id=causation_id,
-                                sequence_number=sequence_number,
-                                target_broker=ext_broker,
-                                partition_key=partition_key,
-                                stream_category=stream_category,
-                            )
-                            outbox_repo._dao._apply_pre_persist_hooks(ext_outbox)
-                            outbox_rows.append((outbox_repo, ext_outbox))
+        outbox_rows = _build_outbox_rows(self, all_events)
 
         # Record final session count after all lazy sessions have been initialised
         span.set_attribute("protean.uow.session_count", len(self._sessions))
@@ -611,68 +476,18 @@ class UnitOfWork:
             # Flush the relational sessions before the append, so a stale
             # version-guarded UPDATE on a state-based aggregate fails here,
             # before any event is durable, and not on the outbox save's
-            # autoflush after the append. The in-memory session's flush checks
-            # the recorded versions and holds the provider lock until commit,
-            # as the SQL row locks do, so no other commit lands in between.
-            # Sessions without a flush (Elasticsearch) check versions at commit.
-            # Flushing in provider-name order, not enlistment order, takes the
-            # held provider locks in one order in every Unit of Work, so two
-            # that enlist the same providers in opposite orders cannot deadlock.
-            for _, session in sorted(self._sessions.items()):
-                flush = getattr(session, "flush", None)
-                if flush is not None:
-                    flush()
-
-            event_store = current_domain.event_store.store
-            assert event_store is not None
-            for events in all_events.values():
-                for event in events:
-                    event_store.append(event)
-
-            # Save the outbox rows while this UnitOfWork is still the active
-            # context, so they enlist in its sessions and commit with them. Their
-            # hooks already ran when they were built. A reconcile sweep that
-            # runs after the append can write a row first. That row is kept,
-            # and this commit skips its own copy instead of failing.
-            for outbox_repo, outbox_row in outbox_rows:
-                outbox_repo._dao.save_if_absent(outbox_row, apply_hooks=False)
-
-            # Exit the UnitOfWork context: the relational commit below (and any
-            # further operations) are no longer part of this transaction. Guard
-            # on identity so that if the commit below fails and __exit__ then
-            # calls rollback() (which also pops), the two pops together cannot
-            # pop a *parent* UnitOfWork off the stack in a nested scenario.
-            if _uow_stack.top is self:
-                _uow_stack.pop()
-
-            # A provider that opened no session (Elasticsearch, for one) has
-            # already kept its writes, so its aggregates advance now.
-            for provider_name in self._identity_map.keys() - self._sessions.keys():
-                self._advance_next_versions(provider_name)
-
-            # Commit the relational session (aggregate state + outbox rows).
-            # Advance versions as each provider commits: if a later provider
-            # fails, the rollback must not rewind aggregates whose write is
-            # already durable.
-            for provider_name, session in self._sessions.items():
-                session.commit()
-                # ``dropped_rows`` is an optional part of the session contract.
-                self._dropped_rows.update(getattr(session, "dropped_rows", ()))
-                self._advance_next_versions(provider_name)
+            # autoflush after the append.
+            _flush_sessions(self)
+            _append_events(all_events)
+            _save_outbox_rows(outbox_rows)
+            _commit_sessions(self)
 
             self._run_post_commit_work(span, all_events)
 
             # Clear events from items in identity map
             self._clear_events_from_items()
 
-            # Record OTel metrics for successful commit
-            metrics = get_domain_metrics(self.domain)
-            metrics.uow_commits.add(1)
-            metrics.uow_events_per_commit.record(total_events)
-
-            # Record UoW outcome for the access log wide event
-            if has_domain_context():
-                g._access_log_uow_outcome = "committed"
+            _record_commit_success(self, total_events)
 
             logger.debug("uow.commit_successful")
         except TransactionError:
@@ -1004,3 +819,259 @@ class UnitOfWork:
         self, stream: str, message: dict[str, Any], broker_name: str | None = None
     ) -> None:
         self._messages_to_dispatch.append((stream, message, broker_name))
+
+
+def _record_events_raised(all_events: defaultdict[str, list[Any]]) -> None:
+    """Add the names of the events raised to the access log wide event."""
+    from protean.domain.context import has_domain_context  # noqa: PLC0415
+
+    if has_domain_context():
+        event_names = [
+            event.__class__.__name__
+            for events in all_events.values()
+            for event in events
+        ]
+        prev = getattr(g, "_access_log_events_raised", None) or []
+        g._access_log_events_raised = prev + event_names
+
+
+def _warn_multiple_aggregate_types(uow: UnitOfWork) -> None:
+    """Log a warning when more than one aggregate class raised events in ``uow``."""
+    # DDD prescribes one aggregate per transaction; modifying multiple
+    # aggregates is a design smell (consider using domain events for
+    # cross-aggregate coordination instead).
+    aggregate_classes_with_events: set[type] = set()
+    for _, item in uow._items_to_commit():
+        if item._events:
+            aggregate_classes_with_events.add(type(item))
+    if len(aggregate_classes_with_events) > 1:
+        class_names = sorted(cls.__name__ for cls in aggregate_classes_with_events)
+        logger.warning(
+            "Multiple aggregate types modified in a single UnitOfWork: %s. "
+            "Consider limiting each transaction to one aggregate and using "
+            "domain events for cross-aggregate coordination.",
+            ", ".join(class_names),
+        )
+
+
+class _OutboxSettings(NamedTuple):
+    """The values every outbox row of one commit is built from."""
+
+    priority: int
+    internal_broker: str
+    external_brokers: list[str]
+    partition_keys: dict[str, str]
+    backfill_suffix: str
+
+
+def _build_outbox_rows(
+    uow: UnitOfWork, all_events: defaultdict[str, list[Any]]
+) -> list[tuple["OutboxRepository", "Outbox"]]:
+    """Build the outbox rows for the events of ``uow`` and run their pre-persist hooks.
+
+    Returns no rows when the domain has no outbox. Opens a session for a
+    provider that has events but no session yet.
+    """
+    from protean.utils.outbox import (  # noqa: PLC0415
+        DEFAULT_TARGET_BROKER,
+        backfill_suffix_from_config,
+    )
+
+    # Read the processing priority from the current context.
+    # This is set by domain.process() or by a processing_priority() context manager.
+    priority = current_priority()
+
+    if not uow.domain.has_outbox:
+        return []
+
+    outbox_config = uow.domain.config.get("outbox", {})
+    # Always tag the internal row with the configured internal broker.
+    # The composite (message_id, target_broker) unique index relies on
+    # target_broker never being NULL: PostgreSQL and SQLite treat NULLs
+    # as distinct in a UNIQUE index, so a NULL target_broker would
+    # defeat message_id idempotency. Published events additionally get
+    # one row per external broker.
+    settings = _OutboxSettings(
+        priority=priority,
+        internal_broker=outbox_config.get("broker", DEFAULT_TARGET_BROKER),
+        external_brokers=outbox_config.get("external_brokers", []),
+        # Partition-per-key routing (ADR-0028): categories a sequential_by
+        # handler declared, and the configured backfill suffix the key must
+        # not collide with (read here, not hardcoded, so a custom suffix is
+        # honored). Both are inert when no handler opts in.
+        partition_keys=uow.domain._partition_keys,
+        backfill_suffix=backfill_suffix_from_config(uow.domain.config),
+    )
+
+    # Iterate over providers that have events (not over sessions) because
+    # event-sourced aggregates are added to the identity map without
+    # opening a database session — their state lives in the event store,
+    # not in a relational table.
+    outbox_rows: list[tuple[OutboxRepository, Outbox]] = []
+    for provider_name, events in all_events.items():
+        if events:
+            outbox_rows.extend(
+                _provider_outbox_rows(uow, provider_name, events, settings)
+            )
+    return outbox_rows
+
+
+def _provider_outbox_rows(
+    uow: UnitOfWork,
+    provider_name: str,
+    events: list[Any],
+    settings: _OutboxSettings,
+) -> list[tuple["OutboxRepository", "Outbox"]]:
+    """Build the outbox rows for one provider's events, in event order."""
+    # Ensure a database session exists for this provider.
+    # For event-sourced aggregates no DAO call was made during
+    # persistence, so the session may not have been created yet.
+    if provider_name not in uow._sessions:
+        uow._initialize_session(provider_name)
+
+    outbox_repo = uow.domain._get_outbox_repo(provider_name)
+
+    # Each event's position within this provider's part of the
+    # commit, written to ``sequence_number`` so rows of equal
+    # priority and equal ``created_at`` still claim in event order.
+    # Each provider has its own outbox table, so the count starts
+    # at 0 per provider; an event's external rows share its number.
+    rows: list[tuple[OutboxRepository, Outbox]] = []
+    for sequence_number, event in enumerate(events):
+        for outbox_message in _outbox_rows_for_event(
+            uow, event, sequence_number, settings
+        ):
+            outbox_repo._dao._apply_pre_persist_hooks(outbox_message)
+            rows.append((outbox_repo, outbox_message))
+    return rows
+
+
+def _outbox_rows_for_event(
+    uow: UnitOfWork, event: Any, sequence_number: int, settings: _OutboxSettings
+) -> Iterator["Outbox"]:
+    """Yield the internal outbox row for ``event``, then one row per external
+    broker when the event is published.
+
+    The rows differ only in ``target_broker``.
+    """
+    from protean.utils.outbox import Outbox  # noqa: PLC0415
+
+    # Extract trace context for outbox denormalized fields
+    correlation_id = None
+    causation_id = None
+    stream_category = None
+    if event._metadata and event._metadata.domain:
+        correlation_id = event._metadata.domain.correlation_id
+        causation_id = event._metadata.domain.causation_id
+        stream_category = event._metadata.domain.stream_category
+
+    # Partition key for per-key sequential routing (ADR-0028).
+    # Extracted and validated here, synchronously in the caller's
+    # transaction: a bad value fails the caller's operation now
+    # and never enters the outbox (decision 3). Non-partitioned
+    # categories leave it None.
+    partition_key = uow._extract_partition_key(
+        event, settings.partition_keys, settings.backfill_suffix
+    )
+
+    # Internal outbox row (always created). External outbox rows for
+    # published events, one per external broker: each row is processed
+    # independently by its own OutboxProcessor instance.
+    target_brokers = [settings.internal_broker]
+    if settings.external_brokers and getattr(event.__class__.meta_, "published", False):
+        target_brokers.extend(settings.external_brokers)
+
+    for target_broker in target_brokers:
+        yield Outbox.create_message(
+            message_id=event._metadata.headers.id,
+            stream_name=event._metadata.headers.stream,
+            message_type=event._metadata.headers.type,
+            data=event.payload,
+            metadata=event._metadata,
+            priority=settings.priority,
+            correlation_id=correlation_id,
+            causation_id=causation_id,
+            sequence_number=sequence_number,
+            target_broker=target_broker,
+            partition_key=partition_key,
+            stream_category=stream_category,
+        )
+
+
+def _flush_sessions(uow: UnitOfWork) -> None:
+    """Flush every session of ``uow`` that supports a flush, in provider-name order."""
+    # The in-memory session's flush checks the recorded versions and holds
+    # the provider lock until commit, as the SQL row locks do, so no other
+    # commit lands in between. Sessions without a flush (Elasticsearch)
+    # check versions at commit. Flushing in provider-name order, not
+    # enlistment order, takes the held provider locks in one order in
+    # every Unit of Work, so two that enlist the same providers in
+    # opposite orders cannot deadlock.
+    for _, session in sorted(uow._sessions.items()):
+        flush = getattr(session, "flush", None)
+        if flush is not None:
+            flush()
+
+
+def _append_events(all_events: defaultdict[str, list[Any]]) -> None:
+    """Append every event to the active domain's event store, in order."""
+    event_store = current_domain.event_store.store
+    assert event_store is not None
+    for events in all_events.values():
+        for event in events:
+            event_store.append(event)
+
+
+def _save_outbox_rows(outbox_rows: list[tuple["OutboxRepository", "Outbox"]]) -> None:
+    """Save each outbox row unless a row with its key already exists."""
+    # Save the outbox rows while this UnitOfWork is still the active
+    # context, so they enlist in its sessions and commit with them. Their
+    # hooks already ran when they were built. A reconcile sweep that
+    # runs after the append can write a row first. That row is kept,
+    # and this commit skips its own copy instead of failing.
+    for outbox_repo, outbox_row in outbox_rows:
+        outbox_repo._dao.save_if_absent(outbox_row, apply_hooks=False)
+
+
+def _commit_sessions(uow: UnitOfWork) -> None:
+    """Take ``uow`` off the context stack, then commit its sessions.
+
+    Advances the versions of each provider's aggregates once that provider's
+    writes are durable.
+    """
+    # Exit the UnitOfWork context: the relational commit below (and any
+    # further operations) are no longer part of this transaction. Guard
+    # on identity so that if the commit below fails and __exit__ then
+    # calls rollback() (which also pops), the two pops together cannot
+    # pop a *parent* UnitOfWork off the stack in a nested scenario.
+    if _uow_stack.top is uow:
+        _uow_stack.pop()
+
+    # A provider that opened no session (Elasticsearch, for one) has
+    # already kept its writes, so its aggregates advance now.
+    for provider_name in uow._identity_map.keys() - uow._sessions.keys():
+        uow._advance_next_versions(provider_name)
+
+    # Commit the relational session (aggregate state + outbox rows).
+    # Advance versions as each provider commits: if a later provider
+    # fails, the rollback must not rewind aggregates whose write is
+    # already durable.
+    for provider_name, session in uow._sessions.items():
+        session.commit()
+        # ``dropped_rows`` is an optional part of the session contract.
+        uow._dropped_rows.update(getattr(session, "dropped_rows", ()))
+        uow._advance_next_versions(provider_name)
+
+
+def _record_commit_success(uow: UnitOfWork, total_events: int) -> None:
+    """Record the commit metrics and the access log outcome of a committed ``uow``."""
+    from protean.domain.context import has_domain_context  # noqa: PLC0415
+
+    # Record OTel metrics for successful commit
+    metrics = get_domain_metrics(uow.domain)
+    metrics.uow_commits.add(1)
+    metrics.uow_events_per_commit.record(total_events)
+
+    # Record UoW outcome for the access log wide event
+    if has_domain_context():
+        g._access_log_uow_outcome = "committed"
