@@ -18,6 +18,7 @@ from uuid import uuid4
 
 from pydantic import AfterValidator, BeforeValidator
 from pydantic import Field as PydanticField
+from pydantic_core import PydanticCustomError
 
 from protean.exceptions import ConfigurationError
 from protean.exceptions import ValidationError as ProteanValidationError
@@ -485,6 +486,14 @@ def _type_coercion_validators(spec: FieldSpec) -> list[Any]:
         # read the element type and expect a plain ``datetime``.
         validators.append(AfterValidator(_stdlib_timezone_each))
 
+    # Before, not after: Pydantic's lax mode has already turned a bool into
+    # ``1`` or ``1.0`` by the time an after-validator sees it.
+    if spec.python_type is int or spec.python_type is float:
+        validators.append(BeforeValidator(_reject_bool))
+    elif _is_numeric_list(spec.python_type):
+        # On the list itself, for the same reason as the datetime list above.
+        validators.append(BeforeValidator(_reject_bool_each))
+
     return validators
 
 
@@ -697,6 +706,41 @@ def _is_datetime_list(tp: Any) -> bool:
     if get_origin(tp) is not list or len(args) != 1:
         return False
     return args[0] is _dt.datetime or _is_datetime_list(args[0])
+
+
+def _is_numeric_list(tp: Any) -> bool:
+    """Whether ``tp`` is a list of ``int`` or ``float``, at any depth of nesting."""
+    args = get_args(tp)
+    if get_origin(tp) is not list or len(args) != 1:
+        return False
+    return args[0] is int or args[0] is float or _is_numeric_list(args[0])
+
+
+def _reject_bool(v: Any) -> Any:
+    """Raise a Pydantic validation error for ``True`` or ``False``.
+
+    Any other value is returned unchanged.
+    """
+    if isinstance(v, bool):
+        raise PydanticCustomError(
+            "bool_not_number", "Input should be a valid number, not a boolean"
+        )
+    return v
+
+
+def _reject_bool_each(v: Any) -> Any:
+    """Apply :func:`_reject_bool` to each element of a list, nested or not.
+
+    A value that is not a list or tuple is returned unchanged, so Pydantic
+    reports it as it did before.
+    """
+    if isinstance(v, (list, tuple)):
+        for item in v:
+            if isinstance(item, (list, tuple)):
+                _reject_bool_each(item)
+            else:
+                _reject_bool(item)
+    return v
 
 
 def _coerce_to_str(v: Any) -> str:
