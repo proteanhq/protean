@@ -509,7 +509,7 @@ class HandlerConfigurator:
         if broker is None:
             return
 
-        if isinstance(broker, InlineBroker):
+        if isinstance(broker._adapter, InlineBroker):
             return
         if broker.has_capability(BrokerCapabilities.STREAM_PARTITIONING):
             return

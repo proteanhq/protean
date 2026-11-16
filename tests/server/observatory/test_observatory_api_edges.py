@@ -11,6 +11,7 @@ import time
 from unittest.mock import MagicMock
 
 import pytest
+import redis
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -21,8 +22,8 @@ from protean.server.observatory.api import create_api_router
 
 
 def _stand_in_redis(domain: Domain) -> MagicMock:
-    redis_conn = MagicMock()
-    domain.brokers["default"].redis_instance = redis_conn
+    redis_conn = MagicMock(spec=redis.Redis)
+    domain.brokers["default"]._adapter.get_connection = lambda: redis_conn
     return redis_conn
 
 

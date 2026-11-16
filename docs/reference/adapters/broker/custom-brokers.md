@@ -12,20 +12,44 @@ Custom brokers allow you to:
 
 ## Architecture
 
-All brokers must inherit from `BaseBroker` and implement its abstract methods.
-They are these, plus the `capabilities` property:
+A broker adapter subclasses `BaseBroker` and `BrokerPort`, in that order.
+`BrokerPort` holds the operations Protean calls on every broker. `BaseBroker`
+holds the blocking reads, partitions and trimming, and declares the dead
+letter queue hooks as abstract methods. A blocking read falls back to `read`
+when the broker does not advertise `BLOCKING_READ`. The partition methods
+raise `NotSupportedError` unless the broker advertises `STREAM_PARTITIONING`.
+`trim` does nothing and returns 0 until the adapter overrides it. The adapter
+implements these members:
 
-- Publishing and reading: `_publish`, `_get_next`, `_read`
-- Acknowledgment: `_ack`, `_nack`
-- Consumer groups: `_ensure_group`
-- Connection and health: `_ping`, `_health_stats`, `_ensure_connection`,
-  `_info`, `_data_reset`
-- Dead letter queue: `_dlq_list`, `_dlq_inspect`, `_dlq_replay`,
-  `_dlq_replay_all`, `_dlq_purge`
+- Capabilities: the `capabilities` property
+- Publishing and reading: `publish`, `read`
+- Acknowledgment: `ack`, `nack`
+- Consumer groups: `create_group`, `consumer_groups`
+- Connection and health: `ping`, `health`, `get_connection`, `reconnect`, `clear`
+- Dead letter queue: `_dlq_list`, `_dlq_inspect`, `_dlq_replay`, `_dlq_replay_all`, `_dlq_purge`
 
 A broker that does not support a feature still implements the method. It
 returns an empty result, as the Redis PubSub broker does for the dead letter
 queue methods.
+
+`BrokerPort` also defines `close`, `mark_subscription_owned`,
+`remove_stale_consumers` and `reclaim_idle_pending`. Their defaults do
+nothing. Override them when your backend keeps connections or per-consumer
+pending lists.
+
+`read` takes a `new_messages` flag. When it is `True`, the broker skips
+messages that are pending in the group, meaning delivered and not yet
+acknowledged, and returns an empty list when only pending messages remain. A
+broker that redelivers a nacked message by putting it back on the stream, as
+the inline broker does, returns that message as a new one.
+
+Your code does not call the adapter. `domain.brokers["default"]` returns a
+`Broker` service that wraps it. The service records messages published inside
+a unit of work, retries once after a connection error, checks capabilities
+before `read`, `get_next`, `ack` and `nack`, and passes messages to subscribers when the
+broker runs synchronously. End the adapter module with
+`_PORT_CHECK: type[BrokerPort] = YourBroker` so mypy reports a missing or
+mistyped method.
 
 The broker below implements every method by handing it to an in-memory
 `InlineBroker`. Replace those calls with calls to your messaging client:
@@ -66,7 +90,7 @@ version = "0.1.0"
 description = "Kafka broker for Protean"
 requires-python = ">=3.11"
 dependencies = [
-    "protean>=0.14",
+    "protean>=0.19",
     "kafka-python>=2.0",
 ]
 
@@ -105,30 +129,37 @@ def register():
 """Kafka broker implementation."""
 
 import json
-from typing import TYPE_CHECKING, Dict, List, Tuple
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any
 import kafka
-from protean.port.broker import BaseBroker, BrokerCapabilities
+from protean.port.broker import (
+    BaseBroker,
+    BrokerCapabilities,
+    BrokerHealth,
+    BrokerMessage,
+    BrokerPort,
+)
 
 if TYPE_CHECKING:
     from protean.domain import Domain
 
 
-class KafkaBroker(BaseBroker):
+class KafkaBroker(BaseBroker, BrokerPort):
     """Kafka broker implementation for Protean."""
 
     __broker__ = "kafka"
 
-    def __init__(self, name: str, domain: "Domain", conn_info: Dict) -> None:
-        super().__init__(name, domain, conn_info)
+    def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
+        super().__init__(name, domain, config)
 
         # Initialize Kafka connection
         self.producer = kafka.KafkaProducer(
-            bootstrap_servers=conn_info.get("BOOTSTRAP_SERVERS", ["localhost:9092"]),
+            bootstrap_servers=config.get("BOOTSTRAP_SERVERS", ["localhost:9092"]),
             value_serializer=lambda v: json.dumps(v).encode('utf-8')
         )
 
         self.consumer = kafka.KafkaConsumer(
-            bootstrap_servers=conn_info.get("BOOTSTRAP_SERVERS", ["localhost:9092"]),
+            bootstrap_servers=config.get("BOOTSTRAP_SERVERS", ["localhost:9092"]),
             value_deserializer=lambda m: json.loads(m.decode('utf-8'))
         )
 
@@ -136,29 +167,36 @@ class KafkaBroker(BaseBroker):
     def capabilities(self) -> BrokerCapabilities:
         return BrokerCapabilities.ORDERED_MESSAGING
 
-    def _publish(self, stream: str, message: dict) -> str:
+    def publish(self, stream: str, message: dict[str, Any]) -> str:
         """Publish message to Kafka topic."""
         future = self.producer.send(stream, message)
         record_metadata = future.get(timeout=10)
         return f"{record_metadata.partition}:{record_metadata.offset}"
 
-    def _read(self, stream: str, consumer_group: str, no_of_messages: int) -> List[Tuple[str, dict]]:
+    def read(
+        self,
+        stream: str,
+        consumer_group: str,
+        limit: int,
+        *,
+        new_messages: bool = False,
+    ) -> list[BrokerMessage]:
         """Read messages from Kafka topic."""
         # Subscribe to topic with consumer group
         self.consumer.subscribe([stream])
         messages = []
 
         # Poll for messages
-        records = self.consumer.poll(timeout_ms=1000, max_records=no_of_messages)
+        records = self.consumer.poll(timeout_ms=1000, max_records=limit)
 
         for topic_partition, msgs in records.items():
             for msg in msgs:
                 msg_id = f"{msg.partition}:{msg.offset}"
-                messages.append((msg_id, msg.value))
+                messages.append(BrokerMessage(msg_id, msg.value))
 
         return messages
 
-    def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
+    def ack(self, stream: str, message_id: str, consumer_group: str) -> bool:
         """Acknowledge message (commit offset in Kafka)."""
         try:
             self.consumer.commit()
@@ -166,13 +204,13 @@ class KafkaBroker(BaseBroker):
         except Exception:
             return False
 
-    def _nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
+    def nack(self, stream: str, message_id: str, consumer_group: str) -> bool:
         """Negative acknowledgment - seek back for reprocessing."""
         # In Kafka, NACK typically means not committing the offset
         # Message will be redelivered on next poll
         return True
 
-    def _ping(self) -> bool:
+    def ping(self) -> bool:
         """Test Kafka connectivity."""
         try:
             # Check if we can list topics
@@ -181,26 +219,35 @@ class KafkaBroker(BaseBroker):
         except:
             return False
 
-    def _health_stats(self) -> dict:
+    def health(self) -> BrokerHealth:
         """Get Kafka broker health statistics."""
         try:
             metrics = self.producer.metrics()
-            return {
-                "healthy": True,
-                "connection_count": metrics.get('connection-count', 0),
-                "request_rate": metrics.get('request-rate', 0)
-            }
+            return BrokerHealth(
+                healthy=True,
+                message_counts={},
+                consumer_groups={},
+                details={
+                    "connection_count": metrics.get('connection-count', 0),
+                    "request_rate": metrics.get('request-rate', 0),
+                },
+            )
         except Exception as e:
-            return {"healthy": False, "error": str(e)}
+            return BrokerHealth(
+                healthy=False,
+                message_counts={},
+                consumer_groups={},
+                details={"error": str(e)},
+            )
 
-    def _ensure_connection(self) -> bool:
-        """Ensure Kafka connection is healthy."""
-        return self._ping()
+    def reconnect(self) -> bool:
+        """Check the Kafka connection."""
+        return self.ping()
 ```
 
 This listing shows the core methods only. A complete Kafka broker also
-implements `_get_next`, `_ensure_group`, `_info`, `_data_reset` and the five
-`_dlq_*` methods from the [Architecture](#architecture) list. Without them,
+implements `create_group`, `consumer_groups`, `get_connection`, `clear` and the
+five `_dlq_*` methods from the [Architecture](#architecture) list. Without them,
 Python refuses to create an instance of the class.
 
 ## Installation & Usage
@@ -264,7 +311,7 @@ def capabilities(self) -> BrokerCapabilities:
 ### Blocking reads
 
 A broker that declares `BLOCKING_READ` implements `_read_blocking`. The
-public `read_blocking` method calls it, and falls back to `_read` on brokers
+public `read_blocking` method calls it, and falls back to `read` on brokers
 without the capability.
 
 `read_blocking_streams` reads several streams in one call and returns a dict
@@ -302,7 +349,7 @@ from unittest.mock import Mock, patch
 def test_broker_capabilities():
     """Test broker declares correct capabilities."""
     broker = KafkaBroker("test", Mock(), {"BOOTSTRAP_SERVERS": ["localhost:9092"]})
-    assert broker.has_capability(BrokerCapabilities.MESSAGE_ORDERING)
+    assert BrokerCapabilities.MESSAGE_ORDERING in broker.capabilities
 
 def test_publish():
     """Test message publishing."""
@@ -338,10 +385,10 @@ def test_end_to_end():
 
 ## Guidance for adapter authors
 
-1. **Handle Connection Failures**: Implement reconnection logic in `_ensure_connection()`
+1. **Handle Connection Failures**: Implement reconnection logic in `reconnect()`
 2. **Declare Accurate Capabilities**: Only declare capabilities you actually implement
 3. **Follow Protean Conventions**: Use consistent naming and error handling
-4. **Provide Health Checks**: Implement meaningful `_ping()` and `_health_stats()`
+4. **Provide Health Checks**: Implement meaningful `ping()` and `health()`
 5. **Document Configuration**: Clearly document all configuration options
 
 ## Common Patterns
@@ -350,12 +397,12 @@ def test_end_to_end():
 
 ```python
 # fragment
-def __init__(self, name: str, domain: "Domain", conn_info: Dict) -> None:
-    super().__init__(name, domain, conn_info)
+def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
+    super().__init__(name, domain, config)
 
     # Create connection pool
     self.pool = []
-    pool_size = conn_info.get("POOL_SIZE", 10)
+    pool_size = config.get("POOL_SIZE", 10)
 
     for _ in range(pool_size):
         conn = self._create_connection()
@@ -368,7 +415,7 @@ def __init__(self, name: str, domain: "Domain", conn_info: Dict) -> None:
 # fragment
 import time
 
-def _publish(self, stream: str, message: dict) -> str:
+def publish(self, stream: str, message: dict[str, Any]) -> str:
     max_retries = 3
 
     for attempt in range(max_retries):

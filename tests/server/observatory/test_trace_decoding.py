@@ -11,6 +11,7 @@ import time
 from unittest.mock import MagicMock
 
 import pytest
+import redis
 from fastapi import Request
 from fastapi.testclient import TestClient
 
@@ -73,7 +74,7 @@ def _domain_with_redis(domain: Domain, redis_conn: MagicMock) -> Domain:
     The core test lane has no Redis server, and these tests need trace entries
     that a real server would never hold, such as bytes that are not UTF-8.
     """
-    domain.brokers["default"].redis_instance = redis_conn
+    domain.brokers["default"]._adapter.redis_instance = redis_conn
     return domain
 
 
@@ -147,7 +148,7 @@ class TestTraceNumber:
 
 class TestWorkerThroughput:
     def _redis(self, entries: list) -> MagicMock:
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.scan.return_value = (0, [b"orders::order"])
         redis_conn.xinfo_groups.return_value = [
             {"name": "Handler", "pending": 0, "lag": 0}
@@ -201,7 +202,7 @@ class TestWorkerThroughput:
 
 class TestTraceListing:
     def test_malformed_entries_are_skipped(self, test_domain):
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrevrange.return_value = [
             *_malformed_entries(),
             _entry(_completed()),
@@ -223,7 +224,7 @@ class TestTraceListing:
         ],
     )
     def test_filters_drop_traces_that_do_not_match(self, test_domain, query):
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrevrange.return_value = [
             _entry(
                 _completed(domain="billing", stream="billing::invoice", message_id="m1")
@@ -236,7 +237,7 @@ class TestTraceListing:
         assert [t["event"] for t in response.json()["traces"]] == ["handler.failed"]
 
     def test_stops_at_the_requested_count(self, test_domain):
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrevrange.return_value = [_entry(_completed()), _entry(_failed())]
 
         response = _client(test_domain, redis_conn).get("/api/traces?count=1")
@@ -245,7 +246,7 @@ class TestTraceListing:
 
     def test_an_error_after_decoding_reaches_the_caller(self, test_domain, monkeypatch):
         monkeypatch.setattr(api_module, "_decode_stream_id", _raise_type_error)
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrevrange.return_value = [_entry(_completed())]
 
         with pytest.raises(TypeError, match="bug after decoding"):
@@ -254,7 +255,7 @@ class TestTraceListing:
 
 class TestTraceOverview:
     def test_malformed_entries_are_skipped(self, test_domain):
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrange.return_value = [
             *_malformed_entries(),
             _entry(_completed()),
@@ -273,7 +274,7 @@ class TestTraceOverview:
         assert body["avg_latency_ms"] == 10.0
 
     def test_counts_errors_in_the_totals_and_the_timeline(self, test_domain):
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrange.return_value = [_entry(_completed()), _entry(_failed())]
 
         response = _client(test_domain, redis_conn).get(
@@ -287,7 +288,7 @@ class TestTraceOverview:
 
     def test_an_error_after_decoding_reaches_the_caller(self, test_domain, monkeypatch):
         monkeypatch.setattr(api_module, "_decode_stream_id", _raise_type_error)
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrange.return_value = [_entry(_completed())]
 
         with pytest.raises(TypeError, match="bug after decoding"):
@@ -296,7 +297,7 @@ class TestTraceOverview:
 
 class TestFailedTraces:
     def test_malformed_entries_are_skipped(self, test_domain):
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrange.return_value = [
             *_malformed_entries(),
             _entry(_failed()),
@@ -314,7 +315,7 @@ class TestFailedTraces:
         "query", ["handler=PaymentHandler", "message_type=PaymentFailed"]
     )
     def test_filters_drop_traces_that_do_not_match(self, test_domain, query):
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrange.return_value = [
             _entry(_failed()),
             _entry(_failed(handler="PaymentHandler", message_type="PaymentFailed")),
@@ -328,7 +329,7 @@ class TestFailedTraces:
 
     def test_an_error_after_decoding_reaches_the_caller(self, test_domain, monkeypatch):
         monkeypatch.setattr(api_module, "_decode_stream_id", _raise_type_error)
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrange.return_value = [_entry(_failed())]
 
         with pytest.raises(TypeError, match="bug after decoding"):
@@ -337,7 +338,7 @@ class TestFailedTraces:
 
 class TestTraceDetail:
     def test_a_malformed_entry_is_reported_as_unparseable(self, test_domain):
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrange.return_value = [(b"1-0", {b"data": b"[1, 2]"})]
 
         response = _client(test_domain, redis_conn).get("/api/traces/1-0")
@@ -346,7 +347,7 @@ class TestTraceDetail:
         assert response.json() == {"error": "Failed to parse trace data"}
 
     def test_a_trace_is_returned_with_its_stream_id(self, test_domain):
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrange.return_value = [
             (b"1-0", {b"data": json.dumps(_completed()).encode()})
         ]
@@ -359,7 +360,7 @@ class TestTraceDetail:
 
 class TestHandlerTraceMetrics:
     def test_malformed_entries_are_skipped(self):
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrange.return_value = [
             *_malformed_entries(),
             _entry(_completed()),
@@ -378,7 +379,7 @@ class TestHandlerTraceMetrics:
 
     def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
         monkeypatch.setattr(handlers_module, "_decode_stream_id", _raise_type_error)
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrange.return_value = [_entry(_completed())]
 
         with pytest.raises(TypeError, match="bug after decoding"):
@@ -387,7 +388,7 @@ class TestHandlerTraceMetrics:
 
 class TestRecentHandlerMessages:
     def test_malformed_entries_are_skipped(self):
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrevrange.return_value = [
             *_malformed_entries(),
             _entry(_completed()),
@@ -400,7 +401,7 @@ class TestRecentHandlerMessages:
 
     def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
         monkeypatch.setattr(handlers_module, "_decode_stream_id", _raise_type_error)
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrevrange.return_value = [_entry(_completed())]
 
         with pytest.raises(TypeError, match="bug after decoding"):
@@ -409,7 +410,7 @@ class TestRecentHandlerMessages:
 
 class TestProcessManagerTraceMetrics:
     def test_malformed_entries_are_skipped(self):
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrange.return_value = [
             *_malformed_entries(),
             _entry(_completed(handler="OrderPM")),
@@ -429,7 +430,7 @@ class TestProcessManagerTraceMetrics:
 
     def test_an_error_after_decoding_reaches_the_caller(self, monkeypatch):
         monkeypatch.setattr(processes_module, "trace_number", _raise_type_error)
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrange.return_value = [_entry(_completed(handler="OrderPM"))]
 
         with pytest.raises(TypeError, match="bug after decoding"):
@@ -438,7 +439,7 @@ class TestProcessManagerTraceMetrics:
 
 class TestCorrelationTraces:
     def test_malformed_entries_are_skipped(self, test_domain):
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrange.return_value = [
             *_malformed_entries(),
             _entry(_completed(correlation_id="corr-1", message_id="m-1")),
@@ -463,7 +464,7 @@ class TestCorrelationTraces:
             "decode_trace",
             lambda fields: BrokenTrace(_completed(correlation_id="corr-1")),
         )
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.xrange.return_value = [_entry(_completed(correlation_id="corr-1"))]
 
         with pytest.raises(TypeError, match="bug after decoding"):
@@ -485,7 +486,7 @@ class TestSseTraceFeed:
             return not pending
 
         monkeypatch.setattr(Request, "is_disconnected", is_disconnected)
-        redis_conn = MagicMock()
+        redis_conn = MagicMock(spec=redis.Redis)
         redis_conn.pubsub.return_value.get_message.side_effect = lambda **kwargs: (
             pending.pop(0)
         )

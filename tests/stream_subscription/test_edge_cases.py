@@ -36,8 +36,8 @@ class EdgeCaseEventHandler(BaseEventHandler):
 class TestStreamSubscriptionEdgeCases:
     """Test edge cases and error scenarios in StreamSubscription."""
 
-    async def test_ensure_group_failure(self, test_domain):
-        """Test handling of _ensure_group failure during initialization."""
+    async def test_create_group_failure(self, test_domain):
+        """Test handling of _create_group failure during initialization."""
         engine = Engine(test_domain, test_mode=True)
         subscription = StreamSubscription(
             engine=engine,
@@ -45,9 +45,9 @@ class TestStreamSubscriptionEdgeCases:
             handler=EdgeCaseEventHandler,
         )
 
-        # Mock broker with failing _ensure_group
+        # Mock broker with failing _create_group
         mock_broker = MagicMock()
-        mock_broker._ensure_group.side_effect = Exception(
+        mock_broker._create_group.side_effect = Exception(
             "Consumer group creation failed"
         )
         engine.domain.brokers["default"] = mock_broker
@@ -67,7 +67,7 @@ class TestStreamSubscriptionEdgeCases:
 
         # Initialize with a mock broker
         mock_broker = MagicMock()
-        mock_broker._ensure_group = MagicMock()
+        mock_broker._create_group = MagicMock()
         mock_broker.read_blocking.return_value = []
         engine.domain.brokers["default"] = mock_broker
 
@@ -92,7 +92,7 @@ class TestStreamSubscriptionEdgeCases:
 
         # Initialize with a mock broker
         mock_broker = MagicMock()
-        mock_broker._ensure_group = MagicMock()
+        mock_broker._create_group = MagicMock()
         mock_broker.read_blocking.return_value = [("msg-1", {"test": "data"})]
         engine.domain.brokers["default"] = mock_broker
 
@@ -148,7 +148,7 @@ class TestStreamSubscriptionEdgeCases:
 
         # Initialize with a mock broker that raises exception
         mock_broker = MagicMock()
-        mock_broker._ensure_group = MagicMock()
+        mock_broker._create_group = MagicMock()
         mock_broker.read_blocking.side_effect = Exception("Read blocking failed")
         engine.domain.brokers["default"] = mock_broker
 
@@ -172,7 +172,7 @@ class TestStreamSubscriptionEdgeCases:
 
         # Initialize with a mock broker
         mock_broker = MagicMock()
-        mock_broker._ensure_group = MagicMock()
+        mock_broker._create_group = MagicMock()
         mock_broker.ack.return_value = False  # ACK fails
         engine.domain.brokers["default"] = mock_broker
 
@@ -195,7 +195,7 @@ class TestStreamSubscriptionEdgeCases:
 
         # Initialize with a mock broker
         mock_broker = MagicMock()
-        mock_broker._ensure_group = MagicMock()
+        mock_broker._create_group = MagicMock()
         mock_broker.ack.return_value = True
         mock_broker.publish = MagicMock()  # For DLQ
         engine.domain.brokers["default"] = mock_broker
@@ -248,7 +248,7 @@ class TestStreamSubscriptionEdgeCases:
 
         # Initialize with a mock broker
         mock_broker = MagicMock()
-        mock_broker._ensure_group = MagicMock()
+        mock_broker._create_group = MagicMock()
         mock_broker.publish.side_effect = Exception("DLQ publish failed")
         engine.domain.brokers["default"] = mock_broker
 
@@ -272,7 +272,7 @@ class TestStreamSubscriptionEdgeCases:
 
         # Initialize with a mock broker
         mock_broker = MagicMock()
-        mock_broker._ensure_group = MagicMock()
+        mock_broker._create_group = MagicMock()
         mock_broker.publish.return_value = "dlq-msg-id"
         engine.domain.brokers["default"] = mock_broker
 

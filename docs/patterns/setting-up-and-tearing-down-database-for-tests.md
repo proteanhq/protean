@@ -63,7 +63,7 @@ Every Protean adapter exposes lifecycle methods designed for exactly this separa
 
 | Method | Purpose |
 |--------|---------|
-| `broker._data_reset()` | Flush all messages and consumer group state |
+| `broker.clear()` | Flush all messages and consumer group state |
 
 ### Event Store (`domain.event_store`)
 
@@ -367,7 +367,7 @@ def test_no_orders_exist():
     assert len(orders.items) == 0  # FAILS: order from previous test
 ```
 
-Fix: use `DomainFixture.domain_context()`, which resets all data automatically. Or add a `function`-scoped `clean_data` fixture that calls `clear()` on all providers and the event store, and `_data_reset()` on all brokers.
+Fix: use `DomainFixture.domain_context()`, which resets all data automatically. Or add a `function`-scoped `clean_data` fixture that calls `clear()` on all providers, brokers and the event store.
 
 ### Recreating Schema Per Test
 
@@ -434,7 +434,7 @@ The recommended approach is to use `DomainFixture` from `protean.integrations.py
 | Schema teardown | `domain.drop_database()` | Once per session |
 | Data truncation | `domain.truncate_database()` | On demand |
 | Data cleanup (database) | `provider.clear()` | After every test |
-| Data cleanup (broker) | `broker._data_reset()` | After every test |
+| Data cleanup (broker) | `broker.clear()` | After every test |
 | Data cleanup (event store) | `event_store.store.clear()` | After every test |
 
 `domain.truncate_database()` deletes all rows from every table while preserving

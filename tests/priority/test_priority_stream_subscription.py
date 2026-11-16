@@ -109,7 +109,7 @@ class TestInitialization:
         await sub.initialize()
 
         broker = engine.domain.brokers["default"]
-        broker._ensure_group.assert_any_call(sub.consumer_group, "orders")
+        broker._create_group.assert_any_call("orders", sub.consumer_group)
 
     @pytest.mark.asyncio
     async def test_initialize_creates_backfill_consumer_group_when_enabled(self):
@@ -121,9 +121,9 @@ class TestInitialization:
 
         broker = engine.domain.brokers["default"]
         # Primary group
-        broker._ensure_group.assert_any_call(sub.consumer_group, "orders")
+        broker._create_group.assert_any_call("orders", sub.consumer_group)
         # Backfill group
-        broker._ensure_group.assert_any_call(sub.consumer_group, "orders:backfill")
+        broker._create_group.assert_any_call("orders:backfill", sub.consumer_group)
 
     @pytest.mark.asyncio
     async def test_initialize_skips_backfill_group_when_disabled(self):
@@ -135,8 +135,8 @@ class TestInitialization:
 
         broker = engine.domain.brokers["default"]
         # Only one call — the primary group
-        assert broker._ensure_group.call_count == 1
-        broker._ensure_group.assert_called_once_with(sub.consumer_group, "orders")
+        assert broker._create_group.call_count == 1
+        broker._create_group.assert_called_once_with("orders", sub.consumer_group)
 
 
 # ---------------------------------------------------------------------------
@@ -752,4 +752,4 @@ class TestMultipleSubscriptions:
 
         # Each subscription should have created groups for both streams
         # That's 4 calls total: 2 handlers x 2 streams (primary + backfill)
-        assert broker._ensure_group.call_count == 4
+        assert broker._create_group.call_count == 4

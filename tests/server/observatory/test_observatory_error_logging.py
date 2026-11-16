@@ -10,6 +10,7 @@ import logging
 from unittest.mock import MagicMock
 
 import pytest
+import redis
 from fastapi.testclient import TestClient
 
 from protean import Domain
@@ -49,8 +50,8 @@ def _domain_with_redis(name: str = "test") -> tuple[Domain, MagicMock]:
     The client is never connected; every Redis call goes to the fake.
     """
     domain = _domain(name, _REDIS_BROKER)
-    redis_conn = MagicMock()
-    domain.brokers.get("default").redis_instance = redis_conn
+    redis_conn = MagicMock(spec=redis.Redis)
+    domain.brokers.get("default")._adapter.redis_instance = redis_conn
     redis_conn.scan.return_value = (0, [b"orders::order"])
     redis_conn.xrange.return_value = []
     return domain, redis_conn

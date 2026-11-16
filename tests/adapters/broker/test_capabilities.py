@@ -231,7 +231,7 @@ class TestBrokerCapabilityMethods:
 
     def test_capability_methods_with_inline_broker(self, broker):
         """Test capability methods specifically with inline broker."""
-        if broker.__class__.__name__ != "InlineBroker":
+        if broker._adapter.__class__.__name__ != "InlineBroker":
             return  # Only relevant for InlineBroker
 
         # InlineBroker has RELIABLE_MESSAGING capabilities

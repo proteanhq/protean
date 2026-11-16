@@ -19,15 +19,15 @@ def redis_broker(test_domain):
 
 @pytest.mark.redis
 def test_reinit_keeps_redis_connection_alive(redis_broker, test_domain):
-    assert isinstance(redis_broker, RedisBroker)
-    assert redis_broker.redis_instance is not None
+    assert isinstance(redis_broker._adapter, RedisBroker)
+    assert redis_broker._adapter.redis_instance is not None
 
     # A scheduler cron tick re-initializing the domain.
     test_domain.init(traverse=False)
 
     # Same live instance, connection intact — no teardown out from under it.
     assert test_domain.brokers["default"] is redis_broker
-    assert redis_broker.redis_instance is not None
+    assert redis_broker._adapter.redis_instance is not None
 
 
 @pytest.mark.redis

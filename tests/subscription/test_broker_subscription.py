@@ -150,8 +150,8 @@ async def test_tick_acknowledges_delivered_messages(broker, recording_subscripti
 
     assert had_work is False
     assert received == [{"data": "test1"}]
-    group = broker.info()["consumer_groups"][recording_subscription.subscriber_name]
-    assert group["in_flight_messages"] == {"test_stream": 0}
+    group = broker._consumer_groups()[recording_subscription.subscriber_name]
+    assert group["pending"] == 0
 
 
 async def test_process_batch_warns_when_the_broker_refuses_a_nack(

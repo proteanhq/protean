@@ -4,10 +4,10 @@ An adapter package registers a name with a dotted class path, usually from a
 ``register()`` function it declares as an entry point in the port's group:
 
 ==================  ========================  ==========================
-Instance            Entry-point group         Port base class
+Instance            Entry-point group         Port type
 ==================  ========================  ==========================
 ``providers``       ``protean.providers``     ``BaseProvider``
-``brokers``         ``protean.brokers``       ``BaseBroker``
+``brokers``         ``protean.brokers``       ``BrokerPort``
 ``event_stores``    ``protean.event_stores``  ``BaseEventStore``
 ``caches``          ``protean.caches``        ``CachePort``
 ==================  ========================  ==========================
@@ -23,7 +23,7 @@ from protean.port.dao import REQUIRED_LOOKUPS, LookupPort
 
 if TYPE_CHECKING:
     # Runtime imports would cycle: the adapter modules import this one.
-    from protean.port.broker import BaseBroker
+    from protean.port.broker import BrokerPort
     from protean.port.cache import CachePort
     from protean.port.event_store import BaseEventStore
     from protean.port.provider import BaseProvider
@@ -184,7 +184,7 @@ def _check_required_lookups(name: str, provider_cls: type["BaseProvider"]) -> No
 providers: AdapterRegistry["BaseProvider"] = AdapterRegistry(
     "protean.providers", "database provider", after_load=_check_required_lookups
 )
-brokers: AdapterRegistry["BaseBroker"] = AdapterRegistry("protean.brokers", "broker")
+brokers: AdapterRegistry["BrokerPort"] = AdapterRegistry("protean.brokers", "broker")
 event_stores: AdapterRegistry["BaseEventStore"] = AdapterRegistry(
     "protean.event_stores", "event store"
 )

@@ -75,7 +75,7 @@ PORTS = [
         InlineBroker,
         CustomBroker,
         lambda name: {"brokers": {"default": {"provider": name}}},
-        lambda domain: domain.brokers["default"],
+        lambda domain: domain.brokers["default"]._adapter,
     ),
     Port(
         event_stores,

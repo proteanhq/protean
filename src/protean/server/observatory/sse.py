@@ -10,33 +10,17 @@ import json
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from fnmatch import fnmatch
-from typing import (
-    Any,
-    Protocol,
-    cast,
-)
+from typing import Any
 
 from fastapi import Query, Request
 from fastapi.responses import StreamingResponse
 
 from protean.domain import Domain
 
+from .._redis import redis_client
 from ..tracing import TRACE_CHANNEL, decode_trace_payload
 
 logger = logging.getLogger(__name__)
-
-
-class _RedisStyleBroker(Protocol):
-    """Structural view of the Redis-backed broker surface used for SSE streaming.
-
-    The concrete Redis broker adapters expose ``redis_instance`` (the live
-    ``redis.Redis`` client), which is not part of the ``BaseBroker`` port. The
-    guarded ``hasattr`` check at the call site narrows a ``BaseBroker`` to this
-    shape. ``redis_instance`` is typed ``Any`` because the ``redis`` client is an
-    optional dependency not importable at module scope here.
-    """
-
-    redis_instance: Any
 
 
 def create_sse_endpoint(
@@ -140,8 +124,9 @@ def _first_redis_connection(domains: list[Domain]) -> Any:
         try:
             with d.domain_context():
                 broker = d.brokers.get("default")
-                if broker and hasattr(broker, "redis_instance"):
-                    return cast(_RedisStyleBroker, broker).redis_instance
+                client = redis_client(broker)
+                if client is not None:
+                    return client
         except Exception:  # one broken domain must not stop the stream; logged
             logger.debug(
                 "Could not get the Redis broker of domain %s",

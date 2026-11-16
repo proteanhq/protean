@@ -2,6 +2,7 @@ import logging
 import time
 import uuid
 from collections import defaultdict
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -9,6 +10,10 @@ from protean.infra.registry import brokers
 from protean.port.broker import (
     BaseBroker,
     BrokerCapabilities,
+    BrokerHealth,
+    BrokerMessage,
+    BrokerPort,
+    ConsumerGroupInfo,
     DLQEntry,
     OperationState,
 )
@@ -33,27 +38,25 @@ ENABLE_DLQ = True
 OPERATION_STATE_TTL_MAX = 60.0
 
 
-class InlineBroker(BaseBroker):
+class InlineBroker(BaseBroker, BrokerPort):
     __broker__ = "inline"
 
-    def __init__(
-        self, name: str, domain: "Domain", conn_info: dict[str, str | bool]
-    ) -> None:
-        super().__init__(name, domain, conn_info)
+    def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
+        super().__init__(name, domain, config)
 
-        # In case of `InlineBroker`, the `IS_ASYNC` value will always be `False`.
-        conn_info["IS_ASYNC"] = False
+        # The inline broker always delivers in the publishing process.
+        self.is_async = False
 
         # Configuration for retry behavior and timeouts
-        self._max_retries = int(conn_info.get("max_retries", MAX_RETRIES))
-        self._retry_delay = float(conn_info.get("retry_delay", RETRY_DELAY))
+        self._max_retries = int(self.config.get("max_retries", MAX_RETRIES))
+        self._retry_delay = float(self.config.get("retry_delay", RETRY_DELAY))
         self._backoff_multiplier = float(
-            conn_info.get("backoff_multiplier", BACKOFF_MULTIPLIER)
+            self.config.get("backoff_multiplier", BACKOFF_MULTIPLIER)
         )
         self._message_timeout = float(
-            conn_info.get("message_timeout", MESSAGE_TIMEOUT)
+            self.config.get("message_timeout", MESSAGE_TIMEOUT)
         )  # 5 minutes default
-        self._enable_dlq = bool(conn_info.get("enable_dlq", ENABLE_DLQ))
+        self._enable_dlq = bool(self.config.get("enable_dlq", ENABLE_DLQ))
         self._operation_state_ttl = max(
             int(self._message_timeout * 3), OPERATION_STATE_TTL_MAX
         )  # At least 1 minute
@@ -115,7 +118,7 @@ class InlineBroker(BaseBroker):
             BrokerCapabilities.RELIABLE_MESSAGING | BrokerCapabilities.DEAD_LETTER_QUEUE
         )
 
-    def _publish(self, stream: str, message: dict[str, Any]) -> str:
+    def publish(self, stream: str, message: dict[str, Any]) -> str:
         """Publish a message dict to the stream"""
         # We always generate a new identifier for inline broker, since
         #   there is underlying persistence layer to generate identifiers.
@@ -126,16 +129,25 @@ class InlineBroker(BaseBroker):
 
         return identifier
 
-    def _read(
-        self, stream: str, consumer_group: str, no_of_messages: int
-    ) -> list[tuple[str, dict[str, Any]]]:
-        """Default implementation using _get_next"""
-        # Ensure consumer group exists
-        self._ensure_group(consumer_group, stream)
+    def read(
+        self,
+        stream: str,
+        consumer_group: str,
+        limit: int,
+        *,
+        new_messages: bool = False,
+    ) -> list[BrokerMessage]:
+        """Read up to ``limit`` messages the group has not received yet.
+
+        The inline broker hands a message to a group once and redelivers a
+        nacked one by putting it back on the stream, so ``new_messages`` makes
+        no difference here.
+        """
+        self.create_group(stream, consumer_group)
 
         messages = []
-        for _ in range(no_of_messages):
-            message = self._get_next(stream, consumer_group)
+        for _ in range(limit):
+            message = self._next_message(stream, consumer_group)
             if message:
                 messages.append(message)
             else:
@@ -143,12 +155,8 @@ class InlineBroker(BaseBroker):
 
         return messages
 
-    def _get_next(
-        self, stream: str, consumer_group: str
-    ) -> tuple[str, dict[str, Any]] | None:
-        """Get next message in stream for a specific consumer group"""
-        # Ensure consumer group exists (create if it doesn't)
-        self._ensure_group(consumer_group, stream)
+    def _next_message(self, stream: str, consumer_group: str) -> BrokerMessage | None:
+        """Deliver the next message in ``stream`` to ``consumer_group``, if any."""
 
         # Create combined group key for this stream+consumer_group
         group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
@@ -178,29 +186,29 @@ class InlineBroker(BaseBroker):
             # Move message to in-flight status
             self._store_in_flight_message(stream, consumer_group, identifier, message)
 
-            return (identifier, message)
+            return BrokerMessage(identifier, message)
 
         # There is no message in the stream for this consumer group
         return None
 
-    def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
+    def ack(self, stream: str, message_id: str, consumer_group: str) -> bool:
         """Template method for message acknowledgment with common logic"""
         try:
             # Clean up expired operation states first
             self._cleanup_expired_operation_states()
 
             # Check for idempotency
-            current_state = self._get_operation_state(consumer_group, identifier)
+            current_state = self._get_operation_state(consumer_group, message_id)
             if current_state == OperationState.ACKNOWLEDGED:
                 logger.debug(
-                    f"Message '{identifier}' already acknowledged by consumer group '{consumer_group}' (idempotent)"
+                    f"Message '{message_id}' already acknowledged by consumer group '{consumer_group}' (idempotent)"
                 )
                 return False
             elif current_state == OperationState.NACKED:
                 # In consistent behavior with Redis Streams, a NACKed message can still be ACKed
                 # NACK just means the message stays pending and can be processed again
                 logger.debug(
-                    f"Message '{identifier}' was previously nacked, now acknowledging (similar to Redis Streams behavior)"
+                    f"Message '{message_id}' was previously nacked, now acknowledging (similar to Redis Streams behavior)"
                 )
                 # Continue with ACK processing - don't return False
 
@@ -210,91 +218,91 @@ class InlineBroker(BaseBroker):
                 return False
 
             # Validate message ownership
-            if not self._validate_message_ownership(identifier, consumer_group):
+            if not self._validate_message_ownership(message_id, consumer_group):
                 logger.warning(
-                    f"Message '{identifier}' was not delivered to consumer group '{consumer_group}'"
+                    f"Message '{message_id}' was not delivered to consumer group '{consumer_group}'"
                 )
                 return False
 
             # Check if message is still in-flight
             # For NACKed messages, they might be in failed messages queue instead
-            if not self._is_in_flight_message(stream, consumer_group, identifier):
+            if not self._is_in_flight_message(stream, consumer_group, message_id):
                 if current_state == OperationState.NACKED:
                     # For NACKed messages, check if it's in failed messages and move it back to in-flight for ACK
                     if self._handle_nacked_message_for_ack(
-                        stream, consumer_group, identifier
+                        stream, consumer_group, message_id
                     ):
                         logger.debug(
-                            f"Moved NACKed message '{identifier}' back to in-flight for acknowledgment"
+                            f"Moved NACKed message '{message_id}' back to in-flight for acknowledgment"
                         )
                     else:
                         logger.warning(
-                            f"NACKed message '{identifier}' not found in failed messages for consumer group '{consumer_group}'"
+                            f"NACKed message '{message_id}' not found in failed messages for consumer group '{consumer_group}'"
                         )
                         return False
                 else:
                     logger.warning(
-                        f"Message '{identifier}' not found in in-flight status for consumer group '{consumer_group}'"
+                        f"Message '{message_id}' not found in in-flight status for consumer group '{consumer_group}'"
                     )
                     return False
 
             # Set operation state to acknowledged
             self._store_operation_state(
-                consumer_group, identifier, OperationState.ACKNOWLEDGED
+                consumer_group, message_id, OperationState.ACKNOWLEDGED
             )
 
             # Remove message from in-flight status
-            self._remove_in_flight_message(stream, consumer_group, identifier)
+            self._remove_in_flight_message(stream, consumer_group, message_id)
 
             # Clean up retry count tracking
-            self._remove_retry_count(stream, consumer_group, identifier)
+            self._remove_retry_count(stream, consumer_group, message_id)
 
             # Remove any failed message entry
-            self._remove_failed_message(stream, consumer_group, identifier)
+            self._remove_failed_message(stream, consumer_group, message_id)
 
             # Clean up message ownership tracking (broker-specific implementation)
-            self._cleanup_message_ownership(identifier, consumer_group)
+            self._cleanup_message_ownership(message_id, consumer_group)
 
             # Log successful acknowledgment (non-critical operation)
             try:
                 logger.debug(
-                    f"Message '{identifier}' acknowledged by consumer group '{consumer_group}'"
+                    f"Message '{message_id}' acknowledged by consumer group '{consumer_group}'"
                 )
             except Exception:
                 # Logging failure shouldn't cause ACK to fail
                 logger.exception(
-                    "broker.inline.ack_log_failed", extra={"identifier": identifier}
+                    "broker.inline.ack_log_failed", extra={"identifier": message_id}
                 )
                 # Clean up operation state since we can't reliably track the operation
-                self._clear_operation_state(consumer_group, identifier)
+                self._clear_operation_state(consumer_group, message_id)
                 return False
 
             return True
 
         except Exception:  # ack reports False on any failure and clears state; logged
             logger.exception(
-                "broker.inline.ack_failed", extra={"identifier": identifier}
+                "broker.inline.ack_failed", extra={"identifier": message_id}
             )
             # Clean up operation state on failure
-            self._clear_operation_state(consumer_group, identifier)
+            self._clear_operation_state(consumer_group, message_id)
             return False
 
-    def _nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
+    def nack(self, stream: str, message_id: str, consumer_group: str) -> bool:
         """Template method for negative acknowledgment with common logic"""
         try:
             # Clean up expired operation states first
             self._cleanup_expired_operation_states()
 
             # Check for idempotency
-            current_state = self._get_operation_state(consumer_group, identifier)
+            current_state = self._get_operation_state(consumer_group, message_id)
             if current_state == OperationState.NACKED:
                 logger.debug(
-                    f"Message '{identifier}' already nacked by consumer group '{consumer_group}' (idempotent)"
+                    f"Message '{message_id}' already nacked by consumer group '{consumer_group}' (idempotent)"
                 )
                 return False
             elif current_state == OperationState.ACKNOWLEDGED:
                 logger.warning(
-                    f"Cannot nack message '{identifier}' - already acknowledged by consumer group '{consumer_group}'"
+                    f"Cannot nack message '{message_id}' - already acknowledged by consumer group '{consumer_group}'"
                 )
                 return False
 
@@ -304,26 +312,26 @@ class InlineBroker(BaseBroker):
                 return False
 
             # Validate message ownership
-            if not self._validate_message_ownership(identifier, consumer_group):
+            if not self._validate_message_ownership(message_id, consumer_group):
                 logger.warning(
-                    f"Message '{identifier}' was not delivered to consumer group '{consumer_group}'"
+                    f"Message '{message_id}' was not delivered to consumer group '{consumer_group}'"
                 )
                 return False
 
             # Get message from in-flight status
             message_data = self._get_in_flight_message(
-                stream, consumer_group, identifier
+                stream, consumer_group, message_id
             )
             if not message_data:
                 logger.warning(
-                    f"Message '{identifier}' not found in in-flight status for consumer group '{consumer_group}'"
+                    f"Message '{message_id}' not found in in-flight status for consumer group '{consumer_group}'"
                 )
                 return False
 
             _, message = message_data
 
             # Get current retry count and increment it
-            retry_count = self._get_retry_count(stream, consumer_group, identifier)
+            retry_count = self._get_retry_count(stream, consumer_group, message_id)
             new_retry_count = retry_count + 1
 
             group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
@@ -333,7 +341,7 @@ class InlineBroker(BaseBroker):
             ):
                 return self._handle_nack_with_retry(
                     stream,
-                    identifier,
+                    message_id,
                     consumer_group,
                     message,
                     retry_count,
@@ -341,15 +349,15 @@ class InlineBroker(BaseBroker):
                 )
             else:
                 return self._handle_nack_max_retries_exceeded(
-                    stream, identifier, consumer_group, message, new_retry_count
+                    stream, message_id, consumer_group, message, new_retry_count
                 )
 
         except Exception:  # nack reports False on any failure and clears state; logged
             logger.exception(
-                "broker.inline.nack_failed", extra={"identifier": identifier}
+                "broker.inline.nack_failed", extra={"identifier": message_id}
             )
             # Clean up operation state on failure
-            self._clear_operation_state(consumer_group, identifier)
+            self._clear_operation_state(consumer_group, message_id)
             return False
 
     def _handle_nack_with_retry(
@@ -779,7 +787,7 @@ class InlineBroker(BaseBroker):
             result: dict[str, list[tuple[str, dict[str, Any], str, float]]] = {}
             for group_key in self._dead_letter_queue:
                 if group_key.endswith(f"{CONSUMER_GROUP_SEPARATOR}{consumer_group}"):
-                    stream_name = group_key.split(CONSUMER_GROUP_SEPARATOR)[0]
+                    stream_name = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)[0]
                     result[stream_name] = list(self._dead_letter_queue[group_key])
             return result
 
@@ -837,7 +845,7 @@ class InlineBroker(BaseBroker):
         for group_key, messages in self._dead_letter_queue.items():
             if not messages:
                 continue
-            stream, consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            stream, consumer_group = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
             dlq_stream_name = f"{stream}:dlq"
             if dlq_stream_name not in dlq_streams:
                 continue
@@ -867,7 +875,7 @@ class InlineBroker(BaseBroker):
         for group_key, messages in self._dead_letter_queue.items():
             if not messages:
                 continue
-            stream, consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            stream, consumer_group = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
             dlq_stream_name = f"{stream}:dlq"
             if dlq_stream_name != dlq_stream:
                 continue
@@ -893,7 +901,7 @@ class InlineBroker(BaseBroker):
     def _dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
         """Replay a single DLQ message back to its original stream."""
         for group_key, messages in self._dead_letter_queue.items():
-            stream, _consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            stream, _consumer_group = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
             dlq_stream_name = f"{stream}:dlq"
             if dlq_stream_name != dlq_stream:
                 continue
@@ -902,7 +910,7 @@ class InlineBroker(BaseBroker):
             ):
                 if identifier == dlq_id:
                     del messages[i]
-                    self._publish(target_stream, message)
+                    self.publish(target_stream, message)
                     logger.info(
                         f"Replayed DLQ message '{identifier}' to stream '{target_stream}'"
                     )
@@ -914,12 +922,12 @@ class InlineBroker(BaseBroker):
         replayed = 0
         for group_key in list(self._dead_letter_queue.keys()):
             messages = self._dead_letter_queue[group_key]
-            stream, _ = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            stream, _ = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
             dlq_stream_name = f"{stream}:dlq"
             if dlq_stream_name != dlq_stream:
                 continue
             for _identifier, message, _failure_reason, _timestamp in messages:
-                self._publish(target_stream, message)
+                self.publish(target_stream, message)
                 replayed += 1
             messages.clear()
         return replayed
@@ -928,7 +936,7 @@ class InlineBroker(BaseBroker):
         """Purge all messages from a DLQ stream."""
         purged = 0
         for group_key in list(self._dead_letter_queue.keys()):
-            stream, _ = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            stream, _ = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
             dlq_stream_name = f"{stream}:dlq"
             if dlq_stream_name != dlq_stream:
                 continue
@@ -944,19 +952,19 @@ class InlineBroker(BaseBroker):
         """
         return 0
 
-    def _ensure_group(self, group_name: str, stream: str | None = None) -> None:
-        """Bootstrap/create consumer group."""
-        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{group_name}"
+    def create_group(self, stream: str, consumer_group: str) -> None:
+        """Create ``consumer_group`` on ``stream`` if it does not exist."""
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         if group_key not in self._consumer_groups:
             self._consumer_groups[group_key] = {
                 "consumers": set(),
                 "created_at": time.time(),
             }
 
-    def _mark_subscription_owned(self, stream: str, consumer_group: str) -> None:
+    def mark_subscription_owned(self, stream: str, consumer_group: str) -> None:
         """Record that a subscription owns retry/DLQ for this group.
 
-        For an owned (stream, consumer group), ``_nack`` bypasses the broker's
+        For an owned (stream, consumer group), ``nack`` bypasses the broker's
         own retry ceiling and always holds-and-redelivers, so the broker never
         moves the message to its native DLQ. The subscription is the single
         retry/DLQ authority and publishes exhausted messages to ``{stream}:dlq``.
@@ -964,39 +972,36 @@ class InlineBroker(BaseBroker):
         group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         self._subscription_owned_groups.add(group_key)
 
-    def _info(self) -> dict[str, Any]:
-        """Provide information about consumer groups and consumers."""
-        # Group info by consumer group name across all streams
-        consumer_groups_info = {}
+    def consumer_groups(self) -> dict[str, ConsumerGroupInfo]:
+        """Return each consumer group by name, across all streams.
+
+        ``pending`` is the number of messages delivered to the group and not
+        yet acknowledged or nacked, summed over the group's streams.
+        """
+        consumer_groups_info: dict[str, ConsumerGroupInfo] = {}
 
         for group_key, group_info in self._consumer_groups.items():
-            # Extract stream and consumer group name from the combined key
-            stream, consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            _stream, consumer_group = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
 
             if consumer_group not in consumer_groups_info:
                 consumer_groups_info[consumer_group] = {
-                    "consumers": list(group_info["consumers"]),
-                    "created_at": group_info["created_at"],
+                    "name": consumer_group,
                     "consumer_count": len(group_info["consumers"]),
-                    "in_flight_messages": {},
-                    "failed_messages": {},
-                    "dlq_messages": {},
+                    "pending": 0,
+                    "consumers": [
+                        {"name": consumer, "pending": 0}
+                        for consumer in group_info["consumers"]
+                    ],
+                    "created_at": group_info["created_at"],
                 }
 
-            # Add stream-specific information
-            consumer_groups_info[consumer_group]["in_flight_messages"][stream] = len(
+            consumer_groups_info[consumer_group]["pending"] += len(
                 self._in_flight[group_key]
             )
-            consumer_groups_info[consumer_group]["failed_messages"][stream] = len(
-                self._failed_messages[group_key]
-            )
-            consumer_groups_info[consumer_group]["dlq_messages"][stream] = len(
-                self._dead_letter_queue[group_key]
-            )
 
-        return {"consumer_groups": consumer_groups_info}
+        return consumer_groups_info
 
-    def _data_reset(self) -> None:
+    def clear(self) -> None:
         """Flush all data in broker instance.
 
         ``_subscription_owned_groups`` is deliberately kept: it records which
@@ -1014,7 +1019,7 @@ class InlineBroker(BaseBroker):
         self._dead_letter_queue.clear()
         self._operation_states.clear()
 
-    def _ping(self) -> bool:
+    def ping(self) -> bool:
         """Test connectivity to the inline broker.
 
         Since InlineBroker is in-memory, it's always available.
@@ -1024,11 +1029,10 @@ class InlineBroker(BaseBroker):
         """
         return True
 
-    def _health_stats(self) -> dict[str, Any]:
-        """Get health statistics for the inline broker.
+    def health(self) -> BrokerHealth:
+        """Return message counts, consumer groups and configuration.
 
-        Returns:
-            dict: Health statistics including message counts and consumer group info
+        The inline broker is in memory, so it always reports itself healthy.
         """
         # Calculate total messages across all streams
         total_messages = sum(len(messages) for messages in self._messages.values())
@@ -1047,7 +1051,7 @@ class InlineBroker(BaseBroker):
         consumer_groups = set()
         for group_key in self._consumer_groups:
             if CONSUMER_GROUP_SEPARATOR in group_key:
-                _, group_name = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+                _, group_name = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
                 consumer_groups.add(group_name)
 
         # Calculate memory usage estimate (rough approximation)
@@ -1058,29 +1062,35 @@ class InlineBroker(BaseBroker):
             + total_dlq * 150  # DLQ messages have failure info
         )
 
-        return {
-            "healthy": True,  # InlineBroker is always healthy
-            "message_counts": {
+        return BrokerHealth(
+            healthy=True,
+            message_counts={
                 "total_messages": total_messages,
                 "in_flight": total_in_flight,
                 "failed": total_failed,
                 "dlq": total_dlq,
             },
-            "streams": {"count": len(streams), "names": list(streams)},
-            "consumer_groups": {
+            consumer_groups={
                 "count": len(consumer_groups),
                 "names": list(consumer_groups),
             },
-            "memory_estimate_bytes": memory_estimate,
-            "configuration": {
-                "max_retries": self._max_retries,
-                "retry_delay": self._retry_delay,
-                "message_timeout": self._message_timeout,
-                "enable_dlq": self._enable_dlq,
+            details={
+                "streams": {"count": len(streams), "names": list(streams)},
+                "memory_estimate_bytes": memory_estimate,
+                "configuration": {
+                    "max_retries": self._max_retries,
+                    "retry_delay": self._retry_delay,
+                    "message_timeout": self._message_timeout,
+                    "enable_dlq": self._enable_dlq,
+                },
             },
-        }
+        )
 
-    def _ensure_connection(self) -> bool:
+    def get_connection(self) -> object:
+        """Return ``None``: the inline broker holds no client."""
+        return None
+
+    def reconnect(self) -> bool:
         """Ensure connection to the inline broker.
 
         Since InlineBroker is in-memory, no external connection is needed.
@@ -1178,3 +1188,6 @@ def register() -> None:
     InlineBroker is always available as it has no external dependencies.
     """
     brokers.register("inline", "protean.adapters.broker.inline.InlineBroker")
+
+
+_PORT_CHECK: type[BrokerPort] = InlineBroker

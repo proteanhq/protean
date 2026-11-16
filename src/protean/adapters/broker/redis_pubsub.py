@@ -2,12 +2,21 @@ import json
 import logging
 import time
 import uuid
-from typing import TYPE_CHECKING, Any, cast
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any
 
 import redis
 
 from protean.infra.registry import brokers
-from protean.port.broker import BaseBroker, BrokerCapabilities, DLQEntry
+from protean.port.broker import (
+    BaseBroker,
+    BrokerCapabilities,
+    BrokerHealth,
+    BrokerMessage,
+    BrokerPort,
+    ConsumerGroupInfo,
+    DLQEntry,
+)
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -18,7 +27,7 @@ logger = logging.getLogger(__name__)
 CONSUMER_GROUP_SEPARATOR = ":"
 
 
-class RedisPubSubBroker(BaseBroker):
+class RedisPubSubBroker(BaseBroker, BrokerPort):
     """Redis as the Message Broker for simple queuing.
 
     This broker supports basic publish/subscribe with consumer groups
@@ -27,12 +36,10 @@ class RedisPubSubBroker(BaseBroker):
 
     __broker__ = "redis_pubsub"
 
-    def __init__(
-        self, name: str, domain: "Domain", conn_info: dict[str, str | bool]
-    ) -> None:
-        super().__init__(name, domain, conn_info)
+    def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
+        super().__init__(name, domain, config)
 
-        self.redis_instance = redis.Redis.from_url(cast(str, conn_info["URI"]))
+        self.redis_instance = redis.Redis.from_url(str(self.config["URI"]))
 
         # Simple storage for consumer groups
         self._consumer_groups: dict[str, dict[str, Any]] = {}
@@ -42,7 +49,7 @@ class RedisPubSubBroker(BaseBroker):
         """Redis PubSub provides simple queuing with manual consumer groups."""
         return BrokerCapabilities.SIMPLE_QUEUING
 
-    def _publish(self, stream: str, message: dict[str, Any]) -> str:
+    def publish(self, stream: str, message: dict[str, Any]) -> str:
         """Publish a message to Redis list"""
         # Always generate a new identifier
         identifier = str(uuid.uuid4())
@@ -52,40 +59,37 @@ class RedisPubSubBroker(BaseBroker):
 
         return identifier
 
-    def _get_next(
-        self, stream: str, consumer_group: str
-    ) -> tuple[str, dict[str, Any]] | None:
-        """Get next message in stream for a specific consumer group"""
-        # Ensure consumer group exists
-        self._ensure_group(consumer_group, stream)
-
-        # Get current position for this consumer group
+    def _next_message(self, stream: str, consumer_group: str) -> BrokerMessage | None:
+        """Return the message at the group's position and advance the position."""
         position_key = f"position:{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         position = int(self.redis_instance.get(position_key) or 0)
 
-        # Get message at this position
         message_data = self.redis_instance.lindex(stream, position)
         if message_data:
             identifier, message = json.loads(message_data)
-
-            # Increment position for this consumer group
             self.redis_instance.incr(position_key)
+            return BrokerMessage(identifier, message)
 
-            return (identifier, message)
-
-        # No message available
         return None
 
-    def _read(
-        self, stream: str, consumer_group: str, no_of_messages: int
-    ) -> list[tuple[str, dict[str, Any]]]:
-        """Read messages from the broker for a specific consumer group"""
-        # Ensure consumer group exists
-        self._ensure_group(consumer_group, stream)
+    def read(
+        self,
+        stream: str,
+        consumer_group: str,
+        limit: int,
+        *,
+        new_messages: bool = False,
+    ) -> list[BrokerMessage]:
+        """Read up to ``limit`` messages the group has not received yet.
+
+        The broker keeps one read position per group and never redelivers, so
+        ``new_messages`` makes no difference here.
+        """
+        self.create_group(stream, consumer_group)
 
         messages = []
-        for _ in range(no_of_messages):
-            message = self._get_next(stream, consumer_group)
+        for _ in range(limit):
+            message = self._next_message(stream, consumer_group)
             if message:
                 messages.append(message)
             else:
@@ -93,48 +97,54 @@ class RedisPubSubBroker(BaseBroker):
 
         return messages
 
-    def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:  # pragma: no cover  # the base class returns before this: no ACK_NACK capability  # fmt: skip
+    def ack(self, stream: str, message_id: str, consumer_group: str) -> bool:  # pragma: no cover  # the service returns before this: no ACK_NACK capability  # fmt: skip
         """Acknowledge - not supported in simple queuing"""
         logger.warning(
-            f"ACK not supported by {self.__class__.__name__} - message {identifier} cannot be acknowledged"
+            f"ACK not supported by {self.__class__.__name__} - message {message_id} cannot be acknowledged"
         )
         return False
 
-    def _nack(self, stream: str, identifier: str, consumer_group: str) -> bool:  # pragma: no cover  # the base class returns before this: no ACK_NACK capability  # fmt: skip
+    def nack(self, stream: str, message_id: str, consumer_group: str) -> bool:  # pragma: no cover  # the service returns before this: no ACK_NACK capability  # fmt: skip
         """Negative acknowledge - not supported in simple queuing"""
         logger.warning(
-            f"NACK not supported by {self.__class__.__name__} - message {identifier} cannot be nacked"
+            f"NACK not supported by {self.__class__.__name__} - message {message_id} cannot be nacked"
         )
         return False
 
-    def _ensure_group(self, group_name: str, stream: str | None = "") -> None:
-        """Bootstrap/create consumer group"""
-        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{group_name}"
+    def create_group(self, stream: str, consumer_group: str) -> None:
+        """Create ``consumer_group`` on ``stream`` if it does not exist."""
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         if group_key not in self._consumer_groups:
             self._consumer_groups[group_key] = {
                 "consumers": set(),
                 "created_at": time.time(),
             }
 
-    def _info(self) -> dict[str, Any]:
-        """Provide information about consumer groups"""
-        # Group info by consumer group name across all streams
-        consumer_groups_info: dict[str, dict[str, Any]] = {}
+    def consumer_groups(self) -> dict[str, ConsumerGroupInfo]:
+        """Return each consumer group by name, across all streams.
+
+        The broker has no acknowledgement, so ``pending`` is always ``0``.
+        """
+        consumer_groups_info: dict[str, ConsumerGroupInfo] = {}
 
         for group_key, group_info in self._consumer_groups.items():
-            # Extract stream and consumer group name from the combined key
-            _stream, consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            _stream, consumer_group = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
 
             if consumer_group not in consumer_groups_info:
                 consumer_groups_info[consumer_group] = {
-                    "consumers": list(group_info["consumers"]),
-                    "created_at": group_info["created_at"],
+                    "name": consumer_group,
                     "consumer_count": len(group_info["consumers"]),
+                    "pending": 0,
+                    "consumers": [
+                        {"name": consumer, "pending": 0}
+                        for consumer in group_info["consumers"]
+                    ],
+                    "created_at": group_info["created_at"],
                 }
 
-        return {"consumer_groups": consumer_groups_info}
+        return consumer_groups_info
 
-    def _ping(self) -> bool:
+    def ping(self) -> bool:
         """Test basic connectivity to Redis broker"""
         try:
             return self.redis_instance.ping()
@@ -143,78 +153,83 @@ class RedisPubSubBroker(BaseBroker):
             logger.debug(f"Redis PubSub ping failed: {e}")
             return False
 
-    def _health_stats(self) -> dict[str, Any]:
-        """Get health statistics for the Redis PubSub broker"""
+    def health(self) -> BrokerHealth:
+        """Return message counts, consumer groups and Redis server statistics.
+
+        A failure while reading the statistics is reported as unhealthy and
+        not raised.
+        """
         try:
             redis_info = self.redis_instance.info()
 
-            # Basic health stats
-            stats: dict[str, Any] = {
-                "healthy": True,
+            details: dict[str, Any] = {
                 "connected_clients": redis_info.get("connected_clients", 0),
                 "used_memory": redis_info.get("used_memory", 0),
                 "used_memory_human": redis_info.get("used_memory_human", "0B"),
                 "keyspace_hits": redis_info.get("keyspace_hits", 0),
                 "keyspace_misses": redis_info.get("keyspace_misses", 0),
-                "message_counts": self._calculate_message_counts(),
-                "consumer_groups": {
-                    "count": len(self._consumer_groups),
-                    "names": list(self._consumer_groups.keys()),
-                },
             }
+            healthy = True
 
             # Calculate hit rate
-            hits = stats["keyspace_hits"]
-            misses = stats["keyspace_misses"]
+            hits = details["keyspace_hits"]
+            misses = details["keyspace_misses"]
             if hits + misses > 0:
-                stats["hit_rate"] = hits / (hits + misses)
+                details["hit_rate"] = hits / (hits + misses)
             else:
-                stats["hit_rate"] = 0.0
+                details["hit_rate"] = 0.0
 
             # Check for potential health issues
             if redis_info.get("loading", 0) == 1:
-                stats["healthy"] = False
-                stats["warning"] = "Redis is loading data from disk"
+                healthy = False
+                details["warning"] = "Redis is loading data from disk"
 
             if redis_info.get("rejected_connections", 0) > 0:
-                stats["healthy"] = False
-                stats["warning"] = "Redis has rejected connections"
+                healthy = False
+                details["warning"] = "Redis has rejected connections"
 
             # Add configuration details
-            stats["configuration"] = {
+            details["configuration"] = {
                 "broker_type": "redis_pubsub",
                 "native_consumer_groups": False,
                 "native_ack_nack": False,
                 "simple_queuing_only": True,
             }
 
-            return stats
+            return BrokerHealth(
+                healthy=healthy,
+                message_counts=self._calculate_message_counts(),
+                consumer_groups={
+                    "count": len(self._consumer_groups),
+                    "names": list(self._consumer_groups.keys()),
+                },
+                details=details,
+            )
 
         # a health check reports failure instead of raising; logged
         except Exception as e:
             logger.exception("broker.redis_pubsub.health_check_failed")
-            return {
-                "healthy": False,
-                "error": str(e),
-                "message_counts": {"total_messages": 0},
-                "consumer_groups": {"count": 0, "names": []},
-                "configuration": {
-                    "broker_type": "redis_pubsub",
-                    "error": "Failed to get configuration",
-                    "simple_queuing_only": True,
+            return BrokerHealth(
+                healthy=False,
+                message_counts={"total_messages": 0},
+                consumer_groups={"count": 0, "names": []},
+                details={
+                    "error": str(e),
+                    "configuration": {
+                        "broker_type": "redis_pubsub",
+                        "error": "Failed to get configuration",
+                        "simple_queuing_only": True,
+                    },
                 },
-            }
+            )
 
     def _calculate_message_counts(self) -> dict[str, int]:
         """Calculate message counts across all streams"""
         try:
-            # Get all streams from subscriber keys
-            streams = set(self._subscribers.keys())
-
-            # Get streams from consumer group keys
+            streams: set[str] = set()
             for group_key in self._consumer_groups:
                 if CONSUMER_GROUP_SEPARATOR in group_key:
-                    stream_name = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)[0]
+                    stream_name = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)[0]
                     streams.add(stream_name)
 
             total_messages = 0
@@ -232,8 +247,8 @@ class RedisPubSubBroker(BaseBroker):
             logger.debug(f"Error calculating message counts: {e}")
             return {"total_messages": 0}
 
-    def _ensure_connection(self) -> bool:
-        """Ensure connection to Redis broker is healthy"""
+    def reconnect(self) -> bool:
+        """Check the connection to Redis and reconnect if it is broken."""
         max_attempts = 3
 
         for attempt in range(max_attempts):
@@ -255,9 +270,7 @@ class RedisPubSubBroker(BaseBroker):
                         f"Redis connection failed, attempting to reconnect (attempt {attempt + 1}/{max_attempts})..."
                     )
                     # from_url() does not connect; it raises ValueError for a bad URI.
-                    self.redis_instance = redis.Redis.from_url(
-                        cast(str, self.conn_info["URI"])
-                    )
+                    self.redis_instance = redis.Redis.from_url(str(self.config["URI"]))
                 except ValueError as reconnect_error:
                     logger.error(
                         f"Failed to create new Redis connection: {reconnect_error}"
@@ -266,7 +279,11 @@ class RedisPubSubBroker(BaseBroker):
         logger.error(f"Failed to ensure Redis connection after {max_attempts} attempts")
         return False
 
-    def _data_reset(self) -> None:
+    def get_connection(self) -> "redis.Redis[Any]":
+        """Return the Redis client."""
+        return self.redis_instance
+
+    def clear(self) -> None:
         """Clear the broker's configured Redis database for testing"""
         try:
             self.redis_instance.flushdb()
@@ -309,3 +326,6 @@ def register() -> None:
         logger.debug(
             f"Redis PubSub broker not registered: redis package not available ({e})"
         )
+
+
+_PORT_CHECK: type[BrokerPort] = RedisPubSubBroker

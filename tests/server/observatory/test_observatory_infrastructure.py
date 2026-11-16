@@ -213,9 +213,11 @@ class TestBrokerStatus:
         fake_redis.type.return_value = b"stream"
         fake_redis.xlen.return_value = 0
         fake_redis.xinfo_groups.return_value = []
-        monkeypatch.setattr(broker, "redis_instance", fake_redis)
+        monkeypatch.setattr(broker._adapter, "redis_instance", fake_redis)
         monkeypatch.setattr(
-            broker, "_created_groups_set", {"order:g1", "order:g2", "payment:g3"}
+            broker._adapter,
+            "_created_groups_set",
+            {"order:g1", "order:g2", "payment:g3"},
         )
 
         result = _broker_status(test_domain)
@@ -235,7 +237,7 @@ class TestBrokerStatus:
         # Nothing listens on port 1, so every Redis call is refused. The
         # client's default retries would back off for seconds before failing.
         monkeypatch.setattr(
-            broker,
+            broker._adapter,
             "redis_instance",
             redis.Redis(
                 host="127.0.0.1", port=1, socket_connect_timeout=0.5, retry=None

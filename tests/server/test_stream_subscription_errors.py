@@ -65,7 +65,7 @@ def register_elements(test_domain):
 def broker(test_domain, monkeypatch):
     """The domain's inline broker, set to redeliver a NACKed message at once."""
     broker = test_domain.brokers["default"]
-    monkeypatch.setattr(broker, "_retry_delay", 0)
+    monkeypatch.setattr(broker._adapter, "_retry_delay", 0)
     return broker
 
 
@@ -118,12 +118,16 @@ def _dlq(sub, dlq_stream: str) -> list[dict]:
 
 def _streams(sub) -> set[str]:
     """Name every stream on the broker that has received a message."""
-    return set(sub.broker.health_stats()["details"]["streams"]["names"])
+    return set(sub.broker.health()["details"]["streams"]["names"])
 
 
 def _in_flight(sub, stream: str) -> int:
-    groups = sub.broker.info()["consumer_groups"]
-    return groups[sub.consumer_group]["in_flight_messages"][stream]
+    """Count the group's delivered, unacknowledged messages.
+
+    The broker reports the count per group, summed over its streams, and each
+    test here reads from one stream only.
+    """
+    return sub.broker._consumer_groups()[sub.consumer_group]["pending"]
 
 
 def _publish_fails(broker, monkeypatch, times: int | None = None) -> None:

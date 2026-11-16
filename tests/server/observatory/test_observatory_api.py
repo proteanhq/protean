@@ -14,6 +14,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+import redis
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -174,7 +175,7 @@ class TestBrokerHealthErrorPaths:
         broker = domain.brokers["default"]
 
         with patch.object(
-            broker, "health_stats", side_effect=RuntimeError("connection refused")
+            broker, "health", side_effect=RuntimeError("connection refused")
         ):
             result = _broker_health(domain)
 
@@ -197,7 +198,9 @@ class TestBrokerInfoErrorPaths:
         domain = _domain_without_redis()
         broker = domain.brokers["default"]
 
-        with patch.object(broker, "info", side_effect=RuntimeError("timeout")):
+        with patch.object(
+            broker, "_consumer_groups", side_effect=RuntimeError("timeout")
+        ):
             result = _broker_info(domain)
 
         assert result["status"] == "error"
@@ -551,7 +554,7 @@ class TestConsumersEndpoint:
     def test_consumers_shows_real_consumers_after_xreadgroup(self, client, test_domain):
         """Consumers appear after creating a stream, group, and reading with a consumer."""
         broker = test_domain.brokers.get("default")
-        redis_conn = broker.redis_instance
+        redis_conn = broker.get_connection()
         stream = "observatory-test::consumer-check"
         group = "TestConsumerGroup"
         consumer_name = "TestHandler-testhost-1234-aabbcc"
@@ -583,7 +586,7 @@ class TestConsumersEndpoint:
         """Returns empty list when no application streams exist (fresh database)."""
         # Use a fresh domain with a fresh Redis database
         broker = test_domain.brokers.get("default")
-        broker.redis_instance.flushdb()
+        broker.get_connection().flushdb()
 
         observatory = Observatory(domains=[test_domain])
         client = TestClient(observatory.app)
@@ -631,7 +634,7 @@ class TestWorkersEndpoint:
     def test_workers_groups_consumers_by_host_and_pid(self, client, test_domain):
         """Workers endpoint groups consumers from the same engine instance."""
         broker = test_domain.brokers.get("default")
-        redis_conn = broker.redis_instance
+        redis_conn = broker.get_connection()
 
         stream = "observatory-test::workers-grouping"
         group = "WorkerGroupTestHandler"
@@ -664,7 +667,7 @@ class TestWorkersEndpoint:
     def test_workers_throughput_structure(self, client, test_domain):
         """Each worker has throughput object with sparkline fields."""
         broker = test_domain.brokers.get("default")
-        redis_conn = broker.redis_instance
+        redis_conn = broker.get_connection()
 
         stream = "observatory-test::workers-throughput"
         group = "ThroughputHandler"
@@ -696,7 +699,7 @@ class TestWorkersEndpoint:
     def test_workers_active_when_recently_read(self, client, test_domain):
         """Worker that just read a message has low idle and is marked 'active'."""
         broker = test_domain.brokers.get("default")
-        redis_conn = broker.redis_instance
+        redis_conn = broker.get_connection()
 
         stream = "observatory-test::workers-active"
         group = "ActiveHandler"
@@ -722,7 +725,7 @@ class TestWorkersEndpoint:
     def test_workers_includes_subscriptions_list(self, client, test_domain):
         """Each worker has a list of its subscriptions (consumer entries)."""
         broker = test_domain.brokers.get("default")
-        redis_conn = broker.redis_instance
+        redis_conn = broker.get_connection()
 
         stream1 = "observatory-test::workers-subs-a"
         stream2 = "observatory-test::workers-subs-b"
@@ -778,8 +781,8 @@ def _stand_in_redis(domain: Domain) -> MagicMock:
     client gives, including the odd shapes (bytes keys, non-dict entries) that
     redis-py can return.
     """
-    redis_conn = MagicMock()
-    domain.brokers["default"].redis_instance = redis_conn
+    redis_conn = MagicMock(spec=redis.Redis)
+    domain.brokers["default"]._adapter.redis_instance = redis_conn
     return redis_conn
 
 
@@ -862,15 +865,15 @@ class TestBrokerInfoSuccessPath:
         domain = _domain_without_redis("test-domain")
         # A stream name without "::", because the inline broker splits its group
         # keys on the first ":".
-        domain.brokers["default"]._ensure_group("OrderHandler", "orders")
+        domain.brokers["default"]._create_group("orders", "OrderHandler")
 
         result = _broker_info(domain)
 
         assert result["status"] == "ok"
         group = result["consumer_groups"]["OrderHandler"]
+        assert group["name"] == "OrderHandler"
         assert group["consumer_count"] == 0
-        assert group["in_flight_messages"] == {"orders": 0}
-        assert group["dlq_messages"] == {"orders": 0}
+        assert group["pending"] == 0
 
 
 # --- Tests for streams endpoint with stream aggregation and consumer groups ---
@@ -1238,7 +1241,7 @@ class TestStatsEndpointStreamAggregation:
 # --- Shared setup for the DLQ endpoints ---
 
 
-class _StreamRedis:
+class _StreamRedis(redis.Redis):
     """In-memory stand-in for the redis-py client, holding streams only.
 
     The core test lane has no Redis server. The Redis broker's own DLQ methods
@@ -1342,7 +1345,7 @@ def _dlq_setup(
         domain.config["server"]["priority_lanes"] = {"enabled": True}
 
     redis_conn = redis_cls()
-    domain.brokers["default"].redis_instance = redis_conn
+    domain.brokers["default"]._adapter.redis_instance = redis_conn
     return redis_conn
 
 
@@ -1597,7 +1600,7 @@ class TestDLQInspectEndpointWithRedis:
         dlq_streams = collect_dlq_streams(test_domain)
         assert dlq_streams
 
-        redis_client = test_domain.brokers["default"]._client
+        redis_client = test_domain.brokers["default"].get_connection()
         try:
             for dlq_stream in dlq_streams:
                 redis_client.set(dlq_stream, "not-a-stream")

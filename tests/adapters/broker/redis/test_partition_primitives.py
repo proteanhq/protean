@@ -18,7 +18,7 @@ pytestmark = pytest.mark.redis
 
 @pytest.fixture
 def broker(test_domain) -> RedisBroker:
-    b = test_domain.brokers["default"]
+    b = test_domain.brokers["default"]._adapter
     assert isinstance(b, RedisBroker)
     return b
 
@@ -32,7 +32,7 @@ def _cat() -> str:
 
 
 def test_advertises_stream_partitioning(broker: RedisBroker) -> None:
-    assert broker.has_capability(BrokerCapabilities.STREAM_PARTITIONING)
+    assert BrokerCapabilities.STREAM_PARTITIONING in broker.capabilities
 
 
 def test_partition_index_record_and_read(broker: RedisBroker) -> None:
@@ -74,7 +74,7 @@ def test_fenced_read_and_stale_owner_rejected(broker: RedisBroker) -> None:
     lease = f"{group}:a:__lease__"
     gen_key = f"{group}:a:__generation__"
     for i in range(2):
-        broker._publish(stream, _payload(i))
+        broker.publish(stream, _payload(i))
     gen = broker.acquire_partition_lease(lease, gen_key, "owner-1", 5000)
     fence = f"owner-1:{gen}"
 
@@ -92,7 +92,7 @@ def test_fenced_ack_and_stale_owner_rejected(broker: RedisBroker) -> None:
     group = "grp.Handler"
     lease = f"{group}:a:__lease__"
     gen_key = f"{group}:a:__generation__"
-    broker._publish(stream, _payload(0))
+    broker.publish(stream, _payload(0))
     gen = broker.acquire_partition_lease(lease, gen_key, "owner-1", 5000)
     fence = f"owner-1:{gen}"
     ((identifier, _),) = broker.read_partition_fenced(
@@ -113,7 +113,7 @@ def test_reclaim_pending_via_xautoclaim(broker: RedisBroker) -> None:
     lease = f"{group}:a:__lease__"
     gen_key = f"{group}:a:__generation__"
     for i in range(3):
-        broker._publish(stream, _payload(i))
+        broker.publish(stream, _payload(i))
     gen = broker.acquire_partition_lease(lease, gen_key, "owner-1", 5000)
     fence = f"owner-1:{gen}"
     # owner-1 delivers all three into its PEL (unacked = pending).
@@ -131,8 +131,8 @@ def test_reap_only_when_idle_and_drained(broker: RedisBroker) -> None:
     stream = f"{cat}:a"
     group = "grp.Handler"
     broker.record_partition(cat, "a")
-    broker._ensure_group(group, stream)
-    identifier = broker._publish(stream, _payload(0))
+    broker.create_group(stream, group)
+    identifier = broker.publish(stream, _payload(0))
 
     # Deliver + leave pending via a plain group read: a pending entry present
     # means the partition is never reaped, however idle.
@@ -155,8 +155,8 @@ def test_reap_is_lane_aware(broker: RedisBroker) -> None:
     backfill = f"{cat}:a:backfill"
     group = "grp.Handler"
     broker.record_partition(cat, "a")
-    broker._ensure_group(group, backfill)
-    broker._publish(backfill, _payload(0))
+    broker.create_group(backfill, group)
+    broker.publish(backfill, _payload(0))
     resp = broker._client.xreadgroup(group, "c1", {backfill: ">"}, count=1)  # pending
     bid = broker._decode_if_bytes(resp[0][1][0][0])
 
@@ -185,8 +185,8 @@ def test_reap_leaves_generation_counter(broker: RedisBroker) -> None:
     gen_key = f"{cat}:a:__generation__"
     lease = f"{cat}:a:__lease__"
     broker.record_partition(cat, "a")
-    broker._ensure_group(group, stream)
-    ident = broker._publish(stream, _payload(0))
+    broker.create_group(stream, group)
+    ident = broker.publish(stream, _payload(0))
     broker._client.xreadgroup(group, "c1", {stream: ">"}, count=1)
     broker._client.xack(stream, group, ident)  # fully consumed
     # advance the generation a couple of times
@@ -210,9 +210,9 @@ def test_reap_blocked_by_group_behind_with_zero_pending(broker: RedisBroker) -> 
     g1 = "grp.H1"
     g2 = "grp.H2"
     broker.record_partition(cat, "a")
-    broker._ensure_group(g1, stream)
-    broker._ensure_group(g2, stream)  # exists but never reads
-    ident = broker._publish(stream, _payload(0))
+    broker.create_group(stream, g1)
+    broker.create_group(stream, g2)  # exists but never reads
+    ident = broker.publish(stream, _payload(0))
 
     # g1 fully consumes; g2 is behind (last-delivered still 0-0) with 0 pending.
     broker._client.xreadgroup(g1, "c1", {stream: ">"}, count=1)
@@ -232,8 +232,8 @@ def test_colon_bearing_partition_stream_group_roundtrips(broker: RedisBroker) ->
     # cache must recover it by splitting off the last colon, not the first.
     stream = f"dom::order:{uuid4().hex[:6]}"
     group = "tests.module.OrderHandler"
-    broker._ensure_group(group, stream)
-    broker._publish(stream, _payload(0))
+    broker.create_group(stream, group)
+    broker.publish(stream, _payload(0))
     assert stream in broker._get_streams_to_check()
     assert group in broker._calculate_consumer_groups_info()["names"]
 
@@ -270,14 +270,14 @@ def test_fenced_read_recovers_from_missing_group(broker: RedisBroker) -> None:
     group = "grp.Handler"
     lease = f"{group}:a:__lease__"
     gen_key = f"{group}:a:__generation__"
-    broker._publish(stream, _payload(0))
+    broker.publish(stream, _payload(0))
     gen = broker.acquire_partition_lease(lease, gen_key, "o", 5000)
     fence = f"o:{gen}"
     broker.read_partition_fenced(stream, group, fence, lease, fence)  # caches group
 
     # Destroy the stream+group behind the cache's back, then re-create the stream.
     broker._client.delete(stream)
-    broker._publish(stream, _payload(1))
+    broker.publish(stream, _payload(1))
 
     msgs = broker.read_partition_fenced(
         stream, group, fence, lease, fence, new_messages=True
@@ -292,7 +292,7 @@ def test_reclaim_recovers_from_missing_group(broker: RedisBroker) -> None:
     cat = _cat()
     stream = f"{cat}:a"
     group = "grp.Handler"
-    broker._ensure_group(group, stream)  # caches group
+    broker.create_group(stream, group)  # caches group
     broker._client.delete(stream)  # destroy behind the cache
     assert broker.reclaim_partition_pending(stream, group, "c:1") == []
 
@@ -303,7 +303,7 @@ def test_reclaim_propagates_broker_error(broker: RedisBroker, monkeypatch) -> No
     # consumer needs to see the failure and give up the partition rather than
     # drain new messages ahead of un-reclaimed pending ones.
     stream = f"{_cat()}:a"
-    broker._ensure_group("grp.Handler", stream)
+    broker.create_group(stream, "grp.Handler")
 
     def _boom(*args, **kwargs):
         raise redis.ResponseError("boom")

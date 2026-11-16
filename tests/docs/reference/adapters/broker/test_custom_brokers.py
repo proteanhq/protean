@@ -19,7 +19,8 @@ if _PACKAGE_PARENT not in sys.path:
 import delegating_broker
 
 from protean.adapters.broker.inline import InlineBroker
-from protean.port.broker import BaseBroker
+from protean.infra.broker import Broker
+from protean.port.broker import BaseBroker, BrokerPort
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -27,9 +28,11 @@ pytestmark = pytest.mark.no_test_domain
 def test_page_lists_every_abstract_method():
     page = (DOCS / "reference/adapters/broker/custom-brokers.md").read_text()
     section = page.split("## Architecture")[1].split("A broker that does not")[0]
-    listed = set(re.findall(r"`(_\w+)`", section)) | {"capabilities"}
+    # The prose around the list names flags and fallbacks, so read the bullets only.
+    bullets = [line for line in section.splitlines() if line.startswith("- ")]
+    listed = set(re.findall(r"`(\w+)`", "\n".join(bullets)))
 
-    assert listed == BaseBroker.__abstractmethods__
+    assert listed == BrokerPort.__abstractmethods__ | BaseBroker.__abstractmethods__
 
 
 def test_example_reads_back_and_acknowledges_the_message():
@@ -51,8 +54,9 @@ def test_domain_uses_the_custom_broker():
     with delegating_broker.domain.domain_context():
         broker = delegating_broker.domain.brokers["default"]
 
-        assert isinstance(broker, delegating_broker.DelegatingBroker)
-        assert isinstance(broker._delegate, InlineBroker)
+        assert isinstance(broker, Broker)
+        assert isinstance(broker._adapter, delegating_broker.DelegatingBroker)
+        assert isinstance(broker._adapter._delegate, InlineBroker)
 
 
 def test_published_message_is_stored_by_the_delegate():
@@ -61,8 +65,8 @@ def test_published_message_is_stored_by_the_delegate():
         broker.publish("invoices", {"invoice_id": "I1"})
 
         # Read straight from the delegate: the message went through it
-        _, message = broker._delegate.get_next("invoices", "billing")
-        assert message == {"invoice_id": "I1"}
+        messages = broker._adapter._delegate.read("invoices", "billing", 1)
+        assert [message for _, message in messages] == [{"invoice_id": "I1"}]
 
 
 def test_get_next_on_an_empty_stream_returns_none():

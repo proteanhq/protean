@@ -81,7 +81,7 @@ if TYPE_CHECKING:
 
 from inflection import parameterize, titleize, transliterate, underscore
 
-from protean.adapters import Brokers, Caches, Providers
+from protean.adapters import Caches, Providers
 from protean.core.aggregate import aggregate_factory
 from protean.core.application_service import application_service_factory
 from protean.core.command import BaseCommand, command_factory
@@ -134,6 +134,7 @@ from protean.fields import (
     List as ListField,
 )
 from protean.fields.basic import ValueObjectList
+from protean.infra.broker import Brokers
 from protean.infra.causation import CausationNode
 from protean.infra.event_store import EventStore
 from protean.integrations.logging import (

@@ -18,6 +18,7 @@ from uuid import uuid4
 import pytest
 import redis
 
+from protean.adapters.broker.redis import get_field_value
 from protean.cli.recover import _perform_resets, _verdict
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
@@ -568,31 +569,36 @@ class TestBrokerStatusWithoutRedis:
         test_domain.init(traverse=False)
         self.broker = test_domain.brokers["default"]
 
-    def test_counts_come_from_broker_info(self, test_domain):
-        """The inline broker's ``info()`` reports no pending count, so the
-        subscriber reads as caught up."""
+    def test_counts_come_from_broker_consumer_groups(self, test_domain):
+        """The inline broker counts a delivered, unacknowledged message as
+        pending for the consumer group, so the subscriber reads as lagging by
+        that message."""
         self.broker.publish("partner-feed", {"n": 1})
         self.broker.get_next("partner-feed", fqn(PartnerFeed))
+        group = self.broker._consumer_groups()[fqn(PartnerFeed)]
 
         status = _statuses(test_domain)[fqn(PartnerFeed)]
 
         assert status.subscription_type == "broker"
         assert status.stream_category == "partner-feed"
-        assert status.lag == 0
-        assert status.pending == 0
-        assert status.consumer_count == 0
-        assert status.status == "ok"
+        assert status.lag == 1
+        assert status.pending == 1
+        assert status.consumer_count == group["consumer_count"]
+        assert status.status == "lagging"
         assert status.head_position is None
 
-    def test_pending_reported_by_broker_info_is_lagging(self, test_domain):
-        """A broker adapter that reports a pending count in ``info()`` shows
-        that count as the lag. No broker that ships with Protean other than
-        Redis reports one, so the reply stands for a third-party adapter's."""
+    def test_pending_reported_by_broker_consumer_groups_is_lagging(self, test_domain):
+        """A broker that reports a pending count for the consumer group shows
+        that count as the lag."""
         reply = {
-            "consumer_groups": {fqn(PartnerFeed): {"pending": 2, "consumer_count": 1}}
+            fqn(PartnerFeed): {
+                "name": fqn(PartnerFeed),
+                "pending": 2,
+                "consumer_count": 1,
+            }
         }
 
-        with patch.object(self.broker, "info", return_value=reply):
+        with patch.object(self.broker, "_consumer_groups", return_value=reply):
             status = _statuses(test_domain)[fqn(PartnerFeed)]
 
         assert status.lag == 2
@@ -600,8 +606,23 @@ class TestBrokerStatusWithoutRedis:
         assert status.consumer_count == 1
         assert status.status == "lagging"
 
-    def test_info_failure_is_unknown(self, test_domain):
-        with patch.object(self.broker, "info", side_effect=RuntimeError("down")):
+    def test_counts_a_broker_leaves_out_are_zero(self, test_domain):
+        """A third-party adapter that leaves out ``pending`` and reports
+        ``consumer_count`` as ``None`` reads as zero, not as unknown."""
+        reply = {fqn(PartnerFeed): {"name": fqn(PartnerFeed), "consumer_count": None}}
+
+        with patch.object(self.broker, "_consumer_groups", return_value=reply):
+            status = _statuses(test_domain)[fqn(PartnerFeed)]
+
+        assert status.status == "ok"
+        assert status.lag == 0
+        assert status.pending == 0
+        assert status.consumer_count == 0
+
+    def test_consumer_groups_failure_is_unknown(self, test_domain):
+        with patch.object(
+            self.broker, "_consumer_groups", side_effect=RuntimeError("down")
+        ):
             status = _statuses(test_domain)[fqn(PartnerFeed)]
 
         assert status.subscription_type == "broker"
@@ -837,9 +858,9 @@ def _redis_domain() -> Domain:
 def redis_domain():
     domain = _redis_domain()
     with domain.domain_context():
-        domain.brokers["default"]._data_reset()
+        domain.brokers["default"].clear()
         yield domain
-        domain.brokers["default"]._data_reset()
+        domain.brokers["default"].clear()
 
 
 def _raise_on(real, stream: str, exc: Exception):
@@ -862,11 +883,11 @@ def _lose_native_lag(broker, stream: str, group: str) -> None:
     for n in range(4):
         broker.publish(stream, {"n": n})
     broker.get_next(stream, group)
-    third_id = broker.redis_instance.xrange(stream)[2][0]
-    broker.redis_instance.xdel(stream, third_id)
+    third_id = broker.get_connection().xrange(stream)[2][0]
+    broker.get_connection().xdel(stream, third_id)
     [info] = [
         g
-        for g in broker.redis_instance.xinfo_groups(stream)
+        for g in broker.get_connection().xinfo_groups(stream)
         if g["name"] == group.encode()
     ]
     assert info["lag"] is None
@@ -892,7 +913,7 @@ class TestRedisStreamStatus:
     def setup(self, redis_domain):
         self.domain = redis_domain
         self.broker = redis_domain.brokers["default"]
-        self.redis = self.broker.redis_instance
+        self.redis = self.broker.get_connection()
         self.stream = Account.meta_.stream_category
         self.group = fqn(AccountWatcher)
 
@@ -1057,7 +1078,7 @@ class TestRedisStreamStatus:
         for n in range(4):
             self.broker.publish(self.stream, {"n": n})
         first_id, _ = self.broker.get_next(self.stream, self.group)
-        real = self.broker._get_field_value
+        real = get_field_value
         error = UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
 
         def fail_on_lag(info, field_name, *args, **kwargs):
@@ -1066,7 +1087,10 @@ class TestRedisStreamStatus:
             return real(info, field_name, *args, **kwargs)
 
         with (
-            patch.object(self.broker, "_get_field_value", side_effect=fail_on_lag),
+            patch(
+                "protean.adapters.broker.redis.get_field_value",
+                side_effect=fail_on_lag,
+            ),
             caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
         ):
             status = self._status()
@@ -1089,7 +1113,7 @@ class TestRedisBrokerSubscriberStatus:
     def setup(self, redis_domain):
         self.domain = redis_domain
         self.broker = redis_domain.brokers["default"]
-        self.redis = self.broker.redis_instance
+        self.redis = self.broker.get_connection()
         self.group = fqn(PartnerFeed)
 
     def _status(self) -> SubscriptionStatus:
@@ -1203,7 +1227,7 @@ class TestRedisPartitionedStatus:
     def setup(self, redis_domain):
         self.domain = redis_domain
         self.broker = redis_domain.brokers["default"]
-        self.redis = self.broker.redis_instance
+        self.redis = self.broker.get_connection()
         self.category = Order.meta_.stream_category
         self.group = fqn(OrderSequencer)
         self.streams = (self.category, f"{self.category}:a", f"{self.category}:b")
@@ -1402,7 +1426,7 @@ class TestRedisPartitionedStatus:
         with (
             patch.object(
                 self.broker,
-                "_partition_keys",
+                "partition_keys",
                 side_effect=redis.ConnectionError("index gone"),
             ),
             caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),

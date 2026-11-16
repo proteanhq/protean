@@ -66,7 +66,7 @@ def health_check():
         return {"status": "unhealthy", "error": "Connection failed"}
 
     # Get health statistics; the Redis details sit under "details"
-    stats = broker.health_stats()
+    stats = broker.health()
     details = stats["details"]
     return {
         "status": stats["status"],

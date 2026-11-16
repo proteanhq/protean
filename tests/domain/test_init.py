@@ -1,7 +1,7 @@
 from unittest.mock import Mock, patch
 
-from protean.adapters.broker import Brokers
 from protean.adapters.repository import Providers
+from protean.infra.broker import Brokers
 from protean.infra.cache import Caches
 from protean.infra.event_store import EventStore
 

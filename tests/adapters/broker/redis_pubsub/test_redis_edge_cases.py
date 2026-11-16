@@ -90,21 +90,21 @@ def test_redis_consumer_group_internal_tracking(broker):
 
     # Check internal tracking exists
     group_key = f"{stream}:{consumer_group}"
-    assert group_key in broker._consumer_groups
-    assert "created_at" in broker._consumer_groups[group_key]
-    assert "consumers" in broker._consumer_groups[group_key]
-    created_at = broker._consumer_groups[group_key]["created_at"]
+    assert group_key in broker._adapter._consumer_groups
+    assert "created_at" in broker._adapter._consumer_groups[group_key]
+    assert "consumers" in broker._adapter._consumer_groups[group_key]
+    created_at = broker._adapter._consumer_groups[group_key]["created_at"]
 
     # Reading again with the same group reuses its record instead of making a
     # second one
     broker.get_next(stream, consumer_group)
-    assert list(broker._consumer_groups) == [group_key]
-    assert broker._consumer_groups[group_key]["created_at"] == created_at
+    assert list(broker._adapter._consumer_groups) == [group_key]
+    assert broker._adapter._consumer_groups[group_key]["created_at"] == created_at
 
-    # A second group on the same stream is tracked beside the first, and health
-    # stats report both
+    # A second group on the same stream is tracked beside the first, and the health
+    # envelope reports both
     broker.get_next(stream, "another_group")
-    consumer_groups = broker.health_stats()["details"]["consumer_groups"]
+    consumer_groups = broker.health()["details"]["consumer_groups"]
     assert consumer_groups == {
         "count": 2,
         "names": [group_key, f"{stream}:another_group"],
@@ -125,18 +125,18 @@ def test_redis_position_key_tracking(broker):
 
     # Check Redis position key
     position_key = f"position:{stream}:{consumer_group}"
-    position = broker.redis_instance.get(position_key)
+    position = broker._adapter.redis_instance.get(position_key)
     assert position is not None
     assert int(position) == 1  # Should be incremented
 
     # The next read continues from the stored position
     assert broker.get_next(stream, consumer_group)[0] == second
-    assert int(broker.redis_instance.get(position_key)) == 2
+    assert int(broker._adapter.redis_instance.get(position_key)) == 2
 
 
 @pytest.mark.redis
-def test_redis_data_reset_clears_internal_state(broker):
-    """Test Redis data reset clears both Redis and internal broker state"""
+def test_redis_clear_removes_internal_state(broker):
+    """Test that clear empties both Redis and internal broker state"""
     stream = "test_stream"
     consumer_group = "test_consumer_group"
     message = {"data": "test"}
@@ -147,15 +147,15 @@ def test_redis_data_reset_clears_internal_state(broker):
     broker.get_next(stream, "another_group")
 
     # Verify data exists
-    assert broker.redis_instance.llen(stream) == 1
-    assert len(broker._consumer_groups) == 2
+    assert broker._adapter.redis_instance.llen(stream) == 1
+    assert len(broker._adapter._consumer_groups) == 2
 
-    # Reset data
-    broker._data_reset()
+    # Clear the broker
+    broker.clear()
 
     # Verify both Redis and internal state are cleared
-    assert broker.redis_instance.llen(stream) == 0
-    assert len(broker._consumer_groups) == 0
+    assert broker._adapter.redis_instance.llen(stream) == 0
+    assert len(broker._adapter._consumer_groups) == 0
 
 
 @pytest.mark.redis
@@ -182,8 +182,40 @@ def test_redis_independent_consumer_group_positions(broker):
     position_key1 = f"position:{stream}:{consumer_group1}"
     position_key2 = f"position:{stream}:{consumer_group2}"
 
-    position1 = broker.redis_instance.get(position_key1)
-    position2 = broker.redis_instance.get(position_key2)
+    position1 = broker._adapter.redis_instance.get(position_key1)
+    position2 = broker._adapter.redis_instance.get(position_key2)
 
     assert int(position1) == 1  # Group 1 has advanced
     assert int(position2) == 1  # Group 2 has also advanced
+
+
+@pytest.mark.redis
+def test_consumer_groups_report_no_pending_messages(broker):
+    """The broker has no acknowledgement, so a read message that is never
+    acknowledged leaves ``pending`` at 0."""
+    stream = "test_stream"
+    consumer_group = "test_consumer_group"
+    broker.publish(stream, {"data": "first"})
+    broker.publish(stream, {"data": "second"})
+
+    assert broker.get_next(stream, consumer_group) is not None
+
+    group = broker._consumer_groups()[consumer_group]
+    assert group["name"] == consumer_group
+    assert group["pending"] == 0
+    assert all(consumer["pending"] == 0 for consumer in group["consumers"])
+
+
+@pytest.mark.redis
+def test_stream_name_with_colons_keeps_group_and_stream_whole(broker):
+    """The group key is ``{stream}:{group}``; a colon inside the stream name
+    must not split the stream from its group in the wrong place."""
+    stream = "test::order"
+    consumer_group = "app.Handler"
+    broker.publish(stream, {"data": "first"})
+    broker.publish(stream, {"data": "second"})
+
+    assert broker.get_next(stream, consumer_group) is not None
+
+    assert list(broker._adapter.consumer_groups()) == [consumer_group]
+    assert broker._adapter._calculate_message_counts() == {"total_messages": 2}

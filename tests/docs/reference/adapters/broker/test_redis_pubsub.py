@@ -78,8 +78,8 @@ def test_configuration_shown_builds_the_notifications_broker(
     with domain.domain_context():
         broker = domain.brokers["notifications"]
 
-    assert type(broker) is broker_class
-    kwargs = broker.redis_instance.connection_pool.connection_kwargs
+    assert type(broker._adapter) is broker_class
+    kwargs = broker.get_connection().connection_pool.connection_kwargs
     assert kwargs["port"] == int(REDIS_URI.rsplit(":", 1)[1])
     assert kwargs["db"] == 7
 

@@ -5,7 +5,7 @@ filtering logic, and the SSE endpoint itself.
 
 The endpoint tests use real domains. The core test lane has no Redis
 server, so the streaming tests replace only the raw Redis client on the
-real broker (``broker.redis_instance``) with a fake that yields
+real broker with a fake that yields
 controlled pub/sub messages.
 """
 
@@ -14,6 +14,7 @@ from fnmatch import fnmatch
 from unittest.mock import MagicMock
 
 import pytest
+import redis
 from fastapi.testclient import TestClient
 
 from protean import Domain
@@ -132,7 +133,7 @@ def _broken_domain(monkeypatch, name: str = "broken") -> Domain:
 
 def _fake_redis(pubsub_messages: list) -> tuple[MagicMock, MagicMock]:
     """A fake Redis client whose pub/sub yields the given messages, then None."""
-    fake_redis = MagicMock()
+    fake_redis = MagicMock(spec=redis.Redis)
     pubsub = MagicMock()
     remaining = list(pubsub_messages)
 
@@ -179,7 +180,7 @@ class TestSSEStreamingLogic:
         def _attach(pubsub_messages: list) -> tuple[Domain, MagicMock]:
             fake_redis, pubsub = _fake_redis(pubsub_messages)
             broker = test_domain.brokers.get("default")
-            monkeypatch.setattr(broker, "redis_instance", fake_redis)
+            monkeypatch.setattr(broker._adapter, "redis_instance", fake_redis)
             return test_domain, pubsub
 
         return _attach

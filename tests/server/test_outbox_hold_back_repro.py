@@ -102,11 +102,11 @@ def domain():
     with domain.domain_context():
         provider = provider_adapter(domain, "default")
         provider.create_schema()
-        domain.brokers["default"]._data_reset()
+        domain.brokers["default"].clear()
         try:
             yield domain
         finally:
-            domain.brokers["default"]._data_reset()
+            domain.brokers["default"].clear()
             provider.drop_schema()
 
 
@@ -143,7 +143,7 @@ def _make_failed_row_due(domain: Domain) -> None:
 
 
 def _versions_on(domain: Domain, stream: str) -> list[int]:
-    client = domain.brokers["default"]._client
+    client = domain.brokers["default"].get_connection()
     return [
         json.loads(fields[b"data"])["data"]["version"]
         for _, fields in client.xrange(stream)

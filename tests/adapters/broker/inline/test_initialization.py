@@ -17,19 +17,19 @@ def test_that_a_concrete_broker_can_be_initialized_successfully(test_domain):
 
 def test_that_domain_initializes_broker_from_config(test_domain):
     assert len(list(test_domain.brokers)) == 1
-    assert isinstance(next(iter(test_domain.brokers.values())), InlineBroker)
+    assert isinstance(next(iter(test_domain.brokers.values()))._adapter, InlineBroker)
 
 
 def test_that_inline_is_the_configured_broker(test_domain):
     assert "default" in test_domain.brokers
-    broker = test_domain.brokers["default"]
+    broker = test_domain.brokers["default"]._adapter
     assert isinstance(broker, InlineBroker)
     assert broker.__broker__ == "inline"
 
 
 def test_broker_configuration_parameters(test_domain):
     """Test that broker is initialized with correct configuration parameters."""
-    broker = test_domain.brokers["default"]
+    broker = test_domain.brokers["default"]._adapter
     assert hasattr(broker, "_max_retries")
     assert hasattr(broker, "_retry_delay")
     assert hasattr(broker, "_backoff_multiplier")
@@ -40,7 +40,7 @@ def test_broker_configuration_parameters(test_domain):
 
 def test_broker_internal_data_structures_initialization(test_domain):
     """Test that broker initializes all required internal data structures."""
-    broker = test_domain.brokers["default"]
+    broker = test_domain.brokers["default"]._adapter
     assert hasattr(broker, "_messages")
     assert hasattr(broker, "_consumer_groups")
     assert hasattr(broker, "_in_flight")

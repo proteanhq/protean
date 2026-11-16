@@ -23,16 +23,18 @@ class TestInlineBrokerInternalState:
         assert result is not None
 
         # Verify ownership is tracked for group1
-        assert broker._validate_message_ownership(identifier, consumer_group1)
-        assert not broker._validate_message_ownership(identifier, consumer_group2)
+        assert broker._adapter._validate_message_ownership(identifier, consumer_group1)
+        assert not broker._adapter._validate_message_ownership(
+            identifier, consumer_group2
+        )
 
         # Group2 gets the message
         result = broker.get_next(stream, consumer_group2)
         assert result is not None
 
         # Now both groups have ownership
-        assert broker._validate_message_ownership(identifier, consumer_group1)
-        assert broker._validate_message_ownership(identifier, consumer_group2)
+        assert broker._adapter._validate_message_ownership(identifier, consumer_group1)
+        assert broker._adapter._validate_message_ownership(identifier, consumer_group2)
 
     def test_retry_count_tracking(self, broker):
         """Test retry count is properly tracked."""
@@ -41,26 +43,26 @@ class TestInlineBrokerInternalState:
         message = {"test": "data"}
 
         # Configure short retry delay
-        broker._retry_delay = 0.01
+        broker._adapter._retry_delay = 0.01
 
         # Publish and get message
         identifier = broker.publish(stream, message)
         broker.get_next(stream, consumer_group)
 
         # Initial retry count should be 0
-        count = broker._get_retry_count(stream, consumer_group, identifier)
+        count = broker._adapter._get_retry_count(stream, consumer_group, identifier)
         assert count == 0
 
         # NACK and check count increments
         broker.nack(stream, identifier, consumer_group)
-        count = broker._get_retry_count(stream, consumer_group, identifier)
+        count = broker._adapter._get_retry_count(stream, consumer_group, identifier)
         assert count == 1
 
         # Get and NACK again
         time.sleep(0.02)
         broker.get_next(stream, consumer_group)
         broker.nack(stream, identifier, consumer_group)
-        count = broker._get_retry_count(stream, consumer_group, identifier)
+        count = broker._adapter._get_retry_count(stream, consumer_group, identifier)
         assert count == 2
 
     def test_consumer_position_tracking(self, broker):
@@ -75,12 +77,12 @@ class TestInlineBrokerInternalState:
 
         # Initial position should be 0
         group_key = f"{stream}:{consumer_group}"
-        assert broker._consumer_positions.get(group_key, 0) == 0
+        assert broker._adapter._consumer_positions.get(group_key, 0) == 0
 
         # Consume messages and verify position updates
         for i in range(3):
             broker.get_next(stream, consumer_group)
-            assert broker._consumer_positions[group_key] == i + 1
+            assert broker._adapter._consumer_positions[group_key] == i + 1
 
     def test_failed_messages_structure(self, broker):
         """Test failed messages data structure."""
@@ -89,7 +91,7 @@ class TestInlineBrokerInternalState:
         message = {"test": "data"}
 
         # Configure short retry
-        broker._retry_delay = 0.01
+        broker._adapter._retry_delay = 0.01
 
         # Publish, get, and NACK
         identifier = broker.publish(stream, message)
@@ -98,10 +100,10 @@ class TestInlineBrokerInternalState:
 
         # Check failed messages structure
         group_key = f"{stream}:{consumer_group}"
-        assert group_key in broker._failed_messages
-        assert len(broker._failed_messages[group_key]) == 1
+        assert group_key in broker._adapter._failed_messages
+        assert len(broker._adapter._failed_messages[group_key]) == 1
 
-        failed_entry = broker._failed_messages[group_key][0]
+        failed_entry = broker._adapter._failed_messages[group_key][0]
         assert failed_entry[0] == identifier  # Message ID
         assert failed_entry[1] == message  # Message content
         assert failed_entry[2] == 1  # Retry count
@@ -114,7 +116,7 @@ class TestInlineBrokerInternalState:
         message = {"test": "data"}
 
         # Configure to send straight to DLQ
-        broker._max_retries = 0
+        broker._adapter._max_retries = 0
 
         # Publish, get, and NACK
         identifier = broker.publish(stream, message)
@@ -123,18 +125,18 @@ class TestInlineBrokerInternalState:
 
         # Check DLQ structure
         group_key = f"{stream}:{consumer_group}"
-        assert group_key in broker._dead_letter_queue
-        assert len(broker._dead_letter_queue[group_key]) == 1
+        assert group_key in broker._adapter._dead_letter_queue
+        assert len(broker._adapter._dead_letter_queue[group_key]) == 1
 
-        dlq_entry = broker._dead_letter_queue[group_key][0]
+        dlq_entry = broker._adapter._dead_letter_queue[group_key][0]
         assert dlq_entry[0] == identifier  # Message ID
         assert dlq_entry[1] == message  # Message content
         assert dlq_entry[2] == "max_retries_exceeded"  # Failure reason
         assert isinstance(dlq_entry[3], float)  # Timestamp
 
-    def test_cleanup_stale_consumers_default_is_noop(self, broker):
-        """InlineBroker inherits the base no-op _cleanup_stale_consumers (0)."""
-        assert broker._cleanup_stale_consumers("stream", "group", "consumer") == 0
+    def test_remove_stale_consumers_default_is_noop(self, broker):
+        """InlineBroker inherits the port's no-op remove_stale_consumers (0)."""
+        assert broker._remove_stale_consumers("stream", "group", "consumer") == 0
 
     def test_stale_message_cleanup(self, broker):
         """Test cleanup of stale in-flight messages."""
@@ -143,8 +145,8 @@ class TestInlineBrokerInternalState:
         message = {"test": "data"}
 
         # Configure very short timeout
-        broker._message_timeout = 0.01  # 10ms
-        broker._enable_dlq = True
+        broker._adapter._message_timeout = 0.01  # 10ms
+        broker._adapter._enable_dlq = True
 
         # Publish and get message
         identifier = broker.publish(stream, message)
@@ -154,12 +156,14 @@ class TestInlineBrokerInternalState:
         time.sleep(0.02)
 
         # Cleanup stale messages
-        broker._cleanup_stale_messages(consumer_group, broker._message_timeout)
+        broker._adapter._cleanup_stale_messages(
+            consumer_group, broker._adapter._message_timeout
+        )
 
         # Message should be moved to DLQ
         group_key = f"{stream}:{consumer_group}"
-        assert identifier not in broker._in_flight.get(group_key, {})
-        assert len(broker._dead_letter_queue[group_key]) == 1
+        assert identifier not in broker._adapter._in_flight.get(group_key, {})
+        assert len(broker._adapter._dead_letter_queue[group_key]) == 1
 
     def test_requeue_failed_messages_logic(self, broker):
         """Test logic for requeuing failed messages."""
@@ -168,7 +172,7 @@ class TestInlineBrokerInternalState:
         message = {"test": "data"}
 
         # Configure short retry
-        broker._retry_delay = 0.01
+        broker._adapter._retry_delay = 0.01
 
         # Publish, get, and NACK
         identifier = broker.publish(stream, message)
@@ -176,14 +180,14 @@ class TestInlineBrokerInternalState:
         broker.nack(stream, identifier, consumer_group)
 
         # Immediately check - message should not be ready
-        ready = broker._get_retry_ready_messages(stream, consumer_group)
+        ready = broker._adapter._get_retry_ready_messages(stream, consumer_group)
         assert len(ready) == 0
 
         # Wait for retry delay
         time.sleep(0.02)
 
         # Now message should be ready
-        ready = broker._get_retry_ready_messages(stream, consumer_group)
+        ready = broker._adapter._get_retry_ready_messages(stream, consumer_group)
         assert len(ready) == 1
         assert ready[0] == (identifier, message)
 
@@ -202,23 +206,23 @@ class TestInlineBrokerInternalState:
         broker.get_next(stream, consumer_group2)
 
         # Verify positions
-        assert broker._consumer_positions[f"{stream}:{consumer_group1}"] == 1
-        assert broker._consumer_positions[f"{stream}:{consumer_group2}"] == 1
+        assert broker._adapter._consumer_positions[f"{stream}:{consumer_group1}"] == 1
+        assert broker._adapter._consumer_positions[f"{stream}:{consumer_group2}"] == 1
 
         # Insert message at position 1 for group1
-        broker._messages[stream].insert(1, ("new_id", {"new": "data"}))
+        broker._adapter._messages[stream].insert(1, ("new_id", {"new": "data"}))
 
         # Manually adjust positions as would happen in requeue
-        for group_key in broker._consumer_positions:
+        for group_key in broker._adapter._consumer_positions:
             if (
                 group_key.startswith(f"{stream}:")
                 and group_key != f"{stream}:{consumer_group1}"
-            ) and broker._consumer_positions[group_key] >= 1:
-                broker._consumer_positions[group_key] += 1
+            ) and broker._adapter._consumer_positions[group_key] >= 1:
+                broker._adapter._consumer_positions[group_key] += 1
 
         # Verify adjustment
-        assert broker._consumer_positions[f"{stream}:{consumer_group1}"] == 1
-        assert broker._consumer_positions[f"{stream}:{consumer_group2}"] == 2
+        assert broker._adapter._consumer_positions[f"{stream}:{consumer_group1}"] == 1
+        assert broker._adapter._consumer_positions[f"{stream}:{consumer_group2}"] == 2
 
 
 # ============= Edge Cases for Internal State =============
@@ -231,11 +235,14 @@ def test_remove_in_flight_message_when_not_exists(broker):
     identifier = "non_existent"
 
     # Should not raise error
-    broker._remove_in_flight_message(stream, consumer_group, identifier)
+    broker._adapter._remove_in_flight_message(stream, consumer_group, identifier)
 
     # Verify no side effects
     group_key = f"{stream}:{consumer_group}"
-    assert group_key not in broker._in_flight or len(broker._in_flight[group_key]) == 0
+    assert (
+        group_key not in broker._adapter._in_flight
+        or len(broker._adapter._in_flight[group_key]) == 0
+    )
 
 
 def test_get_in_flight_message_not_exists(broker):
@@ -244,7 +251,7 @@ def test_get_in_flight_message_not_exists(broker):
     consumer_group = "test_consumer_group"
     identifier = "non_existent"
 
-    result = broker._get_in_flight_message(stream, consumer_group, identifier)
+    result = broker._adapter._get_in_flight_message(stream, consumer_group, identifier)
     assert result is None
 
 
@@ -254,13 +261,13 @@ def test_cleanup_message_ownership_full_cleanup(broker):
     consumer_group = "test_group"
 
     # Add ownership
-    broker._message_ownership[identifier] = {consumer_group: True}
+    broker._adapter._message_ownership[identifier] = {consumer_group: True}
 
     # Clean up
-    broker._cleanup_message_ownership(identifier, consumer_group)
+    broker._adapter._cleanup_message_ownership(identifier, consumer_group)
 
     # Entire identifier entry should be removed
-    assert identifier not in broker._message_ownership
+    assert identifier not in broker._adapter._message_ownership
 
 
 def test_cleanup_message_ownership_partial_cleanup(broker):
@@ -270,18 +277,18 @@ def test_cleanup_message_ownership_partial_cleanup(broker):
     consumer_group2 = "group2"
 
     # Add ownership for multiple groups
-    broker._message_ownership[identifier] = {
+    broker._adapter._message_ownership[identifier] = {
         consumer_group1: True,
         consumer_group2: True,
     }
 
     # Clean up only group1
-    broker._cleanup_message_ownership(identifier, consumer_group1)
+    broker._adapter._cleanup_message_ownership(identifier, consumer_group1)
 
     # Only group1 should be removed
-    assert identifier in broker._message_ownership
-    assert consumer_group1 not in broker._message_ownership[identifier]
-    assert consumer_group2 in broker._message_ownership[identifier]
+    assert identifier in broker._adapter._message_ownership
+    assert consumer_group1 not in broker._adapter._message_ownership[identifier]
+    assert consumer_group2 in broker._adapter._message_ownership[identifier]
 
 
 def test_cleanup_message_ownership_edge_cases(broker):
@@ -291,23 +298,23 @@ def test_cleanup_message_ownership_edge_cases(broker):
     consumer_group2 = "group2"
 
     # Add ownership for multiple groups
-    broker._message_ownership[identifier] = {
+    broker._adapter._message_ownership[identifier] = {
         consumer_group1: True,
         consumer_group2: True,
     }
 
     # Clean up for group1
-    broker._cleanup_message_ownership(identifier, consumer_group1)
-    assert consumer_group1 not in broker._message_ownership[identifier]
-    assert consumer_group2 in broker._message_ownership[identifier]
+    broker._adapter._cleanup_message_ownership(identifier, consumer_group1)
+    assert consumer_group1 not in broker._adapter._message_ownership[identifier]
+    assert consumer_group2 in broker._adapter._message_ownership[identifier]
 
     # Clean up for group2 - should remove entire identifier entry
-    broker._cleanup_message_ownership(identifier, consumer_group2)
-    assert identifier not in broker._message_ownership
+    broker._adapter._cleanup_message_ownership(identifier, consumer_group2)
+    assert identifier not in broker._adapter._message_ownership
 
     # Test cleanup for non-existent entries (should not error)
-    broker._cleanup_message_ownership("non_existent", "group")
-    broker._cleanup_message_ownership(identifier, "non_existent_group")
+    broker._adapter._cleanup_message_ownership("non_existent", "group")
+    broker._adapter._cleanup_message_ownership(identifier, "non_existent_group")
 
 
 def test_remove_retry_count_when_not_exists(broker):
@@ -317,7 +324,7 @@ def test_remove_retry_count_when_not_exists(broker):
     identifier = "non_existent"
 
     # Should not raise error
-    broker._remove_retry_count(stream, consumer_group, identifier)
+    broker._adapter._remove_retry_count(stream, consumer_group, identifier)
 
 
 def test_stale_message_cleanup_with_dlq_disabled(broker):
@@ -327,8 +334,8 @@ def test_stale_message_cleanup_with_dlq_disabled(broker):
     message = {"test": "data"}
 
     # Configure with DLQ disabled
-    broker._message_timeout = 0.01
-    broker._enable_dlq = False
+    broker._adapter._message_timeout = 0.01
+    broker._adapter._enable_dlq = False
 
     # Publish and get message
     identifier = broker.publish(stream, message)
@@ -338,14 +345,16 @@ def test_stale_message_cleanup_with_dlq_disabled(broker):
     time.sleep(0.02)
 
     # Cleanup stale messages
-    broker._cleanup_stale_messages(consumer_group, broker._message_timeout)
+    broker._adapter._cleanup_stale_messages(
+        consumer_group, broker._adapter._message_timeout
+    )
 
     # Message should be removed but not in DLQ
     group_key = f"{stream}:{consumer_group}"
-    assert identifier not in broker._in_flight.get(group_key, {})
+    assert identifier not in broker._adapter._in_flight.get(group_key, {})
     assert (
-        group_key not in broker._dead_letter_queue
-        or len(broker._dead_letter_queue[group_key]) == 0
+        group_key not in broker._adapter._dead_letter_queue
+        or len(broker._adapter._dead_letter_queue[group_key]) == 0
     )
 
 
@@ -355,7 +364,7 @@ def test_clear_operation_state_when_not_exists(broker):
     identifier = "non_existent"
 
     # Should not raise error
-    broker._clear_operation_state(consumer_group, identifier)
+    broker._adapter._clear_operation_state(consumer_group, identifier)
 
 
 def test_requeue_messages_empty_list(broker):
@@ -364,7 +373,7 @@ def test_requeue_messages_empty_list(broker):
     consumer_group = "test_consumer_group"
 
     # Should handle empty list gracefully
-    broker._requeue_messages(stream, consumer_group, [])
+    broker._adapter._requeue_messages(stream, consumer_group, [])
 
 
 def test_expired_operation_state_cleanup(broker):
@@ -374,30 +383,32 @@ def test_expired_operation_state_cleanup(broker):
     identifier2 = "msg2"
 
     # Set operation state TTL to very short for testing
-    broker._operation_state_ttl = 0.01  # 10ms
+    broker._adapter._operation_state_ttl = 0.01  # 10ms
 
     # Store operation states
-    broker._store_operation_state(
+    broker._adapter._store_operation_state(
         consumer_group, identifier1, OperationState.ACKNOWLEDGED
     )
     time.sleep(0.02)  # Wait for expiry
-    broker._store_operation_state(consumer_group, identifier2, OperationState.NACKED)
+    broker._adapter._store_operation_state(
+        consumer_group, identifier2, OperationState.NACKED
+    )
 
     # Try to get expired state - should return None and clean up
-    state1 = broker._get_operation_state(consumer_group, identifier1)
+    state1 = broker._adapter._get_operation_state(consumer_group, identifier1)
     assert state1 is None
-    assert identifier1 not in broker._operation_states[consumer_group]
+    assert identifier1 not in broker._adapter._operation_states[consumer_group]
 
     # Non-expired state should still be there
-    state2 = broker._get_operation_state(consumer_group, identifier2)
+    state2 = broker._adapter._get_operation_state(consumer_group, identifier2)
     assert state2 == OperationState.NACKED
 
     # Test cleanup of all expired states
     time.sleep(0.02)
-    broker._cleanup_expired_operation_states()
+    broker._adapter._cleanup_expired_operation_states()
 
     # Consumer group should be removed when empty
-    assert consumer_group not in broker._operation_states
+    assert consumer_group not in broker._adapter._operation_states
 
 
 def test_validate_message_ownership_not_exists(broker):
@@ -405,7 +416,7 @@ def test_validate_message_ownership_not_exists(broker):
     identifier = "non_existent"
     consumer_group = "test_consumer_group"
 
-    result = broker._validate_message_ownership(identifier, consumer_group)
+    result = broker._adapter._validate_message_ownership(identifier, consumer_group)
     assert result is False
 
 
@@ -416,13 +427,18 @@ def test_validate_message_ownership_wrong_group(broker):
     consumer_group2 = "group2"
 
     # Add ownership for group1 only
-    broker._message_ownership[identifier] = {consumer_group1: True}
+    broker._adapter._message_ownership[identifier] = {consumer_group1: True}
 
     # Validate for group1 - should be True
-    assert broker._validate_message_ownership(identifier, consumer_group1) is True
+    assert (
+        broker._adapter._validate_message_ownership(identifier, consumer_group1) is True
+    )
 
     # Validate for group2 - should be False
-    assert broker._validate_message_ownership(identifier, consumer_group2) is False
+    assert (
+        broker._adapter._validate_message_ownership(identifier, consumer_group2)
+        is False
+    )
 
 
 def test_inline_broker_consumer_position_tracking(broker):
@@ -438,4 +454,4 @@ def test_inline_broker_consumer_position_tracking(broker):
     group_key = f"{stream}:{consumer_group}"
     for expected_pos in range(1, 4):
         broker.get_next(stream, consumer_group)
-        assert broker._consumer_positions[group_key] == expected_pos
+        assert broker._adapter._consumer_positions[group_key] == expected_pos

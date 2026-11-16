@@ -2,21 +2,26 @@ import json
 import logging
 import re
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import (
     TYPE_CHECKING,
     Any,
     Literal,
-    cast,
     overload,
 )
 
 import redis
 
+from protean.infra.broker import is_connection_error
 from protean.infra.registry import brokers
 from protean.port.broker import (
     BaseBroker,
     BrokerCapabilities,
+    BrokerHealth,
+    BrokerMessage,
+    BrokerPort,
+    ConsumerGroupInfo,
+    ConsumerInfo,
     DLQEntry,
     LeaseLostError,
 )
@@ -36,6 +41,11 @@ PENDING_MESSAGES_MARK = "0"
 # Entries claimed, and pending rows read, per call when a subscription claims
 # a stopped consumer's pending entries on startup.
 _RECLAIM_BATCH_SIZE = 100
+
+# How many recently published streams ``health()`` keeps counting. The outbox
+# publishes to one stream per partition key, so an unbounded record would grow
+# for the life of the process and send three commands per stream on each check.
+_PUBLISHED_STREAMS_LIMIT = 100
 
 # A stream entry ID, ``<ms>`` or ``<ms>-<seq>``, never a range bound. XRANGE
 # also accepts ``-``, ``+`` and ``(`` prefixes as range bounds, so a DLQ ID is
@@ -192,13 +202,13 @@ return 1
 """
 
 
-class RedisBroker(BaseBroker):
+class RedisBroker(BaseBroker, BrokerPort):
     """Redis Streams as the Message Broker.
 
     This broker leverages Redis Streams' native consumer group functionality
     with built-in ack/nack support, providing true message queue semantics.
 
-    Connection pool parameters can be configured via conn_info:
+    Connection pool parameters can be configured in the broker's config:
         - max_connections: Maximum number of connections in the pool (default: Redis client default)
         - socket_timeout: Timeout for reading from a connection in seconds
         - socket_connect_timeout: Timeout for connecting to Redis in seconds
@@ -207,7 +217,7 @@ class RedisBroker(BaseBroker):
 
     __broker__ = "redis"
 
-    # Keys from conn_info that are forwarded to Redis connection pool
+    # Config keys that are forwarded to Redis connection pool
     _POOL_KEYS = frozenset(
         {
             "max_connections",
@@ -217,21 +227,21 @@ class RedisBroker(BaseBroker):
         }
     )
 
-    def __init__(
-        self, name: str, domain: "Domain", conn_info: dict[str, str | bool]
-    ) -> None:
-        super().__init__(name, domain, conn_info)
+    def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
+        super().__init__(name, domain, config)
 
         # Values are heterogeneous (int timeouts, int max_connections, bool
         # retry_on_timeout) and forwarded verbatim to the Redis connection pool.
         self._pool_kwargs: dict[str, Any] = {
-            key: value for key, value in conn_info.items() if key in self._POOL_KEYS
+            key: value for key, value in self.config.items() if key in self._POOL_KEYS
         }
         self.redis_instance: redis.Redis[Any] | None = None
         self._connect()
         self._consumer_name = f"consumer-{int(time.time() * 1000)}"
         self._created_groups_set: set[str] = set()
         self._group_creation_times: dict[str, float] = {}  # creation times
+        # Recently published streams, oldest first; the values are unused.
+        self._published_streams: dict[str, None] = {}
 
         # Partition-per-key Lua scripts (ADR-0028), registered once. redis-py's
         # register_script only wraps the source (the SHA is derived from it, no
@@ -254,9 +264,7 @@ class RedisBroker(BaseBroker):
 
     def _connect(self) -> "redis.Redis[Any]":
         """Create (or recreate) the underlying synchronous Redis client."""
-        # ``conn_info`` is typed ``dict[str, str | bool]`` by the broker port
-        # contract; the URI is always a string at runtime.
-        uri = cast(str, self.conn_info["URI"])
+        uri = str(self.config["URI"])
         instance: redis.Redis[Any] = redis.Redis.from_url(uri, **self._pool_kwargs)
         self.redis_instance = instance
         return instance
@@ -266,7 +274,7 @@ class RedisBroker(BaseBroker):
         """Return a live Redis client, reconnecting if the connection was closed.
 
         ``close()`` sets ``redis_instance`` to ``None``; a straggler poll read or
-        a test-teardown ``_data_reset`` running afterwards would otherwise raise
+        a test-teardown ``clear`` running afterwards would otherwise raise
         ``AttributeError: 'NoneType' object has no attribute ...``. Every
         Redis call inside this broker goes through here so those paths revive
         instead of crashing the subscription's poll loop.
@@ -293,76 +301,73 @@ class RedisBroker(BaseBroker):
         """Property to access created groups (allows for test monkeypatching)"""
         return self._created_groups_set
 
-    def _publish(self, stream: str, message: dict[str, Any]) -> str:
+    def publish(self, stream: str, message: dict[str, Any]) -> str:
         """Publish a message to Redis Stream using XADD"""
         serialized_message = {DATA_FIELD: json.dumps(message or {})}
         redis_stream_id = self._client.xadd(stream, serialized_message)
+        self._record_published_stream(stream)
         return self._decode_if_bytes(redis_stream_id)
 
-    def _get_next(
-        self, stream: str, consumer_group: str
-    ) -> tuple[str, dict[str, Any]] | None:
-        """Get next message from Redis Stream using consumer group
+    def _record_published_stream(self, stream: str) -> None:
+        """Keep ``stream`` among the last ``_PUBLISHED_STREAMS_LIMIT`` published."""
+        self._published_streams.pop(stream, None)
+        self._published_streams[stream] = None
+        if len(self._published_streams) > _PUBLISHED_STREAMS_LIMIT:
+            del self._published_streams[next(iter(self._published_streams))]
 
-        Reads the next available message, prioritizing new messages over pending ones.
-        This method relies on Redis Streams' native behavior where each call to
-        XREADGROUP with ">" returns the next unread message.
+    def _read_new_messages(
+        self, stream: str, consumer_group: str, limit: int
+    ) -> list[BrokerMessage]:
+        """Read up to ``limit`` messages no consumer in the group has received.
+
+        Never returns a pending message: returning one without an ack would
+        hand the same message out again on every call. A read error is logged
+        and returns an empty list.
         """
-        self._ensure_group(consumer_group, stream)
+        self.create_group(stream, consumer_group)
 
         try:
-            # Always try to read new messages first
-            # Redis guarantees that each consumer in a group gets different messages
             response = self._client.xreadgroup(
                 consumer_group,
                 self._consumer_name,
                 {stream: NEW_MESSAGES_MARK},
-                count=1,
+                count=limit,
             )
-
-            # If we got a new message, return it
-            extracted = self._extract_message_from_response(response)
-            if extracted:
-                return extracted
-
-            # No new messages, return None
-            # We don't automatically read pending messages here because that would
-            # cause the same message to be returned multiple times without ACK
-            # Pending messages should only be read when explicitly retrying failed messages
-            return None
+            return self._extract_messages_from_response(response)
 
         except redis.ResponseError as e:
-            return self._handle_redis_error(e, stream, consumer_group)
+            return self._handle_redis_error(e, stream, consumer_group, limit)
         except Exception:  # a failed read returns no message; logged
             logger.exception("broker.redis.get_next_failed")
-            return None
+            return []
 
-    def _extract_message_from_response(
-        self, response: Any
-    ) -> tuple[str, dict[str, Any]] | None:
-        """Extract message from Redis response"""
+    def _extract_messages_from_response(self, response: Any) -> list[BrokerMessage]:
+        """Return the messages in an XREADGROUP reply for one stream."""
         if not (response and response[0][1]):
-            return None
+            return []
 
         _, messages = response[0]
-        if not messages:
-            return None
-
-        message_id, fields = messages[0]
-        redis_id_str = self._decode_if_bytes(message_id)
-        message = self._deserialize_message(fields)
-        return (redis_id_str, message)
+        return [
+            BrokerMessage(
+                self._decode_if_bytes(message_id), self._deserialize_message(fields)
+            )
+            for message_id, fields in messages
+        ]
 
     def _handle_redis_error(
-        self, error: redis.ResponseError, stream: str, consumer_group: str
-    ) -> tuple[str, dict[str, Any]] | None:
-        """Handle Redis errors during message retrieval"""
+        self,
+        error: redis.ResponseError,
+        stream: str,
+        consumer_group: str,
+        limit: int,
+    ) -> list[BrokerMessage]:
+        """Create a missing group and read again; log any other error."""
         if "NOGROUP" in str(error):
-            self._ensure_group(consumer_group, stream)
-            return self._get_next(stream, consumer_group)
+            self.create_group(stream, consumer_group)
+            return self._read_new_messages(stream, consumer_group, limit)
 
-        logger.debug(f"Redis error in _get_next: {error}")
-        return None
+        logger.debug(f"Redis error while reading new messages: {error}")
+        return []
 
     def _deserialize_message(self, fields: dict[Any, Any]) -> dict[str, Any]:
         """Deserialize the message from the fields"""
@@ -402,13 +407,25 @@ class RedisBroker(BaseBroker):
             return value.decode()
         return str(value)
 
-    def _read(
-        self, stream: str, consumer_group: str, no_of_messages: int
-    ) -> list[tuple[str, dict[str, Any]]]:
-        """Read multiple messages from Redis Stream"""
-        self._ensure_group(consumer_group, stream)
+    def read(
+        self,
+        stream: str,
+        consumer_group: str,
+        limit: int,
+        *,
+        new_messages: bool = False,
+    ) -> list[BrokerMessage]:
+        """Read up to ``limit`` messages for ``consumer_group``.
 
-        messages: list[tuple[str, dict[str, Any]]] = []
+        Reads new messages first. Unless ``new_messages`` is set, it then fills
+        the rest of ``limit`` with this consumer's pending messages.
+        """
+        if new_messages:
+            return self._read_new_messages(stream, consumer_group, limit)
+
+        self.create_group(stream, consumer_group)
+
+        messages: list[BrokerMessage] = []
         try:
             # Read all requested messages at once to maintain order
             # First try to read new messages
@@ -416,7 +433,7 @@ class RedisBroker(BaseBroker):
                 consumer_group,
                 self._consumer_name,
                 {stream: NEW_MESSAGES_MARK},
-                count=no_of_messages,
+                count=limit,
             )
 
             if response and response[0][1]:
@@ -424,33 +441,31 @@ class RedisBroker(BaseBroker):
                     if fields:
                         redis_id_str = self._decode_if_bytes(message_id)
                         message = self._deserialize_message(fields)
-                        messages.append((redis_id_str, message))
+                        messages.append(BrokerMessage(redis_id_str, message))
 
             # If we didn't get enough messages, try reading pending messages
-            if len(messages) < no_of_messages:
-                self._read_older_pending(
-                    stream, consumer_group, messages, no_of_messages
-                )
+            if len(messages) < limit:
+                self._read_older_pending(stream, consumer_group, messages, limit)
 
         except redis.ResponseError:
             logger.exception("broker.redis.read_failed")
 
-        return messages[:no_of_messages]  # Ensure we don't return more than requested
+        return messages[:limit]  # Ensure we don't return more than requested
 
     def _read_older_pending(
         self,
         stream: str,
         consumer_group: str,
-        messages: list[tuple[str, dict[str, Any]]],
-        no_of_messages: int,
+        messages: list[BrokerMessage],
+        limit: int,
     ) -> None:
         """Append this consumer's pending entries to *messages*, up to
-        *no_of_messages* in all, leaving out the new entries already in it.
+        *limit* in all, leaving out the new entries already in it.
 
         Raises:
             redis.ResponseError: When a Redis call fails.
         """
-        remaining = no_of_messages - len(messages)
+        remaining = limit - len(messages)
         if messages:
             # A pending read from "0" returns this consumer's entries in id
             # order, the ones just read last. Reading them again adds a
@@ -482,9 +497,9 @@ class RedisBroker(BaseBroker):
                 redis_id_str = self._decode_if_bytes(message_id)
                 if redis_id_str not in seen_ids:
                     message = self._deserialize_message(fields)
-                    messages.append((redis_id_str, message))
+                    messages.append(BrokerMessage(redis_id_str, message))
                     seen_ids.add(redis_id_str)
-                    if len(messages) >= no_of_messages:
+                    if len(messages) >= limit:
                         break
 
     def _read_blocking(
@@ -515,7 +530,7 @@ class RedisBroker(BaseBroker):
             ``(identifier, message)`` tuples. The list is empty on timeout and
             on any read error, which is logged.
         """
-        self._ensure_group(consumer_group, stream)
+        self.create_group(stream, consumer_group)
 
         block: int | None = None
         try:
@@ -561,12 +576,13 @@ class RedisBroker(BaseBroker):
             return []
         except Exception as e:
             # A dropped/closed connection (e.g. "Connection closed by server"
-            # under CI load) surfaces here rather than via the base read_blocking
-            # wrapper, which only sees exceptions this method re-raises. Proactively
-            # re-establish the connection so the next poll tick reads from a healthy
-            # socket instead of relying solely on pool internals to self-heal.
-            if self._is_connection_error(e):
-                self._ensure_connection()
+            # under CI load) surfaces here rather than via the service's
+            # read_blocking, which only sees exceptions this method re-raises.
+            # Proactively re-establish the connection so the next poll tick reads
+            # from a healthy socket instead of relying solely on pool internals
+            # to self-heal.
+            if is_connection_error(e):
+                self.reconnect()
             logger.exception("broker.redis.read_blocking_failed")
             return []
 
@@ -600,7 +616,7 @@ class RedisBroker(BaseBroker):
             empty on timeout and on any read error, which is logged.
         """
         for stream in streams:
-            self._ensure_group(consumer_group, stream)
+            self.create_group(stream, consumer_group)
 
         block: int | None = None
         try:
@@ -636,10 +652,10 @@ class RedisBroker(BaseBroker):
             logger.exception("broker.redis.read_blocking_failed")
             return {stream: [] for stream in streams}
         except Exception as e:
-            # See ``_read_blocking``: reconnect here, since the base wrapper
-            # only sees exceptions this method re-raises.
-            if self._is_connection_error(e):
-                self._ensure_connection()
+            # See ``_read_blocking``: reconnect here, since the service only
+            # sees exceptions this method re-raises.
+            if is_connection_error(e):
+                self.reconnect()
             logger.exception("broker.redis.read_blocking_failed")
             return {stream: [] for stream in streams}
 
@@ -669,7 +685,7 @@ class RedisBroker(BaseBroker):
                     )
         return result
 
-    def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
+    def ack(self, stream: str, message_id: str, consumer_group: str) -> bool:
         """Acknowledge message using Redis Streams XACK
 
         Redis natively handles ACK state - once ACKed, a message is removed from
@@ -679,20 +695,20 @@ class RedisBroker(BaseBroker):
             # redis-stubs leaves xack without type annotations, so mypy --strict
             # flags the call as untyped. Stub gap, not a defect in this code.
             result = self._client.xack(  # type: ignore[no-untyped-call]
-                stream, consumer_group, identifier
+                stream, consumer_group, message_id
             )
             # result is the number of messages successfully acknowledged
             # 0 means the message was not pending (already ACKed or doesn't exist)
             # 1 means the message was successfully acknowledged
             return bool(result)
         except redis.ResponseError as e:
-            logger.warning(f"Failed to ack message {identifier} in {stream}: {e}")
+            logger.warning(f"Failed to ack message {message_id} in {stream}: {e}")
             return False
         except Exception:  # a failed ack reports False; logged
             logger.exception("broker.redis.ack_failed")
             return False
 
-    def _nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
+    def nack(self, stream: str, message_id: str, consumer_group: str) -> bool:
         """Negative acknowledge - message remains in pending list for reprocessing
 
         In Redis Streams, NACK is implicit - a message stays pending until ACKed.
@@ -700,16 +716,16 @@ class RedisBroker(BaseBroker):
         """
         try:
             # Ensure the consumer group exists first
-            self._ensure_group(consumer_group, stream)
+            self.create_group(stream, consumer_group)
 
             # Check if the message is actually pending
-            if not self._is_message_pending(stream, consumer_group, identifier):
+            if not self._is_message_pending(stream, consumer_group, message_id):
                 return False
 
             # In Redis Streams, the message automatically remains pending
             # No explicit NACK operation is needed
             logger.debug(
-                f"Message {identifier} in {stream} remains pending for reprocessing"
+                f"Message {message_id} in {stream} remains pending for reprocessing"
             )
             return True
 
@@ -796,7 +812,7 @@ class RedisBroker(BaseBroker):
         message = self._deserialize_message(fields)
         # Strip DLQ metadata before republishing
         message.pop("_dlq_metadata", None)
-        self._publish(target_stream, message)
+        self.publish(target_stream, message)
         self._client.xdel(dlq_stream, self._decode_if_bytes(redis_id))
         logger.info(f"Replayed DLQ message '{dlq_id}' to stream '{target_stream}'")
         return True
@@ -810,7 +826,7 @@ class RedisBroker(BaseBroker):
         for redis_id, fields in raw_messages:
             message = self._deserialize_message(fields)
             message.pop("_dlq_metadata", None)
-            self._publish(target_stream, message)
+            self.publish(target_stream, message)
             self._client.xdel(dlq_stream, self._decode_if_bytes(redis_id))
             replayed += 1
         return replayed
@@ -950,7 +966,7 @@ class RedisBroker(BaseBroker):
         for group_info in groups_info:
             if not isinstance(group_info, dict):
                 continue
-            last_delivered = self._get_field_value(group_info, "last-delivered-id")
+            last_delivered = get_field_value(group_info, "last-delivered-id")
             if last_delivered:
                 ids.append(last_delivered)
 
@@ -973,47 +989,51 @@ class RedisBroker(BaseBroker):
         except ValueError:
             return (-1, -1)
 
-    def _ensure_group(self, group_name: str, stream: str | None = None) -> None:
-        """Create consumer group if it doesn't exist"""
-        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{group_name}"
+    def create_group(self, stream: str, consumer_group: str) -> None:
+        """Create ``consumer_group`` on ``stream`` if it does not exist.
+
+        Creates the stream too when it is missing. A failure is logged and not
+        raised.
+        """
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
 
         if group_key in self._created_groups:
             return
 
         try:
             self._client.xgroup_create(
-                stream, group_name, id=STREAM_ID_START, mkstream=True
+                stream, consumer_group, id=STREAM_ID_START, mkstream=True
             )
-            logger.debug(f"Created consumer group {group_name} for stream {stream}")
+            logger.debug(f"Created consumer group {consumer_group} for stream {stream}")
             self._created_groups_set.add(group_key)
             # Track creation time for consistency
-            if group_name not in self._group_creation_times:
-                self._group_creation_times[group_name] = time.time()
+            if consumer_group not in self._group_creation_times:
+                self._group_creation_times[consumer_group] = time.time()
         except redis.ResponseError as e:
             if "BUSYGROUP" in str(e):
                 self._created_groups_set.add(group_key)
                 # Track creation time for existing groups too
-                if group_name not in self._group_creation_times:
-                    self._group_creation_times[group_name] = time.time()
+                if consumer_group not in self._group_creation_times:
+                    self._group_creation_times[consumer_group] = time.time()
             else:
                 logger.warning(
-                    f"Failed to create consumer group {group_name} for stream {stream}: {e}"
+                    f"Failed to create consumer group {consumer_group} for stream {stream}: {e}"
                 )
         except Exception:  # a failed group setup must not stop reads; logged
             logger.exception(
                 "broker.redis.ensure_group_failed",
-                extra={"group": group_name, "stream": stream},
+                extra={"group": consumer_group, "stream": stream},
             )
 
-    def _cleanup_stale_consumers(
-        self, stream: str, group_name: str, current_consumer_name: str
+    def remove_stale_consumers(
+        self, stream: str, consumer_group: str, current_consumer: str
     ) -> int:
         """Remove stale consumers from a consumer group.
 
         When an engine restarts with the same hostname and PID, old consumer
         entries persist in Redis.  This method identifies consumers that share
         the same ``{ClassName}-{hostname}-{pid}`` prefix as
-        *current_consumer_name* but have a different random-hex suffix, and
+        *current_consumer* but have a different random-hex suffix, and
         deletes them via ``XGROUP DELCONSUMER``.
 
         Consumers with pending (un-ACKed) messages are skipped so they can
@@ -1022,36 +1042,34 @@ class RedisBroker(BaseBroker):
         Returns the number of stale consumers removed.
         """
         # Extract prefix: everything before the last "-" (the random hex)
-        last_dash = current_consumer_name.rfind("-")
+        last_dash = current_consumer.rfind("-")
         if last_dash == -1:
             return 0
-        current_prefix = current_consumer_name[:last_dash]
+        current_prefix = current_consumer[:last_dash]
 
         removed = 0
         try:
             # redis-stubs leaves xinfo_consumers untyped (stub gap, not our bug).
             consumers_info = self._client.xinfo_consumers(  # type: ignore[no-untyped-call]
-                stream, group_name
+                stream, consumer_group
             )
             for c in consumers_info:
-                name = _stale_consumer_name(
-                    self, c, current_consumer_name, current_prefix
-                )
+                name = _stale_consumer_name(c, current_consumer, current_prefix)
                 if name is not None and _delete_consumer(
-                    self, stream, group_name, name
+                    self, stream, consumer_group, name
                 ):
                     removed += 1
         except redis.RedisError as e:
             logger.warning(
-                f"Error cleaning stale consumers for {group_name} on {stream}: {e}"
+                f"Error cleaning stale consumers for {consumer_group} on {stream}: {e}"
             )
 
         return removed
 
-    def _reclaim_idle_pending(
+    def reclaim_idle_pending(
         self,
         stream: str,
-        group_name: str,
+        consumer_group: str,
         consumer_name: str | None,
         min_idle_ms: int,
     ) -> dict[str, int]:
@@ -1073,13 +1091,13 @@ class RedisBroker(BaseBroker):
                 claim page while no entry is claimed yet.
         """
         consumer = consumer_name or self._consumer_name
-        self._ensure_group(group_name, stream)
+        self.create_group(stream, consumer_group)
         claimed: dict[str, int] = {}
         cursor = STREAM_ID_START + "-0"
         while True:
             try:
                 page = self._autoclaim_page(
-                    stream, group_name, consumer, min_idle_ms, cursor
+                    stream, consumer_group, consumer, min_idle_ms, cursor
                 )
             except redis.RedisError as e:
                 if not claimed:
@@ -1088,7 +1106,7 @@ class RedisBroker(BaseBroker):
                 # them so they keep their place toward max_retries; a later
                 # start claims the rest.
                 logger.warning(
-                    f"Stopped claiming idle entries for {group_name} on "
+                    f"Stopped claiming idle entries for {consumer_group} on "
                     f"{stream} after {len(claimed)}: {e}"
                 )
                 return claimed
@@ -1123,7 +1141,7 @@ class RedisBroker(BaseBroker):
             if "NOGROUP" not in str(e):
                 raise
             self._forget_stream_groups(stream)
-            self._ensure_group(group_name, stream)
+            self.create_group(stream, group_name)
             return None
         return (
             self._decode_if_bytes(reply[0]),
@@ -1133,44 +1151,39 @@ class RedisBroker(BaseBroker):
             },
         )
 
-    def _info(self) -> dict[str, Any]:
-        """Get information about consumer groups and consumers"""
-        info: dict[str, Any] = {"consumer_groups": {}}
-        stream_info_nested: dict[str, Any] = {}  # For Redis-specific structure
+    def consumer_groups(self) -> dict[str, ConsumerGroupInfo]:
+        """Return each consumer group by name, across the streams it reads.
+
+        ``pending`` is summed over the group's streams, and a consumer that
+        reads several streams appears once with its pending entries summed.
+        When the group reads several streams, ``last_delivered_id`` comes from
+        one of them, and which one is not defined. A Redis
+        error is logged, and the groups read before it are returned.
+        """
+        groups: dict[str, ConsumerGroupInfo] = {}
 
         try:
-            streams_to_check = self._get_streams_to_check()
+            for stream in self._get_streams_to_check():
+                for group_name, group_details in (
+                    self._get_stream_info(stream) or {}
+                ).items():
+                    _add_group_details(groups, group_name, group_details)
 
-            for stream in streams_to_check:
-                stream_info = self._get_stream_info(stream)
-                if stream_info:
-                    # Store nested structure for Redis-specific access
-                    stream_info_nested[stream] = stream_info
-
-                    # Flatten the structure to match inline broker format
-                    for group_name, group_details in stream_info.items():
-                        # Add created_at and consumer_count for compatibility
-                        group_details["created_at"] = self._group_creation_times.get(
-                            group_name, time.time()
-                        )
-                        group_details["consumer_count"] = len(
-                            group_details["consumers"]
-                        )
-                        info["consumer_groups"][group_name] = group_details
-
-            # Add nested structure for Redis-specific tests
-            info["consumer_groups"].update(stream_info_nested)
-
-        except Exception:  # info returns what it gathered so far; logged
+        except Exception:  # return what was gathered so far; logged
             logger.exception("broker.redis.info_failed")
 
-        return info
+        for group_name, group in groups.items():
+            group["created_at"] = self._group_creation_times.get(
+                group_name, time.time()
+            )
+        return groups
 
     def _get_streams_to_check(self) -> set[str]:
-        """Get set of streams to check for info"""
-        streams = set(self._subscribers.keys())
+        """Return the streams this broker created consumer groups on, and the
+        last ``_PUBLISHED_STREAMS_LIMIT`` streams it published to."""
+        streams = set(self._published_streams)
 
-        # Add streams from created consumer groups. Group keys are
+        # Group keys are
         # ``{stream}:{group}`` and a partition stream name itself contains
         # colons (``order:client-123``), so recover the stream by splitting off
         # the LAST colon segment — the group name is a handler FQN (dotted, no
@@ -1210,11 +1223,9 @@ class RedisBroker(BaseBroker):
         """Extract group data from Redis group info"""
         try:
             # Handle both bytes and string keys
-            group_name = self._get_field_value(group_info, "name")
-            pending_count = self._get_field_value(
-                group_info, "pending", convert_to_int=True
-            )
-            last_delivered_id = self._get_field_value(group_info, "last-delivered-id")
+            group_name = get_field_value(group_info, "name")
+            pending_count = get_field_value(group_info, "pending", convert_to_int=True)
+            last_delivered_id = get_field_value(group_info, "last-delivered-id")
 
             if group_name is None:
                 return None
@@ -1239,70 +1250,26 @@ class RedisBroker(BaseBroker):
             logger.debug(f"Error extracting group data: {e}")
             return None
 
-    def _extract_consumers_data(self, consumers_info: Any) -> list[dict[str, Any]]:
+    def _extract_consumers_data(self, consumers_info: Any) -> list[ConsumerInfo]:
         """Extract consumers data from Redis consumer info"""
-        consumers: list[dict[str, Any]] = []
+        consumers: list[ConsumerInfo] = []
         for consumer_info in consumers_info:
             if not isinstance(consumer_info, dict):
                 continue
 
-            consumer_name = self._get_field_value(consumer_info, "name")
-            consumer_pending = self._get_field_value(
+            consumer_name = get_field_value(consumer_info, "name")
+            consumer_pending = get_field_value(
                 consumer_info, "pending", convert_to_int=True
             )
 
             if consumer_name is not None:
-                consumers.append({"name": consumer_name, "pending": consumer_pending})
+                consumers.append(
+                    {"name": consumer_name, "pending": consumer_pending or 0}
+                )
 
         return consumers
 
-    @overload
-    def _get_field_value(
-        self,
-        info_dict: dict[Any, Any],
-        field_name: str,
-        convert_to_int: Literal[False] = ...,
-    ) -> str | None: ...
-
-    @overload
-    def _get_field_value(
-        self,
-        info_dict: dict[Any, Any],
-        field_name: str,
-        convert_to_int: Literal[True],
-    ) -> int | None: ...
-
-    def _get_field_value(
-        self,
-        info_dict: dict[Any, Any],
-        field_name: str,
-        convert_to_int: bool = False,
-    ) -> str | int | None:
-        """Get field value from Redis info dict, handling both bytes and string keys"""
-        for key_format in [field_name.encode(), field_name]:
-            if key_format in info_dict:
-                value = info_dict[key_format]
-                # Redis sends nil for a value it cannot compute, such as a
-                # group's `lag` after an entry past its last-delivered id was
-                # deleted. Reading nil as 0 would report an unknown lag as
-                # caught up.
-                if value is None:
-                    return None
-                decoded_value = self._decode_if_bytes(value)
-
-                if convert_to_int:
-                    try:
-                        return int(decoded_value)
-                    except (ValueError, TypeError):
-                        logger.warning(
-                            f"Failed to convert {decoded_value} to int for field {field_name}"
-                        )
-                        return 0
-
-                return decoded_value
-        return None
-
-    def _ping(self) -> bool:
+    def ping(self) -> bool:
         """Test basic connectivity to Redis broker"""
         try:
             return self._client.ping()
@@ -1329,7 +1296,7 @@ class RedisBroker(BaseBroker):
                 groups_info = self._client.xinfo_groups(stream)  # type: ignore[no-untyped-call]
                 for group_info in groups_info:
                     if isinstance(group_info, dict):
-                        pending_count = self._get_field_value(
+                        pending_count = get_field_value(
                             group_info, "pending", convert_to_int=True
                         )
                         total_pending += (
@@ -1378,8 +1345,12 @@ class RedisBroker(BaseBroker):
 
         return {"count": len(consumer_groups), "names": sorted(consumer_groups)}
 
-    def _health_stats(self) -> dict[str, Any]:
-        """Get Redis-specific health and performance statistics"""
+    def health(self) -> BrokerHealth:
+        """Return message counts, consumer groups and Redis server statistics.
+
+        A failure while reading the statistics is reported as unhealthy and
+        not raised.
+        """
         try:
             redis_info = self._client.info()
 
@@ -1391,8 +1362,7 @@ class RedisBroker(BaseBroker):
             consumer_groups_info = self._calculate_consumer_groups_info()
 
             # Extract key Redis metrics
-            stats = {
-                "healthy": True,
+            stats: dict[str, Any] = {
                 "redis_version": redis_info.get("redis_version", "unknown"),
                 "connected_clients": redis_info.get("connected_clients", 0),
                 "used_memory": redis_info.get("used_memory", 0),
@@ -1414,9 +1384,7 @@ class RedisBroker(BaseBroker):
                 "role": redis_info.get("role", "unknown"),
                 "uptime_in_seconds": redis_info.get("uptime_in_seconds", 0),
                 "tcp_port": redis_info.get("tcp_port", 0),
-                "message_counts": message_counts,
                 "streams": streams_info,
-                "consumer_groups": consumer_groups_info,
                 "memory_estimate_bytes": redis_info.get("used_memory", 0),
             }
 
@@ -1429,12 +1397,13 @@ class RedisBroker(BaseBroker):
                 stats["hit_rate"] = 0.0
 
             # Check for potential health issues
+            healthy = True
             if redis_info.get("loading", 0) == 1:
-                stats["healthy"] = False
+                healthy = False
                 stats["warning"] = "Redis is loading data from disk"
 
             if redis_info.get("rejected_connections", 0) > 0:
-                stats["healthy"] = False
+                healthy = False
                 stats["warning"] = "Redis has rejected connections"
 
             # Add configuration details (Redis has different config than manual brokers)
@@ -1450,35 +1419,45 @@ class RedisBroker(BaseBroker):
                 "enable_dlq": self._enable_dlq,
             }
 
-            return stats
+            return BrokerHealth(
+                healthy=healthy,
+                message_counts=message_counts,
+                consumer_groups=consumer_groups_info,
+                details=stats,
+            )
 
         # a health check reports unhealthy instead of raising; logged
         except Exception as e:
             logger.exception("broker.redis.health_check_failed")
-            return {
-                "healthy": False,
-                "error": str(e),
-                "message_counts": {
+            return BrokerHealth(
+                healthy=False,
+                message_counts={
                     "total_messages": 0,
                     "in_flight": 0,
                     "failed": 0,
                     "dlq": 0,
                 },
-                "streams": {"count": 0, "names": []},
-                "consumer_groups": {"count": 0, "names": []},
-                "memory_estimate_bytes": 0,
-                "configuration": {
-                    "broker_type": "redis_streams",
-                    "error": "Failed to get configuration",
-                    "max_retries": self._max_retries,
-                    "retry_delay": self._retry_delay,
-                    "message_timeout": self._message_timeout,
-                    "enable_dlq": self._enable_dlq,
+                consumer_groups={"count": 0, "names": []},
+                details={
+                    "error": str(e),
+                    "streams": {"count": 0, "names": []},
+                    "memory_estimate_bytes": 0,
+                    "configuration": {
+                        "broker_type": "redis_streams",
+                        "error": "Failed to get configuration",
+                        "max_retries": self._max_retries,
+                        "retry_delay": self._retry_delay,
+                        "message_timeout": self._message_timeout,
+                        "enable_dlq": self._enable_dlq,
+                    },
                 },
-            }
+            )
 
-    def _ensure_connection(self) -> bool:
-        """Ensure connection to Redis broker is healthy, reconnect if necessary"""
+    def reconnect(self) -> bool:
+        """Check the connection to Redis and reconnect if it is broken.
+
+        Tries up to three times and returns ``False`` when every try fails.
+        """
         max_attempts = 3
 
         for attempt in range(max_attempts):
@@ -1511,6 +1490,14 @@ class RedisBroker(BaseBroker):
             "broker.redis.connection_exhausted", extra={"max_attempts": max_attempts}
         )
         return False
+
+    def get_connection(self) -> "redis.Redis[Any] | None":
+        """Return the Redis client, or ``None`` after ``close()``.
+
+        Does not reconnect: a view that reads a closed broker must not open a
+        pool nothing will close.
+        """
+        return self.redis_instance
 
     def close(self) -> None:
         """Close the Redis connection and release resources."""
@@ -1559,7 +1546,7 @@ class RedisBroker(BaseBroker):
         if reaped:
             # Reap deleted the streams and with them every consumer group on them,
             # so drop the now-stale group-cache entries; otherwise a re-created
-            # partition's ``_ensure_group`` would no-op on a cache hit and the
+            # partition's ``create_group`` would no-op on a cache hit and the
             # next read would fail NOGROUP.
             for stream in streams:
                 self._forget_stream_groups(stream)
@@ -1613,7 +1600,7 @@ class RedisBroker(BaseBroker):
         new_messages: bool,
     ) -> list[tuple[str, dict[str, Any]]]:
         """Fenced XREADGROUP; raises :class:`LeaseLostError` when the lease is lost."""
-        self._ensure_group(consumer_group, stream)
+        self.create_group(stream, consumer_group)
         start_id = NEW_MESSAGES_MARK if new_messages else PENDING_MESSAGES_MARK
         try:
             result = self._lua_read_fenced(
@@ -1634,7 +1621,7 @@ class RedisBroker(BaseBroker):
             # and retry once (mirrors the NOGROUP recovery in ``_read_blocking``).
             if "NOGROUP" in str(e):
                 self._forget_stream_groups(stream)
-                self._ensure_group(consumer_group, stream)
+                self.create_group(stream, consumer_group)
                 result = self._lua_read_fenced(
                     keys=[lease_key, stream],
                     args=[fence_token, consumer_group, consumer_name, count, start_id],
@@ -1679,7 +1666,7 @@ class RedisBroker(BaseBroker):
         failure and give up the partition, not mistake a failed reclaim for
         "nothing to reclaim".
         """
-        self._ensure_group(consumer_group, stream)
+        self.create_group(stream, consumer_group)
         messages: list[tuple[str, dict[str, Any]]] = []
         cursor = STREAM_ID_START + "-0"
         while True:
@@ -1700,7 +1687,7 @@ class RedisBroker(BaseBroker):
                 # correctness precondition, not best-effort.
                 if "NOGROUP" in str(e):
                     self._forget_stream_groups(stream)
-                    self._ensure_group(consumer_group, stream)
+                    self.create_group(stream, consumer_group)
                     return messages
                 raise
             next_cursor, claimed = reply[0], reply[1]
@@ -1742,14 +1729,95 @@ class RedisBroker(BaseBroker):
                 messages.append((redis_id_str, message))
         return messages
 
-    def _data_reset(self) -> None:
+    def clear(self) -> None:
         """Clear the broker's configured Redis database for testing"""
         try:
             self._client.flushdb()
             self._created_groups_set.clear()
             self._group_creation_times.clear()
+            self._published_streams.clear()
         except Exception:  # a failed test reset must not break teardown; logged
             logger.exception("broker.redis.data_reset_failed")
+
+
+@overload
+def get_field_value(
+    info_dict: dict[Any, Any],
+    field_name: str,
+    convert_to_int: Literal[False] = ...,
+) -> str | None: ...
+
+
+@overload
+def get_field_value(
+    info_dict: dict[Any, Any],
+    field_name: str,
+    convert_to_int: Literal[True],
+) -> int | None: ...
+
+
+def get_field_value(
+    info_dict: dict[Any, Any],
+    field_name: str,
+    convert_to_int: bool = False,
+) -> str | int | None:
+    """Return ``field_name`` from a Redis info dict, as a string or an int.
+
+    Accepts bytes and string keys. Returns ``None`` when the field is missing
+    or Redis sent nil for it, and ``0`` when ``convert_to_int`` is set and the
+    value is not a number.
+    """
+    for key_format in [field_name.encode(), field_name]:
+        if key_format in info_dict:
+            value = info_dict[key_format]
+            # Redis sends nil for a value it cannot compute, such as a
+            # group's `lag` after an entry past its last-delivered id was
+            # deleted. Reading nil as 0 would report an unknown lag as
+            # caught up.
+            if value is None:
+                return None
+            decoded_value = value.decode() if isinstance(value, bytes) else str(value)
+
+            if convert_to_int:
+                return _to_int(decoded_value, field_name)
+
+            return decoded_value
+    return None
+
+
+def _to_int(value: str, field_name: str) -> int:
+    """Return ``value`` as an int, or ``0`` with a warning if it is not one."""
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        logger.warning(f"Failed to convert {value} to int for field {field_name}")
+        return 0
+
+
+def _add_group_details(
+    groups: dict[str, ConsumerGroupInfo],
+    group_name: str,
+    group_details: dict[str, Any],
+) -> None:
+    """Add one stream's details for ``group_name`` to ``groups``."""
+    group = groups.setdefault(
+        group_name,
+        {"name": group_name, "consumer_count": 0, "pending": 0, "consumers": []},
+    )
+    group["pending"] += group_details["pending"] or 0
+    if group_details["last_delivered_id"] is not None:
+        group["last_delivered_id"] = group_details["last_delivered_id"]
+
+    consumers = {consumer["name"]: consumer for consumer in group["consumers"]}
+    for consumer in group_details["consumers"]:
+        if consumer["name"] in consumers:
+            consumers[consumer["name"]]["pending"] += consumer["pending"]
+        else:
+            consumers[consumer["name"]] = ConsumerInfo(
+                name=consumer["name"], pending=consumer["pending"]
+            )
+    group["consumers"] = list(consumers.values())
+    group["consumer_count"] = len(consumers)
 
 
 def _block_for(timeout_ms: int) -> int | None:
@@ -1799,7 +1867,7 @@ def _retry_read_after_nogroup(
     # cannot be created (e.g. stream was flushed while engine runs).
     group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
     broker._created_groups_set.discard(group_key)
-    broker._ensure_group(consumer_group, stream)
+    broker.create_group(stream, consumer_group)
     try:
         response = broker._client.xreadgroup(
             consumer_group,
@@ -1830,7 +1898,7 @@ def _retry_streams_after_nogroup(
     for stream in streams:
         group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         broker._created_groups_set.discard(group_key)
-        broker._ensure_group(consumer_group, stream)
+        broker.create_group(stream, consumer_group)
     try:
         response = broker._client.xreadgroup(
             consumer_group,
@@ -1846,7 +1914,6 @@ def _retry_streams_after_nogroup(
 
 
 def _stale_consumer_name(
-    broker: RedisBroker,
     consumer: Any,
     current_consumer_name: str,
     current_prefix: str,
@@ -1860,7 +1927,7 @@ def _stale_consumer_name(
     if not isinstance(consumer, dict):
         return None
     try:
-        name = broker._get_field_value(consumer, "name")
+        name = get_field_value(consumer, "name")
     except UnicodeDecodeError as e:
         # Another client can name a consumer with bytes that are not UTF-8.
         logger.debug(f"Skipping a consumer with an undecodable name: {e}")
@@ -1873,7 +1940,7 @@ def _stale_consumer_name(
     if name_last_dash == -1 or name[:name_last_dash] != current_prefix:
         return None
 
-    pending = broker._get_field_value(consumer, "pending", convert_to_int=True) or 0
+    pending = get_field_value(consumer, "pending", convert_to_int=True) or 0
     if pending > 0:
         logger.debug(
             f"Skipping stale consumer {name} with {pending} pending message(s)"
@@ -1911,3 +1978,6 @@ def register() -> None:
     except ImportError as e:
         # Redis not available, skip registration
         logger.debug(f"Redis broker not registered: redis package not available ({e})")
+
+
+_PORT_CHECK: type[BrokerPort] = RedisBroker

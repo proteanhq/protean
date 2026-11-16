@@ -7,7 +7,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from protean.domain import Domain
 from protean.domain.context import DomainContext, _domain_ctx_stack
-from protean.port.broker import BaseBroker
+from protean.infra.broker import Broker
 
 
 class DomainFixture:
@@ -99,7 +99,7 @@ class DomainFixture:
                     provider.clear()
 
                 for broker in self.domain.brokers.values():
-                    broker._data_reset()
+                    broker.clear()
 
                 self.domain._require_event_store().clear()
             finally:
@@ -125,14 +125,14 @@ def _pop_through(ctx: DomainContext) -> None:
         _domain_ctx_stack.push(other)
 
 
-def _describe_broker(name: str, broker: BaseBroker) -> str:
+def _describe_broker(name: str, broker: Broker) -> str:
     """Name a broker for a warning, showing its URI without the password."""
-    uri = broker.conn_info.get("URI")
+    uri = broker._adapter.config.get("URI")
     display = _display_uri(uri) if uri is not None else None
     if display is not None:
         return f"Broker '{name}' at {display}"
 
-    return f"Broker '{name}' ({broker.conn_info.get('provider')} provider)"
+    return f"Broker '{name}' ({broker._adapter.config.get('provider')} provider)"
 
 
 _SECRET_QUERY_KEYS = frozenset({"password", "ssl_password"})
