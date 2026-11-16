@@ -69,7 +69,7 @@ def test_configuration_shown_carries_the_password(
     domain = domain_from_config(path, tmp_path)
     conn_info = dict(domain.config["databases"]["default"])
 
-    provider = registry.providers.get(conn_info["provider"])(
+    provider = registry.databases.get(conn_info["provider"])(
         "default", domain, conn_info
     )
 

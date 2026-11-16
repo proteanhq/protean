@@ -1,7 +1,7 @@
 import pytest
 from elasticsearch.dsl import Keyword, Text
 
-from protean.adapters.repository.elasticsearch import ElasticsearchModel
+from protean.adapters.database.elasticsearch import ElasticsearchModel
 from protean.core.aggregate import BaseAggregate
 from protean.fields import String
 from protean.fields import Text as ProteanText
@@ -101,7 +101,7 @@ class TestDefaultModel:
         test_domain.init(traverse=False)
 
         # Ensure that index is created for `Receiver` - START
-        provider = test_domain.providers["default"]
+        provider = test_domain.databases["default"]
         conn = provider.get_connection()
 
         for aggregate_record in test_domain.registry.aggregates.values():
@@ -365,7 +365,7 @@ class TestCustomModel:
         test_domain.init(traverse=False)
 
         # Ensure that index is created for `Receiver` - START
-        provider = test_domain.providers["default"]
+        provider = test_domain.databases["default"]
         conn = provider.get_connection()
 
         for aggregate_record in test_domain.registry.aggregates.values():
@@ -390,7 +390,7 @@ class TestCustomModel:
 
         # Create the index
         database_model_cls = test_domain.repository_for(Receiver)._database_model
-        conn = test_domain.providers["default"].get_connection()
+        conn = test_domain.databases["default"].get_connection()
         if database_model_cls._index.exists(using=conn):
             conn.indices.delete(index=database_model_cls._index._name)
         database_model_cls.init(using=conn)

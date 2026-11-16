@@ -14,7 +14,7 @@ This test diffs the two, so the second copy cannot be forgotten.
 import pytest
 
 from protean.cli.test import TestRunner
-from tests.adapters.repository.generic.conftest import (
+from tests.adapters.database.generic.conftest import (
     _ALL_CAPABILITY_MARKERS,
     _DB_CAPABILITY_MARKERS,
 )

@@ -31,7 +31,7 @@ from protean.utils.domain_discovery import derive_domain
 
 runner = CliRunner()
 
-MIGRATOR_MODULE = "protean.adapters.repository.schema_migrator.alembic_migrator"
+MIGRATOR_MODULE = "protean.adapters.database.schema_migrator.alembic_migrator"
 
 
 class _AlembicNotInstalled:

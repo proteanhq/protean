@@ -1,7 +1,7 @@
 # --8<-- [start:full]
 from protean import Domain
 from protean.fields import Integer, String
-from protean.port.provider import DatabaseCapabilities
+from protean.port.database import DatabaseCapabilities
 
 domain = Domain(name="Capabilities")
 
@@ -19,7 +19,7 @@ with domain.domain_context():
     domain.repository_for(User).add(User(name="Tim", age=17))
 
     # Get the default provider
-    provider = domain.providers["default"]
+    provider = domain.databases["default"]
 
     # Check for a single capability
     if DatabaseCapabilities.RAW_QUERIES in provider.capabilities:

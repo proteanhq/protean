@@ -156,7 +156,7 @@ def resolve_dispatch_context(
     projection_cls = getattr(meta, "projector_for", None)
     provider_name = "default"
     if projection_cls is not None:
-        provider_name = getattr(projection_cls.meta_, "provider", "default")
+        provider_name = projection_cls.meta_.database
 
     try:
         repo = current_domain._get_processed_message_repo(provider_name)
@@ -194,7 +194,7 @@ def dispatch_to_subscriber(subscriber_cls: Any, message: dict[str, Any]) -> None
 
     A subscriber without ``idempotent=True`` is called directly. An idempotent
     subscriber runs inside a ``UnitOfWork`` that also checks and writes its
-    marker in ``meta_.provider``, keyed on the payload's ``metadata.headers.id``
+    marker in ``meta_.database``, keyed on the payload's ``metadata.headers.id``
     and the subscriber's fully-qualified name; a message already marked is
     skipped. Exceptions from the subscriber propagate, and leave no marker.
 
@@ -212,7 +212,7 @@ def dispatch_to_subscriber(subscriber_cls: Any, message: dict[str, Any]) -> None
     message_id = _subscriber_message_id(handler_id, message)
     repo = cast(
         ProcessedMessageRepository,
-        current_domain._get_processed_message_repo(subscriber_cls.meta_.provider),
+        current_domain._get_processed_message_repo(subscriber_cls.meta_.database),
     )
     with UnitOfWork():
         if repo.is_processed(message_id, handler_id):

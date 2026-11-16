@@ -270,7 +270,7 @@ class TestOutboxIntegration:
     def test_outbox_repo_provider_mapping(self, test_domain):
         """Test that outbox repositories are correctly mapped to providers"""
         # Test that each provider has its own outbox repository
-        for provider_name, provider in test_domain.providers._providers.items():
+        for provider_name, provider in test_domain.databases._databases.items():
             assert provider_name in test_domain._outbox_repos
             outbox_repo = test_domain._outbox_repos[provider_name]
 

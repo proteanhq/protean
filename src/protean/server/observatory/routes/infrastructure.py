@@ -131,7 +131,7 @@ def _database_status(domain: Domain) -> dict[str, Any]:
 
     try:
         with domain.domain_context():
-            provider = domain.providers.get("default")
+            provider = domain.databases.get("default")
             if provider is not None:
                 result["status"] = "healthy"
             else:

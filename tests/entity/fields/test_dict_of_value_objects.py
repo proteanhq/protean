@@ -130,7 +130,7 @@ def test_that_value_type_must_be_a_value_object():
 def test_is_value_object_dict_helper():
     # The predicate the SQLAlchemy adapter uses to decide whether a dict field
     # holds value objects (and so must be serialized before storage).
-    from protean.adapters.repository.sqlalchemy import _is_value_object_dict
+    from protean.adapters.database.sqlalchemy import _is_value_object_dict
     from protean.utils.reflection import fields
 
     vo_dict_field = fields(Customer)["addresses"]

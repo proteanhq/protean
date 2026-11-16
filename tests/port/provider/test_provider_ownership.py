@@ -1,7 +1,7 @@
-"""Tests for ``BaseProvider.owns()`` — the single gate that decides whether a
+"""Tests for ``BaseDatabase.owns()`` — the single gate that decides whether a
 provider materializes a table/index for a registered element.
 
-Exercised here through the in-memory provider (a concrete ``BaseProvider``),
+Exercised here through the in-memory provider (a concrete ``BaseDatabase``),
 so these are core tests needing no external service. The gate replaces the
 per-loop ``continue`` special-cases previously duplicated across the
 SQLAlchemy and Elasticsearch providers.
@@ -63,7 +63,7 @@ class TestProviderOwns:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = domain.databases["default"]
             assert provider.owns(Account) is True
 
     def test_owns_entity_of_regular_aggregate(self):
@@ -74,7 +74,7 @@ class TestProviderOwns:
         _register_order_cluster(domain, event_sourced=False)
 
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = domain.databases["default"]
             assert provider.owns(LineItem) is True
 
     def test_does_not_own_event_sourced_aggregate(self):
@@ -83,7 +83,7 @@ class TestProviderOwns:
         _register_order_cluster(domain, event_sourced=True)
 
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = domain.databases["default"]
             assert provider.owns(Order) is False
 
     def test_does_not_own_entity_of_event_sourced_aggregate(self):
@@ -92,7 +92,7 @@ class TestProviderOwns:
         _register_order_cluster(domain, event_sourced=True)
 
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = domain.databases["default"]
             assert provider.owns(LineItem) is False
 
     def test_does_not_own_nested_entity_of_event_sourced_aggregate(self):
@@ -104,13 +104,13 @@ class TestProviderOwns:
         _register_order_cluster(domain, event_sourced=True)
 
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = domain.databases["default"]
             # Sanity: the nested entity's cluster is the event-sourced root.
             assert SubLineItem.meta_.aggregate_cluster is Order
             assert provider.owns(SubLineItem) is False
 
     def test_does_not_own_cache_backed_projection_without_raising(self):
-        """A cache-backed projection carries ``meta_.provider is None``. The gate
+        """A cache-backed projection carries ``meta_.database is None``. The gate
         must return ``False`` without indexing ``providers[None]`` (which would
         raise, the latent Elasticsearch bug this consolidation fixes)."""
         domain = Domain(name="Owns-Cache-Projection")
@@ -118,9 +118,9 @@ class TestProviderOwns:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            provider = domain.providers["default"]
-            # meta_.provider is None for a cache-backed projection.
-            assert Leaderboard.meta_.provider is None
+            provider = domain.databases["default"]
+            # meta_.database is None for a cache-backed projection.
+            assert Leaderboard.meta_.database is None
             # Must not raise, and must report the provider does not own it.
             assert provider.owns(Leaderboard) is False
 
@@ -132,8 +132,8 @@ class TestProviderOwns:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            provider = domain.providers["default"]
-            assert Leaderboard.meta_.provider == "default"
+            provider = domain.databases["default"]
+            assert Leaderboard.meta_.database == "default"
             assert provider.owns(Leaderboard) is True
 
     def test_raises_for_unknown_provider_name(self):
@@ -141,11 +141,11 @@ class TestProviderOwns:
         misconfiguration — the gate must fail fast with ``ConfigurationError``
         instead of silently skipping the element during database setup."""
         domain = Domain(name="Owns-Unknown-Provider")
-        domain.register(Account, provider="ghost")
+        domain.register(Account, database="ghost")
         domain.init(traverse=False)
 
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = domain.databases["default"]
             with pytest.raises(ConfigurationError, match="ghost"):
                 provider.owns(Account)
 
@@ -165,16 +165,16 @@ class TestProviderOwns:
 
         domain = Domain(name="Owns-Multi-Provider")
         domain.config["databases"][configured_name] = {"provider": "memory"}
-        domain.register(Account, provider=element_name)
+        domain.register(Account, database=element_name)
         domain.init(traverse=False)
 
         with domain.domain_context():
-            default_provider = domain.providers["default"]
-            secondary_provider = domain.providers["secondary-db"]
+            default_provider = domain.databases["default"]
+            secondary_provider = domain.databases["secondary-db"]
 
             # Owned by the secondary provider only.
-            assert Account.meta_.provider == "secondary-db"
+            assert Account.meta_.database == "secondary-db"
             # The provider's own name is a different object than the element's.
-            assert secondary_provider.name is not Account.meta_.provider
+            assert secondary_provider.name is not Account.meta_.database
             assert secondary_provider.owns(Account) is True
             assert default_provider.owns(Account) is False

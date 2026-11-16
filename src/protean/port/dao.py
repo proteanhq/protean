@@ -20,8 +20,8 @@ from protean.exceptions import (
     TooManyObjectsError,
     ValidationError,
 )
-from protean.port.provider import (
-    BaseProvider,
+from protean.port.database import (
+    BaseDatabase,
     DatabaseCapabilities,
     DatabaseModelPort,
 )
@@ -521,7 +521,7 @@ class BaseDAO(metaclass=ABCMeta):
     def __init__(
         self,
         domain: "Domain",
-        provider: BaseProvider,
+        provider: BaseDatabase,
         entity_cls: type[BaseEntity],
         database_model_cls: type[DatabaseModelPort],
     ):
@@ -606,7 +606,7 @@ class BaseDAO(metaclass=ABCMeta):
         for example to materialize a parent row before dependent child rows
         referencing it are written, or to materialize a store-generated
         ``Auto(increment=True)`` primary key before it is reflected back onto
-        the aggregate. Providers that persist eagerly and assign auto-increment
+        the aggregate. Databases that persist eagerly and assign auto-increment
         values during ``_create`` (memory, Elasticsearch) need no flush and keep
         the default.
         """

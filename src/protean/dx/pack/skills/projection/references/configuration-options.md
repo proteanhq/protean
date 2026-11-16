@@ -11,7 +11,7 @@ Pass options to the `@domain.projection` decorator or to `domain.register()`.
 By default, projections use the `"default"` database provider:
 
 ```python
-@domain.projection  # Uses provider="default"
+@domain.projection  # Uses database="default"
 class ProductInventory:
     product_id: Identifier(identifier=True)
     name: String(required=True)
@@ -21,7 +21,7 @@ Specify a custom provider:
 
 ```python
 # fragment
-@domain.projection(provider="postgres")
+@domain.projection(database="postgres")
 class ProductInventory:
     product_id: Identifier(identifier=True)
     name: String(required=True)

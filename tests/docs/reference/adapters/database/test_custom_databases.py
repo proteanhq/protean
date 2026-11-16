@@ -19,11 +19,11 @@ if _PACKAGE_PARENT not in sys.path:
 
 import delegating_provider
 
-from protean.adapters.repository.memory import MemoryProvider
+from protean.adapters.database.memory import MemoryDatabase
 from protean.exceptions import ObjectNotFoundError
-from protean.infra.registry import providers
+from protean.infra.registry import databases
 from protean.port.dao import REQUIRED_LOOKUPS
-from protean.port.provider import BaseProvider
+from protean.port.database import BaseDatabase
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -33,11 +33,11 @@ def test_page_lists_every_abstract_method():
     section = page.split("### 1. Provider")[1].split("### 2.")[0]
     listed = set(re.findall(r"^\| `(\w+)", section, flags=re.MULTILINE))
 
-    assert listed == BaseProvider.__abstractmethods__
+    assert listed == BaseDatabase.__abstractmethods__
 
 
 def test_registry_accepts_the_delegating_provider():
-    provider_cls = providers.get("delegating_memory")
+    provider_cls = databases.get("delegating_memory")
 
     assert provider_cls is delegating_provider.DelegatingProvider
     assert set(provider_cls.get_lookups()) >= REQUIRED_LOOKUPS
@@ -48,7 +48,7 @@ def test_domain_uses_the_custom_provider():
         provider = provider_adapter(delegating_provider.domain, "default")
 
         assert isinstance(provider, delegating_provider.DelegatingProvider)
-        assert isinstance(provider._delegate, MemoryProvider)
+        assert isinstance(provider._delegate, MemoryDatabase)
         assert provider.database_type == "delegating_memory"
 
 
@@ -66,7 +66,7 @@ def test_saved_aggregate_is_read_back():
 
 def test_raw_query_goes_through_the_delegate():
     with delegating_provider.domain.domain_context():
-        provider = delegating_provider.domain.providers["default"]
+        provider = delegating_provider.domain.databases["default"]
         results = provider.raw('{"name": "Ada"}')
 
     assert [row["name"] for row in results] == ["Ada"]

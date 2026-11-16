@@ -5,7 +5,7 @@ from .elements import Person, PersonRepository
 
 class TestAggregatePersistenceWithMemoryProvider:
     def test_retrieval_from_provider_connection(self, test_domain):
-        conn = test_domain.providers["default"].get_connection()
+        conn = test_domain.databases["default"].get_connection()
         assert conn is not None
 
         conn._db["data"]["foo"] = "bar"

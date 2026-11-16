@@ -25,28 +25,28 @@ class TestAggregateAndEntityDefaultProvider:
     def test_default_provider_is_none(self, test_domain):
         test_domain.init(traverse=False)
 
-        assert Department.meta_.provider == "default"
-        assert Dean.meta_.provider == "default"
+        assert Department.meta_.database == "default"
+        assert Dean.meta_.database == "default"
 
 
 class TestWhenEntityHasSameProviderAsAggregate:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(Department, provider="primary")
-        test_domain.register(Dean, part_of=Department, provider="primary")
+        test_domain.register(Department, database="primary")
+        test_domain.register(Dean, part_of=Department, database="primary")
 
     def test_entity_provider_is_same_as_aggregate_provider(self, test_domain):
         test_domain.init(traverse=False)
 
-        assert Department.meta_.provider == "primary"
-        assert Dean.meta_.provider == "primary"
+        assert Department.meta_.database == "primary"
+        assert Dean.meta_.database == "primary"
 
 
 class TestWhenEntityDoesNotHaveSameProviderAsAggregate:
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
-        test_domain.register(Department, provider="primary")
-        test_domain.register(Dean, part_of=Department, provider="secondary")
+        test_domain.register(Department, database="primary")
+        test_domain.register(Dean, part_of=Department, database="secondary")
 
     def test_entity_provider_is_same_as_aggregate_provider(self, test_domain):
         with pytest.raises(IncorrectUsageError) as exc:

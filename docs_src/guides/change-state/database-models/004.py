@@ -33,13 +33,13 @@ class CustomerSearchModel(BaseDatabaseModel):
 domain.register(
     CustomerWriteModel,
     part_of=Customer,
-    database="postgresql",
+    database_type="postgresql",
     schema_name="customers",
 )
 domain.register(
     CustomerSearchModel,
     part_of=Customer,
-    database="elasticsearch",
+    database_type="elasticsearch",
     schema_name="customer_index",
 )
 # --8<-- [end:multi_database]

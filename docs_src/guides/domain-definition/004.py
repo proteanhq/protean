@@ -15,7 +15,7 @@ domain.config["databases"] = {
 }
 
 
-@domain.aggregate(provider="archive")
+@domain.aggregate(database="archive")
 class User:
     name: String(max_length=30)
     email: String(required=True)

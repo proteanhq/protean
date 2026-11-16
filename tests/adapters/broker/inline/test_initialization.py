@@ -24,7 +24,7 @@ def test_that_inline_is_the_configured_broker(test_domain):
     assert "default" in test_domain.brokers
     broker = test_domain.brokers["default"]._adapter
     assert isinstance(broker, InlineBroker)
-    assert broker.__broker__ == "inline"
+    assert broker.broker_type == "inline"
 
 
 def test_broker_configuration_parameters(test_domain):

@@ -1,6 +1,6 @@
 """Tests read database adapter members only through ``provider_adapter``.
 
-``domain.providers[name]`` is moving from the adapter itself to a provider
+``domain.databases[name]`` is moving from the adapter itself to a provider
 service that keeps the adapter behind it. The service has a short list of
 members. A test that reads or assigns anything else on the provider (``_engine``,
 ``_metadata``, ``dao_for`` and the like) needs the adapter, so it takes it from
@@ -8,14 +8,14 @@ members. A test that reads or assigns anything else on the provider (``_engine``
 the container changes.
 
 A line-oriented grep cannot check this, because most tests bind the provider to a
-name first (``provider = test_domain.providers["default"]``) and read members off
+name first (``provider = test_domain.databases["default"]``) and read members off
 the name. This guard parses every module under ``tests/`` and follows a provider
 bound to a name by assignment (tuple unpacking and aliases included), walrus,
 ``with ... as`` or a loop over ``.values()``/``.items()``, into the functions and
 lambdas nested in that scope, and from a fixture into the tests and fixtures that
 take it. A provider handed to a call is flagged too, because the callee may read an
 adapter member the guard cannot see. It does not follow an alias of the container
-itself (``providers = domain.providers``).
+itself (``databases = domain.databases``).
 """
 
 from __future__ import annotations
@@ -58,11 +58,11 @@ _SAFE_CALLEES = frozenset({"isinstance", "type", "id", "provider_adapter"})
 
 
 def _is_container(node: ast.AST) -> bool:
-    return isinstance(node, ast.Attribute) and node.attr == "providers"
+    return isinstance(node, ast.Attribute) and node.attr == "databases"
 
 
 def is_provider_expr(node: ast.AST | None) -> bool:
-    """``<expr>.providers[...]`` or ``<expr>.providers.get(...)``."""
+    """``<expr>.databases[...]`` or ``<expr>.databases.get(...)``."""
     if isinstance(node, ast.Subscript):
         return _is_container(node.value)
     if isinstance(node, ast.Call):
@@ -76,7 +76,7 @@ def is_provider_expr(node: ast.AST | None) -> bool:
 
 
 def _is_container_call(node: ast.AST, method: str) -> bool:
-    """``<expr>.providers.<method>()``."""
+    """``<expr>.databases.<method>()``."""
     return (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
@@ -374,63 +374,63 @@ def _members(source: str) -> list[str]:
 @pytest.mark.parametrize(
     "source, member",
     [
-        ('def test(d):\n    d.providers["default"]._engine\n', "_engine"),
-        ('def test(d):\n    d.providers.get("default").dao_for(X)\n', "dao_for"),
+        ('def test(d):\n    d.databases["default"]._engine\n', "_engine"),
+        ('def test(d):\n    d.databases.get("default").dao_for(X)\n', "dao_for"),
         (
-            'def test(d):\n    p = d.providers["default"]\n    p._metadata\n',
+            'def test(d):\n    p = d.databases["default"]\n    p._metadata\n',
             "_metadata",
         ),
-        ('def test(d):\n    p: Any = d.providers["x"]\n    p.collation\n', "collation"),
-        ('def test(d):\n    (p := d.providers["x"])._databases\n', "_databases"),
+        ('def test(d):\n    p: Any = d.databases["x"]\n    p.collation\n', "collation"),
+        ('def test(d):\n    (p := d.databases["x"])._databases\n', "_databases"),
         (
-            "def test(d):\n    for p in d.providers.values():\n        p.close()\n",
+            "def test(d):\n    for p in d.databases.values():\n        p.close()\n",
             "close",
         ),
         (
-            "def test(d):\n    for n, p in d.providers.items():\n        p.is_alive = 1\n",
+            "def test(d):\n    for n, p in d.databases.items():\n        p.is_alive = 1\n",
             "is_alive",
         ),
         (
-            "def test(d):\n    [p._engine for p in d.providers.values()]\n",
+            "def test(d):\n    [p._engine for p in d.databases.values()]\n",
             "_engine",
         ),
-        ('def test(d):\n    d.providers["default"]._engine = None\n', "_engine"),
+        ('def test(d):\n    d.databases["default"]._engine = None\n', "_engine"),
         (
-            'def test(d):\n    getattr(d.providers["default"], "_engine", None)\n',
-            "_engine",
-        ),
-        (
-            'def test(d, mp):\n    p = d.providers["x"]\n    mp.setattr(p, "_engine", 1)\n',
+            'def test(d):\n    getattr(d.databases["default"], "_engine", None)\n',
             "_engine",
         ),
         (
-            'def test(d):\n    p = d.providers["x"]\n    patch.object(p, "model_for")\n',
+            'def test(d, mp):\n    p = d.databases["x"]\n    mp.setattr(p, "_engine", 1)\n',
+            "_engine",
+        ),
+        (
+            'def test(d):\n    p = d.databases["x"]\n    patch.object(p, "model_for")\n',
             "model_for",
         ),
-        ('lambda d: d.providers["default"].dao_for(X)\n', "dao_for"),
-        ('p = d.providers["default"]\np._engine\n', "_engine"),
-        ('setattr(d.providers["x"], "_engine", 1)\n', "_engine"),
-        ('delattr(d.providers["x"], "_engine")\n', "_engine"),
-        ('hasattr(d.providers["x"], "_engine")\n', "_engine"),
-        ('mp.delattr(d.providers["x"], "_engine")\n', "_engine"),
-        ('with d.providers["x"] as p:\n    p._engine\n', "_engine"),
-        ('a, p = 1, d.providers["x"]\np._engine\n', "_engine"),
-        ('p = d.providers["x"]\nq = p\nq._engine\n', "_engine"),
+        ('lambda d: d.databases["default"].dao_for(X)\n', "dao_for"),
+        ('p = d.databases["default"]\np._engine\n', "_engine"),
+        ('setattr(d.databases["x"], "_engine", 1)\n', "_engine"),
+        ('delattr(d.databases["x"], "_engine")\n', "_engine"),
+        ('hasattr(d.databases["x"], "_engine")\n', "_engine"),
+        ('mp.delattr(d.databases["x"], "_engine")\n', "_engine"),
+        ('with d.databases["x"] as p:\n    p._engine\n', "_engine"),
+        ('a, p = 1, d.databases["x"]\np._engine\n', "_engine"),
+        ('p = d.databases["x"]\nq = p\nq._engine\n', "_engine"),
         # A closure reads the provider its enclosing function bound.
         (
-            'def test(d):\n    p = d.providers["x"]\n    def f():\n        p._engine\n',
+            'def test(d):\n    p = d.databases["x"]\n    def f():\n        p._engine\n',
             "_engine",
         ),
         (
-            'def test(d):\n    p = d.providers["x"]\n    f = lambda: p._engine\n',
+            'def test(d):\n    p = d.databases["x"]\n    f = lambda: p._engine\n',
             "_engine",
         ),
-        ('p = d.providers["x"]\ndef test():\n    p._engine\n', "_engine"),
+        ('p = d.databases["x"]\ndef test():\n    p._engine\n', "_engine"),
         # A callee the guard cannot see into may read an adapter member.
-        ('p = d.providers["x"]\ncolumn_type(p, "t")\n', "passed to column_type"),
-        ('helper(provider=d.providers["x"])\n', "passed to helper"),
-        ('self.check(d.providers["x"])\n', "passed to check"),
-        ('(lambda p: p)(d.providers["x"])\n', "passed to <call>"),
+        ('p = d.databases["x"]\ncolumn_type(p, "t")\n', "passed to column_type"),
+        ('helper(provider=d.databases["x"])\n', "passed to helper"),
+        ('self.check(d.databases["x"])\n', "passed to check"),
+        ('(lambda p: p)(d.databases["x"])\n', "passed to <call>"),
     ],
 )
 def test_guard_flags_adapter_member(source, member):
@@ -440,26 +440,26 @@ def test_guard_flags_adapter_member(source, member):
 @pytest.mark.parametrize(
     "source",
     [
-        'def test(d):\n    d.providers["default"].ping()\n',
-        'def test(d):\n    d.providers["default"]._adapter._engine\n',
-        'def test(d):\n    p = d.providers["default"]\n    p.health(); p.managed; p.owns\n',
-        "def test(d):\n    for p in d.providers.values():\n        p.ping = None\n",
-        'def test(d):\n    getattr(d.providers["default"], "capabilities")\n',
-        'def test():\n    registry.providers.get("sqlite")(n, d, c).dao_for\n',
-        "def test(d):\n    d.providers._providers.items()\n",
+        'def test(d):\n    d.databases["default"].ping()\n',
+        'def test(d):\n    d.databases["default"]._adapter._engine\n',
+        'def test(d):\n    p = d.databases["default"]\n    p.health(); p.managed; p.owns\n',
+        "def test(d):\n    for p in d.databases.values():\n        p.ping = None\n",
+        'def test(d):\n    getattr(d.databases["default"], "capabilities")\n',
+        'def test():\n    registry.databases.get("sqlite")(n, d, c).dao_for\n',
+        "def test(d):\n    d.databases._databases.items()\n",
         'def test(d):\n    provider_adapter(d, "default")._engine\n',
-        "def test(d):\n    for name in d.providers.keys():\n        name.upper()\n",
+        "def test(d):\n    for name in d.databases.keys():\n        name.upper()\n",
         # The name is bound in one function and read in another.
-        'def a(d):\n    p = d.providers["x"]\n\ndef b(p):\n    p._engine\n',
+        'def a(d):\n    p = d.databases["x"]\n\ndef b(p):\n    p._engine\n',
         # A nested function that binds the name itself hides the outer provider.
-        'def a(d):\n    p = d.providers["x"]\n    def b(p):\n        p._engine\n',
-        'def a(d):\n    p = d.providers["x"]\n    def b():\n        p = o\n        p._engine\n',
-        'isinstance(d.providers["x"], X); type(d.providers["x"]); id(d.providers["x"])\n',
-        'p = d.providers["x"]\nprovider_adapter(d, "x")._engine; isinstance(p, X)\n',
-        'getattr(d.providers["x"], member)\n',
-        'getattr(d.providers["x"])\n',
-        "for a, b, c in d.providers.items():\n    c._engine\n",
-        'a, p = d.providers["x"], 1, 2\np._engine\n',
+        'def a(d):\n    p = d.databases["x"]\n    def b(p):\n        p._engine\n',
+        'def a(d):\n    p = d.databases["x"]\n    def b():\n        p = o\n        p._engine\n',
+        'isinstance(d.databases["x"], X); type(d.databases["x"]); id(d.databases["x"])\n',
+        'p = d.databases["x"]\nprovider_adapter(d, "x")._engine; isinstance(p, X)\n',
+        'getattr(d.databases["x"], member)\n',
+        'getattr(d.databases["x"])\n',
+        "for a, b, c in d.databases.items():\n    c._engine\n",
+        'a, p = d.databases["x"], 1, 2\np._engine\n',
     ],
 )
 def test_guard_passes_allowed_access(source):
@@ -467,15 +467,15 @@ def test_guard_passes_allowed_access(source):
 
 
 def test_guard_reports_path_line_and_member():
-    source = 'def test(d):\n    p = d.providers["default"]\n\n    p._engine\n'
+    source = 'def test(d):\n    p = d.databases["default"]\n\n    p._engine\n'
 
     assert _check(source) == ["tests/example_test.py:4: _engine"]
 
 
 def test_guard_sorts_violations_and_reports_each_once():
     modules = {
-        Path("tests/b.py"): 'p = d.providers["x"]\np._metadata\np._engine; p._engine\n',
-        Path("tests/a.py"): 'd.providers["x"].close()\n',
+        Path("tests/b.py"): 'p = d.databases["x"]\np._metadata\np._engine; p._engine\n',
+        Path("tests/a.py"): 'd.databases["x"].close()\n',
     }
 
     assert find_violations(modules) == [
@@ -490,7 +490,7 @@ import pytest
 
 @pytest.fixture
 def provider(test_domain):
-    return test_domain.providers["default"]
+    return test_domain.databases["default"]
 """
 
 
@@ -513,36 +513,36 @@ def test_guard_follows_a_fixture_into_the_tests_that_take_it():
     "fixture, test",
     [
         (
-            '@fixture\ndef provider(d):\n    return d.providers["x"]\n',
+            '@fixture\ndef provider(d):\n    return d.databases["x"]\n',
             "def test_a(provider):\n    provider._engine\n",
         ),
         (
-            '@pytest.fixture(scope="module")\ndef provider(d):\n    return d.providers["x"]\n',
+            '@pytest.fixture(scope="module")\ndef provider(d):\n    return d.databases["x"]\n',
             "def test_a(provider):\n    provider._engine\n",
         ),
         (
-            '@pytest.fixture\ndef provider(d):\n    yield d.providers["x"]\n',
+            '@pytest.fixture\ndef provider(d):\n    yield d.databases["x"]\n',
             "def test_a(provider):\n    provider._engine\n",
         ),
         (
-            '@pytest.fixture\ndef provider(d):\n    p = d.providers["x"]\n    yield p\n',
+            '@pytest.fixture\ndef provider(d):\n    p = d.databases["x"]\n    yield p\n',
             "def test_a(provider):\n    provider._engine\n",
         ),
         (
-            '@pytest.fixture\ndef provider(d):\n    p = d.providers["x"]\n    return p\n',
+            '@pytest.fixture\ndef provider(d):\n    p = d.databases["x"]\n    return p\n',
             "def test_a(*, provider):\n    provider._engine\n",
         ),
         (
-            '@pytest.fixture\ndef provider(d):\n    return d.providers["x"]\n',
+            '@pytest.fixture\ndef provider(d):\n    return d.databases["x"]\n',
             "def test_a(provider, /):\n    provider._engine\n",
         ),
         (
-            '@pytest.fixture(name="pv")\ndef _pv(d):\n    return d.providers["x"]\n',
+            '@pytest.fixture(name="pv")\ndef _pv(d):\n    return d.databases["x"]\n',
             "def test_a(pv):\n    pv._engine\n",
         ),
         # One fixture takes another and reads the adapter off it.
         (
-            '@pytest.fixture\ndef provider(d):\n    return d.providers["x"]\n',
+            '@pytest.fixture\ndef provider(d):\n    return d.databases["x"]\n',
             "@pytest.fixture\ndef engine(provider): return provider._engine\n",
         ),
     ],
@@ -560,8 +560,8 @@ def test_guard_follows_each_fixture_form(fixture, test):
     "fixture",
     [
         # Not a fixture, so a test parameter of that name is something else.
-        'def provider(d):\n    return d.providers["x"]\n',
-        '@other\ndef provider(d):\n    return d.providers["x"]\n',
+        'def provider(d):\n    return d.databases["x"]\n',
+        '@other\ndef provider(d):\n    return d.databases["x"]\n',
         "@pytest.fixture\ndef provider(d):\n    return d\n",
         "@pytest.fixture\ndef provider(d):\n    yield\n",
     ],

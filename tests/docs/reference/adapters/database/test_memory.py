@@ -4,8 +4,8 @@ import tomllib
 
 import pytest
 
-from protean.adapters.repository.memory import MemoryProvider
-from protean.adapters.repository.sqlalchemy import PostgresqlProvider
+from protean.adapters.database.memory import MemoryDatabase
+from protean.adapters.database.sqlalchemy import PostgresqlDatabase
 from protean.exceptions import ConfigurationError
 from tests.docs.support import DOCS, DOCS_SRC, domain_from_config, load_example
 from tests.shared import POSTGRES_PORT, POSTGRES_URI, provider_adapter
@@ -45,7 +45,7 @@ def test_configuration_shown_builds_a_memory_provider(path, tmp_path):
     domain = domain_from_config(path, tmp_path)
     domain.init(traverse=False)
 
-    assert type(domain.providers["default"]) is MemoryProvider
+    assert type(domain.databases["default"]) is MemoryDatabase
 
 
 @pytest.mark.parametrize(
@@ -74,7 +74,7 @@ def test_production_configuration_builds_a_postgresql_provider(tmp_path, monkeyp
     domain.init(traverse=False)
 
     provider = provider_adapter(domain, "default")
-    assert type(provider) is PostgresqlProvider
+    assert type(provider) is PostgresqlDatabase
     url = provider._engine.url
     assert (url.host, url.port, url.database) == (
         "localhost",

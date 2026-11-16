@@ -55,7 +55,7 @@
             "module": "pytest",
             "justMyCode": false,
             "args": [
-                "tests/adapters/repository/sqlalchemy_repo/sqlite/test_provider.py::TestProviders::test_provider_raw",
+                "tests/adapters/database/sqlalchemy_repo/sqlite/test_provider.py::TestProviders::test_provider_raw",
                 "--sqlite"
             ]
         },
@@ -97,7 +97,7 @@
             "module": "pytest",
             "justMyCode": false,
             "args": [
-                "tests/adapters/repository/test_generic.py::TestConcurrency::test_expected_version_error_on_version_mismatch",
+                "tests/adapters/database/test_generic.py::TestConcurrency::test_expected_version_error_on_version_mismatch",
                 "--db=ELASTICSEARCH"
             ]
         },
@@ -138,7 +138,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/adapters/repository/test_dao.py::TestDAORetrievalFunctionality::test_comparisons_using_different_operators",
+                "tests/adapters/database/test_dao.py::TestDAORetrievalFunctionality::test_comparisons_using_different_operators",
                 "-m",
                 "database",
                 "--db=MSSQL",
@@ -151,7 +151,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/adapters/repository/test_dao.py::TestDAORetrievalFunctionality::test_filtering_of_database_records",
+                "tests/adapters/database/test_dao.py::TestDAORetrievalFunctionality::test_filtering_of_database_records",
                 "-m",
                 "database",
                 "--db=ELASTICSEARCH",
@@ -164,7 +164,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-                "tests/adapters/repository/test_generic.py::TestPersistenceViaRepository::test_that_aggregate_can_be_persisted_with_repository",
+                "tests/adapters/database/test_generic.py::TestPersistenceViaRepository::test_that_aggregate_can_be_persisted_with_repository",
                 "--db=elasticsearch",
                 "-sv"
             ]

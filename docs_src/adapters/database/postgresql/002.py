@@ -25,7 +25,7 @@ domain.init(traverse=False)
 
 # --8<-- [start:raw]
 def users_older_than(age):
-    return domain.providers["default"].raw(
+    return domain.databases["default"].raw(
         "SELECT * FROM users WHERE age > :age", {"age": age}
     )
 

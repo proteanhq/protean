@@ -1,0 +1,177 @@
+from protean.adapters.database.sqlalchemy import PostgresqlDatabase, SqliteDatabase
+from tests.shared import POSTGRES_URI
+
+
+class TestAdditionalEngineArgs:
+    """Test suite for SADatabase._additional_engine_args method"""
+
+    def test_basic_extraction_of_arguments(self, test_domain):
+        provider = PostgresqlDatabase(
+            name="test_provider",
+            domain=test_domain,
+            config={
+                "provider": "postgresql",
+                "database_uri": POSTGRES_URI,
+                "echo": True,
+                "pool_size": 10,
+                "pool_recycle": 1800,
+            },
+        )
+
+        result = provider._additional_engine_args()
+
+        assert "echo" in result
+        assert result["echo"] is True
+        assert "pool_size" in result
+        assert result["pool_size"] == 10
+        assert "pool_recycle" in result
+        assert result["pool_recycle"] == 1800
+
+    def test_sqlite_strips_incompatible_pool_args(self, test_domain):
+        """SQLite uses SingletonThreadPool which does not support pool configuration."""
+        provider = SqliteDatabase(
+            name="test_provider",
+            domain=test_domain,
+            config={
+                "provider": "sqlite",
+                "database_uri": "sqlite:///:memory:",
+                "echo": True,
+                "pool_size": 10,
+                "max_overflow": 5,
+                "pool_recycle": 1800,
+            },
+        )
+
+        result = provider._additional_engine_args()
+
+        assert "echo" in result
+        assert result["echo"] is True
+        # pool_size, max_overflow, and pool_recycle should be stripped for SQLite
+        assert "pool_size" not in result
+        assert "max_overflow" not in result
+        assert "pool_recycle" not in result
+
+    def test_excluded_keys_are_not_included(self, test_domain):
+        provider = PostgresqlDatabase(
+            name="test_provider",
+            domain=test_domain,
+            config={
+                "provider": "postgresql",
+                "database_uri": POSTGRES_URI,
+                "schema": "test_schema",
+                "echo": True,
+            },
+        )
+
+        result = provider._additional_engine_args()
+
+        assert "provider" not in result
+        assert "database_uri" not in result
+        assert "schema" not in result
+        assert "echo" in result
+
+    def test_database_specific_args_are_included(self, test_domain):
+        provider = PostgresqlDatabase(
+            name="test_provider",
+            domain=test_domain,
+            config={
+                "provider": "postgresql",
+                "database_uri": POSTGRES_URI,
+                "echo": True,
+            },
+        )
+
+        result = provider._additional_engine_args()
+
+        assert "echo" in result
+        assert result["echo"] is True
+        # ADR-0027: the PostgreSQL provider no longer defaults to AUTOCOMMIT
+        # (the Unit of Work is a real transaction at read-committed isolation).
+        assert "isolation_level" not in result
+
+    def test_database_specific_args_override_config_args(self, test_domain):
+        """Test that args in config override default database-specific args with the same key"""
+        provider = PostgresqlDatabase(
+            name="test_provider",
+            domain=test_domain,
+            config={
+                "provider": "postgresql",
+                "database_uri": POSTGRES_URI,
+                "isolation_level": "SERIALIZABLE",
+                "echo": True,
+            },
+        )
+
+        result = provider._additional_engine_args()
+
+        assert "isolation_level" in result
+        assert result["isolation_level"] == "SERIALIZABLE"  # Overridden value
+
+    def test_minimal_config(self, test_domain):
+        provider = SqliteDatabase(
+            name="test_provider",
+            domain=test_domain,
+            config={
+                "provider": "sqlalchemy",
+                "database_uri": "sqlite:///:memory:",
+            },
+        )
+
+        result = provider._additional_engine_args()
+
+        assert result == {}
+
+    def test_integration_with_postgresql_provider(self, test_domain):
+        provider = PostgresqlDatabase(
+            name="test_provider",
+            domain=test_domain,
+            config={
+                "provider": "sqlalchemy",
+                "database_uri": "postgresql://user:pass@localhost/testdb",
+                "echo": True,
+            },
+        )
+
+        result = provider._additional_engine_args()
+
+        assert "echo" in result
+        assert result["echo"] is True
+        # ADR-0027: the PostgreSQL provider no longer defaults to AUTOCOMMIT
+        # (the Unit of Work is a real transaction at read-committed isolation).
+        assert "isolation_level" not in result
+
+    def test_integration_with_sqlite_provider(self, test_domain):
+        provider = SqliteDatabase(
+            name="test_provider",
+            domain=test_domain,
+            config={
+                "provider": "sqlalchemy",
+                "database_uri": "sqlite:///:memory:",
+                "echo": True,
+            },
+        )
+
+        result = provider._additional_engine_args()
+
+        assert "echo" in result
+        assert result["echo"] is True
+        assert "isolation_level" not in result
+
+    def test_managed_key_excluded_from_engine_args(self, test_domain):
+        """The ``managed`` key is a framework concern, not a SQLAlchemy engine arg."""
+        provider = PostgresqlDatabase(
+            name="test_provider",
+            domain=test_domain,
+            config={
+                "provider": "postgresql",
+                "database_uri": POSTGRES_URI,
+                "managed": False,
+                "echo": True,
+            },
+        )
+
+        result = provider._additional_engine_args()
+
+        assert "managed" not in result
+        assert "echo" in result
+        assert result["echo"] is True

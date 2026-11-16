@@ -1,6 +1,6 @@
 import pytest
 
-from protean.adapters.repository.sqlalchemy import Any, Contains, In, Overlap
+from protean.adapters.database.sqlalchemy import Any, Contains, In, Overlap
 from protean.core.aggregate import BaseAggregate
 from protean.fields import List, String
 

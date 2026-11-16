@@ -11,8 +11,8 @@ pytestmark = pytest.mark.no_test_domain
 def test_init_connects_the_default_provider():
     example = load_example("guides/compose-a-domain/initialize-domain/001.py")
 
-    assert "default" in example.domain.providers
-    assert example.domain.providers["default"].config["provider"] == "memory"
+    assert "default" in example.domain.databases
+    assert example.domain.databases["default"].config["provider"] == "memory"
     assert example.domain.registry.elements == {"aggregates": [example.User]}
 
 
@@ -43,7 +43,7 @@ def test_sqlite_database_becomes_the_default_provider(tmp_path, monkeypatch):
 
     example = load_example("guides/compose-a-domain/017.py")
 
-    provider = example.domain.providers["default"]
+    provider = example.domain.databases["default"]
     assert provider.config["provider"] == "sqlite"
     assert provider.config["database_uri"] == "sqlite:///test.db"
 

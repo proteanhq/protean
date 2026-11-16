@@ -748,7 +748,7 @@ class TestOutboxStatus:
         domain.config["databases"]["ledger"] = {"provider": "memory"}
         domain._initialize()
         _register_order(domain)
-        domain.register(Account, provider="ledger")
+        domain.register(Account, database="ledger")
         domain.init(traverse=False)
 
         names = [s.name for s in collect_subscription_statuses(domain)]

@@ -56,7 +56,7 @@ _HAS_PROJECTIONS = {ch06, ch08, ch15, ch18, ch20, ch22}
 # ---------------------------------------------------------------------------
 def _cleanup(domain) -> None:
     """Reset all stores and close connections after a test."""
-    for provider_name in domain.providers:
+    for provider_name in domain.databases:
         provider = provider_adapter(domain, provider_name)
         try:
             provider.clear()

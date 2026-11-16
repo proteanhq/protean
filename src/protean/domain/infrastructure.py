@@ -59,8 +59,8 @@ class InfrastructureManager:
         domain = self._domain
 
         if not (
-            hasattr(domain.providers, "_providers")
-            and domain.providers._providers is not None
+            hasattr(domain.databases, "_databases")
+            and domain.databases._databases is not None
         ):
             logger.debug(
                 "No providers configured during domain initialization. "
@@ -69,7 +69,7 @@ class InfrastructureManager:
             )
             return
 
-        for provider_name, provider in domain.providers._providers.items():
+        for provider_name, provider in domain.databases._databases.items():
             if not provider.managed:
                 continue
             try:
@@ -81,7 +81,7 @@ class InfrastructureManager:
                     internal=True,
                     auto_generated=True,
                     schema_name=schema_name,
-                    provider=provider_name,
+                    database=provider_name,
                     indexes=indexes,
                 )
 
@@ -94,7 +94,7 @@ class InfrastructureManager:
                     auto_generated=True,
                     part_of=new_cls,
                 )
-                domain.providers._register_repository(new_cls, new_repo_cls)
+                domain.databases._register_repository(new_cls, new_repo_cls)
 
                 target[provider_name] = domain.repository_for(new_cls)
             # re-raised as ConfigurationError naming the provider
@@ -153,9 +153,9 @@ class InfrastructureManager:
 
         Delegates to each managed provider's ``create_schema()``
         which is idempotent — existing tables are left untouched.
-        Providers with ``managed = false`` are skipped.
+        Databases with ``managed = false`` are skipped.
         """
-        for provider in self._domain.providers.values():
+        for provider in self._domain.databases.values():
             if not provider.managed:
                 continue
             provider.create_schema()
@@ -174,7 +174,7 @@ class InfrastructureManager:
                 "'server.default_subscription_type = \"stream\"' "
                 "in your domain configuration."
             )
-        for provider in self._domain.providers.values():
+        for provider in self._domain.databases.values():
             if not provider.managed:
                 continue
             provider.create_schema()  # Idempotent
@@ -183,7 +183,7 @@ class InfrastructureManager:
         """Delete all rows from every table without dropping the tables.
 
         Clears aggregate/projection tables in all managed providers and the
-        event store messages table. Providers with ``managed = false`` are
+        event store messages table. Databases with ``managed = false`` are
         skipped.
         """
         domain = self._domain
@@ -191,7 +191,7 @@ class InfrastructureManager:
         # Ensure provider metadata is populated (idempotent)
         self.setup_database()
 
-        for provider in domain.providers.values():
+        for provider in domain.databases.values():
             if not provider.managed:
                 continue
             provider.clear()
@@ -201,9 +201,9 @@ class InfrastructureManager:
     def drop_database(self) -> None:
         """Drop all database tables for managed providers.
 
-        Providers with ``managed = false`` are skipped.
+        Databases with ``managed = false`` are skipped.
         """
-        for provider in self._domain.providers.values():
+        for provider in self._domain.databases.values():
             if not provider.managed:
                 continue
             provider.drop_schema()

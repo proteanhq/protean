@@ -64,7 +64,7 @@ class ProductInventory:
 
 | Option | Default | Purpose |
 |--------|---------|---------|
-| `provider` | `"default"` | Database provider for storing projection data |
+| `database` | `"default"` | Database provider for storing projection data |
 | `cache` | `None` | Cache provider (e.g., `"redis"`); overrides `provider` when set |
 | `schema_name` | underscore class name | Custom table/schema name in the database |
 | `order_by` | `()` | Default ordering for query results |
@@ -98,7 +98,7 @@ Projections also accept `ValueObject` fields (`from protean.fields import ValueO
 
 ```python
 # fragment
-@domain.projection(provider="postgres", schema_name="product_inventory")
+@domain.projection(database="postgres", schema_name="product_inventory")
 class ProductInventory:
     product_id: Identifier(identifier=True, required=True)
     name: String(max_length=100, required=True)

@@ -57,7 +57,7 @@ class ReportRepository:
 
 # NOTE: Database-specific repositories are defined like this:
 #
-# @domain.repository(part_of=Report, database="postgresql")
+# @domain.repository(part_of=Report, database_type="postgresql")
 # class PostgresReportRepository:
 #     """PostgreSQL-specific repository for Report.
 #

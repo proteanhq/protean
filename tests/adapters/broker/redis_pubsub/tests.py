@@ -16,7 +16,7 @@ class TestRedisConnectionAndConfiguration:
         broker = test_domain.brokers["default"]
 
         assert isinstance(broker._adapter, RedisPubSubBroker)
-        assert broker._adapter.__broker__ == "redis_pubsub"
+        assert broker._adapter.broker_type == "redis_pubsub"
         expected_uri = test_domain.config["brokers"]["default"]["URI"]
         assert broker._adapter.config["URI"] == expected_uri
         assert isinstance(broker._adapter.redis_instance, redis.Redis)

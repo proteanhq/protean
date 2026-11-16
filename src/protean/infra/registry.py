@@ -6,7 +6,7 @@ An adapter package registers a name with a dotted class path, usually from a
 ==================  ========================  ==========================
 Instance            Entry-point group         Port type
 ==================  ========================  ==========================
-``providers``       ``protean.providers``     ``BaseProvider``
+``databases``       ``protean.databases``     ``BaseDatabase``
 ``brokers``         ``protean.brokers``       ``BrokerPort``
 ``event_stores``    ``protean.event_stores``  ``BaseEventStore``
 ``caches``          ``protean.caches``        ``CachePort``
@@ -25,8 +25,8 @@ if TYPE_CHECKING:
     # Runtime imports would cycle: the adapter modules import this one.
     from protean.port.broker import BrokerPort
     from protean.port.cache import CachePort
+    from protean.port.database import BaseDatabase
     from protean.port.event_store import BaseEventStore
-    from protean.port.provider import BaseProvider
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ class AdapterRegistry(Generic[PortT]):
                 is not an absolute ``module.ClassName`` path, importing the module raises ``ImportError``,
                 the module has no such class, the class leaves abstract
                 members unimplemented, or the ``after_load`` check rejects it,
-                as the providers registry does for a provider class that lacks
+                as the databases registry does for a provider class that lacks
                 a required lookup.
         """
         self._discover_plugins()
@@ -156,7 +156,7 @@ class AdapterRegistry(Generic[PortT]):
         self._paths.clear()
 
 
-def _check_required_lookups(name: str, provider_cls: type["BaseProvider"]) -> None:
+def _check_required_lookups(name: str, provider_cls: type["BaseDatabase"]) -> None:
     """Raise ``ConfigurationError`` naming the provider and every lookup in
     ``REQUIRED_LOOKUPS`` that ``provider_cls`` does not register, or registers
     as a class that does not subclass ``LookupPort``."""
@@ -181,8 +181,8 @@ def _check_required_lookups(name: str, provider_cls: type["BaseProvider"]) -> No
         )
 
 
-providers: AdapterRegistry["BaseProvider"] = AdapterRegistry(
-    "protean.providers", "database provider", after_load=_check_required_lookups
+databases: AdapterRegistry["BaseDatabase"] = AdapterRegistry(
+    "protean.databases", "database provider", after_load=_check_required_lookups
 )
 brokers: AdapterRegistry["BrokerPort"] = AdapterRegistry("protean.brokers", "broker")
 event_stores: AdapterRegistry["BaseEventStore"] = AdapterRegistry(

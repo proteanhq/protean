@@ -106,7 +106,7 @@ def test_event_store_append_precedes_relational_commit(test_domain, monkeypatch)
     the two then leaves the events durable (recoverable) rather than leaving the
     store missing an event whose state/outbox already committed.
     """
-    from protean.adapters.repository.memory import MemorySession
+    from protean.adapters.database.memory import MemorySession
     from protean.port.event_store import BaseEventStore
 
     order: list[str] = []

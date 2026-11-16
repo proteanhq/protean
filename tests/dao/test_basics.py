@@ -14,7 +14,7 @@ class TestDAO:
 
     def test_successful_initialization_of_dao(self, test_domain):
         test_domain.repository_for(Person)._dao.query.all()
-        provider = test_domain.providers["default"]
+        provider = test_domain.databases["default"]
         conn = provider.get_connection()
         assert isinstance(conn._db["data"], dict)
 

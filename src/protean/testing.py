@@ -1351,7 +1351,7 @@ def get_generic_test_dir() -> Path:
     <name>`` from a source checkout instead.
 
     Returns:
-        Path to the ``tests/adapters/repository/generic/`` directory.
+        Path to the ``tests/adapters/database/generic/`` directory.
 
     Raises:
         FileNotFoundError: If the generic test directory is not available
@@ -1368,9 +1368,9 @@ def get_generic_test_dir() -> Path:
     """
     warn_from_registry("get_generic_test_dir", "protean.testing.get_generic_test_dir()")
     # Relative to this file: src/protean/testing.py
-    # Tests live at: <repo>/tests/adapters/repository/generic/
+    # Tests live at: <repo>/tests/adapters/database/generic/
     candidate = Path(__file__).resolve().parent.parent.parent / (
-        "tests/adapters/repository/generic"
+        "tests/adapters/database/generic"
     )
     if candidate.is_dir():
         return candidate

@@ -227,7 +227,7 @@ class TestReadViewCount:
         query-shape primitives no engine to observe (so the assertions below
         would be vacuous no-ops).
         """
-        if type(test_domain.providers["default"]).__name__ == "MemoryProvider":
+        if type(test_domain.databases["default"]).__name__ == "MemoryDatabase":
             pytest.skip("query-shape assertions need a real SQLAlchemy engine")
 
         view = test_domain.view_for(PersonProjection)

@@ -39,7 +39,7 @@ class TestEntityMeta:
         # Persistence attributes
         assert hasattr(Person.meta_, "abstract")
         assert hasattr(Person.meta_, "schema_name")
-        assert hasattr(Person.meta_, "provider")
+        assert hasattr(Person.meta_, "database")
 
         # Domain attributes
         assert hasattr(Person.meta_, "part_of")

@@ -235,8 +235,8 @@ class TestValidateEntityProviders:
         class Dean(BaseEntity):
             name: String()
 
-        test_domain.register(Dept, provider="primary")
-        test_domain.register(Dean, part_of=Dept, provider="primary")
+        test_domain.register(Dept, database="primary")
+        test_domain.register(Dean, part_of=Dept, database="primary")
         test_domain.init(traverse=False)  # Should not raise
 
     def test_mismatched_providers_raises_error(self, test_domain):
@@ -247,8 +247,8 @@ class TestValidateEntityProviders:
         class Dean(BaseEntity):
             name: String()
 
-        test_domain.register(Dept, provider="primary")
-        test_domain.register(Dean, part_of=Dept, provider="secondary")
+        test_domain.register(Dept, database="primary")
+        test_domain.register(Dean, part_of=Dept, database="secondary")
 
         with pytest.raises(IncorrectUsageError, match="different provider"):
             test_domain.init(traverse=False)

@@ -14,7 +14,7 @@ def _domain():
 def clean_data():
     yield
     # Reset all adapter data after each test
-    for provider in domain.providers.values():
+    for provider in domain.databases.values():
         provider.clear()
     for broker in domain.brokers.values():
         broker.clear()

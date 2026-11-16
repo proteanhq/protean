@@ -15,7 +15,7 @@ domain.config["databases"]["elasticsearch"] = {
 # --8<-- [start:recreate_indexes]
 def recreate_indexes():
     with domain.domain_context():
-        provider = domain.providers["elasticsearch"]
+        provider = domain.databases["elasticsearch"]
         provider.drop_schema()
         provider.create_schema()
 
@@ -24,7 +24,7 @@ def recreate_indexes():
 
 
 # --8<-- [start:article]
-@domain.aggregate(provider="elasticsearch")
+@domain.aggregate(database="elasticsearch")
 class Article:
     title = String(required=True)
     category = String()

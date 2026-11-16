@@ -33,6 +33,6 @@ class ProductSearchModel(BaseDatabaseModel):
 domain.register(
     ProductSearchModel,
     part_of=Product,
-    database="elasticsearch",
+    database_type="elasticsearch",
 )
 # --8<-- [end:field_types]

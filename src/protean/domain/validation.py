@@ -281,8 +281,8 @@ class DomainValidator:
         registry = self._domain.registry
         for entity in registry._elements[DomainObjects.ENTITY.value].values():
             if (
-                entity.cls.meta_.aggregate_cluster.meta_.provider
-                != entity.cls.meta_.provider
+                entity.cls.meta_.aggregate_cluster.meta_.database
+                != entity.cls.meta_.database
             ):
                 raise IncorrectUsageError(
                     f"Entity `{entity.cls.__name__}` has a different provider "
@@ -488,7 +488,7 @@ class DomainValidator:
                     logger.warning(message)
 
     # Minimum pool_size before a warning is emitted.  Kept in sync with
-    # the defaults in PostgresqlProvider / MssqlProvider.
+    # the defaults in PostgresqlDatabase / MssqlDatabase.
     _MIN_PRODUCTION_POOL_SIZE = 5
 
     @staticmethod

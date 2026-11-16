@@ -30,7 +30,7 @@ def test_meta_holds_the_defaults_for_options_not_passed():
         "fact_events": False,
         "indexes": (),
         "is_event_sourced": False,
-        "provider": "default",
+        "database": "default",
         "schema_name": "user",
         "limit": 100,
         "suppress_checks": (),

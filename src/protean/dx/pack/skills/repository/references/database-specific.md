@@ -2,7 +2,7 @@
 
 ## Overview
 
-By default, a repository works with all databases (`database="ALL"`). A repository bound to one database type, such as `database="postgresql"`, is selected when the active provider is that type. Use one for database-specific features such as JSON operators or full-text search.
+By default, a repository works with all databases (`database_type="ALL"`). A repository bound to one database type, such as `database_type="postgresql"`, is selected when the active provider is that type. Use one for database-specific features such as JSON operators or full-text search.
 
 ## Code
 
@@ -25,8 +25,8 @@ class Report:
 
 When `domain.repository_for(Report)` is called:
 1. Protean checks the active provider's database type (e.g., `"postgresql"`)
-2. If a repository with `database="postgresql"` exists, it's used
-3. Otherwise, the `database="ALL"` repository is used
+2. If a repository with `database_type="postgresql"` exists, it's used
+3. Otherwise, the `database_type="ALL"` repository is used
 4. If no custom repository exists at all, a default is generated
 
 ### Multiple Repositories Per Aggregate
@@ -34,13 +34,13 @@ When `domain.repository_for(Report)` is called:
 One aggregate can have a generic and a database-specific repository:
 
 ```python
-@domain.repository(part_of=Report)  # database="ALL" (default)
+@domain.repository(part_of=Report)  # database_type="ALL" (default)
 class ReportRepository:
     """Generic repository: used for SQLite, in-memory, etc."""
     def find_by_type(self, report_type):
         return self.query.filter(report_type=report_type).all()
 
-@domain.repository(part_of=Report, database="postgresql")
+@domain.repository(part_of=Report, database_type="postgresql")
 class PostgresReportRepository:
     """PostgreSQL-specific: used when connected to PostgreSQL."""
     def find_by_type(self, report_type):
@@ -65,10 +65,10 @@ provider = "sqlite"
 database_uri = "sqlite:///analytics.db"
 ```
 
-The aggregate's `provider` option determines which database it connects to:
+The aggregate's `database` option determines which database it connects to:
 
 ```python
-@domain.aggregate(provider="analytics")
+@domain.aggregate(database="analytics")
 class AnalyticsReport:
     """Uses the 'analytics' SQLite database."""
     report_id: Identifier(identifier=True)

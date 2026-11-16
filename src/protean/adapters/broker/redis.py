@@ -215,7 +215,7 @@ class RedisBroker(BaseBroker, BrokerPort):
         - retry_on_timeout: Whether to retry on timeout (default: False)
     """
 
-    __broker__ = "redis"
+    broker_type = "redis"
 
     # Config keys that are forwarded to Redis connection pool
     _POOL_KEYS = frozenset(

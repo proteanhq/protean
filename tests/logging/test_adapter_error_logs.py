@@ -20,13 +20,13 @@ class TestSqlAlchemyCredentialRedaction:
         try:
             from sqlalchemy.exc import DatabaseError
 
-            from protean.adapters.repository.sqlalchemy import SAProvider
+            from protean.adapters.database.sqlalchemy import SADatabase
         except ImportError:
             pytest.skip("sqlalchemy not installed")
 
         # Build a mock that passes isinstance checks but has the attrs
         # ping() needs, so the test does not instantiate the abstract class.
-        provider = MagicMock(spec=SAProvider)
+        provider = MagicMock(spec=SADatabase)
         provider.config = {
             "database_uri": "postgresql://admin:s3cret@localhost:5432/mydb"
         }
@@ -37,7 +37,7 @@ class TestSqlAlchemyCredentialRedaction:
 
         # Call the real ping method with our mock as self
         with caplog.at_level(logging.ERROR):
-            result = SAProvider.ping(provider)
+            result = SADatabase.ping(provider)
 
         assert result is False
 
@@ -67,11 +67,11 @@ class TestSqlAlchemyCredentialRedaction:
         try:
             from sqlalchemy.exc import DatabaseError
 
-            from protean.adapters.repository.sqlalchemy import SAProvider
+            from protean.adapters.database.sqlalchemy import SADatabase
         except ImportError:
             pytest.skip("sqlalchemy not installed")
 
-        provider = MagicMock(spec=SAProvider)
+        provider = MagicMock(spec=SADatabase)
         provider.config = {"database_uri": "not-a-valid-uri"}
 
         mock_conn = MagicMock()
@@ -79,7 +79,7 @@ class TestSqlAlchemyCredentialRedaction:
         provider.get_connection = MagicMock(return_value=mock_conn)
 
         with caplog.at_level(logging.ERROR):
-            result = SAProvider.ping(provider)
+            result = SADatabase.ping(provider)
 
         assert result is False
 
@@ -99,11 +99,11 @@ class TestSqlAlchemyCredentialRedaction:
         try:
             from sqlalchemy.exc import DatabaseError
 
-            from protean.adapters.repository.sqlalchemy import SAProvider
+            from protean.adapters.database.sqlalchemy import SADatabase
         except ImportError:
             pytest.skip("sqlalchemy not installed")
 
-        provider = MagicMock(spec=SAProvider)
+        provider = MagicMock(spec=SADatabase)
         provider.config = {"database_uri": "postgresql://u:s3cret@host:abc/db"}
 
         mock_conn = MagicMock()
@@ -111,7 +111,7 @@ class TestSqlAlchemyCredentialRedaction:
         provider.get_connection = MagicMock(return_value=mock_conn)
 
         with caplog.at_level(logging.ERROR):
-            assert SAProvider.ping(provider) is False
+            assert SADatabase.ping(provider) is False
 
         records = [
             r
@@ -127,11 +127,11 @@ class TestSqlAlchemyCredentialRedaction:
         try:
             from sqlalchemy.exc import DatabaseError
 
-            from protean.adapters.repository.sqlalchemy import SAProvider
+            from protean.adapters.database.sqlalchemy import SADatabase
         except ImportError:
             pytest.skip("sqlalchemy not installed")
 
-        provider = MagicMock(spec=SAProvider)
+        provider = MagicMock(spec=SADatabase)
         provider.config = {}
 
         mock_conn = MagicMock()
@@ -139,4 +139,4 @@ class TestSqlAlchemyCredentialRedaction:
         provider.get_connection = MagicMock(return_value=mock_conn)
 
         with pytest.raises(KeyError, match="database_uri"):
-            SAProvider.ping(provider)
+            SADatabase.ping(provider)

@@ -9,7 +9,7 @@ These run against the in-memory adapter (core suite). The contract is:
 - ordering and limit are honoured.
 
 Adapter-specific fast paths (SQLAlchemy ``FOR UPDATE SKIP LOCKED``) are covered
-separately under ``tests/adapters/repository/``.
+separately under ``tests/adapters/database/``.
 """
 
 import threading

@@ -109,10 +109,10 @@ def _resolve_engine(engine: "Engine | None") -> "Engine | None":
         return engine
 
     try:
-        providers = current_domain.providers
+        providers = current_domain.databases
     except (RuntimeError, AttributeError):
         # No domain bound to the current context: the ``current_domain`` proxy
-        # resolves to ``None`` (``AttributeError`` on ``.providers``) or raises
+        # resolves to ``None`` (``AttributeError`` on ``.databases``) or raises
         # ``RuntimeError`` depending on the proxy implementation.
         return None
 

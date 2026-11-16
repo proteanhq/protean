@@ -84,7 +84,7 @@ class TestDomainClose:
                 side_effect=lambda: call_order.append("caches"),
             ),
             patch.object(
-                domain.providers,
+                domain.databases,
                 "close",
                 side_effect=lambda: call_order.append("providers"),
             ),
@@ -350,10 +350,10 @@ class TestProvidersReinitializeClosesExisting:
 
         mock_provider = MagicMock()
         mock_provider.ping.return_value = True
-        domain.providers._providers = {"default": mock_provider}
+        domain.databases._databases = {"default": mock_provider}
 
         # Re-initialize should close the old provider
-        domain.providers._initialize()
+        domain.databases._initialize()
 
         mock_provider.close.assert_called_once()
 
@@ -369,7 +369,7 @@ class TestRegistryCloseErrorIsolation:
             # through ``_close``; the provider registry holds the adapters.
             ("brokers", "_brokers", "broker", "_close"),
             ("caches", "_caches", "cache", "_close"),
-            ("providers", "_providers", "provider", "close"),
+            ("databases", "_databases", "provider", "close"),
         ],
     )
     def test_close_continues_on_error(self, caplog, registry, attribute, kind, close):

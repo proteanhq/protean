@@ -44,7 +44,7 @@ class Product:
 """
 
 SHOP_PRODUCT = """
-@domain.aggregate(provider="shop")
+@domain.aggregate(database="shop")
 class Product:
     name = String(max_length=50)
 """

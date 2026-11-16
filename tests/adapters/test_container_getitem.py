@@ -1,4 +1,4 @@
-"""Coverage for the Providers/Caches container ``__getitem__`` contract.
+"""Coverage for the Databases/Caches container ``__getitem__`` contract.
 
 Both containers must raise ``KeyError`` (not return ``None``) for a missing or
 uninitialised key, per the ``MutableMapping`` contract — the typing pass fixed
@@ -7,7 +7,7 @@ these to raise, so callers relying on ``.get()`` semantics stay correct.
 
 import pytest
 
-from protean.adapters.repository import Providers
+from protean.adapters.database import Databases
 from protean.infra.cache import Caches
 
 
@@ -18,6 +18,6 @@ def test_caches_getitem_raises_keyerror_when_uninitialized(test_domain):
 
 
 def test_providers_getitem_raises_keyerror_when_uninitialized(test_domain):
-    providers = Providers(test_domain)
+    providers = Databases(test_domain)
     with pytest.raises(KeyError):
         providers["default"]

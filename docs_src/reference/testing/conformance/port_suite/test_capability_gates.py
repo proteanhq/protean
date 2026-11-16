@@ -1,7 +1,7 @@
 # --8<-- [start:test]
 import pytest
 
-from protean.port.provider import DatabaseCapabilities
+from protean.port.database import DatabaseCapabilities
 
 
 def test_every_adapter_reports_its_capabilities(adapter):

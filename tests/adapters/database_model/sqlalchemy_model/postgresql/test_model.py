@@ -1,6 +1,6 @@
 import pytest
 
-from protean.adapters.repository.sqlalchemy import SqlalchemyModel
+from protean.adapters.database.sqlalchemy import SqlalchemyModel
 from tests.shared import provider_adapter
 
 from .elements import (

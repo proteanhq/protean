@@ -2,7 +2,7 @@
 
 Verifies that:
 - A provider without a connection pool reports ``health().pool`` as ``None``.
-- ``SAProvider.health()`` reads live pool counters from the engine.
+- ``SADatabase.health()`` reads live pool counters from the engine.
 - Observable gauges for DB pool metrics produce correct measurements.
 - Observable gauges for broker pool metrics produce correct measurements.
 - Backpressure gauges (outbox, subscription lag/pending) use the correct
@@ -25,7 +25,7 @@ from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.domain import Domain
 from protean.fields import Identifier, String
-from protean.port.provider import ProviderHealth
+from protean.port.database import DatabaseHealth
 from protean.server.observatory.metrics import (
     _collect_broker_pool_stats,
     _collect_pool_stats,
@@ -205,7 +205,7 @@ def _outbox_domain(rows: dict[str, int]) -> Domain:
 
 
 # ---------------------------------------------------------------------------
-# MemoryProvider.health() tests
+# MemoryDatabase.health() tests
 # ---------------------------------------------------------------------------
 
 
@@ -213,18 +213,18 @@ class TestMemoryProviderHealth:
     """The memory provider has no connection pool to report."""
 
     def test_memory_provider_reports_no_pool(self, test_domain):
-        provider = test_domain.providers["default"]
+        provider = test_domain.databases["default"]
 
         assert provider.health().pool is None
 
 
 # ---------------------------------------------------------------------------
-# SAProvider.health() tests
+# SADatabase.health() tests
 # ---------------------------------------------------------------------------
 
 
 class TestSAProviderHealth:
-    """SAProvider.health() reads pool counters from the SQLAlchemy engine."""
+    """SADatabase.health() reads pool counters from the SQLAlchemy engine."""
 
     def test_returns_pool_counters(self, sqlite_domain):
         """health().pool holds size, checked_out, overflow, checked_in."""
@@ -311,20 +311,20 @@ class TestCollectPoolStats:
         assert stats["checked_out"] == 0
 
     def test_skips_provider_without_a_pool(self, test_domain):
-        assert test_domain.providers["default"].health().pool is None
+        assert test_domain.databases["default"].health().pool is None
 
         assert _collect_pool_stats([test_domain]) == []
 
     def test_skips_provider_reporting_an_empty_pool(self, sqlite_domain, monkeypatch):
         with sqlite_domain.domain_context():
-            provider = sqlite_domain.providers["default"]
-        monkeypatch.setattr(provider, "health", lambda: ProviderHealth(pool={}))
+            provider = sqlite_domain.databases["default"]
+        monkeypatch.setattr(provider, "health", lambda: DatabaseHealth(pool={}))
 
         assert _collect_pool_stats([sqlite_domain]) == []
 
     def test_handles_domain_exception(self, sqlite_domain, monkeypatch):
         with sqlite_domain.domain_context():
-            provider = sqlite_domain.providers["default"]
+            provider = sqlite_domain.databases["default"]
 
         def _fail():
             raise RuntimeError("boom")
@@ -335,7 +335,7 @@ class TestCollectPoolStats:
 
     def test_handles_none_providers(self):
         domain = Domain(name="Uninitialized")
-        assert domain.providers._providers is None
+        assert domain.databases._databases is None
 
         assert _collect_pool_stats([domain]) == []
 
@@ -435,9 +435,9 @@ class TestDBPoolOTELGauges:
         self, sqlite_domain, monkeypatch
     ):
         with sqlite_domain.domain_context():
-            provider = sqlite_domain.providers["default"]
+            provider = sqlite_domain.databases["default"]
         monkeypatch.setattr(
-            provider, "health", lambda: ProviderHealth(pool={"size": 3})
+            provider, "health", lambda: DatabaseHealth(pool={"size": 3})
         )
         metric_reader = _init_telemetry_in_memory(sqlite_domain)
         _clean_gauges(sqlite_domain)

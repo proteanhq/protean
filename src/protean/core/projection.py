@@ -3,6 +3,7 @@
 import inspect
 import logging
 import threading
+from collections.abc import Mapping
 from typing import Any, ClassVar, Self, TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
@@ -55,8 +56,8 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
 
     | Option | Type | Description |
     |--------|------|-------------|
-    | ``provider`` | ``str`` | The persistence provider name (default: ``"default"``). |
-    | ``cache`` | ``str`` | Cache adapter name. When set, overrides ``provider``. |
+    | ``database`` | ``str`` | The ``[databases.*]`` entry that persists it (default: ``"default"``). |
+    | ``cache`` | ``str`` | Cache adapter name. When set, overrides ``database``. |
     | ``schema_name`` | ``str`` | The storage table/collection name. |
     | ``order_by`` | ``tuple`` | Default ordering for queries. |
     | ``limit`` | ``int`` | Default query result limit (default: ``100``). |
@@ -113,7 +114,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         ("externally_populated", False),
         ("indexes", ()),
         ("order_by", ()),
-        ("provider", "default"),
+        ("database", "default"),
         (
             "schema_name",
             DerivedDefault(lambda cls: inflection.underscore(cls.__name__)),
@@ -121,6 +122,8 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         ("limit", 100),
         ("suppress_checks", ()),
     ]
+
+    _renamed_options: ClassVar[Mapping[str, str]] = {"provider": "database"}
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -480,13 +483,13 @@ def projection_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[
         )
 
     # If the projection has neither database nor cache provider, raise an error
-    if not (projection_cls.meta_.provider or projection_cls.meta_.cache):
+    if not (projection_cls.meta_.database or projection_cls.meta_.cache):
         raise NotSupportedError(
             f"{projection_cls.__name__} projection needs to have either a database or a cache provider"
         )
 
     # A cache, when specified, overrides the provider
     if projection_cls.meta_.cache:
-        projection_cls.meta_.provider = None
+        projection_cls.meta_.database = None
 
     return element_cls
