@@ -138,17 +138,16 @@ supports `in`, so the helpers were a second way to write the same check.
 
 ### 6. Containers return services
 
-- `domain.event_store`, `domain.brokers[name]`, `domain.caches[name]` and
-  `domain.databases[name]` each return a service.
+- `domain.event_store` and `domain.caches[name]` return a service.
+  `domain.brokers[name]` and `domain.databases[name]` return the adapter until
+  the `Broker` and `Database` services are built, and then return the service.
 - Every service holds its adapter in the private attribute `_adapter`, typed
   with the Port.
-- The services are `EventStore`, `Broker`, `Cache`, `Database` and `DAO`.
+- The `EventStore` and `Cache` services exist. The `Broker`, `Database` and
+  `DAO` services are decided and not yet built.
 - A domain has one event store, so `domain.event_store` is the `EventStore`
   service. Brokers, caches and databases keep their containers: `Brokers`,
   `Caches` and `Databases`.
-- The `EventStore` and `Cache` services are built first. Until the `Broker`,
-  `Database` and `DAO` services are built, `domain.brokers[name]` and
-  `domain.databases[name]` return the adapter.
 
 Callers reach every framework feature through one object. Application code
 that needs the native client calls the service's `get_connection()`
