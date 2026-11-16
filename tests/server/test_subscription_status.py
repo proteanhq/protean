@@ -18,6 +18,7 @@ from uuid import uuid4
 import pytest
 import redis
 
+from protean.adapters.broker.redis import get_field_value
 from protean.cli.recover import _perform_resets, _verdict
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
@@ -1077,7 +1078,7 @@ class TestRedisStreamStatus:
         for n in range(4):
             self.broker.publish(self.stream, {"n": n})
         first_id, _ = self.broker.get_next(self.stream, self.group)
-        real = self.broker._get_field_value
+        real = get_field_value
         error = UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
 
         def fail_on_lag(info, field_name, *args, **kwargs):
@@ -1086,7 +1087,10 @@ class TestRedisStreamStatus:
             return real(info, field_name, *args, **kwargs)
 
         with (
-            patch.object(self.broker, "_get_field_value", side_effect=fail_on_lag),
+            patch(
+                "protean.adapters.broker.redis.get_field_value",
+                side_effect=fail_on_lag,
+            ),
             caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
         ):
             status = self._status()
