@@ -449,7 +449,7 @@ An architectural pattern (also known as Hexagonal Architecture) that isolates th
 
 ### Provider
 
-A database adapter that provides persistence functionality for a specific storage technology. Providers manage connections, execute queries, and map data. In Protean, providers can be assigned per aggregate using the `provider` meta option, allowing different aggregates to use different databases.
+A database adapter that provides persistence functionality for a specific storage technology. Providers manage connections, execute queries, and map data. In Protean, providers can be assigned per aggregate using the `database` meta option, allowing different aggregates to use different databases.
 
 [Learn more →](reference/configuration/index.md) | **See also**: [Adapter](#adapter), [Database Model](#database-model)
 

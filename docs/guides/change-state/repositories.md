@@ -149,8 +149,8 @@ For a comprehensive guide on querying, see
 ## Connecting to a specific database
 
 The `database_type` option ties a repository to one kind of database. Its value
-is a database type: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql` or
-`elasticsearch`. It is not the name of a configured provider. Protean returns
+is a database type: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql`,
+`elasticsearch`, or the `database_type` of a registered custom adapter. It is not the name of a configured provider. Protean returns
 the repository only when the aggregate is stored in a provider of that type.
 
 The aggregate's `database` option picks which configured provider stores it.

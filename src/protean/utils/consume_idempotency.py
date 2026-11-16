@@ -27,7 +27,7 @@ The strength of the guarantee depends on the projection's provider:
 
 A broker subscriber marked ``idempotent=True`` gets the same marker, keyed on
 the payload's ``metadata.headers.id`` and the subscriber's fully-qualified name,
-and written to the subscriber's ``provider`` in the same UnitOfWork as its
+and written to the subscriber's ``database`` in the same UnitOfWork as its
 writes. A payload with no such id, or one longer than the marker column, is an
 error: the subscriber does not run.
 

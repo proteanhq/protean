@@ -342,8 +342,8 @@ portable contract.
 - `src/protean/port/dao.py`: `LookupPort` and `REQUIRED_LOOKUPS`.
 - `src/protean/utils/query.py`: `split_lookup_key` and `RegisterLookupMixin`.
 - `src/protean/infra/registry.py`: the required-lookup check.
-- `src/protean/adapters/database/memory/`: Memory lookup implementations.
-- `src/protean/adapters/database/sqlalchemy/`: SQLAlchemy lookup
+- `src/protean/adapters/database/memory.py`: Memory lookup implementations.
+- `src/protean/adapters/database/sqlalchemy.py`: SQLAlchemy lookup
   implementations.
 
 ---
@@ -526,7 +526,7 @@ conn = domain.connection_for(OrderSummary)
 This is the escape hatch. It bypasses Protean's query abstraction entirely and
 hands you the technology-specific client. The method automatically routes to
 the correct provider or cache based on the projection's meta options
-(`provider` or `cache`).
+(`database` or `cache`).
 
 **Key source file:** `src/protean/domain/__init__.py`
 

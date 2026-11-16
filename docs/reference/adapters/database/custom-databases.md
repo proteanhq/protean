@@ -29,7 +29,7 @@ methods and the `capabilities` property listed in the table below.
 
 The provider class also sets a `database_type` attribute to the database's
 name. Protean reads it when it picks a custom repository or database model
-registered for one database (`database="..."`). Without it, getting a
+registered for one database type (`database_type="..."`). Without it, getting a
 repository fails with an `AttributeError`.
 
 | Method | Purpose |

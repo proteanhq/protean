@@ -24,7 +24,7 @@ Elasticsearch backends agree on these primitives. So a backend could quietly
 diverge (a missing lookup, a different empty-result shape) without a test going
 red. Second, the adapter-author self-check tool,
 `protean test test-adapter --provider=X`, collects tests only from
-`tests/adapters/repository/generic/`. That directory had no tests for these
+`tests/adapters/database/generic/`. That directory had no tests for these
 primitives, so the tool's capability report for adapter authors said nothing
 about them.
 
@@ -42,7 +42,7 @@ adapters must implement it.
 **The query-API contract is expressed through the existing capability-marker
 system.** We do not introduce a separate mandatory/recommended/optional taxonomy
 and we do not add new capability flags. A primitive's tier is the capability
-marker that gates its conformance test in `tests/adapters/repository/generic/`.
+marker that gates its conformance test in `tests/adapters/database/generic/`.
 An adapter that declares a capability must pass every generic test tagged with
 that capability.
 
@@ -92,7 +92,7 @@ graceful skip, so Elasticsearch is not a supported concurrent claim store.
 
 The outbox epic had added generic conformance coverage under
 `tests/repository/` (for `count`, `isnull`, `only`, `_delete_top`). We
-consolidate that coverage into `tests/adapters/repository/generic/`, so a
+consolidate that coverage into `tests/adapters/database/generic/`, so a
 single cross-adapter suite is the one source of truth and the `test-adapter`
 runner reports on it. There is no second parallel set.
 

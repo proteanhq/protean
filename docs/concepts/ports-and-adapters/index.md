@@ -129,9 +129,9 @@ Implementing a model for your database technology can be slightly involved,
 as ORM packages can heavily depend upon internal structures. Every
 database package is structured differently. Consult existing models for
 PostgreSQL
-([SQLAlchemy](https://github.com/proteanhq/protean/blob/main/src/protean/adapters/database/sqlalchemy.py#L139))
+([SQLAlchemy](https://github.com/proteanhq/protean/blob/main/src/protean/adapters/database/sqlalchemy.py))
 and Elasticsearch
-([Elasticsearch](https://github.com/proteanhq/protean/blob/main/src/protean/adapters/database/elasticsearch.py#L43))
+([Elasticsearch](https://github.com/proteanhq/protean/blob/main/src/protean/adapters/database/elasticsearch.py))
 for examples on constructing model classes.
 
 Once you define a base model for your provider, Protean auto-generates the model

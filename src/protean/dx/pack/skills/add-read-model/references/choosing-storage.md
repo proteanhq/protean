@@ -67,4 +67,4 @@ class ActiveSession:
 | `order_by` | `()` | Default query ordering |
 | `limit` | `100` | Default query result limit |
 
-When both `provider` and `cache` are specified, `cache` takes precedence.
+When both `database` and `cache` are specified, `cache` takes precedence.

@@ -863,7 +863,7 @@ def emit_model(ir: dict[str, Any], cluster_fqn: str) -> str:
               (the parser would read it back as a differently named participant);
             - behaviour the grammar carries no syntax for: a non-default element
               option (``is_event_sourced``, ``fact_events``, a projection's
-              ``cache``, a custom ``provider``, ``schema_name`` or
+              ``cache``, a custom ``database``, ``schema_name`` or
               ``stream_category``), a projector's custom stream categories or
               subscription, a declared invariant, a participant key outside the
               expressible set (an event's ``published``), a command or event

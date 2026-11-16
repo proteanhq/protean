@@ -60,7 +60,7 @@ mapping for each field the model leaves out:
 |--------|------|-------------|
 | `part_of` | class or str | **Required.** The aggregate, entity or projection this model maps to. A string names the element and is resolved when `domain.init()` runs, so the model can be declared before its target. |
 | `schema_name` | str | Override the storage table/collection name |
-| `database` | str | The database type this model applies to: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql` or `elasticsearch`. This is not a provider name. It has no default: without it, the model is used for any database type that has no model of its own. |
+| `database_type` | str | The database type this model applies to: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql`, `elasticsearch`, or the `database_type` of a registered custom adapter. This is not a provider name. It has no default: without it, the model is used for any database type that has no model of its own. |
 
 ```python
 --8<-- "guides/change-state/database-models/001.py:options"

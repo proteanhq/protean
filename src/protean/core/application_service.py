@@ -98,7 +98,7 @@ def use_case(func: Callable[..., Any]) -> Callable[..., Any]:
 
         # A use case opens a Unit of Work, which needs a domain to open it
         # against. Without an active context the transaction machinery raises
-        # `AttributeError: 'NoneType' object has no attribute 'providers'`,
+        # `AttributeError: 'NoneType' object has no attribute 'databases'`,
         # which names neither the use case nor the missing context, so check
         # for the context first.
         # Local import: `protean.domain.context` imports back into this module

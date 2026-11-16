@@ -1373,13 +1373,13 @@ def _outbox_provider_names(domain: Any) -> list[str]:
     """Return the database providers that get outbox processors, in ``domain.databases`` order.
 
     A provider qualifies when it is managed and a concrete aggregate names it in
-    its ``provider`` option. Event-sourced aggregates count. Abstract aggregates
+    its ``database`` option. Event-sourced aggregates count. Abstract aggregates
     and the framework's internal elements do not.
     """
     # The unit of work writes outbox rows only to the providers of the
     # aggregates it persists, so a provider no aggregate names would get a
     # processor that polls an empty table. An abstract aggregate is skipped
-    # because a concrete subclass does not inherit its ``provider``.
+    # because a concrete subclass does not inherit its ``database``.
     used = {
         record.cls.meta_.database
         for record in domain.registry.aggregates.values()

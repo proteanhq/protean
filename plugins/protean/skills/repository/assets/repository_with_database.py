@@ -2,8 +2,8 @@
 Database-specific repository binding.
 
 This example demonstrates:
-- Using the database option to bind a repository to a specific database type
-- Default repository uses database="ALL" (works with any database)
+- Using the database_type option to bind a repository to a specific database type
+- Default repository uses database_type="ALL" (works with any database)
 - Custom repository can be locked to a specific database (e.g., "postgresql", "sqlite")
 - Multiple repositories per aggregate for different databases
 - Database-specific query optimizations
@@ -42,7 +42,7 @@ class ReportRepository:
     It provides domain-specific query methods that use the standard
     DAO query interface, which works across all database providers.
 
-    When the database option is "ALL" (default), this repository
+    When the database_type option is "ALL" (default), this repository
     is used regardless of which database provider is active.
     """
 

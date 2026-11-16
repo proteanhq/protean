@@ -274,7 +274,7 @@ fields (`Reference`, `HasOne`, `HasMany`) are not allowed.
 |--------|---------|-------------|
 | `abstract` | `False` | Cannot be instantiated when `True` |
 | `database` | `"default"` | Database provider name |
-| `cache` | `None` | Cache provider (takes precedence over `provider`) |
+| `cache` | `None` | Cache provider (takes precedence over `database`) |
 | `schema_name` | `snake_case(cls)` | Table or collection name |
 | `indexes` | `()` | List of [`Index`](indexes.md) declarations for the persistence layer |
 | `order_by` | `()` | Default field ordering |
@@ -361,7 +361,7 @@ repository automatically; custom repositories add domain-specific queries.
 | Option | Default | Description |
 |--------|---------|-------------|
 | **`part_of`** | — | **Required.** Aggregate class being persisted |
-| `database` | `"ALL"` | Target database provider(s) |
+| `database_type` | `"ALL"` | Database type the repository applies to |
 
 Guide: [Repositories](../../guides/change-state/repositories.md)
 
@@ -373,5 +373,5 @@ aggregates, entities or projections are stored.
 | Option | Default | Description |
 |--------|---------|-------------|
 | **`part_of`** | — | **Required.** Associated aggregate, entity or projection |
-| `database` | `None` | Database type: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql` or `elasticsearch` |
+| `database_type` | `None` | Database type: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql`, `elasticsearch`, or a registered custom adapter's `database_type` |
 | `schema_name` | from aggregate | Table or collection name |
