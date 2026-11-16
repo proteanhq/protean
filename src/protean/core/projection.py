@@ -293,8 +293,6 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         for name, value in descriptor_kwargs.items():
             object.__setattr__(self, name, value)
 
-        # Unlike an entity, a projection runs ``defaults()`` after its value
-        # object shadow fields are set to ``None``.
         _init_value_object_shadows(self)
 
         self.defaults()

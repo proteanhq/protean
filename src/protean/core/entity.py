@@ -684,7 +684,8 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
 
         ``fired_codes`` accumulates the diagnostic code of every invariant that
         fails, at this level and recursively in child entities, so the top-level
-        raise (here or in ``__init__``) can attach them all. A caller aggregating
+        raise (here, or after construction in ``model_post_init``) can attach
+        them all. A caller aggregating
         with ``return_errors=True`` passes its own list; the internal raise below
         builds one when none is given.
         """
@@ -1162,7 +1163,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
 # ---------------------------------------------------------------------------
 # BaseEntity helpers
 # ---------------------------------------------------------------------------
-# Module-level functions, not methods, so a user subclass that defines a method
+# These are module-level functions so a user subclass that defines a method
 # with the same name cannot replace them.
 
 
@@ -1403,8 +1404,9 @@ def _rebuild_value_objects(
 ) -> None:
     """Add to ``descriptor_kwargs`` each value object rebuilt from shadow kwargs.
 
-    A value object is rebuilt only when it was not passed itself and is not
-    already set, for example during repository retrieval.
+    A value object is rebuilt only when it was not passed itself, is not
+    already set (for example during repository retrieval), and at least one of
+    its shadow values is not ``None``.
     """
     for field_name, base_field_obj in value_object_fields(instance).items():
         # ``value_object_fields`` filters on ``isinstance(_, ValueObject)``,
@@ -1606,7 +1608,7 @@ def _set_descriptor_field(
 ) -> None:
     """Write a descriptor field through the descriptor protocol, with checks.
 
-    The write is undone when the post-check fails.
+    The write is undone when the write or the post-check raises.
     """
     target = entity._root if entity._root is not None else entity
     target._precheck()
