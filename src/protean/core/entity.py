@@ -1347,18 +1347,19 @@ def _add_missing_required_errors(
 def _pop_init_context(local: threading.local) -> dict[str, Any]:
     """Pop the init context ``__init__`` pushed onto ``local.stack``.
 
-    Returns empty descriptor and shadow kwargs when the stack is empty.
+    Returns empty descriptor and shadow kwargs and no owner or root when the
+    stack is empty.
     """
     stack: list[dict[str, Any]] = getattr(local, "stack", [])
     if stack:
         return stack.pop()
-    return {"descriptor_kwargs": {}, "shadow_kwargs": {}}
+    return {"descriptor_kwargs": {}, "shadow_kwargs": {}, "owner": None, "root": None}
 
 
 def _apply_hierarchy(entity: BaseEntity, ctx: dict[str, Any]) -> None:
     """Set the owner, root and version the init context carries."""
-    owner = ctx.get("owner")
-    root = ctx.get("root")
+    owner = ctx["owner"]
+    root = ctx["root"]
     version_value = ctx.get("_version")
     if owner is not None:
         entity._owner = owner
