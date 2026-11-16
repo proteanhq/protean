@@ -245,7 +245,7 @@ def test_raw_index_is_skipped(test_domain):
 def test_update_all_bypasses_unique_index_enforcement(test_domain):
     """Documents the scope boundary: bulk `update_all` is not guarded.
 
-    Row-at-a-time `_create`/`_update` (behind `repository.add`/`save`) enforce
+    Row-at-a-time `insert`/`update` (behind `repository.add`/`save`) enforce
     unique indexes; the low-level bulk escape hatch deliberately does not.
     """
 

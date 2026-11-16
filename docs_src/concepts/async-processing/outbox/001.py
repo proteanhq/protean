@@ -26,7 +26,7 @@ from protean.utils.query import F, Q
 
 
 def claim(dao, message, worker_id, now):
-    # Simplified view of the per-message compare-and-swap inside _claim().
+    # Simplified view of the per-message compare-and-swap in the portable claim.
     # A row is eligible when it is pending, failed, or processing under an
     # expired lock, its lock is free, its retry time is due, and it has
     # retries left:

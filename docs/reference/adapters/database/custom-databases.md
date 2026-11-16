@@ -79,7 +79,7 @@ never commits, rolls back or closes it.
 
 | Method | Purpose |
 |--------|---------|
-| `filter(session, criteria, offset, limit, order_by, with_total=True)` | Query records, return `ResultSet`. When `with_total=False`, skip the total-count computation if it is expensive |
+| `filter(session, criteria, *, offset=0, limit=10, order_by=(), with_total=True, fields=None)` | Query records, return `ResultSet`. When `with_total=False`, skip the total-count computation if it is expensive |
 | `count(session, criteria)` | Count matching records via a single `COUNT`, without projecting columns or materializing entities |
 | `insert(session, model)` | Insert a new record |
 | `update(session, model, *, expected_version=None)` | Update an existing record. When `expected_version` is set, write only if the stored version matches |
@@ -481,7 +481,7 @@ Repository.add(aggregate)
 Repository.get(identifier)
   → DAO.get(identifier)
     → DAO.query.filter(id=identifier).all()
-      → adapter.filter(session, criteria, offset, limit, order_by, with_total)
+      → adapter.filter(session, criteria, offset=..., limit=..., order_by=..., with_total=..., fields=...)
         # Must return ResultSet(items, total)
       → DatabaseModel.to_entity(item)            # your conversion
 ```

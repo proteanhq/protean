@@ -275,6 +275,7 @@ _DECLARED_CAPABILITIES: dict[str, dict[str, bool]] = {
         "NATIVE_CLAIM": _NO,
         "BOUNDED_DELETE": _YES,
         "FILTERED_CLAIM_CANDIDATES": _NO,
+        "INSERT_IF_ABSENT": _YES,
     },
     "SAProvider": {
         "CRUD": _YES,
@@ -293,6 +294,7 @@ _DECLARED_CAPABILITIES: dict[str, dict[str, bool]] = {
         "NATIVE_CLAIM": _NO,
         "BOUNDED_DELETE": _NO,
         "FILTERED_CLAIM_CANDIDATES": _NO,
+        "INSERT_IF_ABSENT": _NO,
     },
     "PostgresqlProvider": {
         "CRUD": _YES,
@@ -311,6 +313,7 @@ _DECLARED_CAPABILITIES: dict[str, dict[str, bool]] = {
         "NATIVE_CLAIM": _YES,
         "BOUNDED_DELETE": _YES,
         "FILTERED_CLAIM_CANDIDATES": _YES,
+        "INSERT_IF_ABSENT": _YES,
     },
     "SqliteProvider": {
         "CRUD": _YES,
@@ -329,6 +332,7 @@ _DECLARED_CAPABILITIES: dict[str, dict[str, bool]] = {
         "NATIVE_CLAIM": _NO,
         "BOUNDED_DELETE": _YES,
         "FILTERED_CLAIM_CANDIDATES": _YES,
+        "INSERT_IF_ABSENT": _YES,
     },
     "MssqlProvider": {
         "CRUD": _YES,
@@ -347,6 +351,7 @@ _DECLARED_CAPABILITIES: dict[str, dict[str, bool]] = {
         "NATIVE_CLAIM": _NO,
         "BOUNDED_DELETE": _YES,
         "FILTERED_CLAIM_CANDIDATES": _YES,
+        "INSERT_IF_ABSENT": _YES,
     },
     "MysqlProvider": {
         "CRUD": _YES,
@@ -365,6 +370,7 @@ _DECLARED_CAPABILITIES: dict[str, dict[str, bool]] = {
         "NATIVE_CLAIM": _NO,
         "BOUNDED_DELETE": _NO,
         "FILTERED_CLAIM_CANDIDATES": _YES,
+        "INSERT_IF_ABSENT": _YES,
     },
     "ESProvider": {
         "CRUD": _YES,
@@ -383,6 +389,7 @@ _DECLARED_CAPABILITIES: dict[str, dict[str, bool]] = {
         "NATIVE_CLAIM": _NO,
         "BOUNDED_DELETE": _YES,
         "FILTERED_CLAIM_CANDIDATES": _NO,
+        "INSERT_IF_ABSENT": _NO,
     },
 }
 

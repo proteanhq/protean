@@ -946,8 +946,7 @@ class DAO:
     def exists(self, excludes_: dict[str, Any], **filters: Any) -> bool:
         """Returns `True` if objects matching the provided filters were found. Else, returns False.
 
-        This method internally uses the `filter` method to fetch records. But it can be overridden for better and
-        quicker implementations supported by databases.
+        This method fetches records through the `filter` method.
 
         :param filters: criteria to match records against
         :param excludes_: criteria that records should not satisfy

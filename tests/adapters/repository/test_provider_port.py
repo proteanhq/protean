@@ -41,6 +41,7 @@ def test_provider_port_declares_the_expected_abstract_members():
     assert PROVIDER_PORT_MEMBERS == [
         "capabilities",
         "clear",
+        "commit",
         "dao_for",
         "get_connection",
         "get_lookup",
@@ -48,7 +49,9 @@ def test_provider_port_declares_the_expected_abstract_members():
         "get_session",
         "health",
         "model_for",
+        "new_session",
         "ping",
+        "rollback",
     ]
 
 

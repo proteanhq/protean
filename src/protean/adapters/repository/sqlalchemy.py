@@ -2258,8 +2258,9 @@ class SADAO(
             ObjectNotFoundError: No row has the model's identifier.
             ExpectedVersionError: The stored version differs from
                 ``expected_version``. When a concurrent commit advances the
-                version after this read, ``SAProvider.flush`` or
-                ``SAProvider.commit`` raises it instead.
+                version after this read, the error comes later instead:
+                from ``SAProvider.flush`` or ``SAProvider.commit`` on a
+                standalone write, or from the Unit of Work's commit.
         """
         conn = typing.cast(Session, session)
 
