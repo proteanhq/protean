@@ -241,7 +241,7 @@ Each database provider registers its own lookup implementations using
 
 ```python
 # fragment
-class SQLAlchemyProvider(BaseProvider, RawQueryProviderPort):
+class SQLAlchemyProvider(BaseDatabase, RawQueryDatabasePort):
     ...
 
 # During adapter initialization:
@@ -325,7 +325,7 @@ unsupported lookup fails loudly and never silently returns wrong results.
 | `F()` column ref  | ✅     | ✅                | ❌            |
 
 The twelve lookups above `any` are universal and exercised by the cross-adapter
-conformance suites under `tests/adapters/repository/generic/` and
+conformance suites under `tests/adapters/database/generic/` and
 `tests/repository/`. The array lookups `any` and `overlap` match documents
 whose array field shares an element with the given values. SQLAlchemy maps them
 to native array operators (`= ANY(...)` and `&&`), so they need a backend with
@@ -342,8 +342,8 @@ portable contract.
 - `src/protean/port/dao.py`: `LookupPort` and `REQUIRED_LOOKUPS`.
 - `src/protean/utils/query.py`: `split_lookup_key` and `RegisterLookupMixin`.
 - `src/protean/infra/registry.py`: the required-lookup check.
-- `src/protean/adapters/repository/memory/`: Memory lookup implementations.
-- `src/protean/adapters/repository/sqlalchemy/`: SQLAlchemy lookup
+- `src/protean/adapters/database/memory/`: Memory lookup implementations.
+- `src/protean/adapters/database/sqlalchemy/`: SQLAlchemy lookup
   implementations.
 
 ---

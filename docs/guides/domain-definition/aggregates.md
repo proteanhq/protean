@@ -144,7 +144,7 @@ cannot be instantiated and needs to be subclassed.
 --8<-- "guides/domain-definition/003.py:full"
 ```
 
-### `provider`
+### `database`
 
 Specifies the database that the aggregate is persisted in:
 

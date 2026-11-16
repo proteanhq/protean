@@ -61,7 +61,7 @@ The entry's `paths` must include `tests/conformance/<port>/`, so a change to the
 
 `CORE` runs on [pytest-xdist](https://pytest-xdist.readthedocs.io/) with `--dist loadfile`, so all the tests in one file run on the same worker. `PR` runs its core suite the same way.
 
-`FULL` and `COVERAGE` start with two passes over the whole suite, one after the other. The first runs every test that needs no service on pytest-xdist, as `CORE` does. The second runs the tests that need one, in a single process. A test needs a service when it runs only with a flag such as `--redis` or `--mssql`. Such a test carries that marker or is in a package of that name, such as `tests/adapters/repository/sqlalchemy_repo/mssql/`. The suite's own `--service-tests=none` and `--service-tests=only` options make the split. After the two passes, `FULL` and `COVERAGE` run the separate adapter suites in parallel, up to three at a time.
+`FULL` and `COVERAGE` start with two passes over the whole suite, one after the other. The first runs every test that needs no service on pytest-xdist, as `CORE` does. The second runs the tests that need one, in a single process. A test needs a service when it runs only with a flag such as `--redis` or `--mssql`. Such a test carries that marker or is in a package of that name, such as `tests/adapters/database/sqlalchemy_repo/mssql/`. The suite's own `--service-tests=none` and `--service-tests=only` options make the split. After the two passes, `FULL` and `COVERAGE` run the separate adapter suites in parallel, up to three at a time.
 
 Tests that use a service run in one process, because within one adapter's suite they share a database, Redis keys, Elasticsearch indexes, and the Message-DB `$all` stream. `EVENTSTORE`, `DATABASE` and `BROKER` never use pytest-xdist and ignore `--workers`. With `--sequential`, `FULL` and `COVERAGE` run every suite one at a time and in one process.
 
@@ -324,8 +324,8 @@ POSTGRESQL_PSYCOPG2` uses a `postgresql+psycopg2://` URL, so the same
 conformance battery runs on psycopg2:
 
 ```shell
-uv run pytest --postgresql --db POSTGRESQL tests/adapters/repository/generic
-uv run pytest --postgresql --db POSTGRESQL_PSYCOPG2 tests/adapters/repository/generic
+uv run pytest --postgresql --db POSTGRESQL tests/adapters/database/generic
+uv run pytest --postgresql --db POSTGRESQL_PSYCOPG2 tests/adapters/database/generic
 ```
 
 #### Running the MySQL leg
@@ -335,12 +335,12 @@ dialect name for each, so both are in the matrix. `make up` starts both
 containers. To run the conformance battery against them:
 
 ```shell
-uv run pytest --mysql --db MYSQL tests/adapters/repository/generic
-uv run pytest --mysql --db MARIADB tests/adapters/repository/generic
+uv run pytest --mysql --db MYSQL tests/adapters/database/generic
+uv run pytest --mysql --db MARIADB tests/adapters/database/generic
 ```
 
 `--mysql` also enables the server-specific tests in
-`tests/adapters/repository/sqlalchemy_repo/mysql/`, which run against both
+`tests/adapters/database/sqlalchemy_repo/mysql/`, which run against both
 MySQL and MariaDB. `native_array` is the only capability the provider does not
 claim, so those tests are deselected.
 
@@ -513,7 +513,7 @@ Before you add a test file, look for the tests that already cover the code you c
 | `src/protean/core/aggregate.py` | `tests/aggregate/` |
 | `src/protean/core/entity.py` | `tests/entity/` |
 | `src/protean/core/value_object.py` | `tests/value_object/` |
-| `src/protean/adapters/repository/` | `tests/adapters/repository/` |
+| `src/protean/adapters/database/` | `tests/adapters/database/` |
 | `src/protean/server/` | `tests/server/` |
 
 Search there for the name of the function or class you changed:

@@ -23,7 +23,7 @@ Every aggregate gets a default repository. You access it with
 In [1]: repo = domain.repository_for(Person)
 
 In [2]: repo
-Out[2]: <protean.adapters.repository.PersonRepository object at 0x104f3a1d0>
+Out[2]: <protean.adapters.database.PersonRepository object at 0x104f3a1d0>
 ```
 
 The default repository provides these methods:
@@ -148,12 +148,12 @@ For a comprehensive guide on querying, see
 
 ## Connecting to a specific database
 
-The `database` parameter ties a repository to one kind of database. Its value
+The `database_type` option ties a repository to one kind of database. Its value
 is a database type: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql` or
 `elasticsearch`. It is not the name of a configured provider. Protean returns
 the repository only when the aggregate is stored in a provider of that type.
 
-The aggregate's `provider` option picks which configured provider stores it.
+The aggregate's `database` option picks which configured provider stores it.
 Here `Person` is stored in the `reporting` provider. That provider is a memory
 database, so `domain.repository_for(Person)` returns
 `PersonReportingRepository`:
@@ -162,13 +162,13 @@ database, so `domain.repository_for(Person)` returns
 --8<-- "guides/change-state/repositories/001.py:reporting"
 ```
 
-When no `database` is specified, the default value is `"ALL"`. With `"ALL"`,
-Protean uses the repository for whichever provider the aggregate's `provider`
-option assigns. The `provider` option itself defaults to the `"default"`
+When no `database_type` is specified, the default value is `"ALL"`. With `"ALL"`,
+Protean uses the repository for whichever provider the aggregate's `database`
+option assigns. The `database` option itself defaults to the `"default"`
 provider.
 
 !!!note
-    Use `database` when an aggregate needs different query code on different
+    Use `database_type` when an aggregate needs different query code on different
     databases, for example a raw SQL query that only PostgreSQL understands.
     If the aggregate's provider is a different type, Protean returns the
     generic repository instead.

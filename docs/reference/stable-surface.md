@@ -82,8 +82,8 @@ disappears.
 
 ## What is Provisional
 
-- **The ports** for third-party adapter authors: the `ProviderPort`,
-  `DatabaseModelPort`, `EventStorePort`, `CachePort` and `BrokerPort` protocols, the `BaseProvider`, `BaseBroker` and `BaseEventStore` ABCs, with the `BaseDAO` class
+- **The ports** for third-party adapter authors: the `DatabasePort`,
+  `DatabaseModelPort`, `EventStorePort`, `CachePort` and `BrokerPort` protocols, the `BaseDatabase`, `BaseBroker` and `BaseEventStore` ABCs, with the `BaseDAO` class
   which an adapter's DAO subclasses, and the `LookupPort` protocol, which an
   adapter's lookup classes subclass, in `protean.port.dao`,
   and the `NativeClaimPort`, `ClaimCandidatesPort` and `BoundedDeletePort`
@@ -93,7 +93,7 @@ disappears.
   the adapter conformance suite ships publicly and has been exercised by an
   adapter Protean does not maintain.
 - **`AdapterRegistry`** in `protean.infra.registry`, with its four instances
-  `providers`, `brokers`, `event_stores` and `caches`. An adapter's
+  `databases`, `brokers`, `event_stores` and `caches`. An adapter's
   `register()` function calls one of them. Provisional for the same reason as
   the port ABCs.
 - **`Field`** as the base class for custom field types.

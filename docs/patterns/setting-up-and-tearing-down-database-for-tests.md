@@ -51,7 +51,7 @@ Session end:     drop schema for all providers
 
 Every Protean adapter exposes lifecycle methods designed for exactly this separation:
 
-### Database Providers (`domain.providers`)
+### Database Providers (`domain.databases`)
 
 | Method | Purpose |
 |--------|---------|
@@ -350,10 +350,10 @@ after the integration tests keep the integration fixture's database setting.
 def setup_database():
     domain.init()
     with domain.domain_context():
-        for provider in domain.providers.values():
+        for provider in domain.databases.values():
             provider.create_schema()
         yield
-        for provider in domain.providers.values():
+        for provider in domain.databases.values():
             provider.drop_schema()
 
 # Tests leak data into each other:
@@ -378,10 +378,10 @@ Fix: use `DomainFixture.domain_context()`, which resets all data automatically. 
 def setup_database():
     domain.init()
     with domain.domain_context():
-        for provider in domain.providers.values():
+        for provider in domain.databases.values():
             provider.create_schema()
         yield
-        for provider in domain.providers.values():
+        for provider in domain.databases.values():
             provider.drop_schema()
 ```
 
@@ -395,7 +395,7 @@ A fixture that recreates the schema per test is correct but slow. If you have 50
 @pytest.fixture(autouse=True)
 def clean_data():
     yield
-    for provider in domain.providers.values():
+    for provider in domain.databases.values():
         provider.clear()
     # Broker still has messages from the previous test!
 ```

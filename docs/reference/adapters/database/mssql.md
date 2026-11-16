@@ -139,8 +139,8 @@ microseconds.
 ## Slow query detection
 
 The provider emits the same structured
-`protean.adapters.repository.sqlalchemy.slow_query` WARNING and
-`protean.adapters.repository.sqlalchemy.query` DEBUG events as the
+`protean.adapters.database.sqlalchemy.slow_query` WARNING and
+`protean.adapters.database.sqlalchemy.query` DEBUG events as the
 [PostgreSQL provider](./postgresql.md#slow-query-detection). Set the threshold
 with `[logging].slow_query_threshold_ms` in `domain.toml`.
 

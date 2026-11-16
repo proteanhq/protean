@@ -616,7 +616,7 @@ nav:
       - api/fields/spec.md
     - Ports:
       - api/ports/index.md
-      - api/ports/provider.md
+      - api/ports/database.md
       - api/ports/broker.md
       - api/ports/event-store.md
       - api/ports/cache.md

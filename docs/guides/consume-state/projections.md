@@ -26,7 +26,7 @@ and schema behavior:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `provider` | `"default"` | Database provider name |
+| `database` | `"default"` | Database provider name |
 | `cache` | `None` | Cache provider, takes precedence over `provider` when set |
 | `schema_name` | `snake_case(cls)` | Table or collection name in the backing store |
 | `order_by` | `()` | Default field ordering for queries (e.g. `("-placed_at",)`) |
@@ -52,7 +52,7 @@ simultaneously:
 ```python
 # fragment
 # Database storage (default)
-@domain.projection(provider="postgres")
+@domain.projection(database="postgres")
 class ProductInventory:
     ...
 

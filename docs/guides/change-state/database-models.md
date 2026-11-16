@@ -77,8 +77,8 @@ different database type:
 --8<-- "guides/change-state/database-models/004.py:multi_database"
 ```
 
-An aggregate is stored in one provider, set with its `provider` option. Its
-repository uses the model whose `database` matches that provider's database
+An aggregate is stored in one provider, set with its `database` option. Its
+repository uses the model whose `database_type` matches that provider's database
 type. For example, `Customer` above uses `CustomerSearchModel` on Elasticsearch
 and `CustomerWriteModel` on PostgreSQL. The aggregate is not written to both.
 

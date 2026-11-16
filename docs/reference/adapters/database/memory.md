@@ -134,7 +134,7 @@ In production, switch the provider:
 `${DATABASE_URL|...}` reads the URI from the `DATABASE_URL` environment
 variable, and uses the value after `|` when it is not set.
 
-All providers implement the same `ProviderPort` protocol, so your domain code
+All providers implement the same `DatabasePort` protocol, so your domain code
 stays the same when you switch providers. To switch, update the configuration,
 and Protean uses the new provider.
 
