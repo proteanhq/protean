@@ -209,7 +209,7 @@ def _outbox_domain(rows: dict[str, int]) -> Domain:
 # ---------------------------------------------------------------------------
 
 
-class TestMemoryProviderHealth:
+class TestMemoryDatabaseHealth:
     """The memory provider has no connection pool to report."""
 
     def test_memory_provider_reports_no_pool(self, test_domain):
@@ -223,7 +223,7 @@ class TestMemoryProviderHealth:
 # ---------------------------------------------------------------------------
 
 
-class TestSAProviderHealth:
+class TestSADatabaseHealth:
     """SADatabase.health() reads pool counters from the SQLAlchemy engine."""
 
     def test_returns_pool_counters(self, sqlite_domain):

@@ -408,7 +408,7 @@ class MemorySession:
 
 
 class MemoryDatabase(BaseDatabase, RawQueryDatabasePort):
-    """Provider class for Dict Repositories"""
+    """Database adapter that keeps data in memory, in Python dicts."""
 
     database_type = "memory"
 

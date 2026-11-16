@@ -365,7 +365,7 @@ Tests are automatically skipped when the provider lacks a required capability.
 No manual skip markers or conditionals are needed:
 
 ```
-SKIPPED [1] Provider 'elasticsearch' (ElasticsearchProvider) lacks
+SKIPPED [1] Provider 'elasticsearch' (ESDatabase) lacks
 required capability: raw_queries
 ```
 

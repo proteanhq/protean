@@ -147,7 +147,7 @@ Every adapter must register
 [12 required lookups](./index.md#required-lookups), including `isnull`
 (`Q(field__isnull=True/False)`), which core framework machinery such as the
 outbox poll path relies on. Register them with the
-`@YourProvider.register_lookup` decorator:
+`@YourDatabase.register_lookup` decorator:
 
 ```python
 # fragment
@@ -163,7 +163,7 @@ class YourLookup(LookupPort):
         raise NotImplementedError
 
 
-@YourProvider.register_lookup
+@YourDatabase.register_lookup
 class Exact(YourLookup):
     lookup_name = "exact"
 
@@ -189,7 +189,7 @@ def register():
         import boto3  # Check that our dependency is installed
         from protean.infra.registry import databases
 
-        databases.register("dynamodb", "my_package.provider.DynamoDBProvider")
+        databases.register("dynamodb", "my_package.provider.DynamoDBDatabase")
     except ImportError:
         pass  # DynamoDB SDK not installed, skip registration
 ```
@@ -264,7 +264,7 @@ def register():
 
         databases.register(
             "dynamodb",
-            "protean_dynamodb.provider.DynamoDBProvider",
+            "protean_dynamodb.provider.DynamoDBDatabase",
         )
     except ImportError:
         pass
@@ -303,7 +303,7 @@ class DynamoDBSession:
         pass
 
 
-class DynamoDBProvider(BaseDatabase, DatabasePort):
+class DynamoDBDatabase(BaseDatabase, DatabasePort):
     """DynamoDB database provider for Protean."""
 
     database_type = "dynamodb"

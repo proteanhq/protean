@@ -346,8 +346,8 @@ class BaseBroker(metaclass=ABCMeta):
     groups of operations until they move into sub-protocols of the Port, and
     it is removed when they do.
 
-    Each adapter sets ``broker_type`` to the name of the technology it talks
-    to, such as ``"inline"`` or ``"redis"``.
+    Each adapter sets ``broker_type`` to the name it is known by, such as
+    ``"inline"``, ``"redis"`` or ``"redis_pubsub"``.
     """
 
     broker_type: ClassVar[str]

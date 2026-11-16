@@ -341,7 +341,7 @@ class TestCachesReinitializeClosesExisting:
 
 @pytest.mark.no_test_domain
 class TestProvidersReinitializeClosesExisting:
-    """Test that Providers._initialize() closes existing providers first."""
+    """Test that Databases._initialize() closes existing providers first."""
 
     def test_reinitialize_closes_old_providers(self):
         """Calling _initialize() again should close old provider connections."""

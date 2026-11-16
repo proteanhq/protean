@@ -403,7 +403,7 @@ def _provider_class(class_name):
     if class_name == "SADatabase":
         # SADatabase is abstract, so read its declaration through a subclass
         # that adds only the dialect hooks and inherits ``capabilities``.
-        class _InheritsSAProvider(sqlalchemy.SADatabase):
+        class _InheritsSADatabase(sqlalchemy.SADatabase):
             def _get_database_specific_engine_args(self):
                 return {}
 
@@ -413,7 +413,7 @@ def _provider_class(class_name):
             def _execute_database_specific_connection_statements(self, conn):
                 return conn
 
-        return _InheritsSAProvider
+        return _InheritsSADatabase
     return getattr(sqlalchemy, class_name)
 
 

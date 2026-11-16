@@ -27,7 +27,7 @@ def test_exception_on_invalid_sqlite_provider():
 
 
 @pytest.mark.sqlite
-class TestSqliteProvider:
+class TestSqliteDatabase:
     """Test SQLite-specific provider functionality"""
 
     @pytest.fixture(autouse=True)

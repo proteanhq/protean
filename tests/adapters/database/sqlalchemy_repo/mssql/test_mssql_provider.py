@@ -1,7 +1,7 @@
 from protean.adapters.database.sqlalchemy import MssqlDatabase
 
 
-class TestMssqlProvider:
+class TestMssqlDatabase:
     """Test MSSQL Provider specific functionality"""
 
     def test_mssql_provider_database_setting(self):

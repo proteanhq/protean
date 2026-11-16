@@ -2829,7 +2829,7 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
 
 
 class SADatabase(BaseDatabase, RawQueryDatabasePort):
-    """Provider Implementation class for SQLAlchemy"""
+    """Base database adapter for the SQLAlchemy dialects."""
 
     # Populated in ``__init__``; declared here so the type checkers see the
     # SQLAlchemy-specific engine/session state that the DAO reads back off the
@@ -3358,7 +3358,7 @@ def _postgresql_driver_import_error(driver: str) -> ImportError | None:
 
 
 class PostgresqlDatabase(SADatabase):
-    """Provider for PostgreSQL, on psycopg 3 or psycopg2.
+    """Database adapter for PostgreSQL, on psycopg 3 or psycopg2.
 
     A ``database_uri`` that names its driver (``postgresql+psycopg://`` or
     ``postgresql+psycopg2://``) uses that driver. One that does not
@@ -3591,7 +3591,7 @@ def _require_default_driver(
 
 
 class MssqlDatabase(SADatabase):
-    """Provider for SQL Server, on the pyodbc driver.
+    """Database adapter for SQL Server, on the pyodbc driver.
 
     A ``database_uri`` naming no driver (``mssql://``) or pyodbc
     (``mssql+pyodbc://``) fails at ``domain.init()`` with the extra that installs
@@ -3668,7 +3668,7 @@ class MssqlDatabase(SADatabase):
 
 
 class MysqlDatabase(SADatabase):
-    """Provider for MySQL and MariaDB, on the PyMySQL driver.
+    """Database adapter for MySQL and MariaDB, on the PyMySQL driver.
 
     One provider serves both servers, through a ``mysql+pymysql://`` or a
     ``mariadb+pymysql://`` URI.

@@ -241,13 +241,13 @@ Each database provider registers its own lookup implementations using
 
 ```python
 # fragment
-class SQLAlchemyProvider(BaseDatabase, RawQueryDatabasePort):
+class SADatabase(BaseDatabase, RawQueryDatabasePort):
     ...
 
 # During adapter initialization:
-SQLAlchemyProvider.register_lookup(ExactLookup)
-SQLAlchemyProvider.register_lookup(ContainsLookup)
-SQLAlchemyProvider.register_lookup(GteLookup)
+SADatabase.register_lookup(ExactLookup)
+SADatabase.register_lookup(ContainsLookup)
+SADatabase.register_lookup(GteLookup)
 # etc.
 ```
 

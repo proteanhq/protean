@@ -15,7 +15,7 @@ from protean.port.database import (
 )
 
 
-class DelegatingProvider(BaseDatabase, RawQueryDatabasePort):
+class DelegatingDatabase(BaseDatabase, RawQueryDatabasePort):
     """A provider that hands every operation to an in-memory MemoryDatabase.
 
     Replace the delegate calls with calls to your database client.
@@ -66,10 +66,10 @@ class DelegatingProvider(BaseDatabase, RawQueryDatabasePort):
 
 # Register the lookups the delegate understands, so none of the required ones are missing
 for lookup in MemoryDatabase.get_lookups().values():
-    DelegatingProvider.register_lookup(lookup)
+    DelegatingDatabase.register_lookup(lookup)
 
 # Make the provider available as `provider = "delegating_memory"`
-databases.register("delegating_memory", f"{__name__}.DelegatingProvider")
+databases.register("delegating_memory", f"{__name__}.DelegatingDatabase")
 # --8<-- [end:provider]
 
 # --8<-- [start:usage]

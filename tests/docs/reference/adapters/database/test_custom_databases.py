@@ -39,7 +39,7 @@ def test_page_lists_every_abstract_method():
 def test_registry_accepts_the_delegating_provider():
     provider_cls = databases.get("delegating_memory")
 
-    assert provider_cls is delegating_provider.DelegatingProvider
+    assert provider_cls is delegating_provider.DelegatingDatabase
     assert set(provider_cls.get_lookups()) >= REQUIRED_LOOKUPS
 
 
@@ -47,7 +47,7 @@ def test_domain_uses_the_custom_provider():
     with delegating_provider.domain.domain_context():
         provider = provider_adapter(delegating_provider.domain, "default")
 
-        assert isinstance(provider, delegating_provider.DelegatingProvider)
+        assert isinstance(provider, delegating_provider.DelegatingDatabase)
         assert isinstance(provider._delegate, MemoryDatabase)
         assert provider.database_type == "delegating_memory"
 

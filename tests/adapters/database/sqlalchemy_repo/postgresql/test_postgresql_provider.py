@@ -12,7 +12,7 @@ from .elements import Alien, Person
 
 
 @pytest.mark.postgresql
-class TestPostgresqlProvider:
+class TestPostgresqlDatabase:
     """Test PostgreSQL-specific provider functionality"""
 
     @pytest.fixture(autouse=True)

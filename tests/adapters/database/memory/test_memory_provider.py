@@ -22,7 +22,7 @@ class Alien(BaseAggregate):
     age: Integer(default=21)
 
 
-class TestMemoryProvider:
+class TestMemoryDatabase:
     """Test Memory-specific provider functionality"""
 
     @pytest.fixture(autouse=True)

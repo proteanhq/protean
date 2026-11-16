@@ -18,7 +18,7 @@ from .elements import Alien, Person
 
 
 @pytest.mark.elasticsearch
-class TestElasticsearchProvider:
+class TestESDatabase:
     """Test Elasticsearch-specific provider functionality"""
 
     @pytest.fixture(autouse=True)
