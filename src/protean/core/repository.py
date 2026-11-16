@@ -315,7 +315,9 @@ class BaseRepository(Element, OptionsMixin):
                 # Defer cache clearing until all DAO operations succeed
                 cache_clears.append((entity, field_name))
                 _sync_grandchildren(self, entity, field_name, field)
-            elif isinstance(field, HasOne):
+            else:
+                # ``HasOne`` and ``HasMany`` are the only association fields.
+                assert isinstance(field, HasOne)
                 if _sync_has_one(self, entity, field_name, field):
                     # Defer cache clearing until all DAO operations succeed
                     cache_clears.append((entity, field_name))
@@ -459,7 +461,8 @@ def _direct_children(entity: Any) -> Iterator[Any]:
     for field_name, field in association_fields(entity).items():
         if isinstance(field, HasMany):
             yield from getattr(entity, field_name)
-        elif isinstance(field, HasOne):
+        else:
+            # ``HasOne`` and ``HasMany`` are the only association fields.
             child = getattr(entity, field_name)
             if child is not None:
                 yield child
@@ -542,7 +545,7 @@ def _sync_has_one_change(
             item.state_.mark_changed()
 
         repo._persist_child(child_cls, item)
-    elif cache.change == "DELETED":
+    else:  # "DELETED"
         repo._remove_child(child_cls, cache.old_value)
 
 

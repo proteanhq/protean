@@ -908,11 +908,9 @@ def _build_outbox_rows(
     # opening a database session — their state lives in the event store,
     # not in a relational table.
     outbox_rows: list[tuple[OutboxRepository, Outbox]] = []
+    # ``_gather_events`` adds a provider only when it has events.
     for provider_name, events in all_events.items():
-        if events:
-            outbox_rows.extend(
-                _provider_outbox_rows(uow, provider_name, events, settings)
-            )
+        outbox_rows.extend(_provider_outbox_rows(uow, provider_name, events, settings))
     return outbox_rows
 
 
