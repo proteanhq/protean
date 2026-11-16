@@ -1,4 +1,5 @@
-"""Filter paths of the Elasticsearch DAO: OR criteria and the unmapped-sort retry."""
+"""Filter paths of the Elasticsearch DAO: the unmapped-sort retry, and OR criteria
+in filters, counts, updates and deletes."""
 
 import logging
 
@@ -65,14 +66,23 @@ class TestFilterPaths:
 
         assert [item.first_name for item in result.items] == ["Athos"]
 
-    def test_or_with_a_nested_or_matches_every_side(self, dao):
-        result = dao._filter(Q(first_name="Athos") | (Q(age=40) | Q(age=50)))
+    def test_three_way_or_with_an_unmatched_part_matches_the_other_parts(self, dao):
+        result = dao._filter(Q(first_name="Athos") | (Q(age=40) | Q(age=99)))
 
         assert sorted(item.first_name for item in result.items) == [
-            "Aramis",
             "Athos",
             "Porthos",
         ]
+
+    def test_or_where_no_side_matches_matches_nothing(self, dao):
+        result = dao._filter(Q(first_name="Nobody") | Q(age=99))
+
+        assert result.items == []
+
+    def test_and_of_two_ors_matches_only_documents_in_both(self, dao):
+        result = dao._filter((Q(age=30) | Q(age=40)) & (Q(age=40) | Q(age=50)))
+
+        assert [item.first_name for item in result.items] == ["Porthos"]
 
     def test_count_with_an_or_counts_only_matching_documents(self, dao):
         assert dao._count(Q(first_name="Athos") | Q(age=50)) == 2
@@ -91,6 +101,13 @@ class TestFilterPaths:
 
     def test_delete_all_with_an_or_deletes_only_matching_documents(self, dao):
         deleted = dao._delete_all(Q(first_name="Athos") | Q(age=50))
+
+        assert deleted == 2
+        remaining = dao._filter(Q())
+        assert [item.first_name for item in remaining.items] == ["Porthos"]
+
+    def test_delete_top_with_an_or_deletes_only_matching_documents(self, dao):
+        deleted = dao.delete_top(Q(first_name="Athos") | Q(age=50), limit=10)
 
         assert deleted == 2
         remaining = dao._filter(Q())
