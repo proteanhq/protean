@@ -128,7 +128,7 @@ class RedisPubSubBroker(BaseBroker, BrokerPort):
         consumer_groups_info: dict[str, ConsumerGroupInfo] = {}
 
         for group_key, group_info in self._consumer_groups.items():
-            _stream, consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            _stream, consumer_group = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
 
             if consumer_group not in consumer_groups_info:
                 consumer_groups_info[consumer_group] = {
@@ -229,7 +229,7 @@ class RedisPubSubBroker(BaseBroker, BrokerPort):
             streams: set[str] = set()
             for group_key in self._consumer_groups:
                 if CONSUMER_GROUP_SEPARATOR in group_key:
-                    stream_name = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)[0]
+                    stream_name = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)[0]
                     streams.add(stream_name)
 
             total_messages = 0

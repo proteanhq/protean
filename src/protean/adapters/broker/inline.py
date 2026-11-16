@@ -787,7 +787,7 @@ class InlineBroker(BaseBroker, BrokerPort):
             result: dict[str, list[tuple[str, dict[str, Any], str, float]]] = {}
             for group_key in self._dead_letter_queue:
                 if group_key.endswith(f"{CONSUMER_GROUP_SEPARATOR}{consumer_group}"):
-                    stream_name = group_key.split(CONSUMER_GROUP_SEPARATOR)[0]
+                    stream_name = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)[0]
                     result[stream_name] = list(self._dead_letter_queue[group_key])
             return result
 
@@ -845,7 +845,7 @@ class InlineBroker(BaseBroker, BrokerPort):
         for group_key, messages in self._dead_letter_queue.items():
             if not messages:
                 continue
-            stream, consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            stream, consumer_group = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
             dlq_stream_name = f"{stream}:dlq"
             if dlq_stream_name not in dlq_streams:
                 continue
@@ -875,7 +875,7 @@ class InlineBroker(BaseBroker, BrokerPort):
         for group_key, messages in self._dead_letter_queue.items():
             if not messages:
                 continue
-            stream, consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            stream, consumer_group = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
             dlq_stream_name = f"{stream}:dlq"
             if dlq_stream_name != dlq_stream:
                 continue
@@ -901,7 +901,7 @@ class InlineBroker(BaseBroker, BrokerPort):
     def _dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
         """Replay a single DLQ message back to its original stream."""
         for group_key, messages in self._dead_letter_queue.items():
-            stream, _consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            stream, _consumer_group = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
             dlq_stream_name = f"{stream}:dlq"
             if dlq_stream_name != dlq_stream:
                 continue
@@ -922,7 +922,7 @@ class InlineBroker(BaseBroker, BrokerPort):
         replayed = 0
         for group_key in list(self._dead_letter_queue.keys()):
             messages = self._dead_letter_queue[group_key]
-            stream, _ = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            stream, _ = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
             dlq_stream_name = f"{stream}:dlq"
             if dlq_stream_name != dlq_stream:
                 continue
@@ -936,7 +936,7 @@ class InlineBroker(BaseBroker, BrokerPort):
         """Purge all messages from a DLQ stream."""
         purged = 0
         for group_key in list(self._dead_letter_queue.keys()):
-            stream, _ = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            stream, _ = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
             dlq_stream_name = f"{stream}:dlq"
             if dlq_stream_name != dlq_stream:
                 continue
@@ -981,7 +981,7 @@ class InlineBroker(BaseBroker, BrokerPort):
         consumer_groups_info: dict[str, ConsumerGroupInfo] = {}
 
         for group_key, group_info in self._consumer_groups.items():
-            _stream, consumer_group = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+            _stream, consumer_group = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
 
             if consumer_group not in consumer_groups_info:
                 consumer_groups_info[consumer_group] = {
@@ -1051,7 +1051,7 @@ class InlineBroker(BaseBroker, BrokerPort):
         consumer_groups = set()
         for group_key in self._consumer_groups:
             if CONSUMER_GROUP_SEPARATOR in group_key:
-                _, group_name = group_key.split(CONSUMER_GROUP_SEPARATOR, 1)
+                _, group_name = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
                 consumer_groups.add(group_name)
 
         # Calculate memory usage estimate (rough approximation)

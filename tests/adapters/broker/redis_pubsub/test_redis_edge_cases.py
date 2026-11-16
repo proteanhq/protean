@@ -204,3 +204,18 @@ def test_consumer_groups_report_no_pending_messages(broker):
     assert group["name"] == consumer_group
     assert group["pending"] == 0
     assert all(consumer["pending"] == 0 for consumer in group["consumers"])
+
+
+@pytest.mark.redis
+def test_stream_name_with_colons_keeps_group_and_stream_whole(broker):
+    """The group key is ``{stream}:{group}``; a colon inside the stream name
+    must not split the stream from its group in the wrong place."""
+    stream = "test::order"
+    consumer_group = "app.Handler"
+    broker.publish(stream, {"data": "first"})
+    broker.publish(stream, {"data": "second"})
+
+    assert broker.get_next(stream, consumer_group) is not None
+
+    assert list(broker._adapter.consumer_groups()) == [consumer_group]
+    assert broker._adapter._calculate_message_counts() == {"total_messages": 2}
