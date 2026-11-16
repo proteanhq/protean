@@ -311,6 +311,12 @@ matches people in neither country. `~(Q(country="US") & Q(age__gte=18))` matches
 everyone except adults in the US. `~Q(country="US", age__gte=18)` means the same
 as the second expression.
 
+On the memory and SQL providers, a negated condition does not match a NULL
+value. `~(Q(country="US") & Q(age__gte=18))` leaves out an adult with no
+`country`, because the database cannot tell that the adult is outside the US.
+On Elasticsearch, a negated condition matches a document with no value for the
+field.
+
 ### Nesting
 
 Q objects can be combined and nested to express complex criteria:

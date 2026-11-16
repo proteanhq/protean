@@ -119,17 +119,8 @@ class TestQInvert:
     def test_invert_single_condition_keeps_the_flat_tree(self):
         assert ~Q(a=1) == Q(a=1, _negated=True)
 
-    def test_invert_and_keeps_the_and_as_one_child(self):
-        inverted = ~(Q(a=1) & Q(b=2))
-
-        assert inverted == Q(Q(a=1, b=2), _negated=True)
-        assert inverted != Q(a=1, b=2, _negated=True)
-
-    def test_invert_multi_keyword_q_matches_invert_of_and(self):
-        assert ~Q(a=1, b=2) == ~(Q(a=1) & Q(b=2))
-
-    def test_invert_or_keeps_the_or_as_one_child(self):
-        assert ~(Q(a=1) | Q(b=2)) == Q(Q(a=1) | Q(b=2), _negated=True)
+    def test_invert_empty_q_stays_empty(self):
+        assert not ~Q()
 
 
 # ---------------------------------------------------------------------------

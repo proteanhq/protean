@@ -143,7 +143,8 @@ A Q object extends `Node`, which holds:
 - **`children`**: A list of leaf tuples `(field_name, value)` or nested
   `Node`/`Q` instances.
 - **`connector`**: `"AND"` or `"OR"`, determining how children are combined.
-- **`negated`**: A boolean flag that inverts the match.
+- **`negated`**: A boolean flag that negates each child before the
+  `connector` combines them. A nested node is negated as a whole.
 
 ```python
 # fragment
@@ -195,7 +196,7 @@ A node with several conditions stays whole as a nested child:
 ~Q(country="US", age__gte=18)
 
 → Node(connector=AND, negated=True)
-    └── Node(connector=AND, children=[("country", "US"), ("age__gte", 18)])
+    └── Node(connector=AND, children=[("age__gte", 18), ("country", "US")])
 ```
 
 A negated node negates each of its conditions, and it negates each nested node

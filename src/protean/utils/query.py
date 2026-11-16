@@ -350,8 +350,9 @@ class Q(Node):
         obj = type(self)()
         # Squashing a multi-condition node would turn ``~(a & b)`` into the
         # same tree as ``exclude(a, b)``, which providers read as
-        # ``NOT a AND NOT b``. Keep it whole so it negates as one unit.
-        obj.add(self, self.AND, squash=len(self) == 1)
+        # ``NOT a AND NOT b``. Keep it whole so it negates as one unit. An
+        # empty node still squashes, so ``~Q()`` stays empty and filters nothing.
+        obj.add(self, self.AND, squash=len(self) <= 1)
         obj.negate()
         return obj
 

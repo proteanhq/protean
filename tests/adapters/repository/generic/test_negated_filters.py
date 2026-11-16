@@ -22,12 +22,22 @@ def register_elements(test_domain):
     test_domain.register(Pet)
 
 
+def _on_elasticsearch(request):
+    return request.config.getoption("--db", "MEMORY").upper() == "ELASTICSEARCH"
+
+
 @pytest.fixture
 def skip_on_elasticsearch(request):
     # Elasticsearch matches a document with a missing field on a negated
     # condition, unlike SQL's three-valued NOT.
-    if request.config.getoption("--db", "MEMORY").upper() == "ELASTICSEARCH":
+    if _on_elasticsearch(request):
         pytest.skip("Elasticsearch matches NULL on a negated condition")
+
+
+@pytest.fixture
+def only_on_elasticsearch(request):
+    if not _on_elasticsearch(request):
+        pytest.skip("Only Elasticsearch matches NULL on a negated condition")
 
 
 def _create(test_domain, **values):
@@ -75,6 +85,14 @@ class TestNegatedOr:
     ):
         assert _ids(test_domain, ~(Q(kind="dog") | Q(kind="fish"))) == {kinds["cat"]}
 
+    def test_negated_or_matches_a_missing_field_on_elasticsearch(
+        self, test_domain, kinds, only_on_elasticsearch
+    ):
+        assert _ids(test_domain, ~(Q(kind="dog") | Q(kind="fish"))) == {
+            kinds["cat"],
+            kinds["none"],
+        }
+
 
 @pytest.mark.basic_storage
 class TestNegatedAnd:
@@ -118,10 +136,9 @@ class TestNestedNegation:
             pets["dog_max"],
         }
 
-    def test_double_negation_of_an_or(self, test_domain, pets):
-        assert _ids(test_domain, ~~(Q(kind="cat") | Q(name="Max"))) == {
-            pets["dog_max"],
-            pets["cat_rex"],
+    def test_triple_negation_of_an_or(self, test_domain, pets):
+        assert _ids(test_domain, ~~~(Q(kind="cat") | Q(name="Max"))) == {
+            pets["dog_rex"]
         }
 
     def test_negated_or_containing_an_and(self, test_domain, pets):
@@ -147,3 +164,52 @@ class TestNestedNegation:
             pets["cat_rex"],
             pets["dog_max"],
         }
+
+
+@pytest.mark.basic_storage
+class TestExcludeWithAPositionalQ:
+    def test_exclude_with_an_or(self, test_domain, pets):
+        assert _ids(test_domain, Q(kind="cat") | Q(name="Max"), exclude=True) == {
+            pets["dog_rex"]
+        }
+
+    def test_exclude_with_a_single_condition_q(self, test_domain, pets):
+        assert _ids(test_domain, Q(kind="dog"), exclude=True) == {pets["cat_rex"]}
+
+    def test_exclude_with_a_multi_keyword_q_drops_records_matching_both(
+        self, test_domain, pets
+    ):
+        assert _ids(test_domain, Q(kind="dog", name="Rex"), exclude=True) == {
+            pets["dog_max"],
+            pets["cat_rex"],
+        }
+
+    def test_exclude_negates_each_positional_q_on_its_own(self, test_domain, pets):
+        assert _ids(test_domain, Q(kind="dog"), Q(name="Rex"), exclude=True) == set()
+
+    def test_exclude_with_a_q_and_a_keyword(self, test_domain, pets):
+        # NOT (cat OR fish) AND NOT Rex
+        expression = Q(kind="cat") | Q(kind="fish")
+        assert _ids(test_domain, expression, exclude=True, name="Rex") == {
+            pets["dog_max"]
+        }
+
+
+@pytest.mark.basic_storage
+class TestEmptyQ:
+    def test_negated_empty_q_filters_nothing(self, test_domain, pets):
+        assert _ids(test_domain, ~Q()) == set(pets.values())
+
+    def test_negated_empty_q_keeps_the_condition_it_is_combined_with(
+        self, test_domain, pets
+    ):
+        assert _ids(test_domain, ~Q() & Q(kind="dog")) == {
+            pets["dog_rex"],
+            pets["dog_max"],
+        }
+
+    def test_exclude_with_an_empty_q_drops_nothing(self, test_domain, pets):
+        assert _ids(test_domain, Q(), exclude=True) == set(pets.values())
+
+    def test_exclude_with_an_empty_q_and_a_keyword(self, test_domain, pets):
+        assert _ids(test_domain, Q(), exclude=True, kind="dog") == {pets["cat_rex"]}
