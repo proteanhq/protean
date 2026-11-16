@@ -952,7 +952,8 @@ def _outbox_rows_for_event(
     """Yield the internal outbox row for ``event``, then one row per external
     broker when the event is published.
 
-    The rows differ only in ``target_broker``.
+    Every row carries the same message, trace and partition fields. Each
+    row has its own ``id`` and ``created_at``, and its own ``target_broker``.
     """
     from protean.utils.outbox import Outbox  # noqa: PLC0415
 

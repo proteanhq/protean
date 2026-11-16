@@ -1,6 +1,6 @@
 """The outbox rows of one published event, the internal row and one per
-external broker, carry the same values in every column except
-``target_broker``."""
+external broker, carry the same message, trace and partition values. Each row
+has its own ``id``, ``created_at`` and ``target_broker``."""
 
 import pytest
 
@@ -58,7 +58,7 @@ def test_domain():
         yield domain
 
 
-def test_rows_differ_only_in_target_broker(test_domain):
+def test_rows_share_message_fields_across_brokers(test_domain):
     shipment = Shipment(client_id="client-7", carrier="DHL")
     shipment.dispatch()
     with processing_priority(5), UnitOfWork():
