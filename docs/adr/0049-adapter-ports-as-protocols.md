@@ -146,6 +146,9 @@ supports `in`, so the helpers were a second way to write the same check.
 - A domain has one event store, so `domain.event_store` is the `EventStore`
   service. Brokers, caches and databases keep their containers: `Brokers`,
   `Caches` and `Databases`.
+- The `EventStore` and `Cache` services are built first. Until the `Broker`,
+  `Database` and `DAO` services are built, `domain.brokers[name]` and
+  `domain.databases[name]` return the adapter.
 
 Callers reach every framework feature through one object. Application code
 that needs the native client calls the service's `get_connection()`

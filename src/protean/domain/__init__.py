@@ -392,8 +392,8 @@ class Domain:
         # Cache for holding Model to Entity/Aggregate associations.
         # Structure mirrors Databases._repositories: keyed by the element's
         # fully qualified name, then by database type. A model registered
-        # with database=None sits under the None key and is the fallback for
-        # any provider.
+        # with database_type=None sits under the None key and is the fallback
+        # for any database type.
         self._database_models: dict[str, dict[str | None, type[BaseDatabaseModel]]] = (
             defaultdict(dict)
         )

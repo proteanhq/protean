@@ -268,7 +268,7 @@ The only other database defined by default is `memory`, which is the in-memory
 stub database provider.
 
 To assign an aggregate or entity a specific database, name the persistence
-store defined here in its `provider` key.
+store defined here in its `database` option.
 
 ```python hl_lines="1"
 --8<-- "reference/configuration/index/002.py:aggregate"
