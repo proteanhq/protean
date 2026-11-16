@@ -132,9 +132,7 @@ def _fake_redis(groups=(), consumers_by_group=None, used_memory=1024):
 
 
 def _use_fake_redis(domain, monkeypatch, fake):
-    monkeypatch.setattr(
-        domain.brokers["default"]._adapter, "get_connection", lambda: fake
-    )
+    monkeypatch.setattr(domain.brokers["default"]._adapter, "redis_instance", fake)
 
 
 @pytest.mark.redis
@@ -587,7 +585,7 @@ def _fake_redis_with_consumers():
 def full_text_client(test_domain, monkeypatch):
     broker = test_domain.brokers["default"]
     fake = _fake_redis_with_consumers()
-    monkeypatch.setattr(broker._adapter, "get_connection", lambda: fake)
+    monkeypatch.setattr(broker._adapter, "redis_instance", fake)
     monkeypatch.setattr(broker._adapter, "health", _health_record)
     subscriptions = [
         SimpleNamespace(
@@ -819,9 +817,7 @@ def test_broker_pool_stats_read_the_redis_connection_pool(test_domain, monkeypat
     pool._available_connections = [object()]
     fake = MagicMock(spec=redis.Redis)
     fake.connection_pool = pool
-    monkeypatch.setattr(
-        test_domain.brokers["default"]._adapter, "get_connection", lambda: fake
-    )
+    monkeypatch.setattr(test_domain.brokers["default"]._adapter, "redis_instance", fake)
 
     assert metrics._collect_broker_pool_stats([test_domain]) == [("default", 2, 1, 10)]
 
