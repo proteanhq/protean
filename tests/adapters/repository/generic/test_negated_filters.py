@@ -213,3 +213,14 @@ class TestEmptyQ:
 
     def test_exclude_with_an_empty_q_and_a_keyword(self, test_domain, pets):
         assert _ids(test_domain, Q(), exclude=True, kind="dog") == {pets["cat_rex"]}
+
+    def test_double_negated_empty_q_filters_nothing(self, test_domain, pets):
+        assert _ids(test_domain, ~~Q()) == set(pets.values())
+
+    def test_double_negated_empty_q_keeps_the_condition_it_is_combined_with(
+        self, test_domain, pets
+    ):
+        assert _ids(test_domain, ~~Q() & Q(kind="dog")) == {
+            pets["dog_rex"],
+            pets["dog_max"],
+        }
