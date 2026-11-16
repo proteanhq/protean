@@ -888,8 +888,9 @@ class DictDAO(BaseDAO, BoundedDeletePort):
         # The negation is pushed down to each condition (De Morgan): ``NOT``
         # flips the connector, and a condition is negated when exactly one of
         # the outer negation and this node's own negation applies. A negated
-        # lookup never matches NULL, so the result equals SQL's three-valued
-        # ``NOT`` of the whole expression.
+        # comparison never matches NULL, and a negated ``isnull`` flips
+        # plainly because SQL never evaluates ``IS NULL`` to UNKNOWN, so the
+        # result equals SQL's three-valued ``NOT`` of the whole expression.
         child_negated = negated != criteria.negated
         is_and = (criteria.connector == criteria.AND) != negated
 

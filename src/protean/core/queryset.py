@@ -115,8 +115,11 @@ class QuerySet:
 
     def exclude(self, *args: Any, **kwargs: Any) -> Self:
         """
-        Return a new QuerySet instance with NOT (args) ANDed to the existing
-        set.
+        Return a new QuerySet instance that drops every record matching any
+        of the given conditions.
+
+        Each condition is negated on its own and the results are ANDed to the
+        existing set, so ``exclude(a=1, b=2)`` keeps ``NOT a=1 AND NOT b=2``.
         """
         return self._filter_or_exclude(True, *args, **kwargs)
 
