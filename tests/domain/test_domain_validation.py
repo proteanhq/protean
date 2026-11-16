@@ -250,7 +250,7 @@ class TestValidateEntityProviders:
         test_domain.register(Dept, database="primary")
         test_domain.register(Dean, part_of=Dept, database="secondary")
 
-        with pytest.raises(IncorrectUsageError, match="different provider"):
+        with pytest.raises(IncorrectUsageError, match="different database"):
             test_domain.init(traverse=False)
 
     def test_default_providers_pass(self, test_domain):

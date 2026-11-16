@@ -697,3 +697,49 @@ class TestInstalledDatabaseEntryPoints:
         eps = metadata.entry_points(group="protean.providers")
 
         assert [ep for ep in eps if ep.dist.name == "protean"] == []
+
+
+@pytest.mark.no_test_domain
+class TestRenamedGroup:
+    """An entry point still declared under a registry's earlier group name is
+    named in a warning and not loaded."""
+
+    def _registry(self) -> AdapterRegistry[Any]:
+        return AdapterRegistry(
+            "protean.databases", "database provider", renamed_from="protean.providers"
+        )
+
+    def test_an_entry_point_in_the_old_group_is_named_in_a_warning(self, caplog):
+        caplog.set_level(logging.DEBUG, logger=LOGGER)
+        registry = self._registry()
+        eps = _entry_points(
+            (
+                "dynamo",
+                "tests.infra.adapters:register_custom_database",
+                "protean.providers",
+            )
+        )
+
+        with patch("importlib.metadata.entry_points", return_value=eps):
+            registry._discover_plugins()
+
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert [r.getMessage() for r in warnings] == [
+            (
+                "Ignoring database provider plugin(s) dynamo: the entry-point group "
+                "'protean.providers' is now 'protean.databases'."
+            )
+        ]
+        assert registry.list() == {}
+
+    def test_no_warning_when_the_old_group_is_empty(self, caplog):
+        caplog.set_level(logging.DEBUG, logger=LOGGER)
+        registry = self._registry()
+
+        with patch("importlib.metadata.entry_points", return_value=_entry_points()):
+            registry._discover_plugins()
+
+        assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
+
+    def test_the_databases_registry_names_the_old_group(self):
+        assert databases.renamed_from == "protean.providers"

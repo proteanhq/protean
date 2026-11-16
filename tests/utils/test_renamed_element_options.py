@@ -84,18 +84,23 @@ def test_decorator_rejects_the_provider_option(test_domain):
 
 
 def test_database_option_registers_on_an_aggregate(test_domain):
-    @test_domain.aggregate(database="default")
+    @test_domain.aggregate(database="reporting")
     class Invoice:
         number = String()
 
-    assert Invoice.meta_.database == "default"
+    assert Invoice.meta_.database == "reporting"
 
 
 def test_database_type_option_registers_on_a_repository(test_domain):
-    test_domain.register(Order)
-    test_domain.register(OrderRepository, part_of=Order, database_type="memory")
+    @test_domain.aggregate
+    class Invoice:
+        number = String()
 
-    assert OrderRepository.meta_.database_type == "memory"
+    @test_domain.repository(part_of=Invoice, database_type="memory")
+    class InvoiceRepository:
+        pass
+
+    assert InvoiceRepository.meta_.database_type == "memory"
 
 
 def test_an_unrelated_unknown_option_keeps_the_generic_error(test_domain):

@@ -170,6 +170,10 @@ _DEFAULT_OPTIONS: dict[str, dict[str, Any]] = {
     },
 }
 
+# The IR records an element's database under ``provider``, while the decorator option
+# is ``database``. Messages name the option a user writes.
+_DECORATOR_OPTION_NAMES: dict[str, str] = {"provider": "database"}
+
 # The keys the grammar accounts for on each participant. ``description`` is
 # documentation, dropped for the same reason a field's is. The identity and locating
 # keys (``fqn``, ``module``, ``element_type``, ``part_of``, ``__type__``,
@@ -1111,15 +1115,16 @@ def _check_default_options(
     defaults = _option_defaults(keyword, element["name"], domain_name)
     options = element.get("options") or {}
     for key, value in sorted(options.items()):
+        option = _DECORATOR_OPTION_NAMES.get(key, key)
         if key not in defaults:
             raise ModelEmitError(
-                f"cluster {cluster_fqn!r} sets the {keyword} option {key!r}, "
+                f"cluster {cluster_fqn!r} sets the {keyword} option {option!r}, "
                 "which the grammar does not carry"
             )
         if value != defaults[key]:
             raise ModelEmitError(
                 f"cluster {cluster_fqn!r} sets the {keyword} option "
-                f"{key}={value!r} rather than {defaults[key]!r}, which the "
+                f"{option}={value!r} rather than {defaults[key]!r}, which the "
                 "grammar cannot express"
             )
 

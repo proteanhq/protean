@@ -163,5 +163,5 @@ class TestRepositoryRegistration:
 
         assert exc.value.args[0].startswith(
             "`CustomUserRepository` declares database_type `UNKNOWN`, which no "
-            "registered database adapter provides. Use one of: "
+            "registered database adapter provides. Use `ALL` or one of: "
         )

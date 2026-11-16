@@ -47,6 +47,8 @@ class AdapterRegistry(Generic[PortT]):
         port_name: The port's display name, used in error messages.
         after_load: Called with the name and class after each successful
             ``get()``, for checks that apply to one port only.
+        renamed_from: The group's earlier name. Discovery logs a warning that
+            names each entry point still declared under it, and loads none.
     """
 
     def __init__(
@@ -54,10 +56,12 @@ class AdapterRegistry(Generic[PortT]):
         group: str,
         port_name: str,
         after_load: Callable[[str, type[PortT]], None] | None = None,
+        renamed_from: str | None = None,
     ) -> None:
         self.group = group
         self.port_name = port_name
         self.after_load = after_load
+        self.renamed_from = renamed_from
         self._paths: dict[str, str] = {}
         self._discovered = False
 
@@ -66,7 +70,11 @@ class AdapterRegistry(Generic[PortT]):
         if self._discovered:
             return
 
-        for entry_point in metadata.entry_points().select(group=self.group):
+        entry_points = metadata.entry_points()
+        if self.renamed_from:
+            self._warn_about_the_old_group(entry_points, self.renamed_from)
+
+        for entry_point in entry_points.select(group=self.group):
             try:
                 register_func = entry_point.load()
                 register_func()
@@ -82,6 +90,19 @@ class AdapterRegistry(Generic[PortT]):
                 )
 
         self._discovered = True
+
+    def _warn_about_the_old_group(
+        self, entry_points: metadata.EntryPoints, old_group: str
+    ) -> None:
+        """Log a warning naming each entry point declared under ``old_group``."""
+        stale = sorted(
+            entry_point.name for entry_point in entry_points.select(group=old_group)
+        )
+        if stale:
+            logger.warning(
+                f"Ignoring {self.port_name} plugin(s) {', '.join(stale)}: the "
+                f"entry-point group '{old_group}' is now '{self.group}'."
+            )
 
     def register(self, name: str, class_path: str) -> None:
         """Map ``name`` to the dotted path of an adapter class.
@@ -182,7 +203,10 @@ def _check_required_lookups(name: str, provider_cls: type["BaseDatabase"]) -> No
 
 
 databases: AdapterRegistry["BaseDatabase"] = AdapterRegistry(
-    "protean.databases", "database provider", after_load=_check_required_lookups
+    "protean.databases",
+    "database provider",
+    after_load=_check_required_lookups,
+    renamed_from="protean.providers",
 )
 brokers: AdapterRegistry["BrokerPort"] = AdapterRegistry("protean.brokers", "broker")
 event_stores: AdapterRegistry["BaseEventStore"] = AdapterRegistry(

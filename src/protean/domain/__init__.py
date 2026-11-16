@@ -437,6 +437,10 @@ class Domain:
         # warning, so a deprecated event warns once per type, not per instance.
         self._deprecated_events_warned: set[type] = set()
 
+        # Set once ``init()`` has validated the elements registered before it,
+        # so a later repository or database model is checked as it registers.
+        self._validated = False
+
         # Lazy-initialized idempotency store
         self._idempotency_store: IdempotencyStore | None = None
 
@@ -701,8 +705,7 @@ class Domain:
             self._missing_config_dir = None
 
         self._prepare(traverse=traverse)
-
-        self.databases.validate_database_types()
+        self._validated = True
 
         # Initialize adapters after loading domain
         self._initialize(connect=connect)
@@ -741,12 +744,12 @@ class Domain:
             provider = providers.get(meta.database)
             if provider is None:
                 raise ConfigurationError(
-                    f"Idempotent subscriber `{record.cls.__name__}` uses provider "
+                    f"Idempotent subscriber `{record.cls.__name__}` uses database "
                     f"`{meta.database}`, which is not configured"
                 )
             if not provider.managed:
                 raise ConfigurationError(
-                    f"Idempotent subscriber `{record.cls.__name__}` uses provider "
+                    f"Idempotent subscriber `{record.cls.__name__}` uses database "
                     f"`{meta.database}`, which is not managed and so has no "
                     "marker store"
                 )
@@ -1145,6 +1148,12 @@ class Domain:
         # that are not visible on the bare ``type[_T]`` type parameter, so we
         # treat it as Any internally and re-narrow to ``type[_T]`` at return.
         new_cls: Any = factory(element_cls, self, **opts)
+
+        if self._validated and element_type in (
+            DomainObjects.REPOSITORY,
+            DomainObjects.DATABASE_MODEL,
+        ):
+            self.databases.validate_database_types([new_cls])
 
         # A string ``part_of`` is filed once ``domain.init()`` resolves it.
         if element_type == DomainObjects.DATABASE_MODEL and not isinstance(

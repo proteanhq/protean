@@ -54,5 +54,5 @@ class TestWhenEntityDoesNotHaveSameProviderAsAggregate:
 
         assert (
             exc.value.args[0]
-            == "Entity `Dean` has a different provider than its aggregate `Department`"
+            == "Entity `Dean` has a different database than its aggregate `Department`"
         )

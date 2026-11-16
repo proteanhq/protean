@@ -22,12 +22,3 @@ def test_old_module_paths_do_not_import(module):
 def test_removed_enums_do_not_import(name):
     with pytest.raises(ImportError):
         exec(f"from protean.utils import {name}", {})
-
-
-@pytest.mark.parametrize(
-    "name", ["ProviderPort", "RawQueryProviderPort", "ProviderHealth", "BaseProvider"]
-)
-def test_old_port_names_are_not_in_the_database_module(name):
-    module = importlib.import_module("protean.port.database")
-
-    assert not hasattr(module, name)

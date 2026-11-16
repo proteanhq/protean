@@ -4,14 +4,15 @@ import collections.abc
 import logging
 import re
 from collections import defaultdict
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
+from importlib import metadata
 from typing import TYPE_CHECKING, Any
 
 from protean.core.repository import BaseRepository, repository_factory
 from protean.exceptions import ConfigurationError
 from protean.infra.registry import databases as database_registry
 from protean.port.database import BaseDatabase
-from protean.utils import _fully_qualified_name
+from protean.utils import DomainObjects, _fully_qualified_name
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -49,22 +50,45 @@ def _without_password(uri: Any) -> str:
 
 
 def _known_database_types() -> set[str]:
-    """Return the ``database_type`` of every adapter in the databases registry.
+    """Return the database types a repository or database model may name.
 
-    An adapter that fails to load, such as one whose optional driver is not
-    installed, counts under its registry name. Each built-in adapter's name
-    equals its ``database_type``.
+    The set holds the ``database_type`` of every adapter in the databases
+    registry. Two kinds of adapter count under their name instead, because
+    their ``database_type`` cannot be read: a registered adapter that fails to
+    load or to pass the registry's checks, and an entry point in the
+    ``protean.databases`` group that registered nothing, as the built-in
+    SQLAlchemy and Elasticsearch adapters do when their extra is not
+    installed. Each built-in adapter's name equals its ``database_type``.
     """
     # ``list()`` does not load entry points, and this check can run before
     # any ``get()`` has loaded them.
     database_registry._discover_plugins()
-    known = set()
-    for name in database_registry.list():
+    registered = database_registry.list()
+    known = {
+        entry_point.name
+        for entry_point in metadata.entry_points().select(group=database_registry.group)
+        if entry_point.name not in registered
+    }
+    for name in registered:
         try:
-            known.add(database_registry.get(name).database_type)
-        except ConfigurationError:
-            known.add(name)
+            database_type = database_registry.get(name).database_type
+        except Exception:  # noqa: BLE001 - an adapter is third-party code
+            database_type = None
+        known.add(database_type if isinstance(database_type, str) else name)
     return known
+
+
+def _wildcard_database_type(element_cls: type[Any]) -> str | None:
+    """Return the ``database_type`` that makes ``element_cls`` serve every database."""
+    return "ALL" if element_cls.element_type == DomainObjects.REPOSITORY else None
+
+
+def _accepted_database_types(element_cls: type[Any], known: set[str]) -> str:
+    """Return the sentence that lists the values ``element_cls`` may declare."""
+    types = ", ".join(sorted(known)) or "none, because no adapter is registered"
+    if element_cls.element_type == DomainObjects.REPOSITORY:
+        return f"Use `ALL` or one of: {types}"
+    return f"Leave it unset or use one of: {types}"
 
 
 class Databases(collections.abc.MutableMapping[str, BaseDatabase]):
@@ -199,37 +223,46 @@ class Databases(collections.abc.MutableMapping[str, BaseDatabase]):
                 if isinstance(provider, SADatabase):
                     _refuse_unstorable_identity(record.cls, provider)
 
-    def validate_database_types(self) -> None:
+    def validate_database_types(
+        self, elements: Iterable[type[Any]] | None = None
+    ) -> None:
         """Refuse a repository or database model bound to an unknown database type.
 
         A repository may declare ``database_type="ALL"`` and a database model
-        may leave it as ``None``. Any other value must equal the
-        ``database_type`` of an adapter in the ``protean.databases`` registry.
+        may leave it as ``None``. Any other value must be a string equal to
+        the ``database_type`` of an adapter in the databases registry.
+
+        Args:
+            elements: The repositories and database models to check. Defaults
+                to every one registered with the domain.
 
         Raises:
             ConfigurationError: A repository or database model declares a
                 ``database_type`` that no registered adapter provides.
         """
-        registry = self.domain.registry
+        if elements is None:
+            registry = self.domain.registry
+            elements = [
+                record.cls
+                for records in (registry.repositories, registry.database_models)
+                for record in records.values()
+            ]
         unchecked = [
-            (record.cls, record.cls.meta_.database_type)
-            for records, wildcard in (
-                (registry.repositories, "ALL"),
-                (registry.database_models, None),
-            )
-            for record in records.values()
-            if record.cls.meta_.database_type != wildcard
+            element_cls
+            for element_cls in elements
+            if element_cls.meta_.database_type != _wildcard_database_type(element_cls)
         ]
         if not unchecked:
             return
 
         known = _known_database_types()
-        for element_cls, database_type in unchecked:
-            if database_type not in known:
+        for element_cls in unchecked:
+            database_type = element_cls.meta_.database_type
+            if not isinstance(database_type, str) or database_type not in known:
                 raise ConfigurationError(
                     f"`{element_cls.__name__}` declares database_type "
                     f"`{database_type}`, which no registered database adapter "
-                    f"provides. Use one of: {', '.join(sorted(known))}"
+                    f"provides. {_accepted_database_types(element_cls, known)}"
                 )
 
     def get_connection(self, provider_name: str = "default") -> Any:

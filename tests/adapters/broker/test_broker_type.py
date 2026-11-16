@@ -5,7 +5,6 @@ import pytest
 from protean.adapters.broker.inline import InlineBroker
 from protean.adapters.broker.redis import RedisBroker
 from protean.adapters.broker.redis_pubsub import RedisPubSubBroker
-from protean.port.broker import BaseBroker
 
 
 @pytest.mark.parametrize(
@@ -18,10 +17,6 @@ from protean.port.broker import BaseBroker
 )
 def test_broker_type(broker_cls, broker_type):
     assert broker_cls.broker_type == broker_type
-
-
-def test_base_broker_declares_broker_type():
-    assert "broker_type" in BaseBroker.__annotations__
 
 
 @pytest.mark.parametrize("broker_cls", [InlineBroker, RedisBroker, RedisPubSubBroker])

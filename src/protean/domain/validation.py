@@ -126,6 +126,7 @@ class DomainValidator:
         self._validate_event_sourced_aggregates()
         self._validate_unique_command_handlers()
         self._validate_entity_providers()
+        self._validate_database_types()
         self._validate_projector_associations()
         self._validate_query_associations()
         self._validate_query_handler_associations()
@@ -160,6 +161,7 @@ class DomainValidator:
             self._validate_event_sourced_aggregates,
             self._validate_unique_command_handlers,
             self._validate_entity_providers,
+            self._validate_database_types,
             self._validate_projector_associations,
             self._validate_query_associations,
             self._validate_query_handler_associations,
@@ -190,6 +192,10 @@ class DomainValidator:
     # ------------------------------------------------------------------
     # Private validation methods
     # ------------------------------------------------------------------
+
+    def _validate_database_types(self) -> None:
+        """Check each repository's and database model's ``database_type``."""
+        self._domain.databases.validate_database_types()
 
     def _validate_identity_config(self) -> None:
         """Check ``identity_function`` is provided when ``identity_strategy`` is ``function``."""
@@ -277,7 +283,7 @@ class DomainValidator:
             )
 
     def _validate_entity_providers(self) -> None:
-        """Check that entities have the same provider as their aggregate."""
+        """Check that entities have the same database as their aggregate."""
         registry = self._domain.registry
         for entity in registry._elements[DomainObjects.ENTITY.value].values():
             if (
@@ -285,7 +291,7 @@ class DomainValidator:
                 != entity.cls.meta_.database
             ):
                 raise IncorrectUsageError(
-                    f"Entity `{entity.cls.__name__}` has a different provider "
+                    f"Entity `{entity.cls.__name__}` has a different database "
                     f"than its aggregate `{entity.cls.meta_.aggregate_cluster.__name__}`"
                 )
 
