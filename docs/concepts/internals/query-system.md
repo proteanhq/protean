@@ -143,8 +143,10 @@ A Q object extends `Node`, which holds:
 - **`children`**: A list of leaf tuples `(field_name, value)` or nested
   `Node`/`Q` instances.
 - **`connector`**: `"AND"` or `"OR"`, determining how children are combined.
-- **`negated`**: A boolean flag that negates each child before the
-  `connector` combines them. A nested node is negated as a whole.
+- **`negated`**: A boolean flag that negates the node. In a query filter,
+  each child is negated before the `connector` combines them, and a nested
+  node is negated as a whole. In a partial index (`Index(where=...)`), the
+  combined children are negated as one expression.
 
 ```python
 # fragment
