@@ -189,6 +189,12 @@ Negation wraps the node and flips the `negated` flag:
     └── Node(connector=AND, children=[("country", "US")])
 ```
 
+A negated node negates each of its conditions, and it negates each nested node
+as a whole. `~` keeps a multi-condition node whole as a nested child, so
+`~(Q(a=1) & Q(b=2))` and `~Q(a=1, b=2)` mean "not both". `exclude(a=1, b=2)`
+builds one negated node that holds both conditions, so it drops a record that
+matches either one.
+
 ### Squashing
 
 The `Node.add()` method applies **squashing**, when combining two nodes with the same

@@ -154,10 +154,9 @@ class QuerySet:
             # through untouched, and an ``__in`` list is serialized item by item.
             new_kwargs[new_key_name] = serialize_custom_value(field_obj, value)
 
-        if negate:
-            clone._add_q(~Q(*args, **new_kwargs))
-        else:
-            clone._add_q(Q(*args, **new_kwargs))
+        # ``exclude(a=1, b=2)`` drops a record that matches either condition,
+        # so it negates each condition. ``~Q(a=1, b=2)`` negates them as a whole.
+        clone._add_q(Q(*args, _negated=negate, **new_kwargs))
         return clone
 
     def limit(self, limit: int | None) -> Self:

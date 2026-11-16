@@ -875,41 +875,52 @@ class DictDAO(BaseDAO, BoundedDeletePort):
         return model_obj
 
     def _filter_items(
-        self, criteria: Q, db: dict[typing.Any, typing.Any]
+        self,
+        criteria: Q,
+        db: dict[typing.Any, typing.Any],
+        negated: bool = False,
     ) -> dict[typing.Any, typing.Any]:
-        """Recursive function to filter items from dictionary"""
-        # Filter the dictionary objects based on the filters
-        # ``_evaluate_lookup`` is defined on ``MemoryProvider``; ``self.provider``
-        # is typed as the wider ``BaseProvider`` on the DAO, and a ``DictDAO`` is
-        # only ever wired to a ``MemoryProvider``, so narrow here.
-        provider = cast(MemoryProvider, self.provider)
-        negated = criteria.negated
-        input_db = None
+        """Return the records in ``db`` that match ``criteria``.
 
-        if criteria.connector == criteria.AND:
+        With ``negated`` set, return the records that match ``NOT criteria``
+        instead.
+        """
+        # The negation is pushed down to each condition (De Morgan): ``NOT``
+        # flips the connector, and a condition is negated when exactly one of
+        # the outer negation and this node's own negation applies. A negated
+        # lookup never matches NULL, so the result equals SQL's three-valued
+        # ``NOT`` of the whole expression.
+        child_negated = negated != criteria.negated
+        is_and = (criteria.connector == criteria.AND) != negated
+
+        if is_and:
             # Trim database records over successive iterations
             #   Whatever is left at the end satisfy all criteria (AND)
             input_db = db
             for child in criteria.children:
-                if isinstance(child, Q):
-                    input_db = self._filter_items(child, input_db)
-                else:
-                    input_db = provider._evaluate_lookup(
-                        child[0], child[1], negated, input_db
-                    )
-        else:
-            # Grow database records over successive iterations
-            #   Whatever is left at the end satisfy any criteria (OR)
-            input_db = {}
-            for child in criteria.children:
-                if isinstance(child, Q):
-                    results = self._filter_items(child, db)
-                else:
-                    results = provider._evaluate_lookup(child[0], child[1], negated, db)
+                input_db = self._filter_child(child, input_db, child_negated)
+            return input_db
 
-                input_db = {**input_db, **results}
-
+        # Grow database records over successive iterations
+        #   Whatever is left at the end satisfy any criteria (OR)
+        input_db = {}
+        for child in criteria.children:
+            input_db = {**input_db, **self._filter_child(child, db, child_negated)}
         return input_db
+
+    def _filter_child(
+        self,
+        child: typing.Any,
+        db: dict[typing.Any, typing.Any],
+        negated: bool,
+    ) -> dict[typing.Any, typing.Any]:
+        if isinstance(child, Q):
+            return self._filter_items(child, db, negated)
+        # ``_evaluate_lookup`` is defined on ``MemoryProvider``; ``self.provider``
+        # is typed as the wider ``BaseProvider`` on the DAO, and a ``DictDAO`` is
+        # only ever wired to a ``MemoryProvider``, so narrow here.
+        provider = cast(MemoryProvider, self.provider)
+        return provider._evaluate_lookup(child[0], child[1], negated, db)
 
     def _filter(
         self,

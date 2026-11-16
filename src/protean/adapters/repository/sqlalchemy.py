@@ -2059,8 +2059,10 @@ class SADAO(BaseDAO, NativeClaimPort, ClaimCandidatesPort, BoundedDeletePort):
         params = []
         for child in criteria.children:
             if isinstance(child, Q):
-                # Call the function again with the child
-                params.append(self._build_filters(child, model))
+                # Call the function again with the child. A negated node
+                # negates a nested node as a whole.
+                nested = self._build_filters(child, model)
+                params.append(~nested if criteria.negated else nested)
             else:
                 # Find the lookup class and the key
                 stripped_key, lookup_name = split_lookup_key(child[0])
