@@ -1,8 +1,10 @@
 """Module containing repository implementation for Elasticsearch"""
 
 import decimal
+import functools
 import json
 import logging
+import operator
 import types
 import typing
 from collections.abc import Sequence
@@ -311,9 +313,17 @@ class ElasticsearchDAO(BaseDAO):
         return f"ElasticsearchDAO <{self.entity_cls.__name__}>"
 
     def _build_filters(self, criteria: Q) -> _Any:
-        """Recursively Build the filters from the criteria object"""
-        composed_query = query.Q()
+        """Recursively build the filters from the criteria object"""
+        parts = [
+            self._build_filters(child)
+            if isinstance(child, Q)
+            else _lookup_expression(self, child, criteria.negated)
+            for child in criteria.children
+        ]
+        if not parts:
+            return query.Q()
 
+<<<<<<< HEAD
         if criteria.connector == criteria.AND:
             for child in criteria.children:
                 if isinstance(child, Q):
@@ -350,6 +360,12 @@ class ElasticsearchDAO(BaseDAO):
                         composed_query = composed_query | expression
 
         return composed_query
+=======
+        # Combine from the first child. Starting from ``query.Q()``, which is
+        # ``match_all``, breaks OR: ``match_all | x`` matches every document.
+        combine = operator.and_ if criteria.connector == criteria.AND else operator.or_
+        return functools.reduce(combine, parts)
+>>>>>>> 3e87f27a (Fix Elasticsearch OR filters that match every document (#2264))
 
     def _filter(
         self,
