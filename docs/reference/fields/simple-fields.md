@@ -63,7 +63,9 @@ precedence rules.
 
 ## Integer
 
-An integer.
+An integer. The field accepts an `int`, or a float or string that holds a
+whole number, such as `3.0` or `"3"`. It rejects a value with a fractional
+part, and rejects `True` and `False`, with a `ValidationError`.
 
 ```python hl_lines="10"
 --8<-- "guides/domain-definition/fields/simple-fields/003.py:full"
@@ -76,7 +78,9 @@ An integer.
 
 ## Float
 
-A floating-point number represented in Python by a float instance.
+A floating-point number represented in Python by a float instance. The field
+accepts a `float`, an `int` or a string that holds a number, and rejects `True`
+and `False` with a `ValidationError`.
 
 ```python hl_lines="10"
 --8<-- "guides/domain-definition/fields/simple-fields/004.py:full"
