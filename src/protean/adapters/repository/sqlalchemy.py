@@ -1972,7 +1972,10 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
 
 # The key in a session's ``info`` dict under which ``SADAO.update`` keeps the
 # stream and base version of each row it version-checked while ``occ_trace`` is
-# active. ``SAProvider`` reads the rows to record the outcome of the commit.
+# active. ``SAProvider.new_session`` sets it, so only a standalone session has
+# it: a Unit of Work commits its session directly, never through
+# ``SAProvider.commit``, so the trace could not record that commit's outcome.
+# ``SAProvider`` reads the rows to record the outcome of the commit.
 _OCC_TRACE_ROWS = "protean_occ_trace_rows"
 
 
@@ -2202,7 +2205,7 @@ class SADAO(
         # ``begin_nested`` flushes pending writes before it opens the
         # savepoint. Flush them here, so an error in an earlier write is
         # raised as it is and not taken for this row's key collision.
-        session.flush()
+        self.provider.flush(session)
         try:
             with session.begin_nested():
                 write()
@@ -2298,9 +2301,11 @@ class SADAO(
     ) -> None:
         """Refuse an update whose stored row is not at ``expected_version``.
 
-        While ``occ_trace`` is active, a refused update records ``conflicted``,
+        While ``occ_trace`` is active and ``session`` came from
+        ``SAProvider.new_session``, a refused update records ``conflicted``,
         and a passed check keeps the row's stream and base in ``session.info``
-        for ``SAProvider`` to record the commit's outcome.
+        for ``SAProvider.commit`` to record the commit's outcome. A Unit of
+        Work's session records nothing.
 
         Raises:
             ExpectedVersionError: The stored version differs from
@@ -2308,8 +2313,11 @@ class SADAO(
         """
         stream = f"{self.schema_name}:{identifier}"
         stored_version = getattr(db_item, "_version", None)
+        traced_rows: dict[str, int] | None = (
+            session.info.get(_OCC_TRACE_ROWS) if occ_trace.is_active() else None
+        )
         if stored_version != expected_version:
-            if occ_trace.is_active():
+            if traced_rows is not None:
                 # Raw conflict observation: the version this writer read as
                 # its base, and the row's live version that no longer matches.
                 occ_trace.record(
@@ -2323,11 +2331,9 @@ class SADAO(
                 f"(Aggregate: {self.entity_cls.__name__}({identifier}), "
                 f"Version: {stored_version})"
             )
-        if occ_trace.is_active():
+        if traced_rows is not None:
             # The first base seen for a row is the one the commit advances.
-            session.info.setdefault(_OCC_TRACE_ROWS, {}).setdefault(
-                stream, expected_version
-            )
+            traced_rows.setdefault(stream, expected_version)
 
     def update_all(
         self, session: SessionProtocol, criteria: Q, values: Mapping[str, typing.Any]
@@ -2998,6 +3004,7 @@ class SAProvider(BaseProvider, RawQueryProviderPort):
         session: Session = self._execute_database_specific_connection_statements(
             self._session_factory()
         )
+        session.info[_OCC_TRACE_ROWS] = {}
         if not session.is_active:
             session.begin()
         return session

@@ -499,6 +499,14 @@ def _unique_key_criteria(
     return criteria & ~Q(**{id_attr: identifier})
 
 
+def _log_save_failure(exc: Exception) -> None:
+    location = getattr(exc, "location", None)
+    logger.error(
+        f"Failed saving entity because {exc}"
+        + (f" (at {location})" if location else "")
+    )
+
+
 class _UniqueKeyTaken(Exception):
     """An ``InsertIfAbsentPort`` member wrote nothing, because another row
     holds a unique key of the entity being saved."""
@@ -742,7 +750,8 @@ class DAO:
             Do not call it from domain-level code.
 
         Returns:
-            The number of rows that matched ``criteria``.
+            The number of rows that matched ``criteria``. The Elasticsearch
+            adapter returns ``0`` when ``values`` is empty.
         """
         with self.session_scope() as session:
             return self._adapter.update_all(session, criteria, values)
@@ -1183,12 +1192,12 @@ class DAO:
             # with the persistence store after a failed save.
             if expected_version is not None:
                 entity_obj._version = expected_version
-            if not isinstance(exc, _UniqueKeyTaken):
-                location = getattr(exc, "location", None)
-                logger.error(
-                    f"Failed saving entity because {exc}"
-                    + (f" (at {location})" if location else "")
-                )
+            # ``save_if_absent`` logs a ``ValidationError`` only when it
+            # re-raises it, because a taken unique key turns it into ``None``.
+            if not isinstance(exc, _UniqueKeyTaken) and not (
+                if_absent and isinstance(exc, ValidationError)
+            ):
+                _log_save_failure(exc)
             raise
 
     def _write_insert(self, entity_obj: Any, if_absent: bool) -> None:
@@ -1265,7 +1274,15 @@ class DAO:
         gets ``None``. The write runs inside the adapter's ``claim_lock()``.
         A ``ValidationError`` from the save also returns ``None`` when another
         row holds the key, because a key field that is also declared
-        ``unique=True`` fails its check before the write.
+        ``unique=True`` fails its check before the write. The pre-persist
+        hooks run before the adapter checks the key, so on ``None`` the entity
+        keeps its ``auto_now`` stamps and its enrichers' changes; only the
+        aggregate's version is put back.
+
+        Inside a Unit of Work the memory adapter only stages the row. When
+        another session commits a row with the same key first, the Unit of
+        Work's commit drops this row after this method has returned the
+        entity, and records it in the session's ``dropped_rows``.
 
         Otherwise this method checks for the key, then saves. Two writers that
         check at the same moment can both pass the check. A store with a unique
@@ -1287,16 +1304,24 @@ class DAO:
         if not _uses_adapter_operation(self, DatabaseCapabilities.INSERT_IF_ABSENT):
             return self._save_if_key_free(entity_obj, apply_hooks=apply_hooks)
 
-        before = self._save_state(entity_obj)
+        version = (
+            entity_obj._version
+            if entity_obj.element_type == DomainObjects.AGGREGATE
+            else None
+        )
         with self._adapter.claim_lock():
             try:
                 return self._save(entity_obj, apply_hooks=apply_hooks, if_absent=True)
             except _UniqueKeyTaken:
                 pass
-            except ValidationError:
+            except ValidationError as exc:
                 if not self._unique_key_taken(entity_obj):
+                    _log_save_failure(exc)
                     raise
-            self._forget_save(entity_obj, before)
+            # ``_save`` raises before it marks the entity saved or tracks it
+            # in the Unit of Work, so only the version advance is left to undo.
+            if version is not None:
+                entity_obj._version = version
             return None
 
     def _save_if_key_free(self, entity_obj: Any, *, apply_hooks: bool) -> Any:
@@ -1305,44 +1330,6 @@ class DAO:
         if self._unique_key_taken(entity_obj):
             return None
         return self.save(entity_obj, apply_hooks=apply_hooks)
-
-    def _save_state(self, entity_obj: Any) -> tuple[bool, int | None, Any, bool]:
-        """Capture what :meth:`_forget_save` restores: whether the entity is
-        new, an aggregate's version, the instance the Unit of Work tracks
-        under its identifier, and whether the Unit of Work has saved that
-        instance."""
-        if entity_obj.element_type != DomainObjects.AGGREGATE:
-            return entity_obj.state_.is_new, None, None, False
-        tracked = self._tracked_in_uow(entity_obj)
-        return (
-            entity_obj.state_.is_new,
-            entity_obj._version,
-            tracked,
-            tracked is not None and current_uow._is_saved(tracked),
-        )
-
-    def _forget_save(
-        self, entity_obj: Any, before: tuple[bool, int | None, Any, bool]
-    ) -> None:
-        """Undo what ``save`` changed on ``entity_obj``, for a write that did
-        not happen because another row holds the entity's unique key."""
-        was_new, version, tracked, was_saved = before
-        if was_new:
-            entity_obj.state_.mark_new()
-        if version is None:
-            return
-        entity_obj._version = version
-        # A DAO working outside the Unit of Work never changed its tracking,
-        # and the instance it tracks may be another copy the Unit of Work saved.
-        if self._is_standalone:
-            return
-        if not was_saved:
-            current_uow._discard_from_identity_map(
-                entity_obj, keep_tracked=tracked is not None
-            )
-        if tracked is not None:
-            # ``save`` replaced the tracked instance with ``entity_obj``.
-            current_uow._add_to_identity_map(tracked)
 
     def _unique_key_taken(self, entity_obj: Any) -> bool:
         """Whether another stored row shares a unique key with ``entity_obj``."""

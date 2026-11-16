@@ -180,3 +180,104 @@ def test_standalone_flush_conflict_is_recorded_as_a_conflict(trace_domain, monke
     assert recorded[0]["stream"] == f"occ_trace_counter:{counter_id}"
     assert recorded[0]["base"] == 0
     assert recorded[0]["version_after"] is None
+
+
+def test_a_stale_update_through_a_unit_of_work_records_nothing(trace_domain):
+    """The Unit of Work commits its session without ``SAProvider.commit``, so the
+    trace could not record that commit. A refused update inside it records no
+    ``conflicted`` either, which keeps the trace free of a conflict whose
+    winning commit it never saw."""
+    repo = trace_domain.repository_for(OCCTraceCounter)
+    with UnitOfWork():
+        seed = OCCTraceCounter(value=0)
+        repo.add(seed)
+    stale = repo.get(seed.id)
+    with UnitOfWork():
+        fresh = repo.get(seed.id)
+        fresh.value = 1
+        repo.add(fresh)
+
+    with occ_trace.capture() as events:
+        with pytest.raises(ExpectedVersionError):
+            with UnitOfWork():
+                stale.value = 2
+                repo.add(stale)
+        recorded = list(events)
+
+    assert recorded == [], recorded
+
+
+def _seed_counters(domain, count):
+    repo = domain.repository_for(OCCTraceCounter)
+    with UnitOfWork():
+        counters = [OCCTraceCounter(value=0) for _ in range(count)]
+        for counter in counters:
+            repo.add(counter)
+    return [counter.id for counter in counters]
+
+
+def _stage_updates(domain, session, counter_ids):
+    """Version-check and stage an update of each counter from base 0, with no
+    statement sent before the caller flushes or commits ``session``."""
+    repo = domain.repository_for(OCCTraceCounter)
+    adapter = repo._dao._adapter
+    with session.no_autoflush:
+        for counter_id in counter_ids:
+            entity = repo.get(counter_id)
+            entity._version = entity._next_version
+            entity.value = 5
+            model = adapter.database_model_cls.from_entity(entity)
+            adapter.update(session, model, expected_version=0)
+
+
+def _bump_version(domain, counter_id):
+    provider = provider_adapter(domain, "default")
+    with provider._engine.connect() as other:
+        other.execute(
+            text("UPDATE occ_trace_counter SET _version = _version + 1 WHERE id = :id"),
+            {"id": str(counter_id)},
+        )
+        other.commit()
+
+
+def test_a_commit_that_checked_two_rows_records_no_conflict(trace_domain):
+    """SQLAlchemy does not say which row lost the race, so ``SAProvider.commit``
+    records nothing when the session version-checked two rows."""
+    provider = provider_adapter(trace_domain, "default")
+    first_id, second_id = _seed_counters(trace_domain, 2)
+
+    with occ_trace.capture() as events:
+        session = provider.new_session()
+        try:
+            _stage_updates(trace_domain, session, [first_id, second_id])
+            _bump_version(trace_domain, first_id)
+            with pytest.raises(ExpectedVersionError):
+                provider.commit(session)
+        finally:
+            provider.rollback(session)
+            session.close()
+        recorded = list(events)
+
+    assert recorded == [], recorded
+
+
+@pytest.mark.parametrize("end", ["commit", "flush"])
+def test_a_stale_session_that_checked_one_row_records_its_conflict(trace_domain, end):
+    provider = provider_adapter(trace_domain, "default")
+    (counter_id,) = _seed_counters(trace_domain, 1)
+
+    with occ_trace.capture() as events:
+        session = provider.new_session()
+        try:
+            _stage_updates(trace_domain, session, [counter_id])
+            _bump_version(trace_domain, counter_id)
+            with pytest.raises(ExpectedVersionError):
+                getattr(provider, end)(session)
+        finally:
+            provider.rollback(session)
+            session.close()
+        recorded = list(events)
+
+    assert [
+        (e["stream"], e["base"], e["outcome"], e["version_after"]) for e in recorded
+    ] == [(f"occ_trace_counter:{counter_id}", 0, "conflicted", None)]

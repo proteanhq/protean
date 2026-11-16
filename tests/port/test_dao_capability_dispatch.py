@@ -28,7 +28,7 @@ from protean.adapters.repository.sqlalchemy import (
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ConfigurationError
 from protean.fields import Integer, String
-from protean.infra.dao import DAO, _check_flag_ports, portable_claim
+from protean.infra.dao import DAO, portable_claim
 from protean.port.dao import DAOPort, HoldBack, NativeClaimPort
 from protean.port.provider import DatabaseCapabilities
 from protean.utils.query import Q
@@ -72,7 +72,9 @@ class NativeOnlyDAO(BareDAO, NativeClaimPort):
     def claim(
         self, session, criteria, claim_fields, limit, order_by=(), hold_back=None
     ):
-        self.claims.append((criteria, claim_fields, limit, order_by, hold_back))
+        self.claims.append(
+            (session, criteria, claim_fields, limit, order_by, hold_back)
+        )
         return []
 
 
@@ -170,15 +172,20 @@ class TestMissingPortRaises:
         ],
     )
     def test_each_built_in_adapter_has_the_ports_of_its_flags(
-        self, provider_cls, adapter_cls
+        self, test_domain, provider_cls, adapter_cls
     ):
         # ``capabilities`` reads no instance state, so an uninitialized
-        # provider is enough, and no database is reached.
+        # provider and adapter are enough, and no database is reached.
         provider = object.__new__(provider_cls)
         provider.name = provider_cls.__name__
         adapter = object.__new__(adapter_cls)
+        adapter.entity_cls = Task
+        adapter.database_model_cls = None
+        adapter.schema_name = Task.meta_.schema_name
 
-        assert _check_flag_ports(provider, adapter) is None
+        dao = DAO(test_domain, provider, adapter)
+
+        assert dao._adapter is adapter
 
     def test_a_non_positive_limit_returns_before_dispatch(self, test_domain):
         dao = _service(test_domain, NativeOnlyDAO, DatabaseCapabilities.NATIVE_CLAIM)
@@ -188,12 +195,13 @@ class TestMissingPortRaises:
 
     def test_a_native_claim_reaches_the_adapter(self, test_domain):
         dao = _service(test_domain, NativeOnlyDAO, DatabaseCapabilities.NATIVE_CLAIM)
-        dao.provider.new_session = lambda: SimpleNamespace(close=lambda: None)
+        session = SimpleNamespace(close=lambda: None)
+        dao.provider.new_session = lambda: session
         dao.provider.commit = lambda session: None
 
         assert dao.claim(Q(status="ready"), {"status": "claimed"}, limit=2) == []
         assert dao._adapter.claims == [
-            (Q(status="ready"), {"status": "claimed"}, 2, (), None)
+            (session, Q(status="ready"), {"status": "claimed"}, 2, (), None)
         ]
 
 

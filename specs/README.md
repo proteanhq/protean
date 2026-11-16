@@ -129,13 +129,18 @@ Memory adapter's compare-and-set produces a genuine one-winner/rest-conflict tra
 on its own.
 
 **Adapter coverage.** The Memory path is validated end to end. The SQLAlchemy
-`_update` path emits the same observations for a standalone (non-UoW) update, which
+path emits the same observations for a standalone (non-UoW) update, which
 is what `tests/adapters/repository/sqlalchemy_repo/postgresql/test_postgresql_occ_trace.py`
-pins. Under `repository.add` the version-guarded flush is deferred to the Unit of
-Work commit, so both a *concurrent* SQL commit and its conflict resolve there
-rather than in `_update` (the SQL emits are gated on the standalone path for that
-reason); capturing that deferred outcome is left for a follow-up, and `check.sh`
-uses the deterministic Memory trace as its conformance source.
+pins: the adapter's `update` records a `conflicted` version check, and
+`SAProvider.commit` records `committed` for each row the session version-checked.
+A `StaleDataError` at `SAProvider.commit` or `SAProvider.flush` records
+`conflicted` only when the session version-checked exactly one row, because
+SQLAlchemy does not say which row lost. Only a session from
+`SAProvider.new_session()` records anything. Under `repository.add` the Unit of
+Work commits its session directly, so both a *concurrent* SQL commit and its
+conflict resolve there, outside the provider. Capturing that outcome is left for
+a follow-up, and `check.sh` uses the deterministic Memory trace as its
+conformance source.
 
 ### Checkpoint trace validation
 

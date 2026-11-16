@@ -75,7 +75,8 @@ attributes and `schema_name`. `dao_for` returns an instance of it.
 
 Every operation that touches stored rows takes a session as its first
 argument. The DAO runs the operation in that session and leaves it open: it
-never commits, rolls back or closes it.
+never commits, rolls back or closes it. A store with no transactions can ignore
+the session and write at once, as the Elasticsearch adapter does.
 
 | Method | Purpose |
 |--------|---------|
@@ -432,7 +433,8 @@ Inside a Unit of Work, the `DAO` service passes the Unit of Work's session to
 the adapter DAO, and the Unit of Work commits it. Outside a Unit of Work, the
 service gets a session from `new_session()` for each operation. It calls the
 provider's `commit(session)` when the operation succeeds and
-`rollback(session)` when it raises, then calls the session's `close()`.
+`rollback(session)` when the operation or the commit raises an `Exception`,
+then calls the session's `close()`.
 Adapters without real transactions (like the DynamoDB example above) should
 provide a session object with no-op implementations.
 
@@ -550,8 +552,9 @@ flag. When the provider does not declare it, the service runs the portable
 claim or delete, which works on every adapter. A DAO class can subclass a port
 whose flag its provider does not declare. When a provider declares a flag and
 its DAO class does not subclass the port, the `DAO` service raises
-`ConfigurationError` when it is built, on the first use of a repository for
-the entity.
+`ConfigurationError` when it is built. A SQL provider builds it when it
+registers the entity's table. Any other provider builds it on the first use of
+a repository for the entity.
 
 The portable claim and delete run inside the adapter DAO's `claim_lock()`,
 which locks

@@ -3,6 +3,8 @@
 A DAO reads and writes one entity class's rows in one database. An adapter's
 DAO class subclasses `DAOPort` explicitly and works on database model objects
 in the session it is given. It never picks a session and never commits one.
+An adapter for a store with no transactions, such as Elasticsearch, ignores the
+session and writes at once.
 The `DAO` service in `protean.infra.dao` wraps the adapter, supplies the
 session, ends a standalone transaction, and builds the entity-level operations
 on top.
@@ -152,10 +154,11 @@ class DAOPort(Protocol):
     ) -> Any:
         """Write ``model`` over its stored row and return the model object.
 
-        When ``expected_version`` is not ``None``, the adapter checks the
-        stored version and writes in one atomic step. For example, a SQL
-        adapter uses ``UPDATE ... WHERE _version = :expected`` and checks the
-        affected row count.
+        When ``expected_version`` is not ``None``, the adapter rejects the
+        write when the stored version differs, including when another writer
+        commits a new version between the check and the write. For example,
+        the SQL adapter compares the version it loads, and the mapper's
+        version column makes a late ``UPDATE`` fail at flush or commit.
 
         Raises:
             ObjectNotFoundError: No row is stored under the model's identifier.
@@ -170,7 +173,9 @@ class DAOPort(Protocol):
         """Write ``values`` to every row that matches ``criteria``.
 
         Returns:
-            The number of rows that matched ``criteria``.
+            The number of rows that matched ``criteria``. An adapter may
+            return ``0`` without reading the store when ``values`` is empty,
+            as the Elasticsearch adapter does.
         """
 
     @abstractmethod

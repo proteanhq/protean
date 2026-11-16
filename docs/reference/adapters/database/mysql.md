@@ -98,6 +98,7 @@ MySQL.
 - :white_check_mark: **FILTERED_CLAIM_CANDIDATES**: Leaves held rows out of a claim's candidates.
 - :x: **NATIVE_CLAIM**: Claims rows in one statement.
 - :x: **BOUNDED_DELETE**: Deletes up to `limit` rows in one operation, without a separate read of their ids.
+- :white_check_mark: **INSERT_IF_ABSENT**: Writes a row only when no other row holds its unique key, in one atomic step.
 
 ## Collation and case sensitivity
 
