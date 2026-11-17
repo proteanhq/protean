@@ -231,7 +231,7 @@ class TestRedisEdgeCases:
         assert messages[1][1]["test"] == "data2"
 
     def test_read_blocking_with_pending_messages(self, test_domain):
-        """Test _read_blocking returns pending messages first."""
+        """Test read_blocking returns pending messages first."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
@@ -267,7 +267,7 @@ class TestRedisEdgeCases:
         assert mock_redis.xreadgroup.call_count == 1
 
     def test_read_blocking_pending_with_none_fields(self, test_domain):
-        """Test _read_blocking skips pending messages with None fields."""
+        """Test read_blocking skips pending messages with None fields."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
@@ -301,7 +301,7 @@ class TestRedisEdgeCases:
         assert messages[1][1]["test"] == "pending2"
 
     def test_read_blocking_nogroup_error(self, test_domain, caplog):
-        """Test _read_blocking handling NOGROUP error."""
+        """Test read_blocking handling NOGROUP error."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
@@ -328,7 +328,7 @@ class TestRedisEdgeCases:
 
         # Should retry after creating group
         assert messages == []
-        # _read_blocking flow:
+        # read_blocking flow:
         # 1. create_group at top of method → xgroup_create #1
         # 2. xreadgroup #1 (pending check) → raises NOGROUP
         # 3. NOGROUP handler: discard + create_group → xgroup_create #2
@@ -337,7 +337,7 @@ class TestRedisEdgeCases:
         assert mock_redis.xgroup_create.call_count == 2
 
     def test_read_blocking_other_response_error(self, test_domain, caplog):
-        """Test _read_blocking handling non-NOGROUP ResponseError."""
+        """Test read_blocking handling non-NOGROUP ResponseError."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
@@ -360,7 +360,7 @@ class TestRedisEdgeCases:
         assert "broker.redis.read_blocking_failed" in caplog.text
 
     def test_read_blocking_unexpected_error(self, test_domain, caplog):
-        """Test _read_blocking handling unexpected exceptions."""
+        """Test read_blocking handling unexpected exceptions."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance

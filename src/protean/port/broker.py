@@ -178,8 +178,9 @@ class BrokerPort(Protocol):
     ``BaseBroker``, which holds the dead-letter queue, stream trimming and
     partitions. The ``Broker`` service raises ``NotSupportedError`` for those
     operations on an adapter that is not a ``BaseBroker``. An adapter that
-    declares ``BrokerCapabilities.BLOCKING_READ`` also subclasses
-    ``BlockingReadPort``.
+    declares ``BrokerCapabilities.BLOCKING_READ`` subclasses
+    ``BlockingReadPort`` in place of ``BrokerPort``, since
+    ``BlockingReadPort`` extends it.
 
     The ``Broker`` service in ``protean.infra.broker`` wraps the adapter and
     adds unit-of-work recording, the retry after a connection error,
@@ -359,9 +360,9 @@ class BlockingReadPort(BrokerPort, Protocol):
     ) -> list[BrokerMessage]:
         """Read up to ``limit`` messages from ``stream`` for one consumer.
 
-        Creates the consumer group if it does not exist, and waits up to
-        ``timeout_ms`` milliseconds for a message. ``timeout_ms=0`` returns at
-        once. Returns an empty list when no message arrives in time.
+        Waits up to ``timeout_ms`` milliseconds for a message.
+        ``timeout_ms=0`` returns at once. Returns an empty list when no
+        message arrives in time.
         """
 
     @abstractmethod
@@ -389,7 +390,7 @@ class BlockingReadPort(BrokerPort, Protocol):
 CAPABILITY_PORTS: dict[BrokerCapabilities, type[object]] = {
     BrokerCapabilities.BLOCKING_READ: BlockingReadPort,
 }
-"""The sub-protocol an adapter subclasses when it declares each flag.
+"""The sub-protocol an adapter subclasses when it declares each flag listed.
 
 Typed `type[object]` because mypy in strict mode rejects a Protocol with
 abstract members where `type[BrokerPort]` is expected.

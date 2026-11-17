@@ -618,7 +618,8 @@ class RedisBroker(BaseBroker, BlockingReadPort):
             ``streams`` returns ``{}`` without reading.
         """
         if not streams:
-            # XREADGROUP with no streams is a Redis error.
+            # redis-py raises DataError on an empty streams dict before any
+            # call reaches the server; the handler below would log it.
             return {}
 
         for stream in streams:

@@ -15,8 +15,9 @@ Custom brokers allow you to:
 A broker adapter subclasses `BaseBroker` and `BrokerPort`, in that order.
 `BrokerPort` holds the operations Protean calls on every broker. `BaseBroker`
 holds partitions and trimming, and declares the dead letter queue hooks as
-abstract methods. A broker that advertises `BLOCKING_READ` also subclasses
-`BlockingReadPort` (see [Blocking reads](#blocking-reads)). The partition methods
+abstract methods. A broker that advertises `BLOCKING_READ` subclasses
+`BaseBroker` and `BlockingReadPort` instead, since `BlockingReadPort` extends
+`BrokerPort` (see [Blocking reads](#blocking-reads)). The partition methods
 raise `NotSupportedError` unless the broker advertises `STREAM_PARTITIONING`.
 `trim` does nothing and returns 0 until the adapter overrides it. The adapter
 implements these members:
@@ -46,7 +47,8 @@ the inline broker does, returns that message as a new one.
 Your code does not call the adapter. `domain.brokers["default"]` returns a
 `Broker` service that wraps it. The service records messages published inside
 a unit of work, retries once after a connection error, checks capabilities
-before `read`, `get_next`, `ack` and `nack`, and passes messages to subscribers when the
+before `read`, `get_next`, `ack`, `nack`, `read_blocking` and
+`read_blocking_streams`, and passes messages to subscribers when the
 broker runs synchronously. End the adapter module with
 `_PORT_CHECK: type[BrokerPort] = YourBroker` so mypy reports a missing or
 mistyped method. A broker that subclasses `BlockingReadPort` adds
@@ -309,13 +311,16 @@ def capabilities(self) -> BrokerCapabilities:
     return BrokerCapabilities.ENTERPRISE_STREAMING
 ```
 
+`ENTERPRISE_STREAMING` includes `BLOCKING_READ`, so a broker that declares it
+subclasses `BlockingReadPort` (see [Blocking reads](#blocking-reads)).
+
 ### Blocking reads
 
 A broker that declares `BLOCKING_READ` subclasses `BlockingReadPort` from
 `protean.port.broker` and implements both of its methods, `read_blocking` and
 `read_blocking_streams`. If the broker declares the capability and does not
-subclass `BlockingReadPort`, `domain.init()` raises `ConfigurationError` and
-names the missing methods. On a broker without the capability, the `Broker`
+subclass `BlockingReadPort`, `domain.init()` raises `ConfigurationError`. The
+message names the methods the broker does not implement, if any. On a broker without the capability, the `Broker`
 service reads each stream once with `read` and does not wait.
 
 `read_blocking_streams` reads several streams in one call and returns a dict

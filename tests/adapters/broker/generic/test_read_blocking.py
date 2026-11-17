@@ -22,8 +22,8 @@ def test_read_blocking_fallback_for_unsupported_brokers(broker, monkeypatch):
     had_blocking_read = broker.has_capability(BrokerCapabilities.BLOCKING_READ)
 
     # If broker supports blocking reads, temporarily remove that capability.
-    # The adapter decides between blocking and fallback reads, so the patch goes
-    # on the adapter's class; monkeypatch restores the original property.
+    # The Broker service reads the flag from the adapter, so the patch goes on
+    # the adapter's class; monkeypatch restores the original property.
     if had_blocking_read:
         new_capabilities = original_capabilities & ~BrokerCapabilities.BLOCKING_READ
         monkeypatch.setattr(
@@ -32,7 +32,7 @@ def test_read_blocking_fallback_for_unsupported_brokers(broker, monkeypatch):
             property(lambda self: new_capabilities),
         )
 
-    # Call read_blocking - should either use _read_blocking or fall back to regular read
+    # Call read_blocking - the service either calls the adapter's read_blocking or falls back to read
     result = broker.read_blocking(
         stream=stream,
         consumer_group=consumer_group,
@@ -349,7 +349,7 @@ def test_read_blocking_successful_retry_after_connection_error(broker):
             assert ensure_called[0], "ensure_connection should have been called"
 
             # Should have retried and succeeded
-            assert call_count[0] == 2, "Should have called _read_blocking twice"
+            assert call_count[0] == 2, "Should have called read_blocking twice"
 
             # Should get messages
             assert isinstance(result, list)
@@ -487,7 +487,7 @@ def test_read_blocking_connection_error_logging(broker, caplog):
         broker._adapter.read_blocking = mock_read_blocking_error
         broker._adapter.reconnect = mock_ensure_connection
 
-        # Temporarily replace _read_blocking to succeed on second call
+        # Temporarily replace read_blocking to succeed on second call
         call_count = [0]
 
         def mock_read_blocking_retry(*args, **kwargs):
@@ -563,7 +563,7 @@ def test_read_blocking_retry_after_successful_recovery(broker):
 
             # Verify the retry sequence
             assert len(read_blocking_calls) == 2, (
-                "Should have called _read_blocking twice"
+                "Should have called read_blocking twice"
             )
             assert len(ensure_connection_calls) == 1, (
                 "Should have called _ensure_connection once"

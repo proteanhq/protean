@@ -70,7 +70,13 @@ class TestReadBlockingStreamsAgainstRedis:
 
 @pytest.mark.redis
 class TestReadBlockingStreamsWithNoStreams:
-    def test_the_adapter_returns_an_empty_dict(self, test_domain):
+    def test_the_adapter_returns_an_empty_dict_without_reading(
+        self, test_domain, caplog
+    ):
         adapter = test_domain.brokers["default"]._adapter
 
-        assert adapter.read_blocking_streams([], "lanes-group", "lanes-consumer") == {}
+        result = adapter.read_blocking_streams([], "lanes-group", "lanes-consumer")
+
+        assert result == {}
+        events = [record.getMessage() for record in caplog.records]
+        assert "broker.redis.read_blocking_failed" not in events

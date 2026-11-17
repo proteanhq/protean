@@ -5,7 +5,8 @@ Redis PubSub, or your own) subclasses `BaseBroker` and `BrokerPort`, in that
 order. `BrokerPort` lists the operations Protean calls on every broker.
 `BaseBroker` holds partitions and trimming, and declares the dead letter
 queue hooks that every adapter implements. A broker that declares
-`BLOCKING_READ` also subclasses `BlockingReadPort`.
+`BLOCKING_READ` subclasses `BaseBroker` and `BlockingReadPort` instead.
+`BlockingReadPort` extends `BrokerPort` with the blocking reads.
 
 `domain.brokers[name]` returns a `Broker` service that wraps the adapter.
 Application code calls the service, not the adapter.

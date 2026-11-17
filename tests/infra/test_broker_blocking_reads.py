@@ -94,6 +94,20 @@ class DeclaresBlockingReadWithoutPort(StubAdapter):
         DeclaresBlockingReadWithoutPort.closed.append(self.name)
 
 
+class DeclaresBlockingReadWithMethodsWithoutPort(DeclaresBlockingReadWithoutPort):
+    """Has both blocking reads but subclasses only ``BrokerPort``."""
+
+    read_blocking = BlockingStubAdapter.read_blocking
+    read_blocking_streams = BlockingStubAdapter.read_blocking_streams
+
+
+class RejectedAdapterCloseFails(DeclaresBlockingReadWithoutPort):
+    """Declares ``BLOCKING_READ`` without the port, and fails to close."""
+
+    def close(self) -> None:
+        raise RuntimeError("close failed")
+
+
 class SubclassesPortWithoutFlag(BlockingStubAdapter):
     """Subclasses ``BlockingReadPort`` without declaring ``BLOCKING_READ``."""
 
@@ -278,10 +292,17 @@ class TestADeclaredCapabilityNeedsItsPort:
     @pytest.fixture(autouse=True)
     def registered(self):
         DeclaresBlockingReadWithoutPort.closed = []
-        cls = DeclaresBlockingReadWithoutPort
-        broker_registry.register("no_port", f"{cls.__module__}.{cls.__qualname__}")
+        for provider, cls in self.PROVIDERS.items():
+            broker_registry.register(provider, f"{cls.__module__}.{cls.__qualname__}")
         yield
-        broker_registry._paths.pop("no_port", None)
+        for provider in self.PROVIDERS:
+            broker_registry._paths.pop(provider, None)
+
+    PROVIDERS = {
+        "no_port": DeclaresBlockingReadWithoutPort,
+        "methods_no_port": DeclaresBlockingReadWithMethodsWithoutPort,
+        "close_fails": RejectedAdapterCloseFails,
+    }
 
     def test_domain_init_names_the_broker_the_flag_and_the_members(self):
         domain = Domain(name="Test")
@@ -305,3 +326,26 @@ class TestADeclaredCapabilityNeedsItsPort:
             domain.init(traverse=False)
 
         assert DeclaresBlockingReadWithoutPort.closed == ["default"]
+
+    def test_an_adapter_with_both_methods_still_needs_the_port(self):
+        domain = Domain(name="Test")
+        domain.config["brokers"]["default"] = {"provider": "methods_no_port"}
+
+        with pytest.raises(ConfigurationError) as exc:
+            domain.init(traverse=False)
+
+        assert str(exc.value) == (
+            "Broker 'default' declares BrokerCapabilities.BLOCKING_READ, but "
+            "DeclaresBlockingReadWithMethodsWithoutPort does not subclass "
+            "BlockingReadPort."
+        )
+
+    def test_a_close_failure_does_not_hide_the_configuration_error(self, caplog):
+        domain = Domain(name="Test")
+        domain.config["brokers"]["default"] = {"provider": "close_fails"}
+
+        with pytest.raises(ConfigurationError, match="does not subclass"):
+            domain.init(traverse=False)
+
+        events = [record.getMessage() for record in caplog.records]
+        assert "broker.init.rejected_adapter_close_failed" in events
