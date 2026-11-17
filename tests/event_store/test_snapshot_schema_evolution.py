@@ -163,7 +163,7 @@ class TestStaleSnapshotRecovers:
         _write_stale_snapshot(store, identifier, {**data, "obsolete_field": "x"})
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            user = store.load_aggregate(User, identifier)
+            user = test_domain.event_store.load_aggregate(User, identifier)
 
         assert user is not None
         assert user.name == "John Doe"
@@ -182,7 +182,7 @@ class TestStaleSnapshotRecovers:
         _write_stale_snapshot(store, identifier, renamed)
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            user = store.load_aggregate(User, identifier)
+            user = test_domain.event_store.load_aggregate(User, identifier)
 
         assert user is not None
         assert user.name == "John Doe"
@@ -198,7 +198,7 @@ class TestStaleSnapshotRecovers:
         _write_stale_snapshot(store, identifier, missing)
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            user = store.load_aggregate(User, identifier)
+            user = test_domain.event_store.load_aggregate(User, identifier)
 
         assert user is not None
         assert user.email == "john@example.com"
@@ -213,7 +213,7 @@ class TestStaleSnapshotRecovers:
         _write_stale_snapshot(store, identifier, {**data, "obsolete_field": "x"})
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            store.load_aggregate(User, identifier)
+            test_domain.event_store.load_aggregate(User, identifier)
 
         records = _discard_records(caplog, identifier)
         assert len(records) == 1
@@ -234,7 +234,9 @@ class TestStaleSnapshotRecovers:
         _write_stale_snapshot(store, identifier, {**data, "obsolete_field": "x"})
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            user = store.load_aggregate(User, identifier, at_version=snapshot_version)
+            user = test_domain.event_store.load_aggregate(
+                User, identifier, at_version=snapshot_version
+            )
 
         assert user is not None
         assert user._version == snapshot_version
@@ -257,7 +259,7 @@ class TestStaleSnapshotRecovers:
         _write_stale_snapshot(store, identifier, {**data, "obsolete_field": "x"})
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            loaded = store.load_aggregate(User, identifier)
+            loaded = test_domain.event_store.load_aggregate(User, identifier)
 
         assert loaded is not None
         assert loaded.name == "Jane Smith"  # post-snapshot event applied
@@ -379,12 +381,12 @@ class TestStaleSnapshotSelfHeals:
         _write_stale_snapshot(store, identifier, {**data, "obsolete_field": "x"})
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            store.load_aggregate(User, identifier)
+            test_domain.event_store.load_aggregate(User, identifier)
         assert len(_discard_records(caplog, identifier)) == 1
 
         caplog.clear()
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            user = store.load_aggregate(User, identifier)
+            user = test_domain.event_store.load_aggregate(User, identifier)
 
         assert user is not None
         assert _discard_records(caplog, identifier) == []
@@ -401,8 +403,8 @@ class TestStaleSnapshotSelfHeals:
         _write_stale_snapshot(store, identifier, {**data, "obsolete_field": "x"})
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            store.load_aggregate(User, identifier)
-            store.load_aggregate(User, identifier)
+            test_domain.event_store.load_aggregate(User, identifier)
+            test_domain.event_store.load_aggregate(User, identifier)
 
         assert len(_discard_records(caplog, identifier)) == 2
         current = store.get_last_stream_message(_snapshot_stream(identifier))
