@@ -9,7 +9,15 @@ from typing import Any, ClassVar, Self, TypeVar, cast
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic import ValidationError as PydanticValidationError
 
-from protean.core.entity import _EntityState
+from protean.core.entity import (
+    _EntityState,
+    _init_value_object_shadows,
+    _pop_init_context,
+    _rebuild_value_objects,
+    _split_init_values,
+    _value_object_shadow_names,
+    _write_shadow_values,
+)
 from protean.exceptions import (
     IncorrectUsageError,
     InvalidOperationError,
@@ -23,11 +31,10 @@ from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils import (
     DomainObjects,
     _derive_element_class,
-    _ensure_template_dict,
     inflection,
 )
 from protean.utils.container import DerivedDefault, Element, OptionsMixin
-from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME, value_object_fields
+from protean.utils.reflection import _FIELDS, _ID_FIELD_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +43,19 @@ logger = logging.getLogger(__name__)
 # Pydantic clears __dict__ during validation, so we cannot stash data on the
 # instance directly.
 _projection_init_context: threading.local = threading.local()
+
+
+def _vo_shadow_field_names(projection_cls: type[Any]) -> set[str]:
+    """Return the shadow field names of the projection's ``ValueObject`` fields.
+
+    Only these names are taken out of the ``__init__`` values, so a truly
+    unknown keyword still reaches Pydantic, which rejects it.
+    """
+    names: set[str] = set()
+    for fobj in getattr(projection_cls, _FIELDS, {}).values():
+        if isinstance(fobj, ValueObject):
+            names |= _value_object_shadow_names(fobj)
+    return names
 
 
 # ---------------------------------------------------------------------------
@@ -237,38 +257,13 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         # Pop VO descriptor kwargs and shadow field kwargs before Pydantic init.
         # Shadow fields (e.g. address_street, address_city) are dynamically
         # generated and must not reach Pydantic's __init__ (extra="forbid").
-        descriptor_kwargs: dict[str, Any] = {}
-        shadow_kwargs: dict[str, Any] = {}
-
-        # Build the set of known shadow field names from VO descriptors
-        _shadow_field_names: set[str] = set()
-        for fobj in getattr(type(self), _FIELDS, {}).values():
-            if isinstance(fobj, ValueObject):
-                for sf in fobj.embedded_fields.values():
-                    if sf.attribute_name is not None:
-                        _shadow_field_names.add(sf.attribute_name)
-
-        for name in list(kwargs):
-            if name in _shadow_field_names:
-                shadow_kwargs[name] = kwargs.pop(name)
-            elif self._is_vo_descriptor(type(self), name):
-                descriptor_kwargs[name] = kwargs.pop(name)
-
-        # Support template dict pattern: Projection({"key": "val"}, key2="val2")
-        # Keyword args take precedence over template dict values.
-        if args:
-            merged: dict[str, Any] = {}
-            for template in args:
-                _ensure_template_dict(template)
-                # Also separate descriptor and shadow kwargs from template dicts
-                for tname in list(template):
-                    if tname in _shadow_field_names:
-                        shadow_kwargs[tname] = template.pop(tname)
-                    elif self._is_vo_descriptor(type(self), tname):
-                        descriptor_kwargs[tname] = template.pop(tname)
-                merged.update(template)
-            merged.update(kwargs)
-            kwargs = merged
+        projection_cls = type(self)
+        values = _split_init_values(
+            args,
+            kwargs,
+            _vo_shadow_field_names(projection_cls),
+            lambda name: self._is_vo_descriptor(projection_cls, name),
+        )
 
         # Push context onto thread-local stack for model_post_init to retrieve.
         # Pydantic clears __dict__ during super().__init__(), so we cannot
@@ -276,84 +271,32 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         stack: list[dict[str, Any]] = getattr(_projection_init_context, "stack", [])
         stack.append(
             {
-                "descriptor_kwargs": descriptor_kwargs,
-                "shadow_kwargs": shadow_kwargs,
+                "descriptor_kwargs": values.descriptor_kwargs,
+                "shadow_kwargs": values.shadow_kwargs,
             }
         )
         _projection_init_context.stack = stack
 
         try:
-            super().__init__(**kwargs)
+            super().__init__(**values.kwargs)
         except PydanticValidationError as e:
             raise ValidationError(convert_pydantic_errors(e)) from e
 
     def model_post_init(self, context: Any, /) -> None:
         # Pop init context from the thread-local stack (pushed by __init__)
-        stack: list[dict[str, Any]] = getattr(_projection_init_context, "stack", [])
-        if stack:
-            ctx = stack.pop()
-            descriptor_kwargs: dict[str, Any] = ctx["descriptor_kwargs"]
-            shadow_kwargs: dict[str, Any] = ctx["shadow_kwargs"]
-        else:
-            descriptor_kwargs = {}
-            shadow_kwargs = {}
+        ctx = _pop_init_context(_projection_init_context)
+        descriptor_kwargs: dict[str, Any] = ctx["descriptor_kwargs"]
+        shadow_kwargs: dict[str, Any] = ctx["shadow_kwargs"]
 
-        # Restore shadow field values directly into __dict__ (they bypass Pydantic)
-        for name, value in shadow_kwargs.items():
-            self.__dict__[name] = value  # pyright: ignore[reportIndexIssue]
-
-        # Reconstruct ValueObjects from shadow kwargs when the VO itself
-        # was not explicitly provided (e.g. during repository retrieval).
-        for field_name, base_field_obj in value_object_fields(self).items():
-            # ``value_object_fields`` filters on ``isinstance(_, ValueObject)``,
-            # so every entry is a ``ValueObject`` at runtime; narrow the
-            # base-typed reflection return so the VO-only attributes resolve.
-            field_obj = cast(ValueObject, base_field_obj)
-            # Identity, not truthiness: an already-set all-default VO is
-            # falsy but present and must not be clobbered by a shadow rebuild.
-            if (
-                field_name not in descriptor_kwargs
-                and getattr(self, field_name, None) is None
-            ):
-                vo_kwargs: dict[str, Any] = {}
-                for embedded_field in field_obj.embedded_fields.values():
-                    if (
-                        embedded_field.attribute_name is None
-                        or embedded_field.field_name is None
-                    ):
-                        # ``embedded_fields`` yields fully-bound fields, so both
-                        # names are always set; guard never fires at runtime.
-                        continue  # pragma: no cover
-                    # Pass only the keys the caller gave, so the value
-                    # object's own defaults fill the rest. Filling them with
-                    # ``None`` fails on any field that does not accept it.
-                    if embedded_field.attribute_name in shadow_kwargs:
-                        vo_kwargs[embedded_field.field_name] = shadow_kwargs[
-                            embedded_field.attribute_name
-                        ]
-                # Only reconstruct if at least one value is not None
-                if any(v is not None for v in vo_kwargs.values()):
-                    # ``value_object_cls`` is a resolved class at this point; the
-                    # property in ``fields/embedded.py`` widens it to
-                    # ``type[BaseValueObject] | str``, so narrow before calling.
-                    vo_cls = field_obj.value_object_cls
-                    assert not isinstance(vo_cls, str)
-                    descriptor_kwargs[field_name] = vo_cls(**vo_kwargs)
+        _write_shadow_values(self, shadow_kwargs)
+        _rebuild_value_objects(self, descriptor_kwargs, shadow_kwargs)
 
         # Set VO values via descriptors (triggers __set__ which populates
         # shadow fields and the VO instance in __dict__).
         for name, value in descriptor_kwargs.items():
             object.__setattr__(self, name, value)
 
-        # Initialize VO shadow fields to None when the VO itself is not set
-        for base_field_obj in value_object_fields(self).values():
-            field_obj = cast(ValueObject, base_field_obj)
-            for _, shadow_field in field_obj.get_shadow_fields():
-                attr_name = shadow_field.attribute_name
-                if attr_name is not None and attr_name not in self.__dict__:
-                    # pyright models pydantic ``__dict__`` as a read-only
-                    # MappingProxyType; writing to it is valid at runtime.
-                    self.__dict__[attr_name] = None  # pyright: ignore[reportIndexIssue]
+        _init_value_object_shadows(self)
 
         self.defaults()
         self._initialized = True

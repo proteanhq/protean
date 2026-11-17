@@ -12,7 +12,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate, atomic_change
 from protean.core.entity import BaseEntity, invariant
 from protean.exceptions import ValidationError
-from protean.fields import Float, HasMany, Identifier, Integer, String
+from protean.fields import Boolean, Float, HasMany, Identifier, Integer, String
 from protean.ir.diagnostics import DiagnosticCode, resolve
 
 POST = DiagnosticCode.INVARIANT_POST_FAILED.value
@@ -90,6 +90,20 @@ class Product(BaseEntity):
             raise ValidationError({"price": ["Price must be positive"]})
 
 
+class Kit(BaseAggregate):
+    name: String(max_length=50)
+    parts = HasMany("Part")
+
+
+class Part(BaseEntity):
+    locked: Boolean(default=False)
+
+    @invariant.pre(code="PART_LOCKED")
+    def must_be_unlocked_to_change(self):
+        if self.locked:
+            raise ValidationError({"_entity": ["Part is locked"]})
+
+
 class Gadget(BaseAggregate):
     gadget_id: Identifier(identifier=True)
     value: Integer(default=0)
@@ -117,6 +131,8 @@ def register_elements(test_domain):
     test_domain.register(Inventory)
     test_domain.register(Product, part_of=Inventory)
     test_domain.register(Gadget)
+    test_domain.register(Kit)
+    test_domain.register(Part, part_of=Kit)
     test_domain.init(traverse=False)
 
 
@@ -246,6 +262,19 @@ class TestChildEntityRecursion:
         # The raise happens at the aggregate root, so the location is the root.
         assert exc.value.location == "Inventory"
         assert "price" in exc.value.messages
+
+    def test_child_pre_invariant_runs_when_the_root_changes(self):
+        kit = Kit(name="Toolkit")
+        kit.add_parts(Part())
+        kit.parts[0].locked = True
+
+        with pytest.raises(ValidationError) as exc:
+            kit.name = "Renamed"
+
+        assert exc.value.codes == ["PART_LOCKED"]
+        assert exc.value.location == "Kit"
+        assert exc.value.messages == {"_entity": ["Part is locked"]}
+        assert kit.name == "Toolkit"
 
     def test_parent_and_child_invariants_failing_together_carry_both_codes(self):
         inventory = Inventory(name="Store")

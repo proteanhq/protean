@@ -456,64 +456,20 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
           ``__auto_id_handled__``), where id injection is already handled
           and respects the ``auto_add_id_field`` option.
         """
-        # Skip the framework base classes themselves
-        if cls.__name__ in ("BaseEntity", "BaseAggregate"):
-            return
-
-        # Skip classes already processed by _prepare_pydantic_namespace
-        if vars(cls).get("__auto_id_handled__"):
+        if _is_auto_id_exempt(cls):
             return
 
         own_annots: dict[str, Any] = inspect.get_annotations(cls)
 
-        # Check if any class-level FieldInfo already declares an identifier
-        for value in vars(cls).values():
-            if isinstance(value, FieldInfo):
-                extra = value.json_schema_extra
-                if isinstance(extra, dict) and extra.get("identifier"):
-                    return
+        if (
+            _class_attrs_declare_identifier(cls)
+            or any(_annotation_declares_identifier(a) for a in own_annots.values())
+            or _ancestors_declare_identifier(cls)
+        ):
+            return
 
-        # Check annotations for identifier (handles Annotated with lazy strings
-        for annot_value in own_annots.values():
-            if isinstance(annot_value, str) and '"identifier": True' in annot_value:
-                return
-            if isinstance(annot_value, str) and "'identifier': True" in annot_value:
-                return
-            # Handle resolved Annotated types (no from __future__). A plain
-            # class is free to carry an unrelated ``__metadata__`` attribute, so
-            # ask ``get_origin`` rather than sniffing for the attribute.
-            if get_origin(annot_value) is Annotated:
-                for meta in annot_value.__metadata__:
-                    if isinstance(meta, FieldInfo):
-                        extra = meta.json_schema_extra
-                        if isinstance(extra, dict) and extra.get("identifier"):
-                            return
-
-        # Check inherited __container_fields__ for existing identifier
-        for parent in cls.__mro__[1:]:
-            for fobj in getattr(parent, _FIELDS, {}).values():
-                if getattr(fobj, "identifier", False):
-                    return
-
-        # No identifier found — inject auto-id
         if "id" not in own_annots:
-            annots = dict(own_annots)
-            annots["id"] = Annotated[
-                str | int | UUID, BeforeValidator(_coerce_uuid_to_str)
-            ]
-            cls.__annotations__ = annots
-            setattr(
-                cls,
-                "id",
-                PydanticField(
-                    default_factory=_generate_identity,
-                    validate_default=True,
-                    json_schema_extra={
-                        "identifier": True,
-                        "_auto_generated": True,
-                    },
-                ),
-            )
+            _inject_auto_id(cls, own_annots)
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
@@ -592,44 +548,15 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         # Pydantic init.  Shadow fields (e.g. order_id, billing_address_street)
         # are set dynamically during domain resolution and must not be passed
         # to Pydantic's __init__ which rejects them with extra="forbid".
-        descriptor_kwargs: dict[str, Any] = {}
-        shadow_kwargs: dict[str, Any] = {}
-
-        # Build the set of known shadow field names from descriptors in
-        # __container_fields__.  This prevents silently swallowing truly
-        # unknown kwargs that Pydantic should reject.
-        _shadow_field_names: set[str] = set()
-        for fobj in getattr(type(self), _FIELDS, {}).values():
-            if isinstance(fobj, Reference):
-                attr_name = fobj.get_attribute_name()
-                if attr_name:
-                    _shadow_field_names.add(attr_name)
-            elif isinstance(fobj, ValueObject):
-                for sf in fobj.embedded_fields.values():
-                    if sf.attribute_name is not None:
-                        _shadow_field_names.add(sf.attribute_name)
-
-        for name in list(kwargs):
-            if name in _shadow_field_names:
-                shadow_kwargs[name] = kwargs.pop(name)
-            elif self._get_class_descriptor(type(self), name) is not None:
-                descriptor_kwargs[name] = kwargs.pop(name)
-
-        # Support template dict pattern: Entity({"key": "val"}, key2="val2")
-        # Keyword args take precedence over template dict values.
-        if args:
-            merged: dict[str, Any] = {}
-            for template in args:
-                _ensure_template_dict(template)
-                # Also separate descriptor and shadow kwargs from template dicts
-                for tname in list(template):
-                    if tname in _shadow_field_names:
-                        shadow_kwargs[tname] = template.pop(tname)
-                    elif self._get_class_descriptor(type(self), tname) is not None:
-                        descriptor_kwargs[tname] = template.pop(tname)
-                merged.update(template)
-            merged.update(kwargs)
-            kwargs = merged
+        entity_cls = type(self)
+        values = _split_init_values(
+            args,
+            kwargs,
+            _shadow_field_names(entity_cls),
+            lambda name: self._get_class_descriptor(entity_cls, name) is not None,
+        )
+        descriptor_kwargs = values.descriptor_kwargs
+        shadow_kwargs = values.shadow_kwargs
 
         # Collect all validation errors (Pydantic + required descriptors) before raising
         collected_errors: dict[str, list[str]] = {}
@@ -652,7 +579,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         _init_context.stack = stack
 
         try:
-            super().__init__(**kwargs)
+            super().__init__(**values.kwargs)
         except PydanticValidationError as e:
             collected_errors.update(convert_pydantic_errors(e))
         finally:
@@ -666,26 +593,9 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             # one ``model_post_init`` already removed.
             del stack[depth_before_init:]
 
-        # Check required descriptor fields (ValueObject, Reference, etc.)
-        for field_name, field_obj in getattr(type(self), _FIELDS, {}).items():
-            if (
-                isinstance(field_obj, (ValueObject, Reference))
-                and getattr(field_obj, "required", False)
-                and field_name not in descriptor_kwargs
-            ):
-                # Check if shadow fields are present (e.g. region_id for region Reference)
-                has_shadow = False
-                if isinstance(field_obj, ValueObject):
-                    has_shadow = any(
-                        sf.attribute_name in shadow_kwargs
-                        for sf in field_obj.embedded_fields.values()
-                    )
-                elif isinstance(field_obj, Reference):
-                    shadow_name = field_obj.get_attribute_name()
-                    has_shadow = shadow_name in shadow_kwargs
-
-                if not has_shadow:
-                    collected_errors.setdefault(field_name, []).append("is required")
+        _add_missing_required_errors(
+            entity_cls, descriptor_kwargs, shadow_kwargs, collected_errors
+        )
 
         if collected_errors:
             raise ValidationError(collected_errors)
@@ -698,72 +608,14 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             )
 
         # Pop init context from the thread-local stack (pushed by __init__)
-        stack: list[dict[str, Any]] = getattr(_init_context, "stack", [])
-        if stack:
-            ctx = stack.pop()
-            descriptor_kwargs: dict[str, Any] = ctx["descriptor_kwargs"]
-            shadow_kwargs: dict[str, Any] = ctx["shadow_kwargs"]
-            owner = ctx["owner"]
-            root = ctx["root"]
-            version_value = ctx.get("_version")
-        else:
-            descriptor_kwargs = {}
-            shadow_kwargs = {}
-            owner = None
-            root = None
-            version_value = None
+        ctx = _pop_init_context(_init_context)
+        descriptor_kwargs: dict[str, Any] = ctx["descriptor_kwargs"]
+        shadow_kwargs: dict[str, Any] = ctx["shadow_kwargs"]
 
-        # Set hierarchy references
-        if owner is not None:
-            self._owner = owner
-        if root is not None:
-            self._root = root
-        # Restore _version if provided (e.g. during repository hydration)
-        if version_value is not None:
-            self._version = version_value
+        _apply_hierarchy(self, ctx)
 
-        # Restore shadow field values directly into __dict__ (they bypass Pydantic)
-        for name, value in shadow_kwargs.items():
-            self.__dict__[name] = value  # pyright: ignore[reportIndexIssue]
-
-        # Reconstruct ValueObjects from shadow kwargs when the VO itself
-        # wasn't explicitly provided (e.g. during repository retrieval).
-        for field_name, base_field_obj in value_object_fields(self).items():
-            # ``value_object_fields`` filters on ``isinstance(_, ValueObject)``,
-            # so every entry is a ``ValueObject`` at runtime; narrow the
-            # base-typed reflection return so the VO-only attributes resolve.
-            field_obj = cast(ValueObject, base_field_obj)
-            # Identity, not truthiness: an already-set all-default VO is
-            # falsy but present and must not be clobbered by a shadow rebuild.
-            if (
-                field_name not in descriptor_kwargs
-                and getattr(self, field_name, None) is None
-            ):
-                # Gather shadow field values from shadow_kwargs
-                vo_kwargs: dict[str, Any] = {}
-                for embedded_field in field_obj.embedded_fields.values():
-                    if (
-                        embedded_field.attribute_name is None
-                        or embedded_field.field_name is None
-                    ):
-                        # ``embedded_fields`` yields fully-bound fields, so both
-                        # names are always set; guard never fires at runtime.
-                        continue  # pragma: no cover
-                    # Pass only the keys the caller gave, so the value
-                    # object's own defaults fill the rest. Filling them with
-                    # ``None`` fails on any field that does not accept it.
-                    if embedded_field.attribute_name in shadow_kwargs:
-                        vo_kwargs[embedded_field.field_name] = shadow_kwargs[
-                            embedded_field.attribute_name
-                        ]
-                # Only reconstruct if at least one value is not None
-                if any(v is not None for v in vo_kwargs.values()):
-                    # ``value_object_cls`` is a resolved class at this point; the
-                    # property in ``fields/embedded.py`` widens it to
-                    # ``type[BaseValueObject] | str``, so narrow before calling.
-                    vo_cls = field_obj.value_object_cls
-                    assert not isinstance(vo_cls, str)
-                    descriptor_kwargs[field_name] = vo_cls(**vo_kwargs)
+        _write_shadow_values(self, shadow_kwargs)
+        _rebuild_value_objects(self, descriptor_kwargs, shadow_kwargs)
 
         # Set association/VO values via descriptors (triggers __set__).
         # Use object.__setattr__ to invoke the descriptor protocol directly,
@@ -777,55 +629,10 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
 
         self.defaults()
 
-        # Initialize VO shadow fields to None when the VO itself is not set
-        for base_field_obj in value_object_fields(self).values():
-            field_obj = cast(ValueObject, base_field_obj)
-            for _, shadow_field in field_obj.get_shadow_fields():
-                attr_name = shadow_field.attribute_name
-                if attr_name is not None and attr_name not in self.__dict__:
-                    # pyright models pydantic ``__dict__`` as a read-only
-                    # MappingProxyType; writing to it is valid at runtime.
-                    self.__dict__[attr_name] = None  # pyright: ignore[reportIndexIssue]
-
-        # Initialize Reference shadow fields to None when not already set
-        for base_ref_obj in reference_fields(self).values():
-            ref_obj = cast(Reference, base_ref_obj)
-            shadow_name, _shadow = ref_obj.get_shadow_field()
-            if shadow_name is not None and shadow_name not in self.__dict__:
-                self.__dict__[shadow_name] = None  # pyright: ignore[reportIndexIssue]
-
-        # Setup association pseudo-methods (add_*, remove_*, get_one_from_*, filter_*)
-        for field_name, assoc_obj in association_fields(self).items():
-            getattr(self, field_name)  # Initialize/refresh associations
-
-            if isinstance(assoc_obj, HasMany):
-                setattr(
-                    self,
-                    f"add_{field_name}",
-                    partial(self._change_association, field_name, assoc_obj.add),
-                )
-                setattr(
-                    self,
-                    f"remove_{field_name}",
-                    partial(self._change_association, field_name, assoc_obj.remove),
-                )
-                setattr(
-                    self, f"get_one_from_{field_name}", partial(assoc_obj.get, self)
-                )
-                setattr(self, f"filter_{field_name}", partial(assoc_obj.filter, self))
-
-        # Run post-invariants after init
-        fired_codes: list[str] = []
-        errors = (
-            self._run_invariants("post", return_errors=True, fired_codes=fired_codes)
-            or {}
-        )
-        if errors:
-            raise ValidationError(
-                errors,
-                codes=fired_codes,
-                location=type(self).__qualname__,
-            )
+        _init_value_object_shadows(self)
+        _init_reference_shadows(self)
+        _attach_association_methods(self)
+        _raise_post_init_invariants(self)
 
         self._initialized = True
 
@@ -855,23 +662,9 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
 
         for data in data_dict:
             _ensure_template_dict(data)
-            for field_name, val in data.items():
-                try:
-                    setattr(self, field_name, val)
-                except ValidationError as err:
-                    # Field/setattr validation always raises the dict form of
-                    # ``messages`` (field name -> list of error strings).
-                    err_messages = cast("dict[str, list[str]]", err.messages)
-                    for fname in err_messages:
-                        errors.setdefault(fname, []).extend(err_messages[fname])
+            _collect_setattr_errors(self, data, errors)
 
-        for field_name, val in kwargs.items():
-            try:
-                setattr(self, field_name, val)
-            except ValidationError as err:
-                err_messages = cast("dict[str, list[str]]", err.messages)
-                for fname in err_messages:
-                    errors.setdefault(fname, []).extend(err_messages[fname])
+        _collect_setattr_errors(self, kwargs, errors)
 
         if errors:
             logger.error(f"Errors on Update: {errors}")
@@ -893,7 +686,8 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
 
         ``fired_codes`` accumulates the diagnostic code of every invariant that
         fails, at this level and recursively in child entities, so the top-level
-        raise (here or in ``__init__``) can attach them all. A caller aggregating
+        raise (here, or after construction in ``model_post_init``) can attach
+        them all. A caller aggregating
         with ``return_errors=True`` passes its own list; the internal raise below
         builds one when none is given.
         """
@@ -901,38 +695,10 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             return {} if return_errors else None
 
         errors: dict[str, list[str]] = defaultdict(list)
-        failed_invariants: list[str] = []
         codes = fired_codes if fired_codes is not None else []
 
-        for method_name, invariant_method in self._invariants.get(stage, {}).items():
-            try:
-                invariant_method(self)
-            except ValidationError as err:
-                failed_invariants.append(method_name)
-                codes.append(_invariant_code(invariant_method, stage))
-                # Invariant failures always raise the dict form of ``messages``.
-                err_messages = cast("dict[str, list[str]]", err.messages)
-                for field_name in err_messages:
-                    errors[field_name].extend(err_messages[field_name])
-
-        # Recursively run invariants on associated entities
-        for field_name, field_obj in declared_fields(self).items():
-            if isinstance(field_obj, Association):
-                value = getattr(self, field_name)
-                if value is not None:
-                    items = value if isinstance(value, list) else [value]
-                    for item in items:
-                        if stage == "pre":
-                            item_errors = item._precheck(
-                                return_errors=True, fired_codes=codes
-                            )
-                        else:
-                            item_errors = item._postcheck(
-                                return_errors=True, fired_codes=codes
-                            )
-                        if item_errors:
-                            for sub_field, error_list in item_errors.items():
-                                errors[sub_field].extend(error_list)
+        failed_invariants = _run_own_invariants(self, stage, errors, codes)
+        _run_association_invariants(self, stage, errors, codes)
 
         if return_errors:
             return dict(errors) if errors else {}
@@ -1180,32 +946,11 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         # raises, so a typo in a retained handler stays an error. Calls to the
         # ``add_``/``remove_`` helpers of a reserved name are dropped in
         # ``BaseAggregate.__getattr__``.
-        if getattr(self, "_replaying", False) and name in getattr(
-            type(self).meta_, "reserved", ()
-        ):
+        if _drops_reserved_on_replay(self, name):
             return
 
         if name in self.__class__.model_fields and getattr(self, "_initialized", False):
-            # Prevent mutation of identifier fields once set
-            id_field_name = getattr(self.__class__, _ID_FIELD_NAME, None)
-            if name == id_field_name:
-                existing = getattr(self, name, None)
-                if existing is not None and value != existing:
-                    raise InvalidOperationError(
-                        "Identifiers cannot be changed once set"
-                    )
-
-            # Determine the target for invariant checks: aggregate root or self
-            target = self._root if self._root is not None else self
-
-            # Status transition validation (only when invariant checks are active)
-            if not target._disable_invariant_checks:
-                self._validate_status_transition(name, value)
-
-            # Pre-check invariants
-            target._precheck()
-
-            snapshots = self._snapshot_assignment(target)
+            target, snapshots = _precheck_model_field(self, name, value)
 
             # Delegate to Pydantic (validates via validate_assignment)
             try:
@@ -1222,36 +967,12 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         elif getattr(self, "_initialized", False) and (
             (descriptor := self._get_class_descriptor(type(self), name)) is not None
         ):
-            # Descriptor field: use object.__setattr__ to trigger descriptor protocol
-            target = self._root if self._root is not None else self
-            target._precheck()
-            if isinstance(descriptor, Association):
-                snapshots = self._snapshot_association_change(
-                    target, name, descriptor, value
-                )
-                target._add_to_open_blocks(snapshots)
-            else:
-                snapshots = self._snapshot_assignment(target)
-            # Association descriptors run the root's post-check inside their
-            # own ``__set__``, so the write sits inside the block as well.
-            with _undo_on_failure(snapshots):
-                object.__setattr__(self, name, value)
-                target._postcheck()
-            self._state.mark_changed()
+            _set_descriptor_field(self, name, descriptor, value)
         elif name.startswith(("add_", "remove_", "get_one_from_", "filter_")):
             # Association pseudo-methods set during model_post_init
             object.__setattr__(self, name, value)
-        elif (
-            getattr(self, "_initialized", False)
-            and not name.startswith("_")
-            and name in self.__dict__
-        ):
-            # Shadow field (e.g., post_id for Reference descriptors) that was
-            # previously initialised in model_post_init.  Write directly to
-            # __dict__ to bypass Pydantic's validate_assignment.
-            self.__dict__[name] = value  # pyright: ignore[reportIndexIssue]
-            if hasattr(self, "_state"):
-                self._state.mark_changed()
+        elif _is_shadow_field_write(self, name):
+            _set_shadow_field(self, name, value)
         else:
             super().__setattr__(name, value)
 
@@ -1442,6 +1163,494 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
 
 
 # ---------------------------------------------------------------------------
+# BaseEntity helpers
+# ---------------------------------------------------------------------------
+# These are module-level functions so a user subclass that defines a method
+# with the same name cannot replace them.
+
+
+def _is_auto_id_exempt(cls: type[BaseEntity]) -> bool:
+    """Return ``True`` when ``_maybe_inject_auto_id`` must leave ``cls`` alone.
+
+    That is the framework base classes themselves, and classes built by
+    ``_prepare_pydantic_namespace`` (marked with ``__auto_id_handled__``).
+    """
+    if cls.__name__ in ("BaseEntity", "BaseAggregate"):
+        return True
+    return bool(vars(cls).get("__auto_id_handled__"))
+
+
+def _field_info_is_identifier(value: Any) -> bool:
+    """Return ``True`` when ``value`` is a ``FieldInfo`` marked ``identifier``."""
+    if not isinstance(value, FieldInfo):
+        return False
+    extra = value.json_schema_extra
+    return isinstance(extra, dict) and bool(extra.get("identifier"))
+
+
+def _class_attrs_declare_identifier(cls: type[BaseEntity]) -> bool:
+    """Return ``True`` when a class-level ``FieldInfo`` declares an identifier."""
+    return any(_field_info_is_identifier(value) for value in vars(cls).values())
+
+
+def _annotation_declares_identifier(annot_value: Any) -> bool:
+    """Return ``True`` when an annotation declares an identifier field.
+
+    Handles ``Annotated`` written as a lazy string as well as a resolved type.
+    """
+    if isinstance(annot_value, str):
+        double_quoted = '"identifier": True' in annot_value
+        return double_quoted or "'identifier': True" in annot_value
+    # Handle resolved Annotated types (no from __future__). A plain class is
+    # free to carry an unrelated ``__metadata__`` attribute, so ask
+    # ``get_origin`` rather than sniffing for the attribute.
+    if get_origin(annot_value) is Annotated:
+        return any(_field_info_is_identifier(m) for m in annot_value.__metadata__)
+    return False
+
+
+def _ancestors_declare_identifier(cls: type[BaseEntity]) -> bool:
+    """Return ``True`` when an inherited ``__container_fields__`` has an identifier."""
+    return any(
+        getattr(fobj, "identifier", False)
+        for parent in cls.__mro__[1:]
+        for fobj in getattr(parent, _FIELDS, {}).values()
+    )
+
+
+def _inject_auto_id(cls: type[BaseEntity], own_annots: dict[str, Any]) -> None:
+    """Add an auto-generated ``id`` identifier field to ``cls``."""
+    annots = dict(own_annots)
+    annots["id"] = Annotated[str | int | UUID, BeforeValidator(_coerce_uuid_to_str)]
+    cls.__annotations__ = annots
+    setattr(
+        cls,
+        "id",
+        PydanticField(
+            default_factory=_generate_identity,
+            validate_default=True,
+            json_schema_extra={
+                "identifier": True,
+                "_auto_generated": True,
+            },
+        ),
+    )
+
+
+class _InitValues(NamedTuple):
+    """The values passed to ``__init__``, split by where they go."""
+
+    kwargs: dict[str, Any]
+    descriptor_kwargs: dict[str, Any]
+    shadow_kwargs: dict[str, Any]
+
+
+def _value_object_shadow_names(field_obj: ValueObject) -> set[str]:
+    """Return the shadow attribute names of a ``ValueObject`` field."""
+    return {
+        sf.attribute_name
+        for sf in field_obj.embedded_fields.values()
+        if sf.attribute_name is not None
+    }
+
+
+def _shadow_field_names(entity_cls: type[BaseEntity]) -> set[str]:
+    """Return the shadow field names of the ``Reference`` and ``ValueObject`` fields.
+
+    Only these names are taken out of the ``__init__`` values, so a truly
+    unknown keyword still reaches Pydantic, which rejects it.
+    """
+    names: set[str] = set()
+    for fobj in getattr(entity_cls, _FIELDS, {}).values():
+        if isinstance(fobj, Reference):
+            attr_name = fobj.get_attribute_name()
+            if attr_name:
+                names.add(attr_name)
+        elif isinstance(fobj, ValueObject):
+            names |= _value_object_shadow_names(fobj)
+    return names
+
+
+def _separate_init_kwargs(
+    values: dict[str, Any],
+    shadow_names: set[str],
+    is_descriptor: Callable[[str], bool],
+    into: _InitValues,
+) -> None:
+    """Pop shadow field and descriptor keys from ``values`` into ``into``."""
+    for name in list(values):
+        if name in shadow_names:
+            into.shadow_kwargs[name] = values.pop(name)
+        elif is_descriptor(name):
+            into.descriptor_kwargs[name] = values.pop(name)
+
+
+def _split_init_values(
+    templates: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    shadow_names: set[str],
+    is_descriptor: Callable[[str], bool],
+) -> _InitValues:
+    """Split the template dicts and keyword arguments passed to ``__init__``.
+
+    Shadow field and descriptor keys are popped from ``kwargs`` and then from
+    each template dict, in place. The remaining keys are merged into the
+    returned ``kwargs``, with keyword arguments winning over template values.
+    """
+    values = _InitValues(kwargs, {}, {})
+    _separate_init_kwargs(kwargs, shadow_names, is_descriptor, values)
+    if not templates:
+        return values
+
+    # Support template dict pattern: Entity({"key": "val"}, key2="val2")
+    merged: dict[str, Any] = {}
+    for template in templates:
+        _ensure_template_dict(template)
+        _separate_init_kwargs(template, shadow_names, is_descriptor, values)
+        merged.update(template)
+    merged.update(kwargs)
+    return values._replace(kwargs=merged)
+
+
+def _has_shadow_value(field_obj: Any, shadow_kwargs: dict[str, Any]) -> bool:
+    """Return ``True`` when a shadow field of ``field_obj`` was given.
+
+    For example ``region_id`` for a ``region`` Reference.
+    """
+    if isinstance(field_obj, ValueObject):
+        return any(
+            sf.attribute_name in shadow_kwargs
+            for sf in field_obj.embedded_fields.values()
+        )
+    return field_obj.get_attribute_name() in shadow_kwargs
+
+
+def _add_missing_required_errors(
+    entity_cls: type[BaseEntity],
+    descriptor_kwargs: dict[str, Any],
+    shadow_kwargs: dict[str, Any],
+    collected_errors: dict[str, list[str]],
+) -> None:
+    """Add an ``is required`` error for each required descriptor field not given.
+
+    Covers ``ValueObject`` and ``Reference`` fields. A field counts as given
+    when its own name or one of its shadow fields was passed.
+    """
+    for field_name, field_obj in getattr(entity_cls, _FIELDS, {}).items():
+        if (
+            isinstance(field_obj, (ValueObject, Reference))
+            and getattr(field_obj, "required", False)
+            and field_name not in descriptor_kwargs
+            and not _has_shadow_value(field_obj, shadow_kwargs)
+        ):
+            collected_errors.setdefault(field_name, []).append("is required")
+
+
+def _pop_init_context(local: threading.local) -> dict[str, Any]:
+    """Pop the init context ``__init__`` pushed onto ``local.stack``.
+
+    Returns empty descriptor and shadow kwargs and no owner or root when the
+    stack is empty.
+    """
+    stack: list[dict[str, Any]] = getattr(local, "stack", [])
+    if stack:
+        return stack.pop()
+    return {"descriptor_kwargs": {}, "shadow_kwargs": {}, "owner": None, "root": None}
+
+
+def _apply_hierarchy(entity: BaseEntity, ctx: dict[str, Any]) -> None:
+    """Set the owner, root and version the init context carries."""
+    owner = ctx["owner"]
+    root = ctx["root"]
+    version_value = ctx.get("_version")
+    if owner is not None:
+        entity._owner = owner
+    if root is not None:
+        entity._root = root
+    # Restore _version if provided (e.g. during repository hydration)
+    if version_value is not None:
+        entity._version = version_value
+
+
+def _write_shadow_values(instance: BaseModel, shadow_kwargs: dict[str, Any]) -> None:
+    """Write shadow field values straight into ``__dict__``, bypassing Pydantic."""
+    for name, value in shadow_kwargs.items():
+        instance.__dict__[name] = value  # pyright: ignore[reportIndexIssue]
+
+
+def _value_object_kwargs_from_shadows(
+    field_obj: ValueObject, shadow_kwargs: dict[str, Any]
+) -> dict[str, Any]:
+    """Return the value object's field values found in ``shadow_kwargs``.
+
+    Only the keys the caller gave are returned, so the value object's own
+    defaults fill the rest. Filling them with ``None`` fails on any field that
+    does not accept it.
+    """
+    vo_kwargs: dict[str, Any] = {}
+    for embedded_field in field_obj.embedded_fields.values():
+        if embedded_field.attribute_name is None or embedded_field.field_name is None:
+            # ``embedded_fields`` yields fully-bound fields, so both
+            # names are always set; guard never fires at runtime.
+            continue  # pragma: no cover
+        if embedded_field.attribute_name in shadow_kwargs:
+            vo_kwargs[embedded_field.field_name] = shadow_kwargs[
+                embedded_field.attribute_name
+            ]
+    return vo_kwargs
+
+
+def _rebuild_value_objects(
+    instance: Element,
+    descriptor_kwargs: dict[str, Any],
+    shadow_kwargs: dict[str, Any],
+) -> None:
+    """Add to ``descriptor_kwargs`` each value object rebuilt from shadow kwargs.
+
+    A value object is rebuilt only when it was not passed itself, is not
+    already set (for example during repository retrieval), and at least one of
+    its shadow values is not ``None``.
+    """
+    for field_name, base_field_obj in value_object_fields(instance).items():
+        # ``value_object_fields`` filters on ``isinstance(_, ValueObject)``,
+        # so every entry is a ``ValueObject`` at runtime; narrow the
+        # base-typed reflection return so the VO-only attributes resolve.
+        field_obj = cast(ValueObject, base_field_obj)
+        # Identity, not truthiness: an already-set all-default VO is
+        # falsy but present and must not be clobbered by a shadow rebuild.
+        if (
+            field_name in descriptor_kwargs
+            or getattr(instance, field_name, None) is not None
+        ):
+            continue
+        vo_kwargs = _value_object_kwargs_from_shadows(field_obj, shadow_kwargs)
+        # Only reconstruct if at least one value is not None
+        if any(v is not None for v in vo_kwargs.values()):
+            # ``value_object_cls`` is a resolved class at this point; the
+            # property in ``fields/embedded.py`` widens it to
+            # ``type[BaseValueObject] | str``, so narrow before calling.
+            vo_cls = field_obj.value_object_cls
+            assert not isinstance(vo_cls, str)
+            descriptor_kwargs[field_name] = vo_cls(**vo_kwargs)
+
+
+def _init_value_object_shadows(instance: Element) -> None:
+    """Set each value object shadow field not yet in ``__dict__`` to ``None``."""
+    for base_field_obj in value_object_fields(instance).values():
+        field_obj = cast(ValueObject, base_field_obj)
+        for _, shadow_field in field_obj.get_shadow_fields():
+            attr_name = shadow_field.attribute_name
+            if attr_name is not None and attr_name not in instance.__dict__:
+                # pyright models pydantic ``__dict__`` as a read-only
+                # MappingProxyType; writing to it is valid at runtime.
+                instance.__dict__[attr_name] = None  # pyright: ignore[reportIndexIssue]
+
+
+def _init_reference_shadows(entity: BaseEntity) -> None:
+    """Set each ``Reference`` shadow field not yet in ``__dict__`` to ``None``."""
+    for base_ref_obj in reference_fields(entity).values():
+        ref_obj = cast(Reference, base_ref_obj)
+        shadow_name, _shadow = ref_obj.get_shadow_field()
+        if shadow_name is not None and shadow_name not in entity.__dict__:
+            entity.__dict__[shadow_name] = None  # pyright: ignore[reportIndexIssue]
+
+
+def _attach_association_methods(entity: BaseEntity) -> None:
+    """Load each association and set the ``HasMany`` pseudo-methods.
+
+    The pseudo-methods are ``add_*``, ``remove_*``, ``get_one_from_*`` and
+    ``filter_*``.
+    """
+    for field_name, assoc_obj in association_fields(entity).items():
+        getattr(entity, field_name)  # Initialize/refresh associations
+
+        if isinstance(assoc_obj, HasMany):
+            setattr(
+                entity,
+                f"add_{field_name}",
+                partial(entity._change_association, field_name, assoc_obj.add),
+            )
+            setattr(
+                entity,
+                f"remove_{field_name}",
+                partial(entity._change_association, field_name, assoc_obj.remove),
+            )
+            setattr(
+                entity, f"get_one_from_{field_name}", partial(assoc_obj.get, entity)
+            )
+            setattr(entity, f"filter_{field_name}", partial(assoc_obj.filter, entity))
+
+
+def _raise_post_init_invariants(entity: BaseEntity) -> None:
+    """Run the post invariants after construction and raise their errors."""
+    fired_codes: list[str] = []
+    errors = (
+        entity._run_invariants("post", return_errors=True, fired_codes=fired_codes)
+        or {}
+    )
+    if errors:
+        raise ValidationError(
+            errors,
+            codes=fired_codes,
+            location=type(entity).__qualname__,
+        )
+
+
+def _collect_setattr_errors(
+    entity: BaseEntity, values: dict[str, Any], errors: dict[str, list[str]]
+) -> None:
+    """Assign each of ``values`` to ``entity``, adding failures to ``errors``."""
+    for field_name, val in values.items():
+        try:
+            setattr(entity, field_name, val)
+        except ValidationError as err:
+            # Field/setattr validation always raises the dict form of
+            # ``messages`` (field name -> list of error strings).
+            err_messages = cast("dict[str, list[str]]", err.messages)
+            for fname in err_messages:
+                errors.setdefault(fname, []).extend(err_messages[fname])
+
+
+def _run_own_invariants(
+    entity: BaseEntity,
+    stage: str,
+    errors: dict[str, list[str]],
+    codes: list[str],
+) -> list[str]:
+    """Run ``entity``'s own invariants for ``stage`` and return the failed names.
+
+    Each failure adds its messages to ``errors`` and its code to ``codes``.
+    """
+    failed_invariants: list[str] = []
+    for method_name, invariant_method in entity._invariants.get(stage, {}).items():
+        try:
+            invariant_method(entity)
+        except ValidationError as err:
+            failed_invariants.append(method_name)
+            codes.append(_invariant_code(invariant_method, stage))
+            # Invariant failures always raise the dict form of ``messages``.
+            err_messages = cast("dict[str, list[str]]", err.messages)
+            for field_name in err_messages:
+                errors[field_name].extend(err_messages[field_name])
+    return failed_invariants
+
+
+def _association_items(value: Any) -> list[Any]:
+    """Return the children an association value holds, as a list."""
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
+def _child_invariant_errors(
+    item: BaseEntity, stage: str, codes: list[str]
+) -> dict[str, list[str]] | None:
+    """Run a child entity's invariants for ``stage`` and return its errors."""
+    if stage == "pre":
+        return item._precheck(return_errors=True, fired_codes=codes)
+    return item._postcheck(return_errors=True, fired_codes=codes)
+
+
+def _run_association_invariants(
+    entity: BaseEntity,
+    stage: str,
+    errors: dict[str, list[str]],
+    codes: list[str],
+) -> None:
+    """Run the invariants of every child in ``entity``'s associations.
+
+    Children's errors go into ``errors`` and their codes into ``codes``.
+    """
+    for field_name, field_obj in declared_fields(entity).items():
+        if not isinstance(field_obj, Association):
+            continue
+        for item in _association_items(getattr(entity, field_name)):
+            item_errors = _child_invariant_errors(item, stage, codes)
+            if item_errors:
+                for sub_field, error_list in item_errors.items():
+                    errors[sub_field].extend(error_list)
+
+
+def _drops_reserved_on_replay(entity: BaseEntity, name: str) -> bool:
+    """Return ``True`` when event replay must drop a write to a reserved name."""
+    return bool(getattr(entity, "_replaying", False)) and name in getattr(
+        type(entity).meta_, "reserved", ()
+    )
+
+
+def _precheck_model_field(
+    entity: BaseEntity, name: str, value: Any
+) -> tuple[BaseEntity, list[_EntitySnapshot]]:
+    """Run the checks before a model field write and snapshot ``entity``.
+
+    Returns the entity whose invariants guard the write (the aggregate root,
+    or ``entity`` itself) and the snapshots that undo the write.
+    """
+    # Prevent mutation of identifier fields once set
+    id_field_name = getattr(entity.__class__, _ID_FIELD_NAME, None)
+    if name == id_field_name:
+        existing = getattr(entity, name, None)
+        if existing is not None and value != existing:
+            raise InvalidOperationError("Identifiers cannot be changed once set")
+
+    # Determine the target for invariant checks: aggregate root or self
+    target = entity._root if entity._root is not None else entity
+
+    # Status transition validation (only when invariant checks are active)
+    if not target._disable_invariant_checks:
+        entity._validate_status_transition(name, value)
+
+    # Pre-check invariants
+    target._precheck()
+
+    return target, entity._snapshot_assignment(target)
+
+
+def _set_descriptor_field(
+    entity: BaseEntity, name: str, descriptor: Any, value: Any
+) -> None:
+    """Write a descriptor field through the descriptor protocol, with checks.
+
+    The write is undone when the write or the post-check raises.
+    """
+    target = entity._root if entity._root is not None else entity
+    target._precheck()
+    if isinstance(descriptor, Association):
+        snapshots = entity._snapshot_association_change(target, name, descriptor, value)
+        target._add_to_open_blocks(snapshots)
+    else:
+        snapshots = entity._snapshot_assignment(target)
+    # Association descriptors run the root's post-check inside their
+    # own ``__set__``, so the write sits inside the block as well.
+    with _undo_on_failure(snapshots):
+        object.__setattr__(entity, name, value)
+        target._postcheck()
+    entity._state.mark_changed()
+
+
+def _is_shadow_field_write(entity: BaseEntity, name: str) -> bool:
+    """Return ``True`` when ``name`` is a shadow field set in ``model_post_init``.
+
+    For example ``post_id`` for a ``Reference`` descriptor.
+    """
+    return (
+        bool(getattr(entity, "_initialized", False))
+        and not name.startswith("_")
+        and name in entity.__dict__
+    )
+
+
+def _set_shadow_field(entity: BaseEntity, name: str, value: Any) -> None:
+    """Write a shadow field straight into ``__dict__`` and mark ``entity`` changed.
+
+    Writing to ``__dict__`` bypasses Pydantic's ``validate_assignment``.
+    """
+    entity.__dict__[name] = value  # pyright: ignore[reportIndexIssue]
+    if hasattr(entity, "_state"):
+        entity._state.mark_changed()
+
+
+# ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 _T = TypeVar("_T")
@@ -1476,42 +1685,57 @@ def entity_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
 
     # Set up reference fields for entities with part_of
     if not entity_cls.meta_.abstract:
-        reference_field = None
-        for field_obj in declared_fields(entity_cls).values():
-            if isinstance(field_obj, Reference):
-                # An explicit `Reference` field is already present
-                reference_field = field_obj
-                break
+        _ensure_part_of_reference(entity_cls)
+        _bind_reference_shadows(entity_cls)
 
-        if reference_field is None:
-            # If no explicit Reference field is present, create one
-            reference_field = Reference(entity_cls.meta_.part_of)
-            reference_field._auto_generated = True
+    _register_invariants(entity_cls)
 
-            # If part_of is a string, set field name to inflection.underscore(part_of)
-            #   Else, if it is a class, extract class name and set field name to inflection.underscore(class_name)
-            if isinstance(entity_cls.meta_.part_of, str):
-                field_name = inflection.underscore(entity_cls.meta_.part_of)
-            else:
-                field_name = inflection.underscore(entity_cls.meta_.part_of.__name__)
+    return element_cls
 
-            setattr(entity_cls, field_name, reference_field)
 
-            # Set the name of the field on itself
-            reference_field.__set_name__(entity_cls, field_name)
+def _reference_field_name(part_of: Any) -> str:
+    """Return the name of the auto-generated ``Reference`` to ``part_of``.
 
-            field_objects = getattr(entity_cls, _FIELDS)
-            field_objects[field_name] = reference_field
-            setattr(entity_cls, _FIELDS, field_objects)
+    ``part_of`` is a class or a class name.
+    """
+    if isinstance(part_of, str):
+        return inflection.underscore(part_of)
+    return inflection.underscore(part_of.__name__)
 
-        # Set up shadow fields for Reference fields
-        for field_obj in getattr(entity_cls, _FIELDS, {}).values():
-            if isinstance(field_obj, Reference):
-                shadow_field_name, shadow_field = field_obj.get_shadow_field()
-                if shadow_field_name is not None:
-                    shadow_field.__set_name__(entity_cls, shadow_field_name)
 
-    # Iterate through methods marked as `@invariant` and record them for later use
+def _ensure_part_of_reference(entity_cls: type[BaseEntity]) -> None:
+    """Add a ``Reference`` to the ``part_of`` element unless one is declared."""
+    if any(
+        isinstance(field_obj, Reference)
+        for field_obj in declared_fields(entity_cls).values()
+    ):
+        return
+
+    reference_field = Reference(entity_cls.meta_.part_of)
+    reference_field._auto_generated = True
+
+    field_name = _reference_field_name(entity_cls.meta_.part_of)
+    setattr(entity_cls, field_name, reference_field)
+
+    # Set the name of the field on itself
+    reference_field.__set_name__(entity_cls, field_name)
+
+    field_objects = getattr(entity_cls, _FIELDS)
+    field_objects[field_name] = reference_field
+    setattr(entity_cls, _FIELDS, field_objects)
+
+
+def _bind_reference_shadows(entity_cls: type[BaseEntity]) -> None:
+    """Bind the shadow field of each ``Reference`` field to ``entity_cls``."""
+    for field_obj in getattr(entity_cls, _FIELDS, {}).values():
+        if isinstance(field_obj, Reference):
+            shadow_field_name, shadow_field = field_obj.get_shadow_field()
+            if shadow_field_name is not None:
+                shadow_field.__set_name__(entity_cls, shadow_field_name)
+
+
+def _register_invariants(entity_cls: type[BaseEntity]) -> None:
+    """Record the methods marked ``@invariant`` across ``entity_cls``'s MRO."""
     for klass in entity_cls.__mro__:
         for method_name, method in vars(klass).items():
             if (
@@ -1520,8 +1744,6 @@ def entity_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_T]:
                 and hasattr(method, "_invariant")
             ):
                 entity_cls._invariants[method._invariant][method_name] = method
-
-    return element_cls
 
 
 _INVARIANT_STAGE_CODES: dict[str, DiagnosticCode] = {
