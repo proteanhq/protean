@@ -125,7 +125,7 @@ class TestCombinedRead:
         assert kwargs["consumer_group"] == sub.consumer_group
         assert kwargs["consumer_name"] == sub.consumer_name
         assert kwargs["timeout_ms"] == expected_timeout_ms
-        assert kwargs["count"] == 25
+        assert kwargs["limit"] == 25
 
     @pytest.mark.asyncio
     async def test_no_broker_reads_nothing(self, lanes_domain):
@@ -260,7 +260,7 @@ class TestBackfillAfterPrimaryBatch:
 
         await sub.poll()
 
-        assert sub.broker.combined_reads[-1]["count"] == 1
+        assert sub.broker.combined_reads[-1]["limit"] == 1
         # The backfill entry is already delivered to this consumer, and the
         # consumer name changes on restart, so it is processed now rather than
         # left pending where no later read would find it.

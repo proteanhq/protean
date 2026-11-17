@@ -572,8 +572,8 @@ class TestRedisBrokerReconnectAfterClose:
         mock_client.ping.return_value = True
         broker.redis_instance = mock_client
 
-        result = broker._read_blocking(
-            "stream", "group", "consumer", timeout_ms=100, count=1
+        result = broker.read_blocking(
+            "stream", "group", "consumer", timeout_ms=100, limit=1
         )
 
         assert result == []
@@ -588,8 +588,8 @@ class TestRedisBrokerReconnectAfterClose:
         mock_client.xreadgroup.side_effect = ValueError("bad payload")
         broker.redis_instance = mock_client
 
-        result = broker._read_blocking(
-            "stream", "group", "consumer", timeout_ms=100, count=1
+        result = broker.read_blocking(
+            "stream", "group", "consumer", timeout_ms=100, limit=1
         )
 
         assert result == []

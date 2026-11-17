@@ -14,9 +14,9 @@ Custom brokers allow you to:
 
 A broker adapter subclasses `BaseBroker` and `BrokerPort`, in that order.
 `BrokerPort` holds the operations Protean calls on every broker. `BaseBroker`
-holds the blocking reads, partitions and trimming, and declares the dead
-letter queue hooks as abstract methods. A blocking read falls back to `read`
-when the broker does not advertise `BLOCKING_READ`. The partition methods
+holds partitions and trimming, and declares the dead letter queue hooks as
+abstract methods. A broker that advertises `BLOCKING_READ` also subclasses
+`BlockingReadPort` (see [Blocking reads](#blocking-reads)). The partition methods
 raise `NotSupportedError` unless the broker advertises `STREAM_PARTITIONING`.
 `trim` does nothing and returns 0 until the adapter overrides it. The adapter
 implements these members:
@@ -49,7 +49,8 @@ a unit of work, retries once after a connection error, checks capabilities
 before `read`, `get_next`, `ack` and `nack`, and passes messages to subscribers when the
 broker runs synchronously. End the adapter module with
 `_PORT_CHECK: type[BrokerPort] = YourBroker` so mypy reports a missing or
-mistyped method.
+mistyped method. A broker that subclasses `BlockingReadPort` adds
+`_BLOCKING_READ_CHECK: type[BlockingReadPort] = YourBroker`.
 
 The broker below implements every method by handing it to an in-memory
 `InlineBroker`. Replace those calls with calls to your messaging client:
@@ -310,31 +311,42 @@ def capabilities(self) -> BrokerCapabilities:
 
 ### Blocking reads
 
-A broker that declares `BLOCKING_READ` implements `_read_blocking`. The
-public `read_blocking` method calls it, and falls back to `read` on brokers
-without the capability.
+A broker that declares `BLOCKING_READ` subclasses `BlockingReadPort` from
+`protean.port.broker` and implements both of its methods, `read_blocking` and
+`read_blocking_streams`. If the broker declares the capability and does not
+subclass `BlockingReadPort`, `domain.init()` raises `ConfigurationError` and
+names the missing methods. On a broker without the capability, the `Broker`
+service reads each stream once with `read` and does not wait.
 
 `read_blocking_streams` reads several streams in one call and returns a dict
 with one key per stream, in the order given. Stream subscriptions with
 priority lanes use it to read the primary and the backfill stream together.
-The default `_read_blocking_streams` on `BaseBroker` builds on
-`_read_blocking`. It reads every stream but the last without waiting, and
-waits on the last stream only if the others are empty. While it waits, it
-does not see the earlier streams. Override `_read_blocking_streams` if your
-backend can wait on several streams in one call, as the Redis broker does
-with one blocking `XREADGROUP`:
+It waits up to `timeout_ms` in total for a message on any of the streams, as
+the Redis broker does with one blocking `XREADGROUP`. An empty `streams`
+returns `{}`.
 
 ```python
 # fragment
-def _read_blocking_streams(
-    self,
-    streams: Sequence[str],
-    consumer_group: str,
-    consumer_name: str,
-    timeout_ms: int = 5000,
-    count: int = 1,  # Applies to each stream
-) -> dict[str, list[tuple[str, dict[str, Any]]]]:
-    ...
+class MyBroker(BaseBroker, BlockingReadPort):
+    def read_blocking(
+        self,
+        stream: str,
+        consumer_group: str,
+        consumer_name: str,
+        timeout_ms: int = 5000,
+        limit: int = 1,
+    ) -> list[BrokerMessage]:
+        ...
+
+    def read_blocking_streams(
+        self,
+        streams: Sequence[str],
+        consumer_group: str,
+        consumer_name: str,
+        timeout_ms: int = 5000,
+        limit: int = 1,  # Applies to each stream
+    ) -> dict[str, list[BrokerMessage]]:
+        ...
 ```
 
 ## Testing Your Broker

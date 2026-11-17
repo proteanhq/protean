@@ -4,6 +4,7 @@ import pytest
 import redis
 
 from protean.infra.broker import Broker
+from protean.port.broker import BrokerCapabilities
 from protean.server._redis import redis_client
 from tests.shared import REDIS_URI
 
@@ -19,11 +20,15 @@ def test_inline_broker_has_no_client(test_domain):
 class _OtherClientAdapter:
     """Stands in for an adapter whose native client is not a Redis client."""
 
+    capabilities = BrokerCapabilities(0)
+
     def get_connection(self) -> object:
         return object()
 
 
 class _FailingConnectionAdapter:
+    capabilities = BrokerCapabilities(0)
+
     def get_connection(self) -> object:
         raise RuntimeError("connection lookup failed")
 

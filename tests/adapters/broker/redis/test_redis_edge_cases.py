@@ -255,8 +255,8 @@ class TestRedisEdgeCases:
         # Ensure group is mocked
         broker._created_groups_set.add("test-stream:test-group")
 
-        messages = broker._read_blocking(
-            "test-stream", "test-group", "consumer1", timeout_ms=1000, count=2
+        messages = broker.read_blocking(
+            "test-stream", "test-group", "consumer1", timeout_ms=1000, limit=2
         )
 
         # Should return pending messages without calling for new messages
@@ -291,8 +291,8 @@ class TestRedisEdgeCases:
         # Ensure group is mocked
         broker._created_groups_set.add("test-stream:test-group")
 
-        messages = broker._read_blocking(
-            "test-stream", "test-group", "consumer1", timeout_ms=1000, count=4
+        messages = broker.read_blocking(
+            "test-stream", "test-group", "consumer1", timeout_ms=1000, limit=4
         )
 
         # Should return only valid messages
@@ -322,8 +322,8 @@ class TestRedisEdgeCases:
         broker.redis_instance = mock_redis
 
         with caplog.at_level(logging.DEBUG):
-            messages = broker._read_blocking(
-                "test-stream", "test-group", "consumer1", timeout_ms=100, count=1
+            messages = broker.read_blocking(
+                "test-stream", "test-group", "consumer1", timeout_ms=100, limit=1
             )
 
         # Should retry after creating group
@@ -351,8 +351,8 @@ class TestRedisEdgeCases:
         broker._created_groups_set.add("test-stream:test-group")
 
         with caplog.at_level(logging.ERROR):
-            messages = broker._read_blocking(
-                "test-stream", "test-group", "consumer1", timeout_ms=100, count=1
+            messages = broker.read_blocking(
+                "test-stream", "test-group", "consumer1", timeout_ms=100, limit=1
             )
 
         # Should return empty and log error
@@ -372,8 +372,8 @@ class TestRedisEdgeCases:
         broker._created_groups_set.add("test-stream:test-group")
 
         with caplog.at_level(logging.ERROR):
-            messages = broker._read_blocking(
-                "test-stream", "test-group", "consumer1", timeout_ms=100, count=1
+            messages = broker.read_blocking(
+                "test-stream", "test-group", "consumer1", timeout_ms=100, limit=1
             )
 
         # Should return empty and log error
@@ -656,7 +656,7 @@ def test_read_blocking_connection_error_with_successful_retry(test_domain, caplo
                 consumer_group=consumer_group,
                 consumer_name=consumer_name,
                 timeout_ms=1000,
-                count=1,
+                limit=1,
             )
 
             # Verify the sequence of calls

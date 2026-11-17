@@ -66,3 +66,11 @@ class TestReadBlockingStreamsAgainstRedis:
         assert [message for _, message in again[backfill]] == [
             message for _, message in first[backfill]
         ]
+
+
+@pytest.mark.redis
+class TestReadBlockingStreamsWithNoStreams:
+    def test_the_adapter_returns_an_empty_dict(self, test_domain):
+        adapter = test_domain.brokers["default"]._adapter
+
+        assert adapter.read_blocking_streams([], "lanes-group", "lanes-consumer") == {}

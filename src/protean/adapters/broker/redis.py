@@ -16,6 +16,7 @@ from protean.infra.broker import is_connection_error
 from protean.infra.registry import brokers
 from protean.port.broker import (
     BaseBroker,
+    BlockingReadPort,
     BrokerCapabilities,
     BrokerHealth,
     BrokerMessage,
@@ -202,7 +203,7 @@ return 1
 """
 
 
-class RedisBroker(BaseBroker, BrokerPort):
+class RedisBroker(BaseBroker, BlockingReadPort):
     """Redis Streams as the Message Broker.
 
     This broker leverages Redis Streams' native consumer group functionality
@@ -502,14 +503,14 @@ class RedisBroker(BaseBroker, BrokerPort):
                     if len(messages) >= limit:
                         break
 
-    def _read_blocking(
+    def read_blocking(
         self,
         stream: str,
         consumer_group: str,
         consumer_name: str,
         timeout_ms: int = 5000,
-        count: int = 1,
-    ) -> list[tuple[str, dict[str, Any]]]:
+        limit: int = 1,
+    ) -> list[BrokerMessage]:
         """Read messages from ``stream`` for one consumer in a consumer group.
 
         Creates the consumer group if it is missing. If this consumer has
@@ -524,11 +525,11 @@ class RedisBroker(BaseBroker, BrokerPort):
             timeout_ms: Milliseconds to wait for new messages. ``0`` returns
                 at once. Positive values are capped at 1000 ms. A negative
                 value is logged as a read failure.
-            count: The most messages to return.
+            limit: The most messages to return.
 
         Returns:
-            ``(identifier, message)`` tuples. The list is empty on timeout and
-            on any read error, which is logged.
+            The messages read. The list is empty on timeout and on any read
+            error, which is logged.
         """
         self.create_group(stream, consumer_group)
 
@@ -545,7 +546,7 @@ class RedisBroker(BaseBroker, BrokerPort):
                 consumer_group,
                 consumer_name,
                 {stream: "0"},  # "0" means read pending messages
-                count=count,
+                count=limit,
                 # No BLOCK: Redis returns pending entries at once for an id
                 # other than ">".
             )
@@ -561,7 +562,7 @@ class RedisBroker(BaseBroker, BrokerPort):
                 consumer_group,
                 consumer_name,
                 {stream: NEW_MESSAGES_MARK},
-                count=count,
+                count=limit,
                 block=block,
             )
             # An empty reply means the wait timed out with no messages.
@@ -570,7 +571,7 @@ class RedisBroker(BaseBroker, BrokerPort):
         except redis.ResponseError as e:
             if "NOGROUP" in str(e):
                 return _retry_read_after_nogroup(
-                    self, stream, consumer_group, consumer_name, count, block
+                    self, stream, consumer_group, consumer_name, limit, block
                 )
             logger.exception("broker.redis.read_blocking_failed")
             return []
@@ -586,14 +587,14 @@ class RedisBroker(BaseBroker, BrokerPort):
             logger.exception("broker.redis.read_blocking_failed")
             return []
 
-    def _read_blocking_streams(
+    def read_blocking_streams(
         self,
         streams: Sequence[str],
         consumer_group: str,
         consumer_name: str,
         timeout_ms: int = 5000,
-        count: int = 1,
-    ) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+        limit: int = 1,
+    ) -> dict[str, list[BrokerMessage]]:
         """Read several streams for one consumer in a consumer group.
 
         Creates the consumer group on each stream if it is missing. If this
@@ -608,19 +609,24 @@ class RedisBroker(BaseBroker, BrokerPort):
             timeout_ms: Milliseconds to wait for new messages. ``0`` returns
                 at once. Positive values are capped at 1000 ms. A negative
                 value is logged as a read failure.
-            count: The most messages to return from each stream.
+            limit: The most messages to return from each stream.
 
         Returns:
-            ``(identifier, message)`` tuples for each stream, keyed by stream
-            name in the order given. Every stream has a key. The lists are
-            empty on timeout and on any read error, which is logged.
+            The messages read from each stream, keyed by stream name in the
+            order given. Every stream has a key. The lists are empty on
+            timeout and on any read error, which is logged. An empty
+            ``streams`` returns ``{}`` without reading.
         """
+        if not streams:
+            # XREADGROUP with no streams is a Redis error.
+            return {}
+
         for stream in streams:
             self.create_group(stream, consumer_group)
 
         block: int | None = None
         try:
-            # Same BLOCK rules as ``_read_blocking``.
+            # Same BLOCK rules as ``read_blocking``.
             block = _block_for(timeout_ms)
 
             # Pending messages on every stream, in one call and without BLOCK
@@ -628,7 +634,7 @@ class RedisBroker(BaseBroker, BrokerPort):
                 consumer_group,
                 consumer_name,
                 dict.fromkeys(streams, STREAM_ID_START),
-                count=count,
+                count=limit,
             )
             pending = self._group_stream_reply(streams, response)
             if any(pending.values()):
@@ -639,7 +645,7 @@ class RedisBroker(BaseBroker, BrokerPort):
                 consumer_group,
                 consumer_name,
                 dict.fromkeys(streams, NEW_MESSAGES_MARK),
-                count=count,
+                count=limit,
                 block=block,
             )
             return self._group_stream_reply(streams, response)
@@ -647,12 +653,12 @@ class RedisBroker(BaseBroker, BrokerPort):
         except redis.ResponseError as e:
             if "NOGROUP" in str(e):
                 return _retry_streams_after_nogroup(
-                    self, streams, consumer_group, consumer_name, count, block
+                    self, streams, consumer_group, consumer_name, limit, block
                 )
             logger.exception("broker.redis.read_blocking_failed")
             return {stream: [] for stream in streams}
         except Exception as e:
-            # See ``_read_blocking``: reconnect here, since the service only
+            # See ``read_blocking``: reconnect here, since the service only
             # sees exceptions this method re-raises.
             if is_connection_error(e):
                 self.reconnect()
@@ -661,16 +667,14 @@ class RedisBroker(BaseBroker, BrokerPort):
 
     def _group_stream_reply(
         self, streams: Sequence[str], response: Any
-    ) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+    ) -> dict[str, list[BrokerMessage]]:
         """Map an XREADGROUP reply onto the requested streams.
 
         The result has one key per requested stream, in the order given, so a
         stream missing from the reply still maps to an empty list. Entries with
         no fields (pending entries whose message was deleted) are skipped.
         """
-        result: dict[str, list[tuple[str, dict[str, Any]]]] = {
-            stream: [] for stream in streams
-        }
+        result: dict[str, list[BrokerMessage]] = {stream: [] for stream in streams}
         for stream_name, stream_messages in response or []:
             stream = self._decode_if_bytes(stream_name)
             if stream not in result:
@@ -678,7 +682,7 @@ class RedisBroker(BaseBroker, BrokerPort):
             for message_id, fields in stream_messages:
                 if fields:
                     result[stream].append(
-                        (
+                        BrokerMessage(
                             self._decode_if_bytes(message_id),
                             self._deserialize_message(fields),
                         )
@@ -1618,7 +1622,7 @@ class RedisBroker(BaseBroker, BrokerPort):
                 ) from e
             # The group can be gone even though our cache thinks it exists — e.g.
             # the stream was reaped and re-created by another process. Rebuild it
-            # and retry once (mirrors the NOGROUP recovery in ``_read_blocking``).
+            # and retry once (mirrors the NOGROUP recovery in ``read_blocking``).
             if "NOGROUP" in str(e):
                 self._forget_stream_groups(stream)
                 self.create_group(stream, consumer_group)
@@ -1838,9 +1842,9 @@ def _block_for(timeout_ms: int) -> int | None:
 
 def _decode_reply(
     broker: RedisBroker, response: Any, *, skip_empty: bool
-) -> list[tuple[str, dict[str, Any]]]:
-    """Return the ``(identifier, message)`` pairs of an XREADGROUP reply,
-    in reply order. ``skip_empty`` leaves out entries with no fields."""
+) -> list[BrokerMessage]:
+    """Return the messages of an XREADGROUP reply, in reply order.
+    ``skip_empty`` leaves out entries with no fields."""
     messages = []
     for _stream_name, stream_messages in response or []:
         for message_id, fields in stream_messages:
@@ -1848,7 +1852,7 @@ def _decode_reply(
                 continue
             redis_id_str = broker._decode_if_bytes(message_id)
             message = broker._deserialize_message(fields)
-            messages.append((redis_id_str, message))
+            messages.append(BrokerMessage(redis_id_str, message))
     return messages
 
 
@@ -1857,9 +1861,9 @@ def _retry_read_after_nogroup(
     stream: str,
     consumer_group: str,
     consumer_name: str,
-    count: int,
+    limit: int,
     block: int | None,
-) -> list[tuple[str, dict[str, Any]]]:
+) -> list[BrokerMessage]:
     """Recreate the missing consumer group on ``stream`` and retry the
     new-message read once. A failed retry is logged and returns no messages."""
     # Consumer group doesn't exist: invalidate cache and recreate.
@@ -1873,7 +1877,7 @@ def _retry_read_after_nogroup(
             consumer_group,
             consumer_name,
             {stream: NEW_MESSAGES_MARK},
-            count=count,
+            count=limit,
             block=block,
         )
         return _decode_reply(broker, response, skip_empty=False)
@@ -1887,9 +1891,9 @@ def _retry_streams_after_nogroup(
     streams: Sequence[str],
     consumer_group: str,
     consumer_name: str,
-    count: int,
+    limit: int,
     block: int | None,
-) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+) -> dict[str, list[BrokerMessage]]:
     """Recreate the consumer group on every stream and retry the new-message
     read once. A failed retry is logged and returns an empty list per stream."""
     # A group is missing on at least one stream (for example, the
@@ -1904,7 +1908,7 @@ def _retry_streams_after_nogroup(
             consumer_group,
             consumer_name,
             dict.fromkeys(streams, NEW_MESSAGES_MARK),
-            count=count,
+            count=limit,
             block=block,
         )
         return broker._group_stream_reply(streams, response)
@@ -1981,3 +1985,4 @@ def register() -> None:
 
 
 _PORT_CHECK: type[BrokerPort] = RedisBroker
+_BLOCKING_READ_CHECK: type[BlockingReadPort] = RedisBroker

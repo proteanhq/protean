@@ -1,4 +1,4 @@
-"""Core unit tests for how RedisBroker._read_blocking maps ``timeout_ms`` to BLOCK.
+"""Core unit tests for how RedisBroker.read_blocking maps ``timeout_ms`` to BLOCK.
 
 Redis reads ``XREADGROUP ... BLOCK 0`` as "wait forever", and redis-py sends
 BLOCK only when ``block`` is not None. So a zero timeout must reach the client
@@ -55,8 +55,8 @@ def _broker(client):
 
 
 def _read(broker, timeout_ms):
-    return broker._read_blocking(
-        "orders", "group", "consumer-1", timeout_ms=timeout_ms, count=1
+    return broker.read_blocking(
+        "orders", "group", "consumer-1", timeout_ms=timeout_ms, limit=1
     )
 
 
