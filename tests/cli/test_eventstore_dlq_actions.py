@@ -235,9 +235,9 @@ def _write_event_to_store(test_domain, msg: Message) -> Message:
     test has to work from: a record built off the in-memory message would name a
     global position no message sits at.
     """
-    store = test_domain.event_store.store
+    store = test_domain.event_store
     stream = msg.metadata.headers.stream
-    store.write_message(
+    store._adapter.write_message(
         stream, msg.metadata.headers.type, msg.data, metadata=msg.metadata.to_dict()
     )
     return store.read(stream, position=0, limit=1)[0]
@@ -328,7 +328,7 @@ def _exhaust_command_position(
         ),
     )
     position = stored.metadata.event_store.global_position
-    test_domain.event_store.store.write_message(
+    test_domain.event_store._adapter.write_message(
         stream,
         FailedPositionStatus.EXHAUSTED.value,
         {
@@ -402,7 +402,7 @@ def _resolve_concurrently(test_domain, position: int = 1) -> None:
     """
     info, stream = _toggle_failed_stream(test_domain)
     write_recovery_status_record(
-        test_domain.event_store.store,
+        test_domain.event_store._adapter,
         stream,
         info.stream_category,
         test_domain.clock.now().isoformat(),
@@ -597,7 +597,7 @@ class TestReplay:
         # handler a second time.
         _drive_to_exhaustion(test_domain, ToggleEventHandler)
         ToggleEventHandler.should_fail = False  # a dispatch would succeed
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         _info, stream = _toggle_failed_stream(test_domain)
         records_at_confirm = {}
 
@@ -752,7 +752,7 @@ class TestReplay:
         position = _exhaust_command_position(
             test_domain, deadline=clock.now() + timedelta(minutes=5)
         )
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         _info, stream = next(
             p for p in collect_failed_streams(test_domain) if p[0].is_command_handler
         )
@@ -785,7 +785,7 @@ class TestReplay:
         position = _exhaust_command_position(
             test_domain, deadline=clock.now() + timedelta(minutes=5)
         )
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         _info, stream = next(
             p for p in collect_failed_streams(test_domain) if p[0].is_command_handler
         )
@@ -849,7 +849,7 @@ class TestReplay:
         # is gone (a partial restore, a global-position gap) comes back with the
         # next message in the stream. Replay must refuse it: dispatching it would
         # run a handler on an unrelated event and resolve the requested position.
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         category = User.meta_.stream_category
         msg = _create_message(stream_name=f"{category}-{uuid4()}")
         _write_event_to_store(test_domain, msg)
@@ -861,7 +861,7 @@ class TestReplay:
         # category holds no message at; the read lands on ``stored_at`` instead.
         failed_stream = failed_positions_stream(fqn(ToggleEventHandler), category)
         missing = stored_at - 1
-        store.write_message(
+        store._adapter.write_message(
             failed_stream,
             FailedPositionStatus.EXHAUSTED.value,
             {
@@ -903,7 +903,7 @@ class TestReplay:
         # per-stream ordinal. The re-read lands on the refill, whose ordinal
         # matches the record's but whose global position does not. Replay must
         # refuse: the refill is a different event.
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         category = User.meta_.stream_category
         _write_event_to_store(test_domain, _create_message())  # holds global 1
         stream = f"{category}-{uuid4()}"
@@ -953,7 +953,7 @@ class TestReplay:
 
     def test_replay_unreadable_event_is_usage_error(self, test_domain):
         # An Exhausted record with no stream location and no origin stream.
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         category = User.meta_.stream_category
         failed_stream = failed_positions_stream(fqn(ToggleEventHandler), category)
         store.write_message(
@@ -1015,7 +1015,7 @@ class TestPurge:
         # prompt. Purge must re-check and refuse, or it would mark a position
         # that is no longer exhausted.
         _drive_to_exhaustion(test_domain, ToggleEventHandler)
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         _info, stream = _toggle_failed_stream(test_domain)
         records_at_confirm = {}
 

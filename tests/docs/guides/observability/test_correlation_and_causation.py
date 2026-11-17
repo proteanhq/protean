@@ -26,7 +26,7 @@ def _chain_messages(domain, correlation_id):
     """Return the stored commands and events of one chain, keyed by type."""
     messages = [
         m
-        for m in domain.event_store.store.read("$all")
+        for m in domain.event_store.read("$all")
         if m.metadata.domain.correlation_id == correlation_id
     ]
     return {m.metadata.headers.type: m for m in messages}
@@ -41,7 +41,7 @@ def test_place_order_gives_every_message_one_generated_correlation_id():
 
         messages = [
             m
-            for m in example.domain.event_store.store.read("$all")
+            for m in example.domain.event_store.read("$all")
             if m.metadata.domain.kind in ("COMMAND", "EVENT")
         ]
 
@@ -248,7 +248,7 @@ def test_middleware_falls_back_to_a_generated_correlation_id():
 def _published_commands(domain):
     return {
         m.metadata.headers.type: m
-        for m in domain.event_store.store.read("$all")
+        for m in domain.event_store.read("$all")
         if m.metadata.domain.kind == "COMMAND"
     }
 

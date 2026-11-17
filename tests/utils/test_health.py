@@ -133,7 +133,7 @@ class TestCheckEventStore:
 
     def test_unavailable_when_event_store_raises(self, domain):
         with domain.domain_context():
-            domain.event_store.store.ping = lambda: (_ for _ in ()).throw(
+            domain.event_store._adapter.ping = lambda: (_ for _ in ()).throw(
                 RuntimeError("down")
             )
             status, ok = check_event_store(domain)

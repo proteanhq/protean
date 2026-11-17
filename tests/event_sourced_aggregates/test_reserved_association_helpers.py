@@ -375,7 +375,7 @@ def test_removing_a_reserved_has_many_is_safe_and_old_streams_still_load():
         basket.raise_(added_cls(basket_id=basket_id, name="pen"))
         assert [item.name for item in basket.items] == ["pen"]
         before.repository_for(basket_before).add(basket)
-        messages = before.event_store.store.get_all_messages()
+        messages = before.event_store._adapter.get_all_messages()
 
     assert [message["type"] for message in messages] == [
         "Shop.BasketOpened.v1",
@@ -385,7 +385,7 @@ def test_removing_a_reserved_has_many_is_safe_and_old_streams_still_load():
     # The new model loads that stream through its event store.
     with after.domain_context():
         for message in messages:
-            after.event_store.store.write_message(
+            after.event_store._adapter.write_message(
                 message["stream_name"],
                 message["type"],
                 message["data"],

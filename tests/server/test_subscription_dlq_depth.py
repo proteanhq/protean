@@ -100,7 +100,7 @@ class TestEventStoreDlqDepth:
         test_domain.register(OrderPlaced, part_of=Order)
         test_domain.register(OrderNotifier, part_of=Order)
         test_domain.init(traverse=False)
-        self.store = test_domain.event_store.store
+        self.store = test_domain.event_store._adapter
         self.category = Order.meta_.stream_category
         self.failed_stream = failed_positions_stream(fqn(OrderNotifier), self.category)
         # Events in the category give the row a real lag and status.
@@ -159,7 +159,7 @@ class TestEventStoreDlqDepth:
 
     def test_failed_stream_read_failure_keeps_the_row(self, test_domain, caplog):
         _write_record(self.store, self.failed_stream, 1, FailedPositionStatus.EXHAUSTED)
-        real_read_all = self.store.read_all
+        real_read_all = test_domain.event_store.read_all
 
         def read_all(stream_name, *args, **kwargs):
             if stream_name.startswith("failed-"):
@@ -167,7 +167,7 @@ class TestEventStoreDlqDepth:
             return real_read_all(stream_name, *args, **kwargs)
 
         with (
-            patch.object(self.store, "read_all", side_effect=read_all),
+            patch.object(test_domain.event_store, "read_all", side_effect=read_all),
             caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),
         ):
             status = _statuses(test_domain)[fqn(OrderNotifier)]
@@ -186,7 +186,7 @@ def test_command_dispatcher_row_counts_its_exhausted_positions(test_domain):
     test_domain.register(PlaceOrder, part_of=Order)
     test_domain.register(PlaceOrderHandler, part_of=Order)
     test_domain.init(traverse=False)
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     command_stream = f"{Order.meta_.stream_category}:command"
     failed_stream = failed_positions_stream(
         command_dispatcher_fqn(command_stream), command_stream
@@ -206,7 +206,7 @@ def test_depth_matches_what_eventstore_dlq_list_reports(test_domain):
     test_domain.register(OrderAuditor, part_of=Order)
     test_domain.register(PlaceOrderHandler, part_of=Order)
     test_domain.init(traverse=False)
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     category = Order.meta_.stream_category
     command_stream = f"{category}:command"
 

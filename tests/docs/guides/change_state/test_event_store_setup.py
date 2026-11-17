@@ -33,7 +33,7 @@ def example():
     module.domain.init(traverse=False)
     with module.domain.domain_context():
         yield module
-    module.domain.event_store.store.clear()
+    module.domain.event_store._adapter.clear()
 
 
 def open_account(example, deposits):
@@ -100,7 +100,7 @@ def test_the_category_is_read_through_read_all_in_pages_of_1000(example, monkeyp
     # from a single `read`. A stream long enough to need a second page takes
     # minutes to write to the memory store, so record the call instead.
     open_account(example, DEPOSITS)
-    store = example.domain.event_store.store
+    store = example.domain.event_store
     calls = []
     read_all = store.read_all
 

@@ -226,7 +226,7 @@ class TestToCloudeventExtensions:
         command = Register(id=identifier, email="j@ex.com", name="J")
         test_domain.process(command, correlation_id="ext-corr-123")
 
-        messages = test_domain.event_store.store.read("test::user:command")
+        messages = test_domain.event_store.read("test::user:command")
         message = messages[-1]
         ce = message.to_cloudevent()
 
@@ -642,7 +642,7 @@ class TestRoundTrip:
         command = Register(id=identifier, email="j@ex.com", name="J")
         test_domain.process(command, correlation_id="corr-round-trip")
 
-        messages = test_domain.event_store.store.read("test::user:command")
+        messages = test_domain.event_store.read("test::user:command")
         message = messages[-1]
 
         ce = message.to_cloudevent()

@@ -7,7 +7,7 @@ import pytest
 from protean import Domain
 from protean.adapters.event_store.memory import MemoryEventStore
 from protean.adapters.event_store.message_db import MessageDBStore
-from protean.port.event_store import BaseEventStore, EventStoreCapabilities
+from protean.port.event_store import EventStoreCapabilities, EventStorePort
 from tests.shared import MESSAGE_DB_URI
 
 
@@ -57,7 +57,7 @@ class TestEventStoreCapabilityFlags:
 
 class TestMemoryEventStoreCapabilities:
     def test_memory_store_declares_consistent(self, test_domain):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         assert isinstance(store, MemoryEventStore)
         capabilities = store.capabilities
 
@@ -78,7 +78,7 @@ class TestMessageDBStoreCapabilities:
         }
         domain.init(traverse=False)
 
-        store = domain.event_store.store
+        store = domain.event_store._adapter
         assert isinstance(store, MessageDBStore)
         assert store.capabilities == (
             EventStoreCapabilities.PRODUCTION | EventStoreCapabilities.CONSUMER_GROUPS
@@ -86,8 +86,8 @@ class TestMessageDBStoreCapabilities:
         assert EventStoreCapabilities.SCHEMA_MANAGEMENT not in store.capabilities
 
 
-class _StoreWithoutCapabilities(BaseEventStore):
-    """Implements every abstract member of ``BaseEventStore`` except ``capabilities``."""
+class _StoreWithoutCapabilities(EventStorePort):
+    """Implements every abstract member of ``EventStorePort`` except ``capabilities``."""
 
     def write_message(self, *args: Any, **kwargs: Any) -> int:  # pragma: no cover
         raise NotImplementedError
@@ -147,4 +147,4 @@ class TestCapabilitiesIsRequired:
     def test_subclass_with_capabilities_can_be_instantiated(self):
         store = _StoreWithCapabilities("Complete", None, {})  # type: ignore[arg-type]
 
-        assert isinstance(store, BaseEventStore)
+        assert EventStorePort in type(store).__mro__

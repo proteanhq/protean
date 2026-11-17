@@ -115,7 +115,7 @@ class TestAllDefaultValueObjectRoundTripOnMessageDB:
         domain = _make_messagedb_domain()
         with domain.domain_context():
             yield domain
-            domain.event_store.store.close()
+            domain.event_store._adapter.close()
 
     def test_all_default_vo_reloads_as_equal_vo(self, domain):
         reloaded = _round_trip(domain, initial_quantity=0)

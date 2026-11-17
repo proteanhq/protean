@@ -285,7 +285,7 @@ class TestRecoveryAfterRejection:
         assert loaded.amount == 5.0
         assert loaded._version == wallet._version == 1
 
-        stored = test_domain.event_store.store.read(
+        stored = test_domain.event_store.read(
             f"{Wallet.meta_.stream_category}-{wallet.wallet_id}"
         )
         assert [message.metadata.headers.type for message in stored] == [

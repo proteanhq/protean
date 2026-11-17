@@ -276,7 +276,7 @@ class TestEventTraceparentInjection:
 
         # Read the event from the event store
         stream = f"{User.meta_.stream_category}-{uid}"
-        events = test_domain.event_store.store.read(stream)
+        events = test_domain.event_store.read(stream)
 
         # Find the UserRegistered event
         user_registered = [
@@ -313,7 +313,7 @@ class TestRoundTripTracePropagation:
 
         # Read event from event store
         stream = f"{User.meta_.stream_category}-{uid}"
-        events = test_domain.event_store.store.read(stream)
+        events = test_domain.event_store.read(stream)
 
         user_registered = [
             e for e in events if e.metadata.headers.type == UserRegistered.__type__

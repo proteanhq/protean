@@ -27,7 +27,7 @@ from protean.port.broker import BaseBroker
 from protean.port.cache import CachePort
 from protean.port.dao import REQUIRED_LOOKUPS
 from protean.port.database import BaseDatabase
-from protean.port.event_store import BaseEventStore
+from protean.port.event_store import EventStorePort
 from tests.infra.adapters import (
     PROVIDERS_WITHOUT_LOOKUP,
     CustomBroker,
@@ -81,11 +81,11 @@ PORTS = [
         event_stores,
         "protean.event_stores",
         "event store",
-        BaseEventStore,
+        EventStorePort,
         MemoryEventStore,
         CustomEventStore,
         lambda name: {"event_store": {"provider": name}},
-        lambda domain: domain.event_store.store,
+        lambda domain: domain.event_store._adapter,
     ),
     Port(
         caches,

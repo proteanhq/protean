@@ -222,7 +222,7 @@ class TestExtensionsThroughProcessing:
         test_domain.process(command, asynchronous=False)
 
         # Read command from event store
-        last_msg = test_domain.event_store.store.read_last_message(
+        last_msg = test_domain.event_store.read_last_message(
             f"test::user:command-{identifier}"
         )
         assert last_msg is not None
@@ -242,7 +242,7 @@ class TestExtensionsThroughProcessing:
             test_domain.process(command, asynchronous=False)
 
         assert (
-            test_domain.event_store.store.read_last_message(
+            test_domain.event_store.read_last_message(
                 f"test::user:command-{identifier}"
             )
             is None

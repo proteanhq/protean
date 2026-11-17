@@ -61,9 +61,7 @@ class TestEnricherSkipsInternalAggregates:
             assert domain.repository_for(Order).get(order.id).updated_by == "alice"
             assert (
                 len(
-                    domain.event_store.store.read(
-                        f"{Order.meta_.stream_category}-{order.id}"
-                    )
+                    domain.event_store.read(f"{Order.meta_.stream_category}-{order.id}")
                 )
                 == 1
             )

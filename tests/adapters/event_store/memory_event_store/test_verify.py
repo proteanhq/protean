@@ -34,7 +34,7 @@ def _seed_two_events(store):
 
 
 def test_clean_store_passes(test_domain):
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _seed_two_events(store)
     store.write_message("test::user:snapshot-abc", "SNAPSHOT", {"_version": 1})
 
@@ -54,7 +54,7 @@ def test_empty_store_passes(test_domain):
 
 
 def test_duplicate_message_id_is_caught(test_domain):
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _seed_two_events(store)
 
     rows = store.get_connection()
@@ -70,7 +70,7 @@ def test_duplicate_message_id_is_caught(test_domain):
 
 
 def test_position_gap_is_caught_and_named(test_domain):
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _seed_two_events(store)
 
     # Append a row that skips position 2.
@@ -98,7 +98,7 @@ def test_position_gap_is_caught_and_named(test_domain):
 
 
 def test_snapshot_ahead_of_stream_head_is_caught(test_domain):
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _seed_two_events(store)  # head position is 1
     store.write_message("test::user:snapshot-abc", "SNAPSHOT", {"_version": 5})
 
@@ -112,7 +112,7 @@ def test_snapshot_ahead_of_stream_head_is_caught(test_domain):
 
 
 def test_message_with_null_data_is_caught(test_domain):
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _seed_two_events(store)
     store.write_message(
         "test::user-abc",

@@ -59,7 +59,7 @@ def test_transition_inherits_trace_ids_of_message_in_context(test_domain):
         g.pop("message_in_context", None)
 
     stream = f"{ShipmentPM.meta_.stream_category}-{shipment_id}"
-    messages = test_domain.event_store.store.read(stream)
+    messages = test_domain.event_store.read(stream)
     assert len(messages) == 1
     assert messages[0].metadata.domain.correlation_id == "corr-X"
     assert in_context.metadata.headers.id == "booked-msg-1"

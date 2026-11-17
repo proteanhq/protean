@@ -13,7 +13,7 @@ from protean.port.broker import BaseBroker
 from protean.port.cache import CachePort
 from protean.port.dao import REQUIRED_LOOKUPS, LookupPort
 from protean.port.database import BaseDatabase
-from protean.port.event_store import BaseEventStore
+from protean.port.event_store import EventStorePort
 
 
 class CustomDatabase(MemoryDatabase):
@@ -40,7 +40,7 @@ class IncompleteBroker(BaseBroker):
     pass
 
 
-class IncompleteEventStore(BaseEventStore):
+class IncompleteEventStore(EventStorePort):
     pass
 
 

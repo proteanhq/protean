@@ -74,7 +74,7 @@ def register_elements(test_domain):
 
 def _first_transition_state(test_domain, pm_cls, correlation_value):
     stream_name = f"{pm_cls.meta_.stream_category}-{correlation_value}"
-    messages = test_domain.event_store.store.read(stream_name)
+    messages = test_domain.event_store.read(stream_name)
     return messages[0].to_domain_object().state
 
 

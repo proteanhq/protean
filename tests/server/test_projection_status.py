@@ -82,7 +82,7 @@ def _write_events(store, n: int) -> int:
         # Events live in per-aggregate streams (``category-<id>``) that the
         # category head aggregates.
         store.write_message(f"{category}-{i}", "Registered", {"user_id": str(i)})
-    return store.stream_head_position(category)
+    return store.domain.event_store.category_head_position(category)
 
 
 def _write_position(store, position: int, *, when: str | None = None) -> None:
@@ -111,7 +111,7 @@ def _seed_rows(test_domain, n: int) -> None:
 class TestCollectProjectionStatuses:
     def test_lagging_projection_reports_staleness_lag_and_rows(self, test_domain):
         with test_domain.domain_context():
-            store = test_domain.event_store.store
+            store = test_domain.event_store._adapter
             head = _write_events(store, 5)
             _write_position(store, 2)  # processed up to 2, behind head
             _seed_rows(test_domain, 3)
@@ -132,7 +132,7 @@ class TestCollectProjectionStatuses:
 
     def test_caught_up_projection_is_ok_with_zero_staleness(self, test_domain):
         with test_domain.domain_context():
-            store = test_domain.event_store.store
+            store = test_domain.event_store._adapter
             head = _write_events(store, 4)
             _write_position(store, head)  # fully caught up
 
@@ -146,7 +146,7 @@ class TestCollectProjectionStatuses:
     def test_never_updated_projection_is_lagging_with_null_staleness(self, test_domain):
         """Events exist but the projector never wrote a position."""
         with test_domain.domain_context():
-            store = test_domain.event_store.store
+            store = test_domain.event_store._adapter
             _write_events(store, 3)  # no position written
 
             statuses = collect_projection_statuses(test_domain)
@@ -397,7 +397,7 @@ class TestStalenessMetric:
         from protean.server.observatory.metrics import _hand_rolled_metrics
 
         with test_domain.domain_context():
-            store = test_domain.event_store.store
+            store = test_domain.event_store._adapter
             head = _write_events(store, 4)
             _write_position(store, head)  # caught up -> staleness 0.0
 
@@ -409,7 +409,7 @@ class TestStalenessMetric:
         from protean.server.observatory.metrics import _collect_projection_statuses
 
         with test_domain.domain_context():
-            _write_events(test_domain.event_store.store, 3)
+            _write_events(test_domain.event_store._adapter, 3)
 
         collected = _collect_projection_statuses([test_domain])
         assert any(s.projection_name == "Balances" for _, s in collected)

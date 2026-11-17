@@ -78,9 +78,7 @@ def tally(test_domain) -> Tally:
 
 
 def _bumped(test_domain, tally: Tally) -> list[tuple[int, int]]:
-    messages = test_domain.event_store.store.read(
-        f"{Tally.meta_.stream_category}-{tally.id}"
-    )
+    messages = test_domain.event_store.read(f"{Tally.meta_.stream_category}-{tally.id}")
     return [
         (message.metadata.event_store.position, message.data["value"])
         for message in messages
@@ -139,7 +137,7 @@ def test_a_write_by_another_transaction_still_conflicts(test_domain, tally):
         first.bump()
         repo.add(first)
 
-        test_domain.event_store.store.append(concurrent._events[0])
+        test_domain.event_store.append(concurrent._events[0])
 
         second = repo.get(tally.id)
         second.bump()
@@ -179,7 +177,7 @@ def test_aggregates_of_two_types_with_one_id_are_tracked_apart(test_domain):
         test_domain.repository_for(Tally).add(tally)
         test_domain.repository_for(Marker).add(marker)
 
-    store = test_domain.event_store.store
+    store = test_domain.event_store
     assert len(store.read(f"{Tally.meta_.stream_category}-shared")) == 1
     assert len(store.read(f"{Marker.meta_.stream_category}-shared")) == 1
 
@@ -193,7 +191,7 @@ def ledger(test_domain) -> Ledger:
 
 
 def _ledger_streams(test_domain, ledger: Ledger) -> tuple[int, int]:
-    store = test_domain.event_store.store
+    store = test_domain.event_store
     category = Ledger.meta_.stream_category
     return (
         len(store.read(f"{category}-{ledger.id}")),

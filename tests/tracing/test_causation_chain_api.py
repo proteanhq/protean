@@ -59,13 +59,13 @@ def order_id() -> str:
 def _read_events(test_domain, order_id: str) -> list[Message]:
     """Read all messages from the order's event stream."""
     stream = f"{Order.meta_.stream_category}-{order_id}"
-    return test_domain.event_store.store.read(stream)
+    return test_domain.event_store.read(stream)
 
 
 def _read_commands(test_domain, order_id: str) -> list[Message]:
     """Read all messages from the order's command stream."""
     stream = f"{Order.meta_.stream_category}:command-{order_id}"
-    return test_domain.event_store.store.read(stream)
+    return test_domain.event_store.read(stream)
 
 
 # ---------------------------------------------------------------------------

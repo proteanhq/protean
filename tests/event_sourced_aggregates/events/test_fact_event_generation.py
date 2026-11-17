@@ -50,13 +50,11 @@ def test_generation_of_first_fact_event_on_persistence(test_domain):
     test_domain.repository_for(User).add(user)
 
     # Read event from event store
-    event_messages = test_domain.event_store.store.read(f"test::user-{user.id}")
+    event_messages = test_domain.event_store.read(f"test::user-{user.id}")
     assert len(event_messages) == 1
 
     # Read fact events from event store
-    fact_event_messages = test_domain.event_store.store.read(
-        f"test::user-fact-{user.id}"
-    )
+    fact_event_messages = test_domain.event_store.read(f"test::user-fact-{user.id}")
     assert len(fact_event_messages) == 1
 
     # Deserialize event
@@ -90,13 +88,11 @@ def test_generation_of_subsequent_fact_events_after_fetch(test_domain):
     test_domain.repository_for(User).add(refreshed_user)
 
     # Read event from event store
-    event_messages = test_domain.event_store.store.read(f"test::user-{user.id}")
+    event_messages = test_domain.event_store.read(f"test::user-{user.id}")
     assert len(event_messages) == 2
 
     # Read fact events from event store
-    fact_event_messages = test_domain.event_store.store.read(
-        f"test::user-fact-{user.id}"
-    )
+    fact_event_messages = test_domain.event_store.read(f"test::user-fact-{user.id}")
     assert len(fact_event_messages) == 2
 
     # Deserialize 1st event and verify

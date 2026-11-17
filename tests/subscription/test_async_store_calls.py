@@ -178,7 +178,7 @@ class TestGetNextBatchAsync:
         )
         event = Sent(email="test@example.com", sent_at=datetime.now(UTC))
         email.raise_(event)
-        test_domain.event_store.store.append(email._events[0])
+        test_domain.event_store.append(email._events[0])
 
         messages = await subscription.get_next_batch_of_messages()
         assert len(messages) == 1

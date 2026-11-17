@@ -91,7 +91,7 @@ def test_correlation_causation_and_checksum_survive_the_shared_topic_round_trip(
     with example.domain.domain_context():
         command = example.PlaceOrder(total=12.5)
         example.domain.process(command, correlation_id="corr-1")
-        [stored] = example.domain.event_store.store.read("orders::order")
+        [stored] = example.domain.event_store.read("orders::order")
 
         broker = example.domain.brokers["default"]
         event = example.consume(broker)

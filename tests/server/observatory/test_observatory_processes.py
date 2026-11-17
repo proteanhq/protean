@@ -117,7 +117,7 @@ def _deliver_latest(app, aggregate_cls, aggregate):
     domain = app.domain
     with domain.domain_context():
         domain.repository_for(aggregate_cls).add(aggregate)
-        store = domain.event_store.store
+        store = domain.event_store
         stream = f"{aggregate_cls.meta_.stream_category}-{aggregate.id}"
         message = store.read(stream)[-1]
         app.pm._handle(message)
@@ -398,7 +398,7 @@ class TestMergePMSubscriptionStatus:
         """Seconds-lag aggregates as the worst (max) stream staleness, not a sum."""
         app = _register_fulfillment(test_domain, subscription_type="event_store")
         pm_cls = app.pm
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         start = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
 
         # Each stream gets one checkpoint at position 0, then one event past it,
@@ -546,7 +546,7 @@ def plain_value_object(test_domain):
 def _fail_stream_identifiers(domain):
     """Make the event store fail to list stream identifiers."""
     return patch.object(
-        domain.event_store.store,
+        domain.event_store._adapter,
         "stream_ids",
         side_effect=Exception("fail"),
     )
@@ -619,7 +619,7 @@ class TestGetPMInstances:
     def test_empty_stream(self, fulfillment, test_domain):
         """An identifier whose stream holds no messages returns no instance."""
         with patch.object(
-            test_domain.event_store.store, "stream_ids", return_value=["id1"]
+            test_domain.event_store._adapter, "stream_ids", return_value=["id1"]
         ):
             assert get_pm_instances(test_domain, fulfillment.pm) == []
 
@@ -797,7 +797,7 @@ class TestProcessesInstancesEndpoint:
         the number of instances listed."""
         order_id = _start_order(fulfillment)
         with patch.object(
-            test_domain.event_store.store,
+            test_domain.event_store._adapter,
             "stream_ids",
             side_effect=[[order_id], RuntimeError("store down")],
         ):
@@ -990,7 +990,7 @@ class TestExtractTimeProcesses:
     ):
         order_id = _start_order(fulfillment)
         stream = f"{fulfillment.pm.meta_.stream_category}-{order_id}"
-        stored = test_domain.event_store.store.read(stream)[-1]
+        stored = test_domain.event_store.read(stream)[-1]
 
         assert stored.metadata is not None
         assert _extract_time(stored) is None
@@ -1067,7 +1067,7 @@ class TestGetPMInstancesStreamReadFails:
     def test_stream_read_exception_skips_instance(self, fulfillment, test_domain):
         """individual stream read fails, that instance is skipped."""
         first, second = sorted([_start_order(fulfillment), _start_order(fulfillment)])
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         category = fulfillment.pm.meta_.stream_category
         real_read_all = store.read_all
 
@@ -1169,7 +1169,7 @@ class TestProcessesEndpointTraceMetricsException:
 
 
 class TestPMInstancesStoreUnavailable:
-    """When ``domain.event_store.store`` is ``None`` (the domain has not
+    """When the event store's adapter is ``None`` (the domain has not
     initialized its event store yet), the instance helpers must degrade
     gracefully rather than raise."""
 

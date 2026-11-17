@@ -221,7 +221,7 @@ def test_the_subscriber_ignores_other_payload_types(example):
 
 def _pm_state(example, order_id):
     stream = f"{example.OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-    transitions = example.fulfillment_domain.event_store.store.read(stream)
+    transitions = example.fulfillment_domain.event_store.read(stream)
     assert transitions
     return transitions[-1].to_domain_object()
 

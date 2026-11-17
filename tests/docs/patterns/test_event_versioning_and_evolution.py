@@ -268,9 +268,7 @@ def test_fact_events_pick_up_the_new_currency_field():
         example.domain.repository_for(example.Order).add(
             example.Order(order_id="o1", customer_id="c1")
         )
-        messages = example.domain.event_store.store.read(
-            "facteventevolution::order-fact-o1"
-        )
+        messages = example.domain.event_store.read("facteventevolution::order-fact-o1")
 
     assert len(messages) == 1
     assert messages[0].data["currency"] == "USD"

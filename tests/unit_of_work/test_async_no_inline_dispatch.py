@@ -114,7 +114,7 @@ def test_async_mode_defers_event_to_store_without_inline_dispatch(test_domain):
     # event) fails instead of passing on an empty `handled`.
     registered = [
         message
-        for message in test_domain.event_store.store.read("$all")
+        for message in test_domain.event_store.read("$all")
         if message.metadata.headers.type == Registered.__type__
     ]
     assert len(registered) == 1

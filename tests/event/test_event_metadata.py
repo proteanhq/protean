@@ -439,7 +439,7 @@ class TestTraceIdsOnRebuildFromStoredMessage:
         with _in_context(_other_message()) as other:
             aggregate_id = result._seed_events(test_domain)
 
-        messages = test_domain.event_store.store.read(f"test::user-{aggregate_id}")
+        messages = test_domain.event_store.read(f"test::user-{aggregate_id}")
         assert len(messages) == 1
         assert messages[0].metadata.domain.correlation_id == "corr-X"
         assert messages[0].metadata.domain.causation_id == other.metadata.headers.id

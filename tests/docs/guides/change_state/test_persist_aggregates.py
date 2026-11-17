@@ -92,7 +92,7 @@ def test_add_publishes_the_events_and_clears_them(events):
         events.domain.repository_for(events.Post).add(post)
 
         assert post._events == []
-        stored = events.domain.event_store.store.read(
+        stored = events.domain.event_store.read(
             f"{post.meta_.stream_category}-{post.id}"
         )
         assert [message.metadata.headers.type for message in stored] == [

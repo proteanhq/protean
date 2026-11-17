@@ -167,7 +167,7 @@ class TestEnrichWithEventStoreStats:
         # An event in another category first, so the head position (a global
         # position) differs from the number of order instances.
         with domain.domain_context():
-            domain.event_store.store.write_message(
+            domain.event_store._adapter.write_message(
                 "testdomain::customer-1", "CustomerRegistered", {}
             )
         _place_orders(domain, order_cls, 3)

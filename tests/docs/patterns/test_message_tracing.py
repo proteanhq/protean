@@ -27,7 +27,7 @@ def client(example):
 
 
 def _order_messages(example, order_id):
-    return example.domain.event_store.store.read(f"myapp::order-{order_id}")
+    return example.domain.event_store.read(f"myapp::order-{order_id}")
 
 
 def _place_through_api(client, correlation_id):
@@ -155,7 +155,7 @@ def test_dsl_records_a_generated_correlation_id_and_the_commands_id(example):
     result = example.place_order_with_generated_ids()
 
     (event,) = result.events
-    store = example.domain.event_store.store
+    store = example.domain.event_store
     (command,) = [
         m
         for m in store.trace_causation(event._metadata.headers.id)

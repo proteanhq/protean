@@ -111,7 +111,7 @@ def persist(module, aggregate, *events):
 
 def stored_messages(module, aggregate):
     stream = f"{aggregate.meta_.stream_category}-{aggregate.id}"
-    return module.domain.event_store.store.read(stream)
+    return module.domain.event_store.read(stream)
 
 
 def record(module, projection_cls, identifier):

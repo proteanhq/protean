@@ -88,7 +88,7 @@ class TestDeltaEvents:
 
         test_domain.repository_for(User).add(user)
 
-        event_messages = test_domain.event_store.store.read(f"test::user-{user.id}")
+        event_messages = test_domain.event_store.read(f"test::user-{user.id}")
         assert len(event_messages) == 2
 
         assert event_messages[0].metadata.headers.id == f"test::user-{user.id}-0.1"

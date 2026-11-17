@@ -57,9 +57,7 @@ class TestIsFactEventInEventSourcing:
         test_domain.repository_for(University).add(user)
 
         # Read from fact event stream
-        messages = test_domain.event_store.store.read(
-            f"test::university-fact-{user.id}"
-        )
+        messages = test_domain.event_store.read(f"test::university-fact-{user.id}")
         assert len(messages) == 1
 
         event = messages[0].to_domain_object()
@@ -90,9 +88,7 @@ class TestIsFactEventInVersionDetermination:
         user = University(name="MIT")
         test_domain.repository_for(University).add(user)
 
-        messages = test_domain.event_store.store.read(
-            f"test::university-fact-{user.id}"
-        )
+        messages = test_domain.event_store.read(f"test::university-fact-{user.id}")
         event = messages[0].to_domain_object()
 
         # Fact events should return None for expected_version
@@ -107,7 +103,7 @@ class TestIsFactEventInVersionDetermination:
         user.raise_(UniversityRegistered(name="MIT"))
         test_domain.repository_for(University).add(user)
 
-        messages = test_domain.event_store.store.read(f"test::university-{user.id}")
+        messages = test_domain.event_store.read(f"test::university-{user.id}")
         # Find the non-fact event
         for msg in messages:
             event = msg.to_domain_object()

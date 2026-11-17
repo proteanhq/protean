@@ -111,7 +111,7 @@ class TestMetadataAsynchronous:
         command = Login(user_id=identifier)
         test_domain.process(command, asynchronous=False)
 
-        last_command = test_domain.event_store.store.read_last_message(
+        last_command = test_domain.event_store.read_last_message(
             f"test::user:command-{identifier}"
         )
         assert last_command is not None
@@ -124,7 +124,7 @@ class TestMetadataAsynchronous:
         command = Login(user_id=identifier)
         test_domain.process(command)
 
-        last_command = test_domain.event_store.store.read_last_message(
+        last_command = test_domain.event_store.read_last_message(
             f"test::user:command-{identifier}"
         )
         assert last_command is not None
@@ -390,7 +390,7 @@ class TestStorePositions:
         identifier = str(uuid4())
         test_domain.process(Login(user_id=identifier), asynchronous=True)
 
-        stored = test_domain.event_store.store.read_last_message(
+        stored = test_domain.event_store.read_last_message(
             f"test::user:command-{identifier}"
         )
         assert stored is not None
@@ -406,7 +406,7 @@ class TestStorePositions:
     ):
         identifier = str(uuid4())
         test_domain.process(Login(user_id=identifier), asynchronous=True)
-        stored = test_domain.event_store.store.read_last_message(
+        stored = test_domain.event_store.read_last_message(
             f"test::user:command-{identifier}"
         )
         rebuilt = stored.to_domain_object()

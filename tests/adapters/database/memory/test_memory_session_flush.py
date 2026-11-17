@@ -217,7 +217,7 @@ def test_no_commit_lands_between_the_flush_and_the_event_append(test_domain):
     test_domain.repository_for(User).add(user)
     identifier = _seed(test_domain)
 
-    store = test_domain.event_store.store
+    store = test_domain.event_store
     append = store.append
     others = []
 
@@ -247,7 +247,9 @@ def test_no_commit_lands_between_the_flush_and_the_event_append(test_domain):
 
     assert test_domain.repository_for(User).get("u1").name == "b"
     assert [
-        m["data"]["name"] for m in store.get_all_messages() if "name" in m["data"]
+        m["data"]["name"]
+        for m in store._adapter.get_all_messages()
+        if "name" in m["data"]
     ] == ["b"]
     assert _live_value(test_domain, identifier) == 9
 

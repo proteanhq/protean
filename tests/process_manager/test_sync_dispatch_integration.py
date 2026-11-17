@@ -60,7 +60,7 @@ class TestSyncDispatchStartEvent:
 
         # Verify PM transition was persisted
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order.id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         assert len(messages) == 1
 
         transition = messages[0].to_domain_object()
@@ -91,7 +91,7 @@ class TestSyncDispatchMultiStep:
 
         # Verify PM has 2 transitions
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order.id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         assert len(messages) == 2
 
         transition = messages[-1].to_domain_object()
@@ -117,7 +117,7 @@ class TestSyncDispatchMultiStep:
 
         # Verify full lifecycle
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order.id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         assert len(messages) == 3
 
         final = messages[-1].to_domain_object()
@@ -135,7 +135,7 @@ class TestSyncDispatchMultiStep:
             current_domain.repository_for(Payment).add(payment)
 
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order.id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         assert len(messages) == 2
 
         final = messages[-1].to_domain_object()
@@ -162,7 +162,7 @@ class TestMessageBasedDispatch:
 
         # Read event from event store — returns Message objects
         aggregate_stream = f"test::order-{order.id}"
-        event_messages = test_domain.event_store.store.read(aggregate_stream)
+        event_messages = test_domain.event_store.read(aggregate_stream)
         assert len(event_messages) >= 1
 
         # The type string should use the domain's camel_case_name, not the aggregate name
@@ -188,7 +188,7 @@ class TestMessageBasedDispatch:
             current_domain.repository_for(Order).add(order)
 
         aggregate_stream = f"test::order-{order.id}"
-        messages = test_domain.event_store.store.read(aggregate_stream)
+        messages = test_domain.event_store.read(aggregate_stream)
 
         expected_type = OrderPlaced.__type__
         order_placed_msg = None
@@ -250,7 +250,7 @@ class TestMessageBasedDispatch:
 
         # Verify PM transition was persisted
         pm_stream = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-        transitions = test_domain.event_store.store.read(pm_stream)
+        transitions = test_domain.event_store.read(pm_stream)
         assert len(transitions) == 1
 
         transition = transitions[0].to_domain_object()
@@ -306,7 +306,7 @@ class TestMessageBasedDispatch:
 
         # Verify PM has 2 transitions
         pm_stream = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-        transitions = test_domain.event_store.store.read(pm_stream)
+        transitions = test_domain.event_store.read(pm_stream)
         assert len(transitions) == 2
 
         final = transitions[-1].to_domain_object()

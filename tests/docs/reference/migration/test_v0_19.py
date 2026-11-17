@@ -8,7 +8,7 @@ import pytest
 
 from protean.adapters.database.sqlalchemy import render_index_ddl
 from protean.domain import Domain
-from protean.port.event_store import BaseEventStore
+from protean.port.event_store import EventStorePort
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.outbox import _CLAIM_ORDER, OUTBOX_INDEXES, Outbox, OutboxStatus
 from protean.utils.reflection import fields
@@ -223,9 +223,9 @@ HEALTH_MEMBERS = (
 
 
 class TestEventStoreHealthMembers:
-    def test_the_named_members_are_abstract_on_base_event_store(self):
+    def test_the_named_members_are_abstract_on_the_event_store_port(self):
         for member in ("ping", "health", "get_connection"):
-            assert member in BaseEventStore.__abstractmethods__
+            assert member in EventStorePort.__abstractmethods__
 
     def test_the_page_names_every_member_it_says_is_required(self):
         section = _section(HEALTH_MEMBERS)

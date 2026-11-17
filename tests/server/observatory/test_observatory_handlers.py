@@ -492,7 +492,7 @@ def _seed_event_store_lag(domain, handler_cls, category, *, read_up_to):
     Returns the time stamped on the position record, which is what the
     collector measures seconds of lag from.
     """
-    store = domain.event_store.store
+    store = domain.event_store._adapter
     with domain.domain_context():
         for n in range(3):
             store.write_message(f"{category}-1", "Happened", {"n": n})

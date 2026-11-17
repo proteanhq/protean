@@ -370,7 +370,7 @@ def _snapshot(domain: Domain) -> dict[str, list[dict[str, Any]]]:
 
 
 def _stored_events(domain: Domain) -> list[BaseEvent]:
-    messages = domain.event_store.store.read("$all")
+    messages = domain.event_store.read("$all")
     objects = [message.to_domain_object() for message in messages]
     return [obj for obj in objects if isinstance(obj, BaseEvent)]
 

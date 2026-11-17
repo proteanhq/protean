@@ -479,7 +479,7 @@ class TestUoWCommitSpanOnError:
     ):
         """Force a commit failure during event store append and verify
         the UoW commit span is marked ERROR with an exception event."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         original_write = store.write_message
         call_count = 0
 
@@ -565,7 +565,7 @@ class TestRepositoryGetSpan:
 
 
 class TestEventStoreAppendSpan:
-    """BaseEventStore.append() emits ``protean.event_store.append``."""
+    """EventStore.append() emits ``protean.event_store.append``."""
 
     def test_event_store_append_span_attributes_and_trace(
         self, test_domain, span_exporter

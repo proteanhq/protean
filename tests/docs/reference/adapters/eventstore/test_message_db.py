@@ -21,7 +21,7 @@ def test_configuration_shown_connects(tmp_path, monkeypatch):
 
     stream = f"doc_check-{uuid4()}"
     with domain.domain_context():
-        store = domain.event_store.store
+        store = domain.event_store._adapter
         store.write_message(stream, "Checked", {"n": 1})
 
         assert type(store) is MessageDBStore

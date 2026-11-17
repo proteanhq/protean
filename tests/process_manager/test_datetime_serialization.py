@@ -79,7 +79,7 @@ class TestDateTimeSerialization:
         )
 
         stream_name = f"{SubscriptionPM.meta_.stream_category}-{sub_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         assert len(messages) == 1
 
     def test_datetime_field_serialized_as_iso_string(self, test_domain):
@@ -91,7 +91,7 @@ class TestDateTimeSerialization:
         )
 
         stream_name = f"{SubscriptionPM.meta_.stream_category}-{sub_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         transition = messages[0].to_domain_object()
 
         assert transition.state["started_at"] == "2025-06-15T10:30:00"
@@ -106,7 +106,7 @@ class TestDateTimeSerialization:
         )
 
         stream_name = f"{SubscriptionPM.meta_.stream_category}-{sub_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         transition = messages[0].to_domain_object()
 
         assert transition.state["trial_end_date"] == "2025-07-15"
@@ -124,7 +124,7 @@ class TestDateTimeSerialization:
         SubscriptionPM._handle(SubscriptionActivated(subscription_id=sub_id))
 
         stream_name = f"{SubscriptionPM.meta_.stream_category}-{sub_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
 
         # Second transition should still have the serialized datetime from reconstitution
         transition = messages[-1].to_domain_object()
@@ -162,7 +162,7 @@ class TestDateTimeReconstitution:
         SubscriptionPM._handle(SubscriptionActivated(subscription_id=sub_id))
 
         stream_name = f"{SubscriptionPM.meta_.stream_category}-{sub_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         assert len(messages) == 2
 
         final = messages[-1].to_domain_object()
@@ -171,5 +171,5 @@ class TestDateTimeReconstitution:
 
         # Subsequent events should be skipped
         SubscriptionPM._handle(SubscriptionActivated(subscription_id=sub_id))
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         assert len(messages) == 2  # Still only 2

@@ -116,7 +116,7 @@ def _stored_types(test_domain, aggregate: BaseAggregate) -> list[str]:
     stream = f"{type(aggregate).meta_.stream_category}-{aggregate.id}"
     return [
         message.metadata.headers.type
-        for message in test_domain.event_store.store.read(stream)
+        for message in test_domain.event_store.read(stream)
     ]
 
 

@@ -178,7 +178,7 @@ class TestUnitOfWorkAdditionalCoverage:
             test_domain, "handlers_for", return_value=[mock_handler1, mock_handler2]
         ):
             # Mock the event store to avoid issues with event serialization
-            with patch.object(test_domain.event_store.store, "append"):
+            with patch.object(test_domain.event_store, "append"):
                 uow = UnitOfWork()
                 uow.start()
 

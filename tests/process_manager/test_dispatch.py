@@ -96,7 +96,7 @@ class TestStartEvent:
 
         # Verify the PM was persisted by reading the transition from the event store
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         assert len(messages) == 1
 
     def test_start_event_sets_pm_fields(self, test_domain):
@@ -106,7 +106,7 @@ class TestStartEvent:
         OrderFulfillmentPM._handle(event)
 
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
 
         transition = messages[0].to_domain_object()
         assert transition.state["order_id"] == order_id
@@ -129,7 +129,7 @@ class TestSubsequentEvents:
 
         # Should have 2 transitions now
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         assert len(messages) == 2
 
     def test_subsequent_event_updates_pm_state(self, test_domain):
@@ -143,7 +143,7 @@ class TestSubsequentEvents:
         )
 
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
 
         latest_transition = messages[-1].to_domain_object()
         assert latest_transition.state["status"] == "awaiting_shipment"
@@ -162,7 +162,7 @@ class TestNonStartEventWithNoPM:
 
         # No transition should be persisted
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         assert len(messages) == 0
 
 
@@ -173,7 +173,7 @@ class TestUnhandledEvent:
         order.raise_(OrderNoteAdded(order_id=str(order.id), note="Gift wrap"))
         with UnitOfWork():
             current_domain.repository_for(Order).add(order)
-        message = test_domain.event_store.store.read(
+        message = test_domain.event_store.read(
             f"{Order.meta_.stream_category}-{order.id}"
         )[0]
         engine = Engine(domain=test_domain, test_mode=True)
@@ -182,7 +182,7 @@ class TestUnhandledEvent:
 
         pm_stream = f"{OrderFulfillmentPM.meta_.stream_category}-{order.id}"
         assert handled is True
-        assert test_domain.event_store.store.read(pm_stream) == []
+        assert test_domain.event_store.read(pm_stream) == []
 
 
 class TestDispatchBeforeInit:
@@ -222,7 +222,7 @@ class TestFullLifecycle:
         OrderFulfillmentPM._handle(ShipmentDelivered(order_id=order_id))
 
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
 
         assert len(messages) == 3
 

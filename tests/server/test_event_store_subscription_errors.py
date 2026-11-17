@@ -200,7 +200,7 @@ def _write_event_to_store(test_domain, msg: Message) -> int:
     Returns the per-stream position assigned by the store.
     """
     stream_name = msg.metadata.headers.stream
-    return test_domain.event_store.store.write_message(
+    return test_domain.event_store._adapter.write_message(
         stream_name,
         msg.metadata.headers.type,
         msg.data,
@@ -252,7 +252,7 @@ class TestFailedPositionRecording:
         assert handler_counter == 1  # Handler was called
 
         # Failed position was recorded
-        failed_msgs = test_domain.event_store.store.read(
+        failed_msgs = test_domain.event_store.read(
             sub.failed_positions_stream, position=0
         )
         assert len(failed_msgs) == 1
@@ -272,7 +272,7 @@ class TestFailedPositionRecording:
 
         await sub.process_batch([msg])
 
-        failed_msgs = test_domain.event_store.store.read(
+        failed_msgs = test_domain.event_store.read(
             sub.failed_positions_stream, position=0
         )
         assert len(failed_msgs) == 1
@@ -305,9 +305,7 @@ class TestFailedPositionRecording:
         assert sub.current_position == 10
 
         # Position update was written to the store
-        pos_msgs = test_domain.event_store.store.read(
-            sub.subscriber_stream_name, position=0
-        )
+        pos_msgs = test_domain.event_store.read(sub.subscriber_stream_name, position=0)
         assert len(pos_msgs) > 0
         assert pos_msgs[-1].data["position"] == 10
 
@@ -359,7 +357,7 @@ class TestFailedPositionRecording:
 
         assert handler_counter == 3
 
-        failed_msgs = test_domain.event_store.store.read(
+        failed_msgs = test_domain.event_store.read(
             sub.failed_positions_stream, position=0
         )
         assert len(failed_msgs) == 3
@@ -377,7 +375,7 @@ class TestFailedPositionRecording:
         assert result == 1
         assert handler_counter == 1
 
-        failed_msgs = test_domain.event_store.store.read(
+        failed_msgs = test_domain.event_store.read(
             sub.failed_positions_stream, position=0
         )
         assert len(failed_msgs) == 0
@@ -392,7 +390,7 @@ class TestFailedPositionRecording:
 
         await sub.process_batch([msg])
 
-        failed_msgs = test_domain.event_store.store.read(
+        failed_msgs = test_domain.event_store.read(
             sub.failed_positions_stream, position=0
         )
         assert len(failed_msgs) == 0
@@ -408,7 +406,7 @@ class TestFailedPositionRecording:
         # Not processed (skipped as sync), not counted as success either
         assert handler_counter == 0
 
-        failed_msgs = test_domain.event_store.store.read(
+        failed_msgs = test_domain.event_store.read(
             sub.failed_positions_stream, position=0
         )
         assert len(failed_msgs) == 0
@@ -449,7 +447,7 @@ class TestRecoveryPass:
         assert handler_counter == 2  # Called again during recovery
 
         # Verify Resolved record was written
-        failed_msgs = test_domain.event_store.store.read(
+        failed_msgs = test_domain.event_store.read(
             sub.failed_positions_stream, position=0
         )
         statuses = [
@@ -484,7 +482,7 @@ class TestRecoveryPass:
         assert recovered == 0
 
         # Verify Exhausted record was written
-        failed_msgs = test_domain.event_store.store.read(
+        failed_msgs = test_domain.event_store.read(
             sub.failed_positions_stream, position=0
         )
         statuses = [m.metadata.headers.type for m in failed_msgs]
@@ -909,7 +907,7 @@ class TestRecoveryCheckpoint:
         sub2 = _make_subscription(test_domain, AlwaysFailingEventHandler)
         await sub2._rebuild_retry_counts()
 
-        checkpoint = test_domain.event_store.store.get_last_stream_message(
+        checkpoint = test_domain.event_store._adapter.get_last_stream_message(
             sub2.recovery_checkpoint_stream
         )
         assert checkpoint is not None
@@ -931,7 +929,7 @@ class TestRecoveryCheckpoint:
         await sub2._rebuild_retry_counts()
         assert len(sub2._failed_positions) == 3
 
-        checkpoint = test_domain.event_store.store.get_last_stream_message(
+        checkpoint = test_domain.event_store._adapter.get_last_stream_message(
             sub2.recovery_checkpoint_stream
         )
         first_watermark = checkpoint["data"]["watermark"]
@@ -948,7 +946,7 @@ class TestRecoveryCheckpoint:
         assert 4 in sub3._failed_positions
 
         # Checkpoint should have advanced
-        checkpoint2 = test_domain.event_store.store.get_last_stream_message(
+        checkpoint2 = test_domain.event_store._adapter.get_last_stream_message(
             sub3.recovery_checkpoint_stream
         )
         assert checkpoint2["data"]["watermark"] > first_watermark
@@ -967,7 +965,7 @@ class TestRecoveryCheckpoint:
         # Overwrite the checkpoint with a watermark well past that tail (0): a
         # restore captured the checkpoint after the failed stream it references.
         write_recovery_checkpoint_record(
-            test_domain.event_store.store,
+            test_domain.event_store._adapter,
             sub.recovery_checkpoint_stream,
             sub.stream_category,
             "2026-01-01T00:00:00+00:00",
@@ -1063,7 +1061,7 @@ class TestRecoveryCheckpoint:
         sub = _make_subscription(test_domain, SucceedingEventHandler)
         await sub._rebuild_retry_counts()
 
-        checkpoint = test_domain.event_store.store.get_last_stream_message(
+        checkpoint = test_domain.event_store._adapter.get_last_stream_message(
             sub.recovery_checkpoint_stream
         )
         assert checkpoint is None
@@ -1091,7 +1089,7 @@ class TestRecoveryCheckpoint:
         await sub2._rebuild_retry_counts()
         assert len(sub2._failed_positions) == 0
 
-        checkpoint = test_domain.event_store.store.get_last_stream_message(
+        checkpoint = test_domain.event_store._adapter.get_last_stream_message(
             sub2.recovery_checkpoint_stream
         )
         assert checkpoint is not None
@@ -1106,7 +1104,7 @@ class TestRecoveryCheckpoint:
         """A position in the checkpoint snapshot is restored even when the
         failed-positions stream holds no record of it."""
         sub = _make_subscription(test_domain, AlwaysFailingEventHandler)
-        test_domain.event_store.store.write_message(
+        test_domain.event_store._adapter.write_message(
             sub.recovery_checkpoint_stream,
             "Checkpoint",
             {
@@ -1233,7 +1231,7 @@ class TestMixedBatches:
         assert handler_counter == 2  # Both called
 
         # Only position 1 should be recorded as failed
-        failed_msgs = test_domain.event_store.store.read(
+        failed_msgs = test_domain.event_store.read(
             sub.failed_positions_stream, position=0
         )
         assert len(failed_msgs) == 1
@@ -1485,11 +1483,7 @@ class TestFailureRecordOrdering:
         assert sub.current_position == -1
         assert await sub.fetch_last_position() == -1
         assert (
-            len(
-                test_domain.event_store.store.read(
-                    sub.failed_positions_stream, position=0
-                )
-            )
+            len(test_domain.event_store.read(sub.failed_positions_stream, position=0))
             == 0
         )
         # In-memory tracking is updated only after a durable write, so the failed
@@ -1504,9 +1498,7 @@ class TestFailureRecordOrdering:
 
         assert handler_counter == 2  # handler ran on the failed tick and the retry
         assert sub.current_position == 1  # cursor advances only after recording
-        failed = test_domain.event_store.store.read(
-            sub.failed_positions_stream, position=0
-        )
+        failed = test_domain.event_store.read(sub.failed_positions_stream, position=0)
         assert len(failed) == 1
         assert failed[0].data["position"] == 1
 
@@ -1531,9 +1523,7 @@ class TestFailureRecordOrdering:
 
         # The recovery record was written before the cursor write, so it is present
         # even though the cursor write raised.
-        failed = test_domain.event_store.store.read(
-            sub.failed_positions_stream, position=0
-        )
+        failed = test_domain.event_store.read(sub.failed_positions_stream, position=0)
         assert len(failed) == 1
         assert failed[0].data["position"] == 5
         assert failed[0].metadata.headers.type == FailedPositionStatus.FAILED.value
@@ -1563,9 +1553,7 @@ class TestFailureRecordOrdering:
             await sub.process_batch([msg1, msg2])
 
         # Both failures were recorded before the cursor flush raised on msg2.
-        failed = test_domain.event_store.store.read(
-            sub.failed_positions_stream, position=0
-        )
+        failed = test_domain.event_store.read(sub.failed_positions_stream, position=0)
         assert sorted(m.data["position"] for m in failed) == [1, 2]
         # The cursor was never durably flushed (the only flush attempt raised).
         assert await sub.fetch_last_position() == -1
@@ -1589,11 +1577,7 @@ class TestFailureRecordOrdering:
         assert await sub.fetch_last_position() == 8  # durably flushed (interval=1)
         # Nothing recorded — recovery is disabled.
         assert (
-            len(
-                test_domain.event_store.store.read(
-                    sub.failed_positions_stream, position=0
-                )
-            )
+            len(test_domain.event_store.read(sub.failed_positions_stream, position=0))
             == 0
         )
 
