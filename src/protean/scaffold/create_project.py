@@ -46,7 +46,7 @@ import tempfile
 from pathlib import Path
 
 import protean
-from protean.adapters.repository.schema_migrator import write_migrations_folder
+from protean.adapters.database.schema_migrator import write_migrations_folder
 from protean.scaffold.manifest import write_manifest
 
 __all__ = ["create_project"]

@@ -9,7 +9,7 @@ import datetime
 
 import pytest
 
-from protean.adapters.repository.sqlalchemy import _resolve_python_type
+from protean.adapters.database.sqlalchemy import _resolve_python_type
 from protean.utils.consume_idempotency import ProcessedMessage
 from protean.utils.outbox import Outbox
 from protean.utils.reflection import fields

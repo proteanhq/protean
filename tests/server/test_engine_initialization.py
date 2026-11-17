@@ -22,7 +22,7 @@ def _register_aggregate(domain, provider="default"):
     record_cls = type(
         f"{provider.capitalize()}Record", (BaseAggregate,), {"name": String()}
     )
-    domain.register(record_cls, provider=provider)
+    domain.register(record_cls, database=provider)
 
 
 def test_engine_initialized_from_a_domain_object_owns_an_idle_loop(test_domain):

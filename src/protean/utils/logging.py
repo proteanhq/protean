@@ -109,7 +109,7 @@ _FRAMEWORK_LOGGERS_NORMAL = {
     "protean.snapshot": logging.WARNING,
     "protean.core": logging.WARNING,
     "protean.adapters": logging.WARNING,
-    "protean.adapters.repository.sqlalchemy.slow_query": logging.WARNING,
+    "protean.adapters.database.sqlalchemy.slow_query": logging.WARNING,
 }
 
 # The logger name whose events are subject to tail sampling. All other

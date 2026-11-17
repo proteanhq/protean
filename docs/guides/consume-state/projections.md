@@ -26,8 +26,8 @@ and schema behavior:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `provider` | `"default"` | Database provider name |
-| `cache` | `None` | Cache provider, takes precedence over `provider` when set |
+| `database` | `"default"` | Database provider name |
+| `cache` | `None` | Cache provider, takes precedence over `database` when set |
 | `schema_name` | `snake_case(cls)` | Table or collection name in the backing store |
 | `order_by` | `()` | Default field ordering for queries (e.g. `("-placed_at",)`) |
 | `limit` | `100` | Default maximum number of results returned by queries |
@@ -52,7 +52,7 @@ simultaneously:
 ```python
 # fragment
 # Database storage (default)
-@domain.projection(provider="postgres")
+@domain.projection(database="postgres")
 class ProductInventory:
     ...
 
@@ -62,7 +62,7 @@ class ProductInventory:
     ...
 ```
 
-When both `cache` and `provider` are specified, the `cache` parameter takes
+When both `cache` and `database` are specified, the `cache` parameter takes
 precedence. See
 [element decorators](../../reference/domain-elements/element-decorators.md)
 for the full list of configuration options.

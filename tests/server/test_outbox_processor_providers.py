@@ -72,7 +72,7 @@ class TestEngineProcessorsFollowAggregateProviders:
     def test_an_aggregate_on_memory_gets_memory_processors(self):
         domain = _with_global_broker(_domain())
         _aggregate(domain, "Order")
-        _aggregate(domain, "Cart", provider="memory")
+        _aggregate(domain, "Cart", database="memory")
 
         assert _engine_processor_names(domain) == {
             "outbox-processor-default-to-default",
@@ -100,7 +100,7 @@ class TestEngineProcessorsFollowAggregateProviders:
         internal_on_memory = [
             record.cls.__name__
             for record in domain.registry._elements["AGGREGATE"].values()
-            if record.internal and record.cls.meta_.provider == "memory"
+            if record.internal and record.cls.meta_.database == "memory"
         ]
         assert internal_on_memory
         assert all(name.endswith("Outbox") for name in internal_on_memory)
@@ -123,11 +123,11 @@ class TestEngineProcessorsFollowAggregateProviders:
     def test_an_abstract_aggregate_does_not_count(self):
         domain = _domain()
         domain.config["databases"]["archive"] = {"provider": "memory"}
-        base = _aggregate(domain, "Base", abstract=True, provider="archive")
+        base = _aggregate(domain, "Base", abstract=True, database="archive")
         order = type("Order", (base,), {})
         domain.register(order)
 
-        assert order.meta_.provider == "default"
+        assert order.meta_.database == "default"
         assert _engine_processor_names(domain) == {
             "outbox-processor-default-to-default"
         }
@@ -149,12 +149,12 @@ class TestOutboxProviderNames:
         domain.config["databases"]["zeta"] = {"provider": "memory"}
         domain.config["databases"]["alpha"] = {"provider": "memory"}
         # Registered in the reverse of config order
-        _aggregate(domain, "Alpha", provider="alpha")
-        _aggregate(domain, "Zeta", provider="zeta")
+        _aggregate(domain, "Alpha", database="alpha")
+        _aggregate(domain, "Zeta", database="zeta")
         _aggregate(domain, "Order")
         domain.init(traverse=False)
 
-        configured = [n for n in domain.providers if n in {"default", "zeta", "alpha"}]
+        configured = [n for n in domain.databases if n in {"default", "zeta", "alpha"}]
         assert configured == ["default", "zeta", "alpha"]
         assert _outbox_provider_names(domain) == configured
 
@@ -166,7 +166,7 @@ class TestOutboxProviderNames:
         class Summary(BaseProjection):
             summary_id = Identifier(identifier=True)
 
-        domain.register(Summary, provider="reports")
+        domain.register(Summary, database="reports")
         domain.init(traverse=False)
 
         assert _outbox_provider_names(domain) == ["default"]

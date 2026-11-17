@@ -19,10 +19,10 @@ Two layers of coverage:
   emits the child INSERT first and the assertion goes red.
 
   These are a real fail-without-fix guard on **autoflush=False** providers
-  (``MssqlProvider`` / ``PostgresqlProvider`` — see ``sqlalchemy.py``): with
+  (``MssqlDatabase`` / ``PostgresqlDatabase`` — see ``sqlalchemy.py``): with
   nothing flushing early, disabling the ``_flush`` cascade makes the commit emit
   children before parents (verified on MSSQL — child-first order). On **SQLite**
-  they pass either way, because ``SqliteProvider`` leaves ``autoflush`` at its
+  they pass either way, because ``SqliteDatabase`` leaves ``autoflush`` at its
   default ``True``, so the per-save existence-check ``SELECT`` incidentally
   flushes the parent row before each child regardless of the fix. Postgres, which
   runs in the standard CI matrix, exercises them as a genuine guard.

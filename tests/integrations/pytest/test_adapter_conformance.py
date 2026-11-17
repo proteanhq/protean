@@ -29,7 +29,7 @@ from protean.integrations.pytest.adapter_conformance import (
     pytest_configure,
     resolve_db_config,
 )
-from protean.port.provider import DatabaseCapabilities
+from protean.port.database import DatabaseCapabilities
 
 # The opt-in the conformance reference page shows, read from the file the page
 # includes so the page and these tests cannot drift apart.
@@ -156,7 +156,7 @@ class TestBuiltinDbConfigs:
         registered = {
             ep.name
             for ep in metadata.distribution("protean").entry_points.select(
-                group="protean.providers"
+                group="protean.databases"
             )
         }
         configured = {config["provider"] for config in BUILTIN_DB_CONFIGS.values()}
@@ -176,7 +176,7 @@ class TestBuiltinDbConfigs:
     def test_a_third_party_provider_needs_no_builtin_config(
         self, tmp_path, monkeypatch
     ):
-        """`protean.providers` is a public extension point, and an external
+        """`protean.databases` is a public extension point, and an external
         adapter brings its own config. Enumerating every installed
         distribution would fail this for whoever has one installed."""
         dist = tmp_path / "acme_protean_db-1.0.dist-info"
@@ -186,14 +186,14 @@ class TestBuiltinDbConfigs:
             encoding="utf-8",
         )
         (dist / "entry_points.txt").write_text(
-            "[protean.providers]\nacmedb = acme_protean_db:register\n",
+            "[protean.databases]\nacmedb = acme_protean_db:register\n",
             encoding="utf-8",
         )
         monkeypatch.syspath_prepend(str(tmp_path))
         metadata.MetadataPathFinder.invalidate_caches()
 
         assert "acmedb" in {
-            ep.name for ep in metadata.entry_points().select(group="protean.providers")
+            ep.name for ep in metadata.entry_points().select(group="protean.databases")
         }
         self.test_every_builtin_provider_has_a_config()
 
@@ -472,18 +472,18 @@ class TestConformancePluginIntegration:
             + """
 import pytest
 
-from protean.adapters.repository.memory import MemoryProvider
-from protean.infra.registry import providers
-from protean.port.provider import DatabaseCapabilities
+from protean.adapters.database.memory import MemoryDatabase
+from protean.infra.registry import databases
+from protean.port.database import DatabaseCapabilities
 
 
-class NoTransactionsProvider(MemoryProvider):
+class NoTransactionsProvider(MemoryDatabase):
     @property
     def capabilities(self):
         return DatabaseCapabilities.BASIC_STORAGE
 
 
-providers.register("no_transactions", "conftest.NoTransactionsProvider")
+databases.register("no_transactions", "conftest.NoTransactionsProvider")
 
 
 @pytest.fixture(scope="session")
@@ -508,18 +508,18 @@ def db_config():
             + """
 import pytest
 
-from protean.adapters.repository.memory import MemoryProvider
-from protean.infra.registry import providers
-from protean.port.provider import DatabaseCapabilities
+from protean.adapters.database.memory import MemoryDatabase
+from protean.infra.registry import databases
+from protean.port.database import DatabaseCapabilities
 
 
-class PartialStorageProvider(MemoryProvider):
+class PartialStorageProvider(MemoryDatabase):
     @property
     def capabilities(self):
         return DatabaseCapabilities.CRUD | DatabaseCapabilities.FILTER
 
 
-providers.register("partial_storage", "conftest.PartialStorageProvider")
+databases.register("partial_storage", "conftest.PartialStorageProvider")
 
 
 @pytest.fixture(scope="session")

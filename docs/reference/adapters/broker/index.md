@@ -150,7 +150,7 @@ sent when the Unit of Work commits.
 
 ## Health Checks
 
-Monitor broker health and connectivity. `health_stats()` returns a dict with
+Monitor broker health and connectivity. `health()` returns a dict with
 `status` (`"healthy"`, `"degraded"` or `"unhealthy"`), `connected`,
 `last_ping_ms`, `uptime_seconds` and a broker-specific `details` dict:
 

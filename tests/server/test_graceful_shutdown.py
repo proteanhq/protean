@@ -84,7 +84,7 @@ class TestDomainClose:
                 side_effect=lambda: call_order.append("caches"),
             ),
             patch.object(
-                domain.providers,
+                domain.databases,
                 "close",
                 side_effect=lambda: call_order.append("providers"),
             ),
@@ -272,17 +272,17 @@ class TestConfigurableDrainWindow:
 
 @pytest.mark.no_test_domain
 class TestBrokerClose:
-    """Test BaseBroker.close() default behavior."""
+    """Test the broker service's close on the inline adapter."""
 
     def test_base_broker_close_is_noop(self):
-        """Default close() on BaseBroker does nothing (no error)."""
+        """Closing the inline broker does nothing (no error)."""
 
         domain = Domain(name="Test")
         domain.init(traverse=False)
 
         broker = domain.brokers["default"]
-        # Should not raise - inline broker inherits default no-op close()
-        broker.close()
+        # Should not raise: the inline adapter's close() is a no-op
+        broker._close()
 
 
 @pytest.mark.no_test_domain
@@ -318,7 +318,7 @@ class TestBrokersReinitializeClosesExisting:
         # Re-initialize should close the old broker
         domain.brokers._initialize()
 
-        mock_broker.close.assert_called_once()
+        mock_broker._close.assert_called_once()
 
 
 @pytest.mark.no_test_domain
@@ -341,7 +341,7 @@ class TestCachesReinitializeClosesExisting:
 
 @pytest.mark.no_test_domain
 class TestProvidersReinitializeClosesExisting:
-    """Test that Providers._initialize() closes existing providers first."""
+    """Test that Databases._initialize() closes existing providers first."""
 
     def test_reinitialize_closes_old_providers(self):
         """Calling _initialize() again should close old provider connections."""
@@ -350,10 +350,10 @@ class TestProvidersReinitializeClosesExisting:
 
         mock_provider = MagicMock()
         mock_provider.ping.return_value = True
-        domain.providers._providers = {"default": mock_provider}
+        domain.databases._databases = {"default": mock_provider}
 
         # Re-initialize should close the old provider
-        domain.providers._initialize()
+        domain.databases._initialize()
 
         mock_provider.close.assert_called_once()
 
@@ -365,9 +365,11 @@ class TestRegistryCloseErrorIsolation:
     @pytest.mark.parametrize(
         "registry, attribute, kind, close",
         [
-            ("brokers", "_brokers", "broker", "close"),
+            # The broker and cache registries hold services, which close
+            # through ``_close``; the provider registry holds the adapters.
+            ("brokers", "_brokers", "broker", "_close"),
             ("caches", "_caches", "cache", "_close"),
-            ("providers", "_providers", "provider", "close"),
+            ("databases", "_databases", "provider", "close"),
         ],
     )
     def test_close_continues_on_error(self, caplog, registry, attribute, kind, close):
@@ -477,7 +479,7 @@ class TestRedisBrokerReconnectAfterClose:
     """Reviving a closed Redis connection.
 
     Engine shutdown calls ``close()``, which sets ``redis_instance`` to ``None``.
-    Under CI timing a straggler poll read or a test-teardown ``_data_reset`` can
+    Under CI timing a straggler poll read or a test-teardown ``clear`` can
     still run afterwards; these must reconnect transparently instead of raising
     ``AttributeError: 'NoneType' object has no attribute ...`` and killing the
     subscription poll loop. These tests use mocks and need no live Redis.
@@ -488,12 +490,13 @@ class TestRedisBrokerReconnectAfterClose:
 
         broker = object.__new__(RedisBroker)
         broker.name = "test"
-        broker.conn_info = {"URI": "redis://localhost:6379/0"}
+        broker.config = {"URI": "redis://localhost:6379/0"}
         broker._pool_kwargs = {}
         broker.redis_instance = None
         broker._consumer_name = "consumer-test"
         broker._created_groups_set = set()
         broker._group_creation_times = {}
+        broker._published_streams = {}
         return broker
 
     def test_client_reuses_live_instance_without_reconnecting(self):
@@ -508,29 +511,29 @@ class TestRedisBrokerReconnectAfterClose:
         from_url.assert_not_called()
 
     def test_read_revives_closed_connection(self):
-        """_read reconnects after close() instead of raising AttributeError."""
+        """read reconnects after close() instead of raising AttributeError."""
         broker = self._make_broker()
-        # Pre-populate the group cache so _ensure_group does not hit Redis.
+        # Pre-populate the group cache so create_group does not hit Redis.
         broker._created_groups_set = {"stream:group"}
         mock_client = MagicMock()
         mock_client.xreadgroup.return_value = []
 
         with patch("redis.Redis.from_url", return_value=mock_client):
-            result = broker._read("stream", "group", 1)
+            result = broker.read("stream", "group", 1)
 
         assert result == []
         assert broker.redis_instance is mock_client
         assert mock_client.xreadgroup.called
 
-    def test_data_reset_revives_closed_connection(self):
-        """_data_reset reconnects after close() and flushes without raising."""
+    def test_clear_revives_closed_connection(self):
+        """clear reconnects after close() and flushes without raising."""
         broker = self._make_broker()
         broker._created_groups_set = {"stream:group"}
         broker._group_creation_times = {"group": 1.0}
         mock_client = MagicMock()
 
         with patch("redis.Redis.from_url", return_value=mock_client):
-            broker._data_reset()
+            broker.clear()
 
         mock_client.flushdb.assert_called_once()
         assert broker.redis_instance is mock_client
@@ -538,13 +541,13 @@ class TestRedisBrokerReconnectAfterClose:
         assert broker._group_creation_times == {}
 
     def test_publish_revives_closed_connection(self):
-        """_publish reconnects after close() instead of raising AttributeError."""
+        """publish reconnects after close() instead of raising AttributeError."""
         broker = self._make_broker()
         mock_client = MagicMock()
         mock_client.xadd.return_value = b"1-0"
 
         with patch("redis.Redis.from_url", return_value=mock_client):
-            identifier = broker._publish("stream", {"k": "v"})
+            identifier = broker.publish("stream", {"k": "v"})
 
         assert identifier == "1-0"
         assert broker.redis_instance is mock_client

@@ -45,7 +45,7 @@ from dataclasses import dataclass
 from hypothesis import settings
 from hypothesis import strategies as st
 
-from protean.adapters.repository.memory import DictDAO, MemoryProvider
+from protean.adapters.database.memory import DictDAO, MemoryDatabase
 from protean.core.aggregate import BaseAggregate
 from protean.core.repository import BaseRepository
 from protean.domain import Domain
@@ -194,7 +194,7 @@ _MEMORY_BUGS: dict[str, type[DictDAO]] = {
 }
 
 
-def _install_memory_bug(provider: MemoryProvider, bug: str) -> None:
+def _install_memory_bug(provider: MemoryDatabase, bug: str) -> None:
     """Point a Memory provider instance at a broken DAO.
 
     Patches the instance's ``dao_for`` before any repository materializes its
@@ -391,7 +391,7 @@ def run_history(
     """
     observations: list[Observation] = []
     with domain.domain_context():
-        domain.providers["default"].clear()
+        domain.databases["default"].clear()
         for index, operation in enumerate(history):
             try:
                 observations.append((index, *operation.apply(repo)))

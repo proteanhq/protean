@@ -437,7 +437,7 @@ A reliability pattern that ensures messages are published to the broker exactly 
 
 ### Port
 
-An abstract interface that defines the contract between the domain and external infrastructure. Ports specify *what* capabilities are needed (persistence, messaging, caching) without prescribing *how* they are implemented. In Protean, ports include `ProviderPort`, `BaseBroker`, `EventStorePort`, and `CachePort`.
+An abstract interface that defines the contract between the domain and external infrastructure. Ports specify *what* capabilities are needed (persistence, messaging, caching) without prescribing *how* they are implemented. In Protean, ports include `DatabasePort`, `BrokerPort`, `EventStorePort`, and `CachePort`.
 
 [Learn more →](concepts/ports-and-adapters/index.md) | **See also**: [Adapter](#adapter), [Ports and Adapters Architecture](#ports-and-adapters-architecture)
 
@@ -449,7 +449,7 @@ An architectural pattern (also known as Hexagonal Architecture) that isolates th
 
 ### Provider
 
-A database adapter that provides persistence functionality for a specific storage technology. Providers manage connections, execute queries, and map data. In Protean, providers can be assigned per aggregate using the `provider` meta option, allowing different aggregates to use different databases.
+The adapter that backs a port, such as a database, broker, event store or cache. Each configuration section picks its adapter with the `provider` key, for example `provider = "postgresql"` under `[databases.default]`. An aggregate picks one of the configured databases with its `database` option, so different aggregates can use different databases.
 
 [Learn more →](reference/configuration/index.md) | **See also**: [Adapter](#adapter), [Database Model](#database-model)
 

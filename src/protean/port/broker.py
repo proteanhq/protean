@@ -1,21 +1,19 @@
 import logging
-import time
 from abc import ABCMeta, abstractmethod
-from collections import defaultdict
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from enum import Enum, Flag, auto
-from typing import TYPE_CHECKING, Any
-
-from protean.core.subscriber import BaseSubscriber
-from protean.exceptions import (
-    NotSupportedError,
-    ProteanException,
-    ValidationError,
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    NamedTuple,
+    NotRequired,
+    Protocol,
+    TypedDict,
 )
-from protean.utils import Processing
-from protean.utils.consume_idempotency import dispatch_to_subscriber
-from protean.utils.globals import current_uow
+
+from protean.exceptions import NotSupportedError, ProteanException
 
 if TYPE_CHECKING:
     from protean.domain import Domain
@@ -115,41 +113,260 @@ class BrokerCapabilities(Flag):
     )
 
 
-def _publish_now(broker: "BaseBroker", stream: str, message: dict[str, Any]) -> str:
-    """Publish ``message``, reconnecting and retrying once on a connection error."""
-    try:
-        return broker._publish(stream, message)
-    except Exception as e:
-        # Check if this is a connection-related error and attempt recovery
-        if broker._is_connection_error(e):
-            logger.warning(f"Connection error during publish: {e}")
-            if broker._ensure_connection():
-                # Retry the operation once after reconnection
-                return broker._publish(stream, message)
-            else:
-                raise
-        else:
-            raise
+class BrokerMessage(NamedTuple):
+    """One message a broker returns from a read.
+
+    Unpacks as ``(id, payload)``, like the tuples brokers returned before.
+    """
+
+    id: str
+    payload: dict[str, Any]
 
 
-def _dispatch_sync(broker: "BaseBroker", stream: str, message: dict[str, Any]) -> None:
-    """In SYNC processing, hand ``message`` to each subscriber of ``stream``."""
-    if (
-        broker.domain.config["message_processing"] == Processing.SYNC.value
-        and broker._subscribers[stream]
-    ):
-        for subscriber_cls in broker._subscribers[stream]:
-            dispatch_to_subscriber(subscriber_cls, message)
+class ConsumerInfo(TypedDict):
+    """One consumer of a consumer group and the messages it has not acknowledged."""
+
+    name: str
+    pending: int
+
+
+class ConsumerGroupInfo(TypedDict):
+    """One consumer group, summed over the streams it reads.
+
+    ``pending`` is the broker's own count of messages delivered to the group
+    and not yet settled, so it differs between brokers. The inline broker
+    counts messages delivered and not yet acknowledged or nacked. The Redis
+    broker reports the length of the Redis pending list, which keeps a nacked
+    message. A broker without acknowledgement reports ``0``.
+
+    ``consumer_count`` counts the consumers the broker tracks. The inline
+    broker tracks none and reports ``0``.
+    """
+
+    name: str
+    consumer_count: int
+    pending: int
+    consumers: NotRequired[list[ConsumerInfo]]
+    last_delivered_id: NotRequired[str]
+    created_at: NotRequired[float]
+
+
+@dataclass(frozen=True)
+class BrokerHealth:
+    """The health record a broker reports.
+
+    Attributes:
+        healthy: ``False`` when the broker reports a problem.
+        message_counts: Message counts, such as ``total_messages`` and
+            ``in_flight``.
+        consumer_groups: The consumer groups the broker knows, usually as
+            ``count`` and ``names``.
+        details: Adapter-specific data, such as server statistics, the
+            broker's configuration, or an ``error`` or ``warning`` message.
+    """
+
+    healthy: bool
+    message_counts: Mapping[str, int] = field(default_factory=dict)
+    consumer_groups: Mapping[str, Any] = field(default_factory=dict)
+    details: Mapping[str, Any] = field(default_factory=dict)
+
+
+class BrokerPort(Protocol):
+    """The operations a broker adapter implements.
+
+    An adapter subclasses this Protocol explicitly, and also subclasses
+    ``BaseBroker``, which holds the blocking reads, the dead-letter queue,
+    stream trimming and partitions. The ``Broker`` service raises
+    ``NotSupportedError`` for those operations on an adapter that is not a
+    ``BaseBroker``, and every stream subscription uses the blocking reads.
+
+    The ``Broker`` service in ``protean.infra.broker`` wraps the adapter and
+    adds unit-of-work recording, the retry after a connection error,
+    capability checks and synchronous dispatch to subscribers. Code outside
+    the adapter calls these members through the service. The adapter's own
+    methods may call them directly.
+    """
+
+    name: str
+    domain: "Domain"
+    config: Mapping[str, Any]
+
+    def __init__(
+        self, name: str, domain: "Domain", config: Mapping[str, Any]
+    ) -> None: ...
+
+    @property
+    @abstractmethod
+    def capabilities(self) -> BrokerCapabilities:
+        """Return the capabilities this broker supports."""
+
+    @abstractmethod
+    def ping(self) -> bool:
+        """Return ``True`` when the broker responds, ``False`` otherwise."""
+
+    @abstractmethod
+    def health(self) -> BrokerHealth:
+        """Return the broker's health record.
+
+        Reports a failure in the record with ``healthy=False`` and does not
+        raise.
+        """
+
+    @abstractmethod
+    def get_connection(self) -> object:
+        """Return the native client the broker holds, or ``None`` if it has none."""
+
+    def close(self) -> None:
+        """Close the broker and release its connections. No-op by default."""
+        # A bare return keeps the default concrete: mypy treats a protocol
+        # method whose body is only a docstring as abstract.
+        return
+
+    @abstractmethod
+    def clear(self) -> None:
+        """Remove every message and consumer group the broker holds.
+
+        Meant for tests.
+        """
+
+    @abstractmethod
+    def reconnect(self) -> bool:
+        """Check the connection and reconnect if it is broken.
+
+        Returns:
+            ``True`` when the connection works, ``False`` when the broker
+            cannot reconnect.
+        """
+
+    @abstractmethod
+    def publish(self, stream: str, message: dict[str, Any]) -> str:
+        """Send ``message`` to ``stream`` and return its identifier.
+
+        Every broker returns a non-empty identifier. Its format is
+        broker-specific.
+        """
+
+    @abstractmethod
+    def read(
+        self,
+        stream: str,
+        consumer_group: str,
+        limit: int,
+        *,
+        new_messages: bool = False,
+    ) -> list[BrokerMessage]:
+        """Read up to ``limit`` messages from ``stream`` for ``consumer_group``.
+
+        Creates the consumer group if it does not exist. With
+        ``new_messages=True``, skips messages that are pending in the group
+        (delivered and not acknowledged), and returns an empty list when only
+        pending messages remain. A broker that redelivers a nacked message by
+        putting it back on the stream returns it as a new message.
+        """
+
+    @abstractmethod
+    def ack(self, stream: str, message_id: str, consumer_group: str) -> bool:
+        """Acknowledge a message the group processed.
+
+        Returns:
+            ``True`` when the message was acknowledged, ``False`` otherwise.
+        """
+
+    @abstractmethod
+    def nack(self, stream: str, message_id: str, consumer_group: str) -> bool:
+        """Mark a message the group failed to process for redelivery.
+
+        Returns:
+            ``True`` when the message was marked, ``False`` otherwise.
+        """
+
+    @abstractmethod
+    def create_group(self, stream: str, consumer_group: str) -> None:
+        """Create ``consumer_group`` on ``stream`` if it does not exist."""
+
+    @abstractmethod
+    def consumer_groups(self) -> dict[str, ConsumerGroupInfo]:
+        """Return the broker's consumer groups, keyed by group name."""
+
+    def mark_subscription_owned(self, stream: str, consumer_group: str) -> None:
+        """Record that a Protean subscription owns retries for this group.
+
+        The subscription counts handler failures and publishes a message that
+        runs out of retries to ``{stream}:dlq``. A broker that keeps its own
+        limit on nacks stops dead-lettering the group's messages, and holds and
+        redelivers them instead. The default does nothing, which is correct for
+        a broker without such a limit.
+        """
+        # A bare return keeps the default concrete: mypy treats a protocol
+        # method whose body is only a docstring as abstract.
+        return
+
+    def remove_stale_consumers(
+        self, stream: str, consumer_group: str, current_consumer: str
+    ) -> int:
+        """Remove consumers an earlier run of this process left in the group.
+
+        Returns:
+            The number of consumers removed. The default removes none and
+            returns ``0``.
+        """
+        return 0
+
+    def reclaim_idle_pending(
+        self,
+        stream: str,
+        consumer_group: str,
+        consumer_name: str | None,
+        min_idle_ms: int,
+    ) -> dict[str, int]:
+        """Move entries other consumers left pending to ``consumer_name``.
+
+        Runs when a subscription starts. A broker that keeps a pending list per
+        consumer takes over every entry of the group that has gone unread for
+        at least ``min_idle_ms`` milliseconds. The claim does not deliver the
+        entries: the subscription's next read of its own pending entries does.
+
+        Args:
+            consumer_name: The consumer to claim into. ``None`` means the
+                consumer the broker's own ``read`` uses.
+
+        Returns:
+            The delivery count of each claimed entry, keyed by entry ID: how
+            many times the group delivered it before the claim. The default
+            claims nothing and returns ``{}``.
+        """
+        return {}
 
 
 class BaseBroker(metaclass=ABCMeta):
-    """Base class for all broker implementations.
+    """Blocking reads, dead letters, partitions and trimming for broker adapters.
 
-    Provides shared behavior (UoW integration, connection recovery, capability
-    checks, subscriber registration) via the Template Method pattern. Subclasses
-    implement the abstract ``_underscore`` methods for broker-specific logic."""
+    A broker adapter subclasses this class and ``BrokerPort``, in that order.
+    The core operations are on ``BrokerPort``. This class holds the optional
+    groups of operations until they move into sub-protocols of the Port, and
+    it is removed when they do.
+
+    Each adapter sets ``broker_type`` to the name it is known by, such as
+    ``"inline"``, ``"redis"`` or ``"redis_pubsub"``.
+    """
+
+    broker_type: ClassVar[str]
 
     if TYPE_CHECKING:
+        # Port members that the wrappers below call. Each adapter defines them
+        # through ``BrokerPort``.
+        @property
+        def capabilities(self) -> BrokerCapabilities: ...
+
+        def read(
+            self,
+            stream: str,
+            consumer_group: str,
+            limit: int,
+            *,
+            new_messages: bool = False,
+        ) -> list[BrokerMessage]: ...
+
         # Optional broker-specific method implemented by adapters that advertise
         # the BLOCKING_READ capability (e.g. the Redis Streams adapter). Declared
         # here for type-checkers so callers in this base class resolve; there is
@@ -162,7 +379,6 @@ class BaseBroker(metaclass=ABCMeta):
             timeout_ms: int = 5000,
             count: int = 1,
         ) -> list[tuple[str, dict[str, Any]]]: ...
-
         # Partition-per-key methods (ADR-0028), implemented only by brokers
         # advertising STREAM_PARTITIONING (the Redis Streams adapter). Declared
         # here so the capability-gated public wrappers below type-check; there is
@@ -220,381 +436,11 @@ class BaseBroker(metaclass=ABCMeta):
             count: int,
         ) -> list[tuple[str, dict[str, Any]]]: ...
 
-    def __init__(
-        self, name: str, domain: "Domain", conn_info: dict[str, str | bool]
-    ) -> None:
+    def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
         self.name = name
         self.domain = domain
-        self.conn_info = conn_info
-
-        self._subscribers: defaultdict[str, set[type[BaseSubscriber]]] = defaultdict(
-            set
-        )
-        self._last_ping_time: float | None = None
-        self._last_ping_success: bool | None = None
-        self._start_time = time.time()
-
-    @property
-    @abstractmethod
-    def capabilities(self) -> BrokerCapabilities:
-        """Return the capabilities of this broker implementation.
-
-        Returns:
-            BrokerCapabilities: The capabilities supported by this broker
-        """
-
-    def has_capability(self, capability: BrokerCapabilities) -> bool:
-        """Check if broker has a specific capability.
-
-        Args:
-            capability: The capability to check for
-
-        Returns:
-            bool: True if the broker has the capability, False otherwise
-        """
-        return capability in self.capabilities
-
-    def has_all_capabilities(self, capabilities: BrokerCapabilities) -> bool:
-        """Check if broker has all the specified capabilities.
-
-        Args:
-            capabilities: The capabilities to check for
-
-        Returns:
-            bool: True if the broker has all capabilities, False otherwise
-        """
-        return (self.capabilities & capabilities) == capabilities
-
-    def has_any_capability(self, capabilities: BrokerCapabilities) -> bool:
-        """Check if broker has any of the specified capabilities.
-
-        Args:
-            capabilities: The capabilities to check for
-
-        Returns:
-            bool: True if the broker has any of the capabilities, False otherwise
-        """
-        return bool(self.capabilities & capabilities)
-
-    def publish(self, stream: str, message: dict[str, Any]) -> str | None:
-        """Publish a message to the broker.
-
-        Args:
-            stream (str): The stream to which the message should be published
-            message (dict): The message payload to be published
-
-        Returns:
-            str: The identifier of the message. The content of the identifier is broker-specific.
-            All brokers are guaranteed to provide message identifiers.
-
-        Raises:
-            ValidationError: If message is an empty dict
-        """
-        if not message:
-            raise ValidationError({"message": ["Message cannot be empty"]})
-
-        if current_uow:
-            logger.debug(f"Recording message {message} in {current_uow} for dispatch")
-
-            current_uow.register_message(stream, message, broker_name=self.name)
-            return None
-        else:
-            identifier = _publish_now(self, stream, message)
-            _dispatch_sync(self, stream, message)
-            return identifier
-
-    def ping(self) -> bool:
-        """Test broker connectivity.
-
-        Returns:
-            bool: True if broker is reachable and responsive, False otherwise
-        """
-        try:
-            start_time = time.time()
-            result = self._ping()
-            self._last_ping_time = time.time() - start_time
-            self._last_ping_success = result
-            return result
-        except Exception as e:  # noqa: BLE001 - health probe: any adapter fault is "down"
-            logger.debug(f"Ping failed for broker {self.name}: {e}")
-            self._last_ping_time = None
-            self._last_ping_success = False
-            return False
-
-    def health_stats(self) -> dict[str, Any]:
-        """Get comprehensive health statistics for the broker.
-
-        Returns:
-            dict: Health statistics with the following structure:
-                {
-                    'status': 'healthy' | 'degraded' | 'unhealthy',
-                    'connected': bool,
-                    'last_ping_ms': float | None,
-                    'uptime_seconds': float,
-                    'details': dict  # Broker-specific details
-                }
-        """
-        try:
-            # Get broker-specific health details
-            broker_details = self._health_stats()
-
-            # Perform a fresh ping to get current connectivity status
-            is_connected = self.ping()
-
-            # Determine overall health status
-            if is_connected and broker_details.get("healthy", True):
-                status = "healthy"
-            elif is_connected:
-                status = "degraded"  # Connected but some issues reported
-            else:
-                status = "unhealthy"
-
-            # Calculate uptime since broker initialization
-            uptime_seconds = time.time() - self._start_time
-
-            return {
-                "status": status,
-                "connected": is_connected,
-                "last_ping_ms": self._last_ping_time * 1000
-                if self._last_ping_time is not None
-                else None,
-                "uptime_seconds": uptime_seconds,
-                "details": broker_details,
-            }
-        except Exception as e:  # noqa: BLE001 - health probe: report the fault as unhealthy
-            logger.error(f"Error gathering health stats for broker {self.name}: {e}")
-            return {
-                "status": "unhealthy",
-                "connected": False,
-                "last_ping_ms": None,
-                "uptime_seconds": 0,
-                "details": {"error": str(e)},
-            }
-
-    def ensure_connection(self) -> bool:
-        """Ensure broker connection is healthy, attempt reconnection if needed.
-
-        This method can be called explicitly or is triggered automatically
-        when connection-related exceptions are encountered.
-
-        Returns:
-            bool: True if connection is healthy/restored, False otherwise
-        """
-        return self._ensure_connection()
-
-    def _is_connection_error(self, exception: Exception) -> bool:
-        """Check if an exception indicates a connection-related error.
-
-        Args:
-            exception: The exception to analyze
-
-        Returns:
-            bool: True if this appears to be a connection error
-        """
-        # Default implementation checks for common connection error patterns
-        error_str = str(exception).lower()
-        connection_indicators = [
-            "connection",
-            "timeout",
-            "timed out",
-            "network",
-            "unreachable",
-            "refused",
-            "reset",
-            "broken pipe",
-            "socket",
-        ]
-        return any(indicator in error_str for indicator in connection_indicators)
-
-    @abstractmethod
-    def _ping(self) -> bool:
-        """Test basic connectivity to the broker.
-
-        Returns:
-            bool: True if broker responds successfully, False otherwise
-        """
-
-    @abstractmethod
-    def _health_stats(self) -> dict[str, Any]:
-        """Get broker-specific health and performance statistics.
-
-        Returns:
-            dict: Broker-specific health details. Common fields may include:
-                - 'healthy': bool (overall broker health)
-                - 'queue_depth': int (pending messages)
-                - 'consumer_lag': dict (lag per consumer group)
-                - 'error_rate': float (recent error percentage)
-                - Any other broker-specific metrics
-        """
-
-    @abstractmethod
-    def _ensure_connection(self) -> bool:
-        """Ensure connection to broker is healthy, reconnect if necessary.
-
-        Returns:
-            bool: True if connection is healthy/restored, False if unable to connect
-        """
-
-    @abstractmethod
-    def _publish(self, stream: str, message: dict[str, Any]) -> str:
-        """Overidden method to publish a message with payload to the configured broker.
-
-        Args:
-            stream (str): The stream to which the message should be published
-            message (dict): The message payload to be published
-
-        Returns:
-            str: The identifier of the message. The content of the identifier is broker-specific.
-            All brokers must return a non-empty string identifier.
-        """
-
-    def get_next(
-        self, stream: str, consumer_group: str
-    ) -> tuple[str, dict[str, Any]] | None:
-        """Retrieve the next message to process from broker.
-
-        Args:
-            stream (str): The stream from which to retrieve the message
-            consumer_group (str): The consumer group identifier
-
-        Returns:
-            tuple[str, dict] | None: A tuple of (identifier, message) or None if no messages available
-        """
-        # Check if broker supports consumer groups
-        if not self.has_capability(BrokerCapabilities.CONSUMER_GROUPS):
-            logger.warning(f"Broker {self.name} does not support consumer groups")
-            return None
-
-        try:
-            return self._get_next(stream, consumer_group)
-        except Exception as e:
-            # Check if this is a connection-related error and attempt recovery
-            if self._is_connection_error(e):
-                logger.warning(f"Connection error during get_next: {e}")
-                if self._ensure_connection():
-                    # Retry the operation once after reconnection
-                    return self._get_next(stream, consumer_group)
-                else:
-                    raise
-            else:
-                raise
-
-    @abstractmethod
-    def _get_next(
-        self, stream: str, consumer_group: str
-    ) -> tuple[str, dict[str, Any]] | None:
-        """Overridden method to retrieve the next message to process from broker."""
-
-    def read(
-        self, stream: str, consumer_group: str, no_of_messages: int
-    ) -> list[tuple[str, dict[str, Any]]]:
-        """Read messages from the broker.
-
-        Args:
-            stream (str): The stream from which to read messages
-            consumer_group (str): The consumer group identifier
-            no_of_messages (int): The number of messages to read
-
-        Returns:
-            list[tuple[str, dict]]: The list of (identifier, message) tuples
-        """
-        # Check if broker supports consumer groups
-        if not self.has_capability(BrokerCapabilities.CONSUMER_GROUPS):
-            logger.warning(f"Broker {self.name} does not support consumer groups")
-            return []
-
-        try:
-            return self._read(stream, consumer_group, no_of_messages)
-        except Exception as e:
-            # Check if this is a connection-related error and attempt recovery
-            if self._is_connection_error(e):
-                logger.warning(f"Connection error during read: {e}")
-                if self._ensure_connection():
-                    # Retry the operation once after reconnection
-                    return self._read(stream, consumer_group, no_of_messages)
-                else:
-                    raise
-            else:
-                raise
-
-    def ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
-        """Acknowledge successful processing of a message.
-
-        Args:
-            stream (str): The stream from which the message was received
-            identifier (str): The unique identifier of the message to acknowledge
-            consumer_group (str): The consumer group that processed the message
-
-        Returns:
-            bool: True if the message was successfully acknowledged, False otherwise
-        """
-        # Check if broker supports acknowledgment
-        if not self.has_capability(BrokerCapabilities.ACK_NACK):
-            logger.warning(
-                f"Broker {self.name} does not support message acknowledgment"
-            )
-            return False
-
-        try:
-            return self._ack(stream, identifier, consumer_group)
-        except Exception as e:
-            # Check if this is a connection-related error and attempt recovery
-            if self._is_connection_error(e):
-                logger.warning(f"Connection error during ack: {e}")
-                if self._ensure_connection():
-                    # Retry the operation once after reconnection
-                    return self._ack(stream, identifier, consumer_group)
-                else:
-                    raise
-            else:
-                raise
-
-    def nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
-        """Negative acknowledge - mark message for reprocessing.
-
-        Args:
-            stream (str): The stream from which the message was received
-            identifier (str): The unique identifier of the message to nack
-            consumer_group (str): The consumer group that failed to process the message
-
-        Returns:
-            bool: True if the message was successfully marked for reprocessing, False otherwise
-        """
-        # Check if broker supports negative acknowledgment
-        if not self.has_capability(BrokerCapabilities.ACK_NACK):
-            logger.warning(
-                f"Broker {self.name} does not support message negative acknowledgment"
-            )
-            return False
-
-        try:
-            return self._nack(stream, identifier, consumer_group)
-        except Exception as e:
-            # Check if this is a connection-related error and attempt recovery
-            if self._is_connection_error(e):
-                logger.warning(f"Connection error during nack: {e}")
-                if self._ensure_connection():
-                    # Retry the operation once after reconnection
-                    return self._nack(stream, identifier, consumer_group)
-                else:
-                    raise
-            else:
-                raise
-
-    @abstractmethod
-    def _read(
-        self, stream: str, consumer_group: str, no_of_messages: int
-    ) -> list[tuple[str, dict[str, Any]]]:
-        """Read messages from the broker.
-
-        Args:
-            stream (str): The stream from which to read messages
-            consumer_group (str): The consumer group identifier
-            no_of_messages (int): The number of messages to read
-
-        Returns:
-            list[tuple[str, dict]]: The list of (identifier, message) tuples
-        """
+        # A copy: the broker never writes to the configuration it was given.
+        self.config: Mapping[str, Any] = dict(config)
 
     def read_blocking(
         self,
@@ -620,27 +466,13 @@ class BaseBroker(metaclass=ABCMeta):
             list[tuple[str, dict]]: The list of (identifier, message) tuples
         """
         # Check if broker supports blocking reads
-        if not self.has_capability(BrokerCapabilities.BLOCKING_READ):
+        if BrokerCapabilities.BLOCKING_READ not in self.capabilities:
             # Fall back to regular read for brokers that don't support blocking
-            return self._read(stream, consumer_group, count)
+            return list(self.read(stream, consumer_group, count))
 
-        try:
-            return self._read_blocking(
-                stream, consumer_group, consumer_name, timeout_ms, count
-            )
-        except Exception as e:
-            # Check if this is a connection-related error and attempt recovery
-            if self._is_connection_error(e):
-                logger.warning(f"Connection error during read_blocking: {e}")
-                if self._ensure_connection():
-                    # Retry the operation once after reconnection
-                    return self._read_blocking(
-                        stream, consumer_group, consumer_name, timeout_ms, count
-                    )
-                else:
-                    raise
-            else:
-                raise
+        return self._read_blocking(
+            stream, consumer_group, consumer_name, timeout_ms, count
+        )
 
     def read_blocking_streams(
         self,
@@ -674,29 +506,16 @@ class BaseBroker(metaclass=ABCMeta):
             return {}
 
         # Check if broker supports blocking reads
-        if not self.has_capability(BrokerCapabilities.BLOCKING_READ):
+        if BrokerCapabilities.BLOCKING_READ not in self.capabilities:
             # Fall back to a regular read on each stream in turn
             return {
-                stream: self._read(stream, consumer_group, count) for stream in streams
+                stream: list(self.read(stream, consumer_group, count))
+                for stream in streams
             }
 
-        try:
-            return self._read_blocking_streams(
-                streams, consumer_group, consumer_name, timeout_ms, count
-            )
-        except Exception as e:
-            # Check if this is a connection-related error and attempt recovery
-            if self._is_connection_error(e):
-                logger.warning(f"Connection error during read_blocking_streams: {e}")
-                if self._ensure_connection():
-                    # Retry the operation once after reconnection
-                    return self._read_blocking_streams(
-                        streams, consumer_group, consumer_name, timeout_ms, count
-                    )
-                else:
-                    raise
-            else:
-                raise
+        return self._read_blocking_streams(
+            streams, consumer_group, consumer_name, timeout_ms, count
+        )
 
     def _read_blocking_streams(
         self,
@@ -734,128 +553,6 @@ class BaseBroker(metaclass=ABCMeta):
         )
         return result
 
-    @abstractmethod
-    def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
-        """Acknowledge successful processing of a message.
-
-        Args:
-            stream (str): The stream from which the message was received
-            identifier (str): The unique identifier of the message to acknowledge
-            consumer_group (str): The consumer group that processed the message
-
-        Returns:
-            bool: True if the message was successfully acknowledged, False otherwise
-        """
-
-    @abstractmethod
-    def _nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
-        """Negative acknowledge - mark message for reprocessing.
-
-        Args:
-            stream (str): The stream from which the message was received
-            identifier (str): The unique identifier of the message to nack
-            consumer_group (str): The consumer group that failed to process the message
-
-        Returns:
-            bool: True if the message was successfully marked for reprocessing, False otherwise
-        """
-
-    @abstractmethod
-    def _data_reset(self) -> None:
-        """Flush all data in broker instance.
-
-        Useful for clearing cache and running tests.
-        """
-
-    @abstractmethod
-    def _ensure_group(self, group_name: str, stream: str | None = None) -> None:
-        """Bootstrap/create consumer group.
-
-        Args:
-            group_name (str): The name of the consumer group to create
-            stream (str, optional): The stream name for brokers that require it (e.g., Redis Streams)
-        """
-
-    def _cleanup_stale_consumers(
-        self, stream: str, group_name: str, current_consumer_name: str
-    ) -> int:
-        """Remove stale consumers from a consumer group.
-
-        Optional maintenance hook. Brokers that track per-consumer state
-        (e.g. Redis Streams) override this to drop consumer entries left
-        behind by previous engine runs. Brokers without such state leave the
-        default implementation, which is a no-op.
-
-        Returns:
-            int: The number of stale consumers removed (0 by default).
-        """
-        return 0
-
-    def _reclaim_idle_pending(
-        self,
-        stream: str,
-        group_name: str,
-        consumer_name: str | None,
-        min_idle_ms: int,
-    ) -> dict[str, int]:
-        """Move entries left pending by other consumers to *consumer_name*.
-
-        Optional maintenance hook, run when a subscription starts. Brokers
-        that keep a pending list per consumer (e.g. Redis Streams) override
-        this to take over every entry of the group that has sat unread under
-        another consumer for at least *min_idle_ms* milliseconds. The claim
-        does not deliver the entries: the subscription's next read of its own
-        pending entries does. Brokers without per-consumer pending lists leave
-        the default implementation, which claims nothing.
-
-        Args:
-            stream: The stream the group consumes.
-            group_name: The consumer group.
-            consumer_name: The consumer to claim into. ``None`` means the
-                consumer this broker's own :meth:`read` uses.
-            min_idle_ms: How long an entry must have gone unread, in
-                milliseconds, before it is claimed.
-
-        Returns:
-            dict[str, int]: The delivery count of each claimed entry, keyed by
-            entry id: how many times the group delivered it before the claim.
-            Empty by default.
-        """
-        return {}
-
-    def _mark_subscription_owned(self, stream: str, consumer_group: str) -> None:
-        """Signal that a Protean subscription owns retry and dead-lettering for
-        this (stream, consumer group) pair.
-
-        The subscription is the single retry/DLQ authority: it counts handler
-        failures and publishes exhausted messages to ``{stream}:dlq``. A broker
-        that keeps an independent nack ceiling (only the InlineBroker test
-        double does) overrides this to stop dead-lettering such a message
-        underneath the subscription, so the message is held and redelivered
-        instead. Production adapters have no independent ceiling, so the default
-        no-op is correct for them.
-
-        Args:
-            stream (str): The stream the subscription consumes.
-            consumer_group (str): The subscription's consumer group.
-        """
-
-    def info(self) -> dict[str, Any]:
-        """Get information about consumer groups and consumers in each group.
-
-        Returns:
-            dict: Information about consumer groups and their consumers
-        """
-        return self._info()
-
-    @abstractmethod
-    def _info(self) -> dict[str, Any]:
-        """Overridden method to provide information about consumer groups and consumers.
-
-        Returns:
-            dict: Information about consumer groups and their consumers
-        """
-
     # ------------------------------------------------------------------
     # Dead Letter Queue Management
     # ------------------------------------------------------------------
@@ -870,7 +567,7 @@ class BaseBroker(metaclass=ABCMeta):
         Returns:
             List of DLQEntry objects sorted by failure time (newest first).
         """
-        if not self.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+        if BrokerCapabilities.DEAD_LETTER_QUEUE not in self.capabilities:
             logger.warning(f"Broker {self.name} does not support DLQ management")
             return []
         return self._dlq_list(dlq_streams, limit)
@@ -885,7 +582,7 @@ class BaseBroker(metaclass=ABCMeta):
         Returns:
             DLQEntry if found, None otherwise.
         """
-        if not self.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+        if BrokerCapabilities.DEAD_LETTER_QUEUE not in self.capabilities:
             logger.warning(f"Broker {self.name} does not support DLQ management")
             return None
         return self._dlq_inspect(dlq_stream, dlq_id)
@@ -901,7 +598,7 @@ class BaseBroker(metaclass=ABCMeta):
         Returns:
             True if replayed successfully, False otherwise.
         """
-        if not self.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+        if BrokerCapabilities.DEAD_LETTER_QUEUE not in self.capabilities:
             logger.warning(f"Broker {self.name} does not support DLQ management")
             return False
         return self._dlq_replay(dlq_stream, dlq_id, target_stream)
@@ -916,7 +613,7 @@ class BaseBroker(metaclass=ABCMeta):
         Returns:
             Number of messages replayed.
         """
-        if not self.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+        if BrokerCapabilities.DEAD_LETTER_QUEUE not in self.capabilities:
             logger.warning(f"Broker {self.name} does not support DLQ management")
             return 0
         return self._dlq_replay_all(dlq_stream, target_stream)
@@ -930,7 +627,7 @@ class BaseBroker(metaclass=ABCMeta):
         Returns:
             Number of messages purged.
         """
-        if not self.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+        if BrokerCapabilities.DEAD_LETTER_QUEUE not in self.capabilities:
             logger.warning(f"Broker {self.name} does not support DLQ management")
             return 0
         return self._dlq_purge(dlq_stream)
@@ -1019,14 +716,14 @@ class BaseBroker(metaclass=ABCMeta):
     # STREAM_PARTITIONING implements the underscore methods; the public wrappers
     # gate on that capability and raise ``NotSupportedError`` otherwise, so a
     # ``sequential_by`` handler can never silently run without its ordering
-    # guarantee. They deliberately do not go through the ``_ensure_connection``
-    # retry wrapper the message methods use: a fenced read/ack must fail loud on
+    # guarantee. They deliberately do not go through the service's retry after a
+    # connection error: a fenced read/ack must fail loud on
     # a lost lease rather than be retried, and the partitioned consumer's poll
     # loop already backs off on transient broker errors.
 
     def _require_partitioning(self, operation: str) -> None:
         """Raise ``NotSupportedError`` if the broker cannot partition streams."""
-        if not self.has_capability(BrokerCapabilities.STREAM_PARTITIONING):
+        if BrokerCapabilities.STREAM_PARTITIONING not in self.capabilities:
             raise NotSupportedError(
                 f"Broker {self.name} does not advertise STREAM_PARTITIONING, "
                 f"required for `{operation}` (ADR-0028)."
@@ -1173,27 +870,4 @@ class BaseBroker(metaclass=ABCMeta):
         self._require_partitioning("reclaim_partition_pending")
         return self._reclaim_partition_pending(
             stream, consumer_group, consumer_name, min_idle_ms, count
-        )
-
-    def close(self) -> None:
-        """Close the broker and release all connections.
-
-        Subclasses that hold external resources (connection pools, sockets,
-        etc.) should override this to perform cleanup.  The default
-        implementation is a no-op so that adapters without external
-        resources (e.g. the inline broker) work without changes.
-        """
-
-    def register(self, subscriber_cls: type[BaseSubscriber]) -> None:
-        """Register a subscriber to this broker against its stream.
-
-        Args:
-            subscriber_cls: The subscriber class connected to the stream.
-        """
-        stream = subscriber_cls.meta_.stream
-
-        self._subscribers[stream].add(subscriber_cls)
-
-        logger.debug(
-            f"Broker {self.name}: Registered Subscriber {subscriber_cls.__name__} for stream {stream}"
         )

@@ -141,14 +141,14 @@ class TestOptions:
         _register(test_domain, AuditReceipt)
 
         assert AuditReceipt.meta_.idempotent is False
-        assert AuditReceipt.meta_.provider == "default"
+        assert AuditReceipt.meta_.database == "default"
 
     def test_options_register_on_the_subscriber(self, test_domain):
         test_domain.config["databases"]["other"] = {"provider": "memory"}
-        _register(test_domain, AuditReceipt, idempotent=True, provider="other")
+        _register(test_domain, AuditReceipt, idempotent=True, database="other")
 
         assert AuditReceipt.meta_.idempotent is True
-        assert AuditReceipt.meta_.provider == "other"
+        assert AuditReceipt.meta_.database == "other"
 
 
 class TestMarkerStorage:
@@ -162,7 +162,7 @@ class TestMarkerStorage:
 
     def test_marker_is_written_to_the_named_provider_only(self, test_domain):
         test_domain.config["databases"]["other"] = {"provider": "memory"}
-        _register(test_domain, AuditReceipt, idempotent=True, provider="other")
+        _register(test_domain, AuditReceipt, idempotent=True, database="other")
 
         assert _deliver(test_domain, AuditReceipt, _payload()) is True
 
@@ -187,7 +187,7 @@ class TestMarkerStorage:
         test_domain.register(Receipt)
         test_domain.register(RecordReceipt, stream=STREAM, idempotent=True)
         test_domain.register(
-            AuditReceipt, stream=STREAM, idempotent=True, provider="other"
+            AuditReceipt, stream=STREAM, idempotent=True, database="other"
         )
         test_domain.init(traverse=False)
 
@@ -210,7 +210,7 @@ class TestMarkerStorage:
 class TestProviderValidation:
     def test_init_rejects_an_unknown_provider(self, test_domain):
         test_domain.register(
-            AuditReceipt, stream=STREAM, idempotent=True, provider="missing"
+            AuditReceipt, stream=STREAM, idempotent=True, database="missing"
         )
 
         with pytest.raises(ConfigurationError) as exc:
@@ -226,7 +226,7 @@ class TestProviderValidation:
             "managed": False,
         }
         test_domain.register(
-            AuditReceipt, stream=STREAM, idempotent=True, provider="legacy"
+            AuditReceipt, stream=STREAM, idempotent=True, database="legacy"
         )
 
         with pytest.raises(ConfigurationError) as exc:
@@ -239,11 +239,11 @@ class TestProviderValidation:
     def test_init_ignores_the_provider_of_a_non_idempotent_subscriber(
         self, test_domain
     ):
-        test_domain.register(AuditReceipt, stream=STREAM, provider="missing")
+        test_domain.register(AuditReceipt, stream=STREAM, database="missing")
 
         test_domain.init(traverse=False)
 
-        assert AuditReceipt.meta_.provider == "missing"
+        assert AuditReceipt.meta_.database == "missing"
 
 
 class TestEngineDelivery:

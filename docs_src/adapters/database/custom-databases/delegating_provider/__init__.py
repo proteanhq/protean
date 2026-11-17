@@ -4,19 +4,19 @@ from collections.abc import Mapping
 from typing import Any
 
 from protean import Domain
-from protean.adapters.repository.memory import MemoryProvider
+from protean.adapters.database.memory import MemoryDatabase
 from protean.fields import String
-from protean.infra.registry import providers
-from protean.port.provider import (
-    BaseProvider,
+from protean.infra.registry import databases
+from protean.port.database import (
+    BaseDatabase,
     DatabaseCapabilities,
-    ProviderHealth,
-    RawQueryProviderPort,
+    DatabaseHealth,
+    RawQueryDatabasePort,
 )
 
 
-class DelegatingProvider(BaseProvider, RawQueryProviderPort):
-    """A provider that hands every operation to an in-memory MemoryProvider.
+class DelegatingDatabase(BaseDatabase, RawQueryDatabasePort):
+    """A provider that hands every operation to an in-memory MemoryDatabase.
 
     Replace the delegate calls with calls to your database client.
     """
@@ -27,7 +27,7 @@ class DelegatingProvider(BaseProvider, RawQueryProviderPort):
     def __init__(self, name: str, domain: Domain, config: Mapping[str, Any]) -> None:
         super().__init__(name, domain, config)
         # Initialize your database client here
-        self._delegate = MemoryProvider(name, domain, config)
+        self._delegate = MemoryDatabase(name, domain, config)
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
@@ -56,7 +56,7 @@ class DelegatingProvider(BaseProvider, RawQueryProviderPort):
     def ping(self) -> bool:
         return self._delegate.ping()
 
-    def health(self) -> ProviderHealth:
+    def health(self) -> DatabaseHealth:
         return self._delegate.health()
 
     # Data access objects and database models
@@ -77,11 +77,11 @@ class DelegatingProvider(BaseProvider, RawQueryProviderPort):
 
 
 # Register the lookups the delegate understands, so none of the required ones are missing
-for lookup in MemoryProvider.get_lookups().values():
-    DelegatingProvider.register_lookup(lookup)
+for lookup in MemoryDatabase.get_lookups().values():
+    DelegatingDatabase.register_lookup(lookup)
 
 # Make the provider available as `provider = "delegating_memory"`
-providers.register("delegating_memory", f"{__name__}.DelegatingProvider")
+databases.register("delegating_memory", f"{__name__}.DelegatingDatabase")
 # --8<-- [end:provider]
 
 # --8<-- [start:usage]

@@ -17,9 +17,7 @@ from protean import utils
 from protean._deprecation import RemovedInProtean019Warning
 
 KEPT = {
-    "Cache",
     "Clock",
-    "Database",
     "DomainObjects",
     "IdentityStrategy",
     "IdentityType",

@@ -5,7 +5,7 @@ import time
 
 def test_dlq_list_returns_entries_across_streams(broker):
     """Test dlq_list returns entries from multiple streams."""
-    broker._max_retries = 0
+    broker._adapter._max_retries = 0
 
     # Publish to two streams and NACK both
     id1 = broker.publish("stream1", {"data": "one"})
@@ -24,7 +24,7 @@ def test_dlq_list_returns_entries_across_streams(broker):
 
 def test_dlq_list_with_limit(broker):
     """Test dlq_list respects the limit parameter."""
-    broker._max_retries = 0
+    broker._adapter._max_retries = 0
 
     for i in range(5):
         msg_id = broker.publish("stream1", {"i": i})
@@ -43,7 +43,7 @@ def test_dlq_list_empty_returns_empty(broker):
 
 def test_dlq_list_filters_by_stream(broker):
     """Test dlq_list only returns entries for requested streams."""
-    broker._max_retries = 0
+    broker._adapter._max_retries = 0
 
     id1 = broker.publish("stream1", {"data": "one"})
     broker.get_next("stream1", "group1")
@@ -60,7 +60,7 @@ def test_dlq_list_filters_by_stream(broker):
 
 def test_dlq_inspect_found(broker):
     """Test dlq_inspect returns entry when found."""
-    broker._max_retries = 0
+    broker._adapter._max_retries = 0
 
     msg_id = broker.publish("stream1", {"key": "value"})
     broker.get_next("stream1", "group1")
@@ -86,7 +86,7 @@ def test_dlq_inspect_not_found(broker):
 
 def test_dlq_inspect_wrong_stream(broker):
     """Test dlq_inspect returns None when searching wrong stream."""
-    broker._max_retries = 0
+    broker._adapter._max_retries = 0
 
     msg_id = broker.publish("stream1", {"key": "value"})
     broker.get_next("stream1", "group1")
@@ -98,7 +98,7 @@ def test_dlq_inspect_wrong_stream(broker):
 
 def test_dlq_replay_success(broker):
     """Test dlq_replay moves message back to target stream."""
-    broker._max_retries = 0
+    broker._adapter._max_retries = 0
 
     msg_id = broker.publish("stream1", {"key": "value"})
     broker.get_next("stream1", "group1")
@@ -130,7 +130,7 @@ def test_dlq_replay_not_found(broker):
 
 def test_dlq_replay_all_drains_stream(broker):
     """Test dlq_replay_all replays all messages and clears DLQ."""
-    broker._max_retries = 0
+    broker._adapter._max_retries = 0
 
     ids = []
     for i in range(3):
@@ -154,7 +154,7 @@ def test_dlq_replay_all_empty_stream(broker):
 
 def test_dlq_purge_clears_messages(broker):
     """Test dlq_purge removes all messages from a DLQ stream."""
-    broker._max_retries = 0
+    broker._adapter._max_retries = 0
 
     for i in range(4):
         msg_id = broker.publish("stream1", {"i": i})
@@ -176,7 +176,7 @@ def test_dlq_purge_empty_stream(broker):
 
 def test_dlq_list_sorted_newest_first(broker):
     """Test dlq_list returns entries sorted by failed_at descending."""
-    broker._max_retries = 0
+    broker._adapter._max_retries = 0
 
     id1 = broker.publish("stream1", {"order": 1})
     broker.get_next("stream1", "group1")

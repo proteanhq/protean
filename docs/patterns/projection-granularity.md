@@ -161,7 +161,7 @@ For every screen, API resource, or query pattern, ask these questions:
 | Two views need the same data | One projection, two API endpoints |
 | Two views share 80% of fields | One projection with optional fields |
 | Two views need fundamentally different data | Two projections |
-| Data is queried by filters and sorting | Database-backed (`provider="default"`) |
+| Data is queried by filters and sorting | Database-backed (`database="default"`) |
 | Data is looked up by ID for fast display | Cache-backed (`cache="default"`) |
 | Data spans multiple aggregates | One cross-aggregate projection with multi-aggregate projector |
 | Data mirrors the aggregate exactly | You probably don't need a projection at all |

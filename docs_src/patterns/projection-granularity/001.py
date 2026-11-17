@@ -245,7 +245,7 @@ def warehouse_dashboard(warehouse_id: str) -> WarehouseDashboard:
 
 
 # --8<-- [start:order_history]
-@domain.projection(provider="default")
+@domain.projection(database="default")
 class OrderHistory:
     """Searchable order history for customer service.
 

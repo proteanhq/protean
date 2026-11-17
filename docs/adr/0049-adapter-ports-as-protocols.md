@@ -138,14 +138,16 @@ supports `in`, so the helpers were a second way to write the same check.
 
 ### 6. Containers return services
 
-- `domain.event_store`, `domain.brokers[name]`, `domain.caches[name]` and
-  `domain.providers[name]` each return a service.
+- `domain.event_store` and `domain.caches[name]` return a service.
+  `domain.brokers[name]` and `domain.databases[name]` return the adapter until
+  the `Broker` and `Database` services are built, and then return the service.
 - Every service holds its adapter in the private attribute `_adapter`, typed
   with the Port.
-- The services are `EventStore`, `Broker`, `Cache`, `Provider` and `DAO`.
+- The `EventStore` and `Cache` services exist. The `Broker`, `Database` and
+  `DAO` services are decided and not yet built.
 - A domain has one event store, so `domain.event_store` is the `EventStore`
-  service. Brokers, caches and providers keep their containers: `Brokers`,
-  `Caches` and `Providers`.
+  service. Brokers, caches and databases keep their containers: `Brokers`,
+  `Caches` and `Databases`.
 
 Callers reach every framework feature through one object. Application code
 that needs the native client calls the service's `get_connection()`
@@ -163,13 +165,13 @@ database and outbox setup.
 
 ### 8. Registered adapters share one constructor and one registry
 
-- Every event store, broker, cache and provider is built as
+- Every event store, broker, cache and database adapter is built as
   `__init__(self, name: str, domain: Domain, config: Mapping[str, Any])`.
   `config` replaces `conn_info`. An event store's name is `default`, because a
   domain has one.
 - DAO and lookup classes are not registered, and keep their own constructors.
 - One generic registry class serves all four ports. It reads the entry-point
-  groups `protean.providers`, `protean.brokers`, `protean.event_stores` and
+  groups `protean.databases`, `protean.brokers`, `protean.event_stores` and
   `protean.caches`.
 - On first load, the registry checks a class for missing abstract members and
   raises `ConfigurationError` naming them. An unknown name raises
@@ -220,7 +222,7 @@ without narrowing it, and mypy would not report a wrong assumption.
   calls, and the adapter does not infer it from the stream name. The service
   computes a stream's version and a category's head position from the
   last-message reads.
-- The event-store, broker, cache and provider Ports share one set of
+- The event-store, broker, cache and database Ports share one set of
   lifecycle members, with the same names on every Port: the adapter's name and
   capabilities, a liveness check, a health record, the native handle, closing
   the adapter, and clearing its data. Closing has a no-op default on every
@@ -235,7 +237,7 @@ source checkout. One pytest plugin selects the adapter for every port. A test
 declares the flag it needs with one marker, and the plugin checks that marker
 against the adapter's declared capabilities. Until the database suite moves
 into `tests/conformance/database/`, `--port database` runs the generic database
-suite in `tests/adapters/repository/generic/`.
+suite in `tests/adapters/database/generic/`.
 
 One plugin and one marker give every port the same way to select an adapter
 and skip a test.
@@ -244,7 +246,7 @@ and skip a test.
 
 - The `Base*` adapter classes are removed. The adapters of one technology keep
   their shared code in that technology's adapter package. For example, the
-  SQLAlchemy dialects share one provider class. `BaseDatabaseModel` stays as
+  SQLAlchemy dialects share one database class. `BaseDatabaseModel` stays as
   the base for model classes.
 - A Provisional or Internal name in `docs/reference/stable-surface.md`, such as
   a port base class or the broker partition contract, changes in a minor

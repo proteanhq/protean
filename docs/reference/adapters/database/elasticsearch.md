@@ -33,7 +33,7 @@ pip install "elasticsearch>=8.18.0,<9.0.0"
 --8<-- "adapters/database/elasticsearch/domain.toml"
 ```
 
-Aggregates declared with `provider="search"` are stored in Elasticsearch.
+Aggregates declared with `database="search"` are stored in Elasticsearch.
 `${ELASTICSEARCH_HOST|...}` reads the host from the `ELASTICSEARCH_HOST`
 environment variable, and uses the value after `|` when it is not set.
 

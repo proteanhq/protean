@@ -24,7 +24,7 @@ from protean._deprecation import ProteanDeprecationWarning, warn_from_registry
 if TYPE_CHECKING:
     from protean.domain import Domain
     from protean.infra.registry import AdapterRegistry
-    from protean.port.provider import DatabaseCapabilities
+    from protean.port.database import DatabaseCapabilities
 
 # Configuration constants
 REPORT_PATH = Path("diff_coverage_report.html")
@@ -617,7 +617,7 @@ ADAPTER_LANES = ("core", "pr", "touched", "off")
 # ``protean.infra.registry``. The manifest check reads only the names in these
 # groups, so it works without the adapters' optional dependencies.
 CONFORMANCE_PORT_GROUPS = {
-    "database": "protean.providers",
+    "database": "protean.databases",
     "broker": "protean.brokers",
     "cache": "protean.caches",
     "event_store": "protean.event_stores",
@@ -1145,7 +1145,7 @@ CAPABILITY_MARKER_MAP: dict[str, list[str]] = {
 
 # Path to the generic test directory relative to the protean package
 GENERIC_TEST_DIR = Path(__file__).resolve().parent.parent.parent.parent / (
-    "tests/adapters/repository/generic"
+    "tests/adapters/database/generic"
 )
 
 # The per-port conformance suites for every port but ``database``. Like the
@@ -1191,7 +1191,7 @@ def _provider_has_capability_for_marker(
     For ``transactional``, the provider needs TRANSACTIONS or SIMULATED_TRANSACTIONS.
     For all other markers, ALL listed capability flags must be present.
     """
-    from protean.port.provider import DatabaseCapabilities  # noqa: PLC0415
+    from protean.port.database import DatabaseCapabilities  # noqa: PLC0415
 
     flag_names = CAPABILITY_MARKER_MAP.get(marker_name, [])
     if not flag_names:
@@ -1608,11 +1608,11 @@ def _load_provider_capabilities(
     or does not initialize.
     """
     from protean.domain import Domain  # noqa: PLC0415
-    from protean.infra.registry import providers  # noqa: PLC0415
+    from protean.infra.registry import databases  # noqa: PLC0415
 
     # Verify provider is registered
     try:
-        providers.get(provider)
+        databases.get(provider)
     except Exception as e:  # any lookup error exits 1 with the message
         print(f"Error: {e}")
         raise typer.Exit(code=1) from e
@@ -1628,7 +1628,7 @@ def _load_provider_capabilities(
         domain._initialize()
 
         with domain.domain_context():
-            provider_instance = domain.providers["default"]
+            provider_instance = domain.databases["default"]
             provider_capabilities = provider_instance.capabilities
             provider_class_name = provider_instance.__class__.__name__
     except Exception as e:  # any setup error exits 1 with the message
@@ -1661,7 +1661,7 @@ def _database_markers_for(name: str) -> list[str]:
     Raises ``typer.Exit(1)`` with the flag names that select a marker on any
     other name, including a flag that selects no marker.
     """
-    from protean.port.provider import DatabaseCapabilities  # noqa: PLC0415
+    from protean.port.database import DatabaseCapabilities  # noqa: PLC0415
 
     if name in CAPABILITY_MARKER_MAP:
         _warn_deprecated_option(

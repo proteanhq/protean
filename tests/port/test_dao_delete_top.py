@@ -10,9 +10,9 @@ These run against the in-memory adapter (core suite). The contract is:
 - ``limit <= 0`` deletes nothing.
 
 Cross-adapter behaviour is covered in
-``tests/adapters/repository/generic/test_bulk_operations.py`` and the
+``tests/adapters/database/generic/test_bulk_operations.py`` and the
 SQLAlchemy single-statement path in
-``tests/adapters/repository/sqlalchemy_repo/``.
+``tests/adapters/database/sqlalchemy_repo/``.
 """
 
 import pytest

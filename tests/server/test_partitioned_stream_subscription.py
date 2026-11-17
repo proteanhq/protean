@@ -149,18 +149,18 @@ def _reset() -> None:
 def domain() -> Domain:
     domain = _build_domain("PartTest", 11)
     with domain.domain_context():
-        domain.brokers["default"]._data_reset()
+        domain.brokers["default"].clear()
         yield domain
-        domain.brokers["default"]._data_reset()
+        domain.brokers["default"].clear()
 
 
 @pytest.fixture
 def lanes_domain() -> Domain:
     domain = _build_domain("PartTest", 11, lanes=True)
     with domain.domain_context():
-        domain.brokers["default"]._data_reset()
+        domain.brokers["default"].clear()
         yield domain
-        domain.brokers["default"]._data_reset()
+        domain.brokers["default"].clear()
 
 
 @pytest.fixture
@@ -201,7 +201,7 @@ def _publish(domain: Domain, category: str, event: BaseEvent, key: str) -> None:
     broker = domain.brokers["default"]
     message = Message.from_domain_object(event)
     broker.record_partition(category, key)
-    broker._publish(f"{category}:{key}", message.to_dict())
+    broker.publish(f"{category}:{key}", message.to_dict())
 
 
 def _order_event(client_id: str, seq: int) -> OrderPlaced:
@@ -217,7 +217,7 @@ def _publish_lane(
     stream = f"{category}:{key}"
     if backfill:
         stream = f"{stream}:backfill"
-    broker._publish(stream, Message.from_domain_object(event).to_dict())
+    broker.publish(stream, Message.from_domain_object(event).to_dict())
 
 
 async def _drain(
@@ -403,7 +403,7 @@ async def test_halt_on_poison_is_partition_scoped(
     assert broker.dlq_depth(f"{category}:A:dlq") == 0
     # The poison message stays pending as the head for an operator to resolve —
     # a regression that acked-then-halted (losing the message) is caught here.
-    pending = broker._client.xpending(f"{category}:A", sub.consumer_group)
+    pending = broker.get_connection().xpending(f"{category}:A", sub.consumer_group)
     assert pending["pending"] == 1
 
 
@@ -434,7 +434,7 @@ async def test_crash_failover_reclaims_pending(domain: Domain, category: str) ->
         sub_a.handler, Message.deserialize(delivered[0][1])
     )
     assert processed["A"] == [0]
-    broker._client.delete(owned_a.lease_key)  # lease expires on crash
+    broker.get_connection().delete(owned_a.lease_key)  # lease expires on crash
 
     # B takes over at a new generation, reclaims the pending entry, drains in order.
     sub_b = await _make_sub(domain)
@@ -460,7 +460,7 @@ async def test_stall_failover_fence_holds(domain: Domain, category: str) -> None
     owned_a = sub_a._owned["A"]
 
     # A stalls: its lease expires and B takes over at a higher generation.
-    broker._client.delete(owned_a.lease_key)
+    broker.get_connection().delete(owned_a.lease_key)
     sub_b = await _make_sub(domain)
     await sub_b._discovery_pass()
     owned_b = sub_b._owned["A"]
@@ -587,7 +587,7 @@ async def test_retire_covers_backfill_lane(lanes_domain: Domain) -> None:
 
     assert await sub._retire(sub._owned["A"]) is True
     assert "A" not in broker.partition_keys(category)
-    assert broker._client.exists(f"{category}:A:backfill") == 0
+    assert broker.get_connection().exists(f"{category}:A:backfill") == 0
 
 
 # --- Tests: process manager ------------------------------------------------
@@ -597,24 +597,24 @@ async def test_process_manager_serializes_per_correlation() -> None:
     domain = _build_domain("PmTest", 11, with_pm=True)
     with domain.domain_context():
         broker = domain.brokers["default"]
-        broker._data_reset()
+        broker.clear()
         order_cat = Order.meta_.stream_category
         pay_cat = Payment.meta_.stream_category
 
         # Two correlation values (order ids), events across both categories.
         oid1, oid2 = "corr-1", "corr-2"
         broker.record_partition(order_cat, oid1)
-        broker._publish(
+        broker.publish(
             f"{order_cat}:{oid1}",
             Message.from_domain_object(_pm_order(oid1, 0)).to_dict(),
         )
         broker.record_partition(pay_cat, oid1)
-        broker._publish(
+        broker.publish(
             f"{pay_cat}:{oid1}",
             Message.from_domain_object(_pm_payment(oid1, 1)).to_dict(),
         )
         broker.record_partition(order_cat, oid2)
-        broker._publish(
+        broker.publish(
             f"{order_cat}:{oid2}",
             Message.from_domain_object(_pm_order(oid2, 0)).to_dict(),
         )
@@ -635,14 +635,14 @@ async def test_process_manager_serializes_per_correlation() -> None:
         assert set(pm_processed[oid1]) == {"order:0", "payment:1"}
         assert pm_processed[oid2] == ["order:0"]
 
-        broker._data_reset()
+        broker.clear()
 
 
 async def test_process_manager_single_owner_across_instances() -> None:
     domain = _build_domain("PmExcl", 11, with_pm=True)
     with domain.domain_context():
         broker = domain.brokers["default"]
-        broker._data_reset()
+        broker.clear()
         order_cat = Order.meta_.stream_category
         pay_cat = Payment.meta_.stream_category
         oid = "corr-1"  # present in both categories
@@ -676,7 +676,7 @@ async def test_process_manager_single_owner_across_instances() -> None:
                     lease_key,
                     "intruder:99",
                 )
-        broker._data_reset()
+        broker.clear()
 
 
 async def test_process_manager_absorbs_late_category_stream() -> None:
@@ -686,7 +686,7 @@ async def test_process_manager_absorbs_late_category_stream() -> None:
     domain = _build_domain("PmLate", 11, with_pm=True)
     with domain.domain_context():
         broker = domain.brokers["default"]
-        broker._data_reset()
+        broker.clear()
         order_cat = Order.meta_.stream_category
         pay_cat = Payment.meta_.stream_category
         oid = "corr-1"
@@ -704,7 +704,7 @@ async def test_process_manager_absorbs_late_category_stream() -> None:
         assert {c for c, _ in sub._owned[oid].streams} == {order_cat, pay_cat}
         await _drain(sub, oid)
         assert set(pm_processed[oid]) == {"order:0", "payment:1"}
-        broker._data_reset()
+        broker.clear()
 
 
 def _pm_order(order_id: str, seq: int) -> OrderPlaced:
@@ -717,7 +717,7 @@ def _pm_payment(order_id: str, seq: int) -> PaymentReceived:
 
 def _pm_publish(broker, category: str, event: BaseEvent, corr: str) -> None:
     broker.record_partition(category, corr)
-    broker._publish(f"{category}:{corr}", Message.from_domain_object(event).to_dict())
+    broker.publish(f"{category}:{corr}", Message.from_domain_object(event).to_dict())
 
 
 # --- Test: end-to-end async smoke -----------------------------------------
@@ -869,7 +869,7 @@ async def test_drain_once_stops_before_reading_the_next_stream() -> None:
     domain = _build_domain("PmDrain", 11, with_pm=True)
     with domain.domain_context():
         broker = domain.brokers["default"]
-        broker._data_reset()
+        broker.clear()
         order_cat = Order.meta_.stream_category
         pay_cat = Payment.meta_.stream_category
         oid = "corr-drain"
@@ -895,7 +895,7 @@ async def test_drain_once_stops_before_reading_the_next_stream() -> None:
         assert processed == 1
         assert len(pm_processed[oid]) == 1
 
-        broker._data_reset()
+        broker.clear()
 
 
 async def test_read_head_skips_the_new_read_when_a_drain_lands_between_reads(
@@ -1014,7 +1014,7 @@ async def test_renew_drops_lost_lease(domain: Domain, category: str) -> None:
     owned = sub._owned["A"]
     owned.task = asyncio.get_running_loop().create_task(asyncio.sleep(30))
 
-    domain.brokers["default"]._client.delete(owned.lease_key)  # lease lost
+    domain.brokers["default"].get_connection().delete(owned.lease_key)  # lease lost
     await sub._renew_owned()
     assert "A" not in sub._owned
     assert owned.task.cancelling() or owned.task.cancelled()
@@ -1053,7 +1053,7 @@ async def test_run_partition_gives_up_when_fenced(
     sub.reap_idle_ms = 10_000_000
     await sub._discovery_pass()
     owned = sub._owned["A"]
-    domain.brokers["default"]._client.delete(owned.lease_key)  # fence lost
+    domain.brokers["default"].get_connection().delete(owned.lease_key)  # fence lost
     await asyncio.wait_for(sub._run_partition(owned), timeout=5)
     assert "A" not in sub._owned  # dropped after LeaseLostError
     # Fenced out before handling: the event was never processed (not drained).
@@ -1149,7 +1149,7 @@ async def test_deserialize_failure_is_a_processing_failure(
 ) -> None:
     broker = domain.brokers["default"]
     broker.record_partition(category, "A")
-    broker._publish(f"{category}:A", {"not": "a valid message envelope"})
+    broker.publish(f"{category}:A", {"not": "a valid message envelope"})
     sub = await _make_sub(domain)
     await sub._discovery_pass()
     owned = sub._owned["A"]
@@ -1159,7 +1159,7 @@ async def test_deserialize_failure_is_a_processing_failure(
     # the message is not moved to a DLQ, and it stays pending as the head.
     assert owned.retry_counts
     assert broker.dlq_depth(f"{category}:A:dlq") == 0
-    pending = broker._client.xpending(f"{category}:A", sub.consumer_group)
+    pending = broker.get_connection().xpending(f"{category}:A", sub.consumer_group)
     assert pending["pending"] == 1
 
 

@@ -14,7 +14,7 @@ from tests.shared import provider_adapter
 
 
 # ---------------------------------------------------------------------------
-# BaseProvider.managed attribute
+# BaseDatabase.managed attribute
 # ---------------------------------------------------------------------------
 class TestProviderManagedFlag:
     @pytest.mark.no_test_domain
@@ -24,7 +24,7 @@ class TestProviderManagedFlag:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            provider = domain.providers["default"]
+            provider = domain.databases["default"]
             assert provider.managed is True
 
     @pytest.mark.no_test_domain
@@ -38,8 +38,8 @@ class TestProviderManagedFlag:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            assert domain.providers["default"].managed is True
-            assert domain.providers["unmanaged"].managed is False
+            assert domain.databases["default"].managed is True
+            assert domain.databases["unmanaged"].managed is False
 
     @pytest.mark.no_test_domain
     def test_managed_true_explicit(self):
@@ -52,7 +52,7 @@ class TestProviderManagedFlag:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            assert domain.providers["explicit"].managed is True
+            assert domain.databases["explicit"].managed is True
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +155,7 @@ class TestTruncateDatabaseSkipsUnmanaged:
         domain.init(traverse=False)
 
         with domain.domain_context():
-            managed = domain.providers["default"]
+            managed = domain.databases["default"]
             with patch.object(managed, "clear") as mock_reset:
                 domain.truncate_database()
                 mock_reset.assert_called_once()

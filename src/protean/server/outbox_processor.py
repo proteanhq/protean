@@ -3,7 +3,8 @@ import logging
 from typing import TYPE_CHECKING, Any, cast
 
 from protean.core.unit_of_work import UnitOfWork
-from protean.port.broker import BaseBroker, BrokerCapabilities
+from protean.infra.broker import Broker
+from protean.port.broker import BrokerCapabilities
 from protean.utils import ensure_utc_aware, outbox_trace
 from protean.utils.backoff import AdaptiveBackoff
 from protean.utils.eventing import Message
@@ -181,7 +182,7 @@ class OutboxProcessor(BaseSubscription):
         # logs it before ``initialize()`` runs) reads this stable identifier,
         # keeping the attribute a ``str`` as the base class declares.
         self.subscriber_name: str = self.subscription_id
-        self.broker: BaseBroker | None = None
+        self.broker: Broker | None = None
         self.outbox_repo: OutboxRepository | None = None
 
     async def initialize(self) -> None:
@@ -206,7 +207,8 @@ class OutboxProcessor(BaseSubscription):
 
         self.broker = self.engine.domain.brokers[self.broker_provider_name]
         logger.debug(
-            "outbox.broker_selected", extra={"broker": self.broker.__class__.__name__}
+            "outbox.broker_selected",
+            extra={"broker": type(self.broker._adapter).__name__},
         )
 
         # Get the outbox repository for this database provider
@@ -575,7 +577,7 @@ class OutboxProcessor(BaseSubscription):
 
             # ``stream_category`` may legitimately be ``None`` here (message
             # without domain metadata); publishing to a ``None`` stream is
-            # intended, tested behavior. ``BaseBroker.publish`` is typed
+            # intended, tested behavior. ``Broker.publish`` is typed
             # ``stream: str`` and its body cannot accept ``None``; whether a
             # None-stream publish is truly valid is queued for maintainer review
             # (item [11]). Cast preserves the exact tested runtime behavior.

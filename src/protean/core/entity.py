@@ -6,7 +6,7 @@ import inspect
 import logging
 import threading
 from collections import defaultdict
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from enum import Enum
 from functools import partial
@@ -315,7 +315,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
     | Option | Type | Description |
     |--------|------|-------------|
     | ``part_of`` | ``type`` | The aggregate this entity belongs to, or the parent entity for a nested entity. Required. |
-    | ``provider`` | ``str`` | The persistence provider name (default: ``"default"``). |
+    | ``database`` | ``str`` | The ``[databases.*]`` entry that persists it (default: ``"default"``). |
     | ``schema_name`` | ``str`` | The storage table/collection name. |
     | ``auto_add_id_field`` | ``bool`` | Whether to auto-inject an ``id`` field (default: ``True``). |
     """
@@ -382,7 +382,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         ("auto_add_id_field", True),
         ("indexes", ()),
         ("part_of", None),
-        ("provider", "default"),
+        ("database", "default"),
         (
             "schema_name",
             DerivedDefault(lambda cls: inflection.underscore(cls.__name__)),
@@ -390,6 +390,8 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         ("limit", 100),
         ("suppress_checks", ()),
     ]
+
+    _renamed_options: ClassVar[Mapping[str, str]] = {"provider": "database"}
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)

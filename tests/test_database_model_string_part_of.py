@@ -139,8 +139,8 @@ class TestStringTargetErrors:
     ):
         test_domain.register(Order)
         test_domain.register(LineItem, part_of=Order)
-        test_domain.register(OrderModel, part_of=Order, database="sqlite")
-        test_domain.register(OtherOrderModel, part_of="Order", database="sqlite")
+        test_domain.register(OrderModel, part_of=Order, database_type="sqlite")
+        test_domain.register(OtherOrderModel, part_of="Order", database_type="sqlite")
 
         with pytest.raises(IncorrectUsageError) as exc:
             test_domain.init(traverse=False)
@@ -150,8 +150,10 @@ class TestStringTargetErrors:
     def test_string_models_for_different_databases_both_file(self, test_domain):
         test_domain.register(Order)
         test_domain.register(LineItem, part_of=Order)
-        test_domain.register(OrderModel, part_of="Order", database="sqlite")
-        test_domain.register(OtherOrderModel, part_of="Order", database="postgresql")
+        test_domain.register(OrderModel, part_of="Order", database_type="sqlite")
+        test_domain.register(
+            OtherOrderModel, part_of="Order", database_type="postgresql"
+        )
         test_domain.init(traverse=False)
 
         assert test_domain._database_models[fqn(Order)] == {

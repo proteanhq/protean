@@ -90,7 +90,7 @@ class TestDatabaseBackedConnection:
     def test_connection_type_matches_provider(self, test_domain):
         """connection_for() returns the same type as providers.get_connection()."""
         conn = test_domain.connection_for(PersonProjection)
-        provider_conn = test_domain.providers.get_connection("default")
+        provider_conn = test_domain.databases.get_connection("default")
         assert type(conn) is type(provider_conn)
 
     def test_connection_usable_after_seeding(self, test_domain, seeded_projections):

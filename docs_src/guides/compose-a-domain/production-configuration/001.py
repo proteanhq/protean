@@ -14,7 +14,7 @@ domain = Domain(
 
 
 # --8<-- [start:aggregate]
-@domain.aggregate(provider="analytics")
+@domain.aggregate(database="analytics")
 class ProductSearch: ...
 
 

@@ -1,9 +1,10 @@
 import pytest
 
 from protean import Domain
-from protean.adapters import broker as broker_module
 from protean.adapters.broker.inline import InlineBroker
 from protean.exceptions import ConfigurationError
+from protean.infra import broker as broker_module
+from protean.infra.broker import Broker
 from protean.port.broker import BaseBroker
 
 
@@ -32,7 +33,7 @@ class TestBrokerInitialization:
         # Initialize brokers
         len(test_domain.brokers)
 
-        dup_broker = InlineBroker("duplicate broker", test_domain, {})
+        dup_broker = Broker(InlineBroker("duplicate broker", test_domain, {}))
 
         spy = mocker.spy(test_domain.brokers, "_initialize")
         test_domain.brokers["dup"] = dup_broker  # Should not reinitialize
@@ -48,7 +49,7 @@ class TestBrokerInitialization:
         assert spy.call_count == 0
 
     def test_that_brokers_can_be_registered_manually(self, test_domain):
-        duplicate_broker = InlineBroker("duplicate broker", test_domain, {})
+        duplicate_broker = Broker(InlineBroker("duplicate broker", test_domain, {}))
 
         test_domain.brokers["duplicate"] = duplicate_broker
         assert len(test_domain.brokers) == 2
@@ -125,7 +126,7 @@ class TestNonDestructiveReinitialization:
 
     def test_reinit_does_not_close_reused_broker(self, mocker, test_domain):
         original = test_domain.brokers["default"]
-        spy = mocker.spy(original, "close")
+        spy = mocker.spy(original, "_close")
 
         test_domain.brokers._initialize()
 
@@ -149,7 +150,7 @@ class TestNonDestructiveReinitialization:
 
     def test_reinit_recreates_broker_when_config_changes(self, mocker, test_domain):
         original = test_domain.brokers["default"]
-        spy = mocker.spy(original, "close")
+        spy = mocker.spy(original, "_close")
 
         # Replace with a differently-configured (but valid) broker config.
         test_domain.config["brokers"]["default"] = {
@@ -163,11 +164,11 @@ class TestNonDestructiveReinitialization:
         assert spy.call_count == 1
 
     def test_reinit_drops_and_closes_removed_brokers(self, mocker, test_domain):
-        from protean.adapters.broker.inline import InlineBroker
-
-        secondary = InlineBroker("secondary", test_domain, {"provider": "inline"})
+        secondary = Broker(
+            InlineBroker("secondary", test_domain, {"provider": "inline"})
+        )
         test_domain.brokers["secondary"] = secondary
-        spy = mocker.spy(secondary, "close")
+        spy = mocker.spy(secondary, "_close")
 
         # "secondary" is not in configured brokers, so re-init should drop it.
         test_domain.brokers._initialize()
@@ -178,11 +179,9 @@ class TestNonDestructiveReinitialization:
     def test_reinit_leaves_default_broker_intact_when_dropping_others(
         self, test_domain
     ):
-        from protean.adapters.broker.inline import InlineBroker
-
         default = test_domain.brokers["default"]
-        test_domain.brokers["secondary"] = InlineBroker(
-            "secondary", test_domain, {"provider": "inline"}
+        test_domain.brokers["secondary"] = Broker(
+            InlineBroker("secondary", test_domain, {"provider": "inline"})
         )
 
         test_domain.brokers._initialize()
@@ -191,16 +190,16 @@ class TestNonDestructiveReinitialization:
         assert "secondary" not in test_domain.brokers
 
     def test_reinit_survives_a_broker_that_raises_on_close(self, mocker, test_domain):
-        """A failing close() on a dropped broker is logged, not propagated."""
-        from protean.adapters.broker.inline import InlineBroker
-
+        """A failing _close() on a dropped broker is logged, not propagated."""
         default = test_domain.brokers["default"]
-        secondary = InlineBroker("secondary", test_domain, {"provider": "inline"})
+        secondary = Broker(
+            InlineBroker("secondary", test_domain, {"provider": "inline"})
+        )
         test_domain.brokers["secondary"] = secondary
-        mocker.patch.object(secondary, "close", side_effect=RuntimeError("boom"))
+        mocker.patch.object(secondary, "_close", side_effect=RuntimeError("boom"))
         log_spy = mocker.spy(broker_module.logger, "exception")
 
-        # Dropping "secondary" triggers its failing close(); re-init must not raise.
+        # Dropping "secondary" triggers its failing _close(); re-init must not raise.
         test_domain.brokers._initialize()
 
         assert test_domain.brokers["default"] is default
@@ -210,15 +209,13 @@ class TestNonDestructiveReinitialization:
     def test_reinit_closes_the_other_dropped_brokers_after_a_failed_close(
         self, mocker, test_domain
     ):
-        from protean.adapters.broker.inline import InlineBroker
-
-        failing = InlineBroker("failing", test_domain, {"provider": "inline"})
-        healthy = InlineBroker("healthy", test_domain, {"provider": "inline"})
-        # "failing" is added first, so its close() runs before "healthy"'s.
+        failing = Broker(InlineBroker("failing", test_domain, {"provider": "inline"}))
+        healthy = Broker(InlineBroker("healthy", test_domain, {"provider": "inline"}))
+        # "failing" is added first, so its _close() runs before "healthy"'s.
         test_domain.brokers["failing"] = failing
         test_domain.brokers["healthy"] = healthy
-        mocker.patch.object(failing, "close", side_effect=RuntimeError("boom"))
-        healthy_close = mocker.spy(healthy, "close")
+        mocker.patch.object(failing, "_close", side_effect=RuntimeError("boom"))
+        healthy_close = mocker.spy(healthy, "_close")
 
         test_domain.brokers._initialize()
 
@@ -230,8 +227,6 @@ class TestNonDestructiveReinitialization:
         self, mocker, test_domain
     ):
         """A construction failure closes brokers already built this pass."""
-        from protean.adapters.broker.inline import InlineBroker
-
         original_default = test_domain.brokers["default"]
 
         # Two new brokers get built (default config changed + a new "secondary").
@@ -245,10 +240,10 @@ class TestNonDestructiveReinitialization:
         built: list[InlineBroker] = []
         real_ctor = InlineBroker
 
-        def flaky_ctor(name, domain, conn_info):
+        def flaky_ctor(name, domain, config):
             if name == "secondary":
                 raise RuntimeError("cannot connect")
-            broker = real_ctor(name, domain, conn_info)
+            broker = real_ctor(name, domain, config)
             # A rollback-close that itself fails must not mask the original
             # construction error, and must be logged rather than propagated.
             mocker.patch.object(

@@ -1225,7 +1225,7 @@ class IRBuilder:
             "fact_events": cls.meta_.fact_events,
             "is_event_sourced": cls.meta_.is_event_sourced,
             "limit": cls.meta_.limit,
-            "provider": cls.meta_.provider,
+            "provider": cls.meta_.database,
             "schema_name": cls.meta_.schema_name,
             "stream_category": cls.meta_.stream_category,
         }
@@ -1268,7 +1268,7 @@ class IRBuilder:
                 {
                     "auto_add_id_field": cls.meta_.auto_add_id_field,
                     "limit": cls.meta_.limit,
-                    "provider": cls.meta_.provider,
+                    "provider": cls.meta_.database,
                     "schema_name": cls.meta_.schema_name,
                 }.items()
             )
@@ -1570,7 +1570,7 @@ class IRBuilder:
             entry["description"] = doc
 
         # Sparse: omit database when default "ALL"
-        database = getattr(cls.meta_, "database", "ALL")
+        database = cls.meta_.database_type
         if database != "ALL":
             entry["database"] = database
 
@@ -1591,7 +1591,7 @@ class IRBuilder:
         """Extract database model IR dict."""
         entry: dict[str, Any] = {}
 
-        database = getattr(cls.meta_, "database", None)
+        database = cls.meta_.database_type
         if database is not None:
             entry["database"] = database
 
@@ -1658,7 +1658,7 @@ class IRBuilder:
                     ),
                     "limit": getattr(cls.meta_, "limit", 100),
                     "order_by": list(order_by) if order_by else [],
-                    "provider": getattr(cls.meta_, "provider", "default"),
+                    "provider": cls.meta_.database,
                     "schema_name": getattr(cls.meta_, "schema_name", None),
                 }.items()
             )

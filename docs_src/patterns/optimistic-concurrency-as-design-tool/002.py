@@ -101,7 +101,9 @@ async def reserve_seat(event_id: str, seat_number: str, customer_id: str):
         return JSONResponse(
             status_code=409,
             content={
-                "error": str(exc),
+                "error": (
+                    f"Seat {exc.seat_number} was just reserved by another customer"
+                ),
                 "suggestion": "Please choose a different seat.",
             },
         )

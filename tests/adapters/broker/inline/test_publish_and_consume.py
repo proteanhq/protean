@@ -29,8 +29,8 @@ def test_publish_generic_message_to_stream(test_domain):
     assert len(identifier) > 0
 
     # Verify message is stored as tuple (identifier, message)
-    assert len(test_domain.brokers["default"]._messages[stream]) == 1
-    stored_tuple = test_domain.brokers["default"]._messages[stream][0]
+    assert len(test_domain.brokers["default"]._adapter._messages[stream]) == 1
+    stored_tuple = test_domain.brokers["default"]._adapter._messages[stream][0]
     assert isinstance(stored_tuple, tuple)
     assert len(stored_tuple) == 2
     assert stored_tuple[0] == identifier
@@ -51,8 +51,8 @@ def test_event_message_to_stream(test_domain):
     assert len(identifier) > 0
 
     # Verify message is stored as tuple (identifier, message)
-    assert len(test_domain.brokers["default"]._messages["test_stream"]) == 1
-    stored_tuple = test_domain.brokers["default"]._messages["test_stream"][0]
+    assert len(test_domain.brokers["default"]._adapter._messages["test_stream"]) == 1
+    stored_tuple = test_domain.brokers["default"]._adapter._messages["test_stream"][0]
     assert isinstance(stored_tuple, tuple)
     assert len(stored_tuple) == 2
     assert stored_tuple[0] == identifier
@@ -233,11 +233,11 @@ def test_inline_broker_message_storage_format(broker):
     identifier = broker.publish(stream, message)
 
     # Check internal storage structure
-    assert stream in broker._messages
-    assert len(broker._messages[stream]) == 1
+    assert stream in broker._adapter._messages
+    assert len(broker._adapter._messages[stream]) == 1
 
     # Messages stored as tuples (identifier, message)
-    stored_tuple = broker._messages[stream][0]
+    stored_tuple = broker._adapter._messages[stream][0]
     assert isinstance(stored_tuple, tuple)
     assert len(stored_tuple) == 2
     assert stored_tuple[0] == identifier

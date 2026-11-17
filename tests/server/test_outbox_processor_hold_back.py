@@ -330,3 +330,19 @@ class TestProcessBatchWithPriorityLanes:
         assert processor.broker.published == []
         assert _stored(outbox_repo, "high").status == OutboxStatus.PENDING.value
         assert (await processor.get_next_batch_of_messages()) == []
+
+
+@pytest.mark.database
+@pytest.mark.asyncio
+async def test_initialize_logs_the_adapter_class_of_the_selected_broker(
+    test_domain, caplog
+):
+    processor = OutboxProcessor(
+        Engine(test_domain, test_mode=True), "default", "default", worker_id="w-1"
+    )
+
+    with caplog.at_level(logging.DEBUG, logger="protean.server.outbox_processor"):
+        await processor.initialize()
+
+    [record] = [r for r in caplog.records if r.getMessage() == "outbox.broker_selected"]
+    assert record.broker == "InlineBroker"

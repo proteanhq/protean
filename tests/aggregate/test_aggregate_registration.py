@@ -19,24 +19,24 @@ class TestAggregateRegistration:
         class User(BaseAggregate):
             name: String(max_length=50)
 
-        test_domain.register(User, provider="foobar")
+        test_domain.register(User, database="foobar")
 
-        assert User.meta_.provider == "foobar"
+        assert User.meta_.database == "foobar"
         assert "database_model" not in dict(User.meta_)
 
     def test_setting_provider_in_decorator_based_registration(self, test_domain):
-        @test_domain.aggregate(provider="foobar")
+        @test_domain.aggregate(database="foobar")
         class User(BaseAggregate):
             name: String(max_length=50)
 
-        assert User.meta_.provider == "foobar"
+        assert User.meta_.database == "foobar"
 
     def test_additional_options_in_decorator_based_registration(self, test_domain):
-        @test_domain.aggregate(provider="foobar")
+        @test_domain.aggregate(database="foobar")
         class Cat:
             name: String(max_length=50)
 
-        assert Cat.meta_.provider == "foobar"
+        assert Cat.meta_.database == "foobar"
 
 
 class TestDatabaseModelOptionIsRejected:
@@ -59,7 +59,7 @@ class TestDatabaseModelOptionIsRejected:
     def test_decorator_registration_with_database_model_raises(self, test_domain):
         with pytest.raises(ConfigurationError) as exc:
 
-            @test_domain.aggregate(provider="foobar", database_model="UserModel")
+            @test_domain.aggregate(database="foobar", database_model="UserModel")
             class User:
                 name: String(max_length=50)
 

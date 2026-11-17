@@ -170,7 +170,7 @@ read/write paths, and the connection lifecycle. The change ships with a
 property-test suite that runs on real PostgreSQL and MSSQL. The suite encodes
 the guarantees the old model cannot meet. With the old AUTOCOMMIT engine
 restored, the regression tests in these suites go red; on the fix they pass
-(`tests/adapters/repository/sqlalchemy_repo/postgresql/test_postgresql_uow_atomicity_and_ryw.py`
+(`tests/adapters/database/sqlalchemy_repo/postgresql/test_postgresql_uow_atomicity_and_ryw.py`
 and its MSSQL mirror):
 
 - read-your-writes inside a UoW for `filter`, `count`, and `exists`, and for an

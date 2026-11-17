@@ -64,7 +64,7 @@ class TestDatabaseModelExtraction:
 
     def test_report_model_database_custom(self, database_models):
         model = self._find_model(database_models, "CustomerReportModel")
-        assert model["database"] == "reporting"
+        assert model["database"] == "elasticsearch"
 
     def test_report_model_schema_name(self, database_models):
         model = self._find_model(database_models, "CustomerReportModel")

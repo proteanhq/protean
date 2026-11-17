@@ -287,9 +287,9 @@ stream as everything else.
 
 ### 12. Slow SQL query detection: adapter-level, not framework-level
 
-A sibling concern to slow-handler detection is slow-query detection. We deliberately built slow-query detection into the adapter, and the framework core does not detect slow queries. The SQLAlchemy repository adapter emits `protean.adapters.repository.sqlalchemy.slow_query` WARNING events when a query exceeds `[logging].slow_query_threshold_ms` (default 100 ms), with the query text truncated to `slow_query_truncate_chars` characters.
+A sibling concern to slow-handler detection is slow-query detection. We deliberately built slow-query detection into the adapter, and the framework core does not detect slow queries. The SQLAlchemy repository adapter emits `protean.adapters.database.sqlalchemy.slow_query` WARNING events when a query exceeds `[logging].slow_query_threshold_ms` (default 100 ms), with the query text truncated to `slow_query_truncate_chars` characters.
 
-The reason this lives in the adapter is that slow-query semantics depend on the driver: SQLAlchemy exposes a native `before_cursor_execute` / `after_cursor_execute` hook that makes the measurement trivial, while Elasticsearch, memory, and any future adapters would each need their own instrumentation. The framework defines the config surface (`slow_query_threshold_ms`, `slow_query_truncate_chars`) and the logger-name convention (`protean.adapters.repository.<adapter>.slow_query`); each adapter wires its own detection. This mirrors the Ports & Adapters split established elsewhere in the framework: the port defines the contract, the adapter owns the driver-specific machinery.
+The reason this lives in the adapter is that slow-query semantics depend on the driver: SQLAlchemy exposes a native `before_cursor_execute` / `after_cursor_execute` hook that makes the measurement trivial, while Elasticsearch, memory, and any future adapters would each need their own instrumentation. The framework defines the config surface (`slow_query_threshold_ms`, `slow_query_truncate_chars`) and the logger-name convention (`protean.adapters.database.<adapter>.slow_query`); each adapter wires its own detection. This mirrors the Ports & Adapters split established elsewhere in the framework: the port defines the contract, the adapter owns the driver-specific machinery.
 
 ## Consequences
 

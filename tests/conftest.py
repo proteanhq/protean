@@ -435,7 +435,7 @@ def run_around_tests(test_domain, request):
     yield
 
     if test_domain:
-        for provider_name in test_domain.providers:
+        for provider_name in test_domain.databases:
             provider = provider_adapter(test_domain, provider_name)
             try:
                 provider.clear()
@@ -446,7 +446,7 @@ def run_around_tests(test_domain, request):
 
         for broker_name in test_domain.brokers:
             broker = test_domain.brokers[broker_name]
-            broker._data_reset()
+            broker.clear()
 
         for cache_name in test_domain.caches:
             cache = test_domain.caches[cache_name]

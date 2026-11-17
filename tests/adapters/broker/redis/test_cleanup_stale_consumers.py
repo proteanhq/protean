@@ -1,4 +1,4 @@
-"""Tests for RedisBroker._cleanup_stale_consumers().
+"""Tests for RedisBroker.remove_stale_consumers().
 
 Integration tests that verify stale consumer cleanup using a real Redis instance.
 """
@@ -13,7 +13,7 @@ from protean.adapters.broker.redis import RedisBroker
 
 @pytest.fixture
 def redis_broker(test_domain) -> RedisBroker:
-    return test_domain.brokers["default"]
+    return test_domain.brokers["default"]._adapter
 
 
 def _consumer_names(redis_broker, stream, group) -> set[str]:
@@ -37,7 +37,7 @@ def _ack_pending(redis_broker, stream, group) -> None:
 
 @pytest.mark.redis
 class TestCleanupStaleConsumers:
-    """Integration tests for _cleanup_stale_consumers() with real Redis."""
+    """Integration tests for remove_stale_consumers() with real Redis."""
 
     def test_removes_stale_consumer_with_same_prefix(self, redis_broker):
         """Removes a consumer that shares the class-hostname-pid prefix but has a different hex suffix."""
@@ -47,7 +47,7 @@ class TestCleanupStaleConsumers:
         stale = "TestHandler-host1-1000-112233"
 
         # Set up stream and group
-        redis_broker._ensure_group(group, stream)
+        redis_broker.create_group(stream, group)
 
         # Create stale consumer by reading with its name, then ack so pending=0
         redis_broker.redis_instance.xadd(stream, {"data": "msg1"})
@@ -66,7 +66,7 @@ class TestCleanupStaleConsumers:
         assert current in names
 
         # Run cleanup
-        removed = redis_broker._cleanup_stale_consumers(stream, group, current)
+        removed = redis_broker.remove_stale_consumers(stream, group, current)
         assert removed == 1
 
         # Verify stale consumer is gone
@@ -81,7 +81,7 @@ class TestCleanupStaleConsumers:
         current = "PendingHandler-host1-1000-newwww"
         stale = "PendingHandler-host1-1000-oldold"
 
-        redis_broker._ensure_group(group, stream)
+        redis_broker.create_group(stream, group)
 
         # Create stale consumer with a pending message (don't ACK)
         redis_broker.redis_instance.xadd(stream, {"data": "unacked"})
@@ -98,7 +98,7 @@ class TestCleanupStaleConsumers:
                 assert int(pending) > 0
 
         # Run cleanup — should skip because of pending messages
-        removed = redis_broker._cleanup_stale_consumers(stream, group, current)
+        removed = redis_broker.remove_stale_consumers(stream, group, current)
         assert removed == 0
 
         # Verify stale consumer is still there
@@ -118,7 +118,7 @@ class TestCleanupStaleConsumers:
         current = "HandlerA-host1-1000-aabbcc"
         unrelated = "HandlerB-host2-2000-ddeeff"
 
-        redis_broker._ensure_group(group, stream)
+        redis_broker.create_group(stream, group)
 
         # Create unrelated consumer
         redis_broker.redis_instance.xadd(stream, {"data": "msg1"})
@@ -132,7 +132,7 @@ class TestCleanupStaleConsumers:
             redis_broker.redis_instance.xack(stream, group, mid)
 
         # Run cleanup
-        removed = redis_broker._cleanup_stale_consumers(stream, group, current)
+        removed = redis_broker.remove_stale_consumers(stream, group, current)
         assert removed == 0
 
         # Verify unrelated consumer is still there
@@ -151,13 +151,13 @@ class TestCleanupStaleConsumers:
         group = "SelfGroup"
         current = "Handler-host1-1000-aabbcc"
 
-        redis_broker._ensure_group(group, stream)
+        redis_broker.create_group(stream, group)
 
         # Create current consumer
         redis_broker.redis_instance.xadd(stream, {"data": "msg"})
         redis_broker.redis_instance.xreadgroup(group, current, {stream: ">"}, count=1)
 
-        removed = redis_broker._cleanup_stale_consumers(stream, group, current)
+        removed = redis_broker.remove_stale_consumers(stream, group, current)
         assert removed == 0
 
         consumers = redis_broker.redis_instance.xinfo_consumers(stream, group)
@@ -169,9 +169,9 @@ class TestCleanupStaleConsumers:
         group = "EmptyGroup"
         current = "Handler-host1-1000-aabbcc"
 
-        redis_broker._ensure_group(group, stream)
+        redis_broker.create_group(stream, group)
 
-        removed = redis_broker._cleanup_stale_consumers(stream, group, current)
+        removed = redis_broker.remove_stale_consumers(stream, group, current)
         assert removed == 0
 
     def test_returns_zero_for_consumer_name_without_hyphen(self, redis_broker):
@@ -179,9 +179,9 @@ class TestCleanupStaleConsumers:
         stream = "test::cleanup-nohyphen"
         group = "NoHyphenGroup"
 
-        redis_broker._ensure_group(group, stream)
+        redis_broker.create_group(stream, group)
 
-        removed = redis_broker._cleanup_stale_consumers(stream, group, "nohyphen")
+        removed = redis_broker.remove_stale_consumers(stream, group, "nohyphen")
         assert removed == 0
 
     def test_removes_multiple_stale_consumers(self, redis_broker):
@@ -192,7 +192,7 @@ class TestCleanupStaleConsumers:
         stale1 = "Handler-host1-1000-old001"
         stale2 = "Handler-host1-1000-old002"
 
-        redis_broker._ensure_group(group, stream)
+        redis_broker.create_group(stream, group)
 
         # Create stale consumers and ack their messages
         for stale_name in [stale1, stale2]:
@@ -217,7 +217,7 @@ class TestCleanupStaleConsumers:
         assert len(consumers) == 2
 
         # Run cleanup
-        removed = redis_broker._cleanup_stale_consumers(stream, group, current)
+        removed = redis_broker.remove_stale_consumers(stream, group, current)
         assert removed == 2
 
 
@@ -226,7 +226,7 @@ class TestCleanupStaleConsumersErrors:
     """Redis errors are logged and skipped; other errors reach the caller."""
 
     def _stale_setup(self, redis_broker, stream, group, stale):
-        redis_broker._ensure_group(group, stream)
+        redis_broker.create_group(stream, group)
         redis_broker.redis_instance.xadd(stream, {"data": "msg"})
         redis_broker.redis_instance.xreadgroup(group, stale, {stream: ">"}, count=1)
         for p in redis_broker.redis_instance.xpending_range(
@@ -252,7 +252,7 @@ class TestCleanupStaleConsumersErrors:
         )
 
         with caplog.at_level(logging.DEBUG, logger="protean.adapters.broker.redis"):
-            removed = redis_broker._cleanup_stale_consumers(stream, group, current)
+            removed = redis_broker.remove_stale_consumers(stream, group, current)
 
         assert removed == 0
         records = [
@@ -275,7 +275,7 @@ class TestCleanupStaleConsumersErrors:
         )
 
         with caplog.at_level(logging.DEBUG, logger="protean.adapters.broker.redis"):
-            removed = redis_broker._cleanup_stale_consumers(
+            removed = redis_broker.remove_stale_consumers(
                 "test::cleanup-list-error", "ListErrorGroup", "Handler-host1-1-abc"
             )
 
@@ -301,7 +301,7 @@ class TestCleanupStaleConsumersErrors:
         )
 
         with pytest.raises(TypeError, match="bad consumer info"):
-            redis_broker._cleanup_stale_consumers(
+            redis_broker.remove_stale_consumers(
                 "test::cleanup-bug", "BugGroup", "Handler-host1-1-abc"
             )
 
@@ -316,7 +316,7 @@ class TestCleanupStaleConsumersErrors:
             stream, group, b"\xff\xfe-bad"
         )
 
-        removed = redis_broker._cleanup_stale_consumers(stream, group, current)
+        removed = redis_broker.remove_stale_consumers(stream, group, current)
 
         assert removed == 1
         names = [
@@ -340,7 +340,7 @@ class TestCleanupStaleConsumersErrors:
             lambda *args, **kwargs: ["not-a-dict", *list_consumers(*args, **kwargs)],
         )
 
-        removed = redis_broker._cleanup_stale_consumers(stream, group, current)
+        removed = redis_broker.remove_stale_consumers(stream, group, current)
         monkeypatch.undo()
 
         assert removed == 1

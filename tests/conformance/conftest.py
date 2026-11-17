@@ -49,8 +49,8 @@ from protean.infra.registry import (
     AdapterRegistry,
     brokers,
     caches,
+    databases,
     event_stores,
-    providers,
 )
 from tests.conformance.flag_coverage import named_flags
 from tests.shared import (
@@ -75,7 +75,7 @@ DEFAULT_ADAPTERS = {
 }
 
 REGISTRIES: dict[str, AdapterRegistry[Any]] = {
-    "database": providers,
+    "database": databases,
     "broker": brokers,
     "cache": caches,
     "event_store": event_stores,
@@ -156,7 +156,7 @@ CONFIGURE: dict[str, Callable[[Domain, dict[str, Any]], None]] = {
 
 ADAPTER_OF: dict[str, Callable[[Domain], Any]] = {
     "database": lambda domain: provider_adapter(domain, "default"),
-    "broker": lambda domain: domain.brokers["default"],
+    "broker": lambda domain: domain.brokers["default"]._adapter,
     "cache": lambda domain: domain.caches["default"]._adapter,
     "event_store": lambda domain: domain.event_store._adapter,
 }
@@ -164,7 +164,7 @@ ADAPTER_OF: dict[str, Callable[[Domain], Any]] = {
 
 RESET: dict[str, Callable[[Any], None]] = {
     "database": lambda provider: provider.clear(),
-    "broker": lambda broker: broker._data_reset(),
+    "broker": lambda broker: broker.clear(),
     "cache": lambda cache: cache.clear(),
     "event_store": lambda store: store.clear(),
 }

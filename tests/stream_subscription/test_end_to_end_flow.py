@@ -314,7 +314,7 @@ class TestEndToEndFlow:
                 await asyncio.sleep(0.001)
 
         # Check DLQ stream
-        dlq_messages = broker._read("failing:dlq", "dlq-reader", 10)
+        dlq_messages = broker.read("failing:dlq", "dlq-reader", 10)
         assert len(dlq_messages) > 0
 
         # Verify DLQ message has metadata

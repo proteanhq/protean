@@ -252,13 +252,13 @@ Each database provider registers its own lookup implementations using
 
 ```python
 # fragment
-class SQLAlchemyProvider(BaseProvider, RawQueryProviderPort):
+class SADatabase(BaseDatabase, RawQueryDatabasePort):
     ...
 
 # During adapter initialization:
-SQLAlchemyProvider.register_lookup(ExactLookup)
-SQLAlchemyProvider.register_lookup(ContainsLookup)
-SQLAlchemyProvider.register_lookup(GteLookup)
+SADatabase.register_lookup(ExactLookup)
+SADatabase.register_lookup(ContainsLookup)
+SADatabase.register_lookup(GteLookup)
 # etc.
 ```
 
@@ -336,7 +336,7 @@ unsupported lookup fails loudly and never silently returns wrong results.
 | `F()` column ref  | ✅     | ✅                | ❌            |
 
 The twelve lookups above `any` are universal and exercised by the cross-adapter
-conformance suites under `tests/adapters/repository/generic/` and
+conformance suites under `tests/adapters/database/generic/` and
 `tests/repository/`. The array lookups `any` and `overlap` match documents
 whose array field shares an element with the given values. SQLAlchemy maps them
 to native array operators (`= ANY(...)` and `&&`), so they need a backend with
@@ -353,8 +353,8 @@ portable contract.
 - `src/protean/port/dao.py`: `LookupPort` and `REQUIRED_LOOKUPS`.
 - `src/protean/utils/query.py`: `split_lookup_key` and `RegisterLookupMixin`.
 - `src/protean/infra/registry.py`: the required-lookup check.
-- `src/protean/adapters/repository/memory/`: Memory lookup implementations.
-- `src/protean/adapters/repository/sqlalchemy/`: SQLAlchemy lookup
+- `src/protean/adapters/database/memory.py`: Memory lookup implementations.
+- `src/protean/adapters/database/sqlalchemy.py`: SQLAlchemy lookup
   implementations.
 
 ---
@@ -537,7 +537,7 @@ conn = domain.connection_for(OrderSummary)
 This is the escape hatch. It bypasses Protean's query abstraction entirely and
 hands you the technology-specific client. The method automatically routes to
 the correct provider or cache based on the projection's meta options
-(`provider` or `cache`).
+(`database` or `cache`).
 
 **Key source file:** `src/protean/domain/__init__.py`
 

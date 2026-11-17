@@ -70,11 +70,10 @@ class TestConsumerGroupCreation:
         default_broker = test_domain.brokers["default"]
 
         # Check that consumer groups were created
-        info = default_broker.info()
-        assert "consumer_groups" in info
+        consumer_groups = default_broker._consumer_groups()
+        assert isinstance(consumer_groups, dict)
 
         # Should have groups for both subscribers
-        consumer_groups = info["consumer_groups"]
         assert len(consumer_groups) >= 2
 
         # Check that groups were created for the subscribers
@@ -90,12 +89,13 @@ class TestConsumerGroupCreation:
         Engine(test_domain, test_mode=True)
 
         default_broker = test_domain.brokers["default"]
-        info = default_broker.info()
+        info = default_broker._consumer_groups()
 
         user_subscriber_fqn = fqn(UserSubscriber)
-        group_info = info["consumer_groups"][user_subscriber_fqn]
+        group_info = info[user_subscriber_fqn]
 
         # Check structure
+        assert group_info["name"] == user_subscriber_fqn
         assert "consumers" in group_info
         assert "created_at" in group_info
         assert "consumer_count" in group_info
@@ -110,10 +110,8 @@ class TestConsumerGroupCreation:
         Engine(test_domain, test_mode=True)
 
         default_broker = test_domain.brokers["default"]
-        info = default_broker.info()
-
         # Should still have the same groups (idempotent behavior)
-        consumer_groups = info["consumer_groups"]
+        consumer_groups = default_broker._consumer_groups()
         user_subscriber_fqn = fqn(UserSubscriber)
         order_subscriber_fqn = fqn(OrderSubscriber)
 
@@ -126,14 +124,14 @@ class TestConsumerGroupCreation:
         Engine(test_domain, test_mode=True)
 
         default_broker = test_domain.brokers["default"]
-        info = default_broker.info()
+        info = default_broker._consumer_groups()
 
         # Check that group names are FQNs
         user_subscriber_fqn = fqn(UserSubscriber)
         order_subscriber_fqn = fqn(OrderSubscriber)
 
-        assert user_subscriber_fqn in info["consumer_groups"]
-        assert order_subscriber_fqn in info["consumer_groups"]
+        assert user_subscriber_fqn in info
+        assert order_subscriber_fqn in info
 
         # Verify FQN format (should contain module and class name)
         assert "test_consumer_group_creation" in user_subscriber_fqn
@@ -142,48 +140,44 @@ class TestConsumerGroupCreation:
         assert "OrderSubscriber" in order_subscriber_fqn
 
     @pytest.mark.simple_queuing
-    def test_broker_info_method_returns_consistent_data(self, test_domain):
-        """Test that broker.info() returns consistent data across calls"""
+    def test_consumer_groups_are_consistent_across_calls(self, test_domain):
+        """Test that the broker reports the same consumer groups across calls"""
         Engine(test_domain, test_mode=True)
 
         default_broker = test_domain.brokers["default"]
 
-        info1 = default_broker.info()
-        info2 = default_broker.info()
+        info1 = default_broker._consumer_groups()
+        info2 = default_broker._consumer_groups()
 
         # Should be identical
         assert info1 == info2
 
         # Check specific group data consistency
         user_subscriber_fqn = fqn(UserSubscriber)
-        group1 = info1["consumer_groups"][user_subscriber_fqn]
-        group2 = info2["consumer_groups"][user_subscriber_fqn]
+        group1 = info1[user_subscriber_fqn]
+        group2 = info2[user_subscriber_fqn]
 
         assert group1["created_at"] == group2["created_at"]
         assert group1["consumer_count"] == group2["consumer_count"]
 
     @pytest.mark.simple_queuing
-    def test_ensure_group_is_idempotent(self, test_domain):
-        """Test that _ensure_group is idempotent"""
+    def test_create_group_is_idempotent(self, test_domain):
+        """Test that _create_group is idempotent"""
         Engine(test_domain, test_mode=True)
 
         default_broker = test_domain.brokers["default"]
 
         # Get initial info
-        info_before = default_broker.info()
+        info_before = default_broker._consumer_groups()
         user_subscriber_fqn = fqn(UserSubscriber)
-        created_at_before = info_before["consumer_groups"][user_subscriber_fqn][
-            "created_at"
-        ]
+        created_at_before = info_before[user_subscriber_fqn]["created_at"]
 
-        # Call _ensure_group again
-        default_broker._ensure_group(user_subscriber_fqn, "user")
+        # Call _create_group again
+        default_broker._create_group("user", user_subscriber_fqn)
 
         # Check that nothing changed
-        info_after = default_broker.info()
-        created_at_after = info_after["consumer_groups"][user_subscriber_fqn][
-            "created_at"
-        ]
+        info_after = default_broker._consumer_groups()
+        created_at_after = info_after[user_subscriber_fqn]["created_at"]
 
         assert created_at_before == created_at_after
 
@@ -193,19 +187,19 @@ class TestConsumerGroupCreation:
         Engine(test_domain, test_mode=True)
 
         default_broker = test_domain.brokers["default"]
-        info = default_broker.info()
+        info = default_broker._consumer_groups()
 
         user_subscriber_fqn = fqn(UserSubscriber)
         order_subscriber_fqn = fqn(OrderSubscriber)
 
         # Should have separate groups
         assert user_subscriber_fqn != order_subscriber_fqn
-        assert user_subscriber_fqn in info["consumer_groups"]
-        assert order_subscriber_fqn in info["consumer_groups"]
+        assert user_subscriber_fqn in info
+        assert order_subscriber_fqn in info
 
         # Groups should have independent data
-        user_group = info["consumer_groups"][user_subscriber_fqn]
-        order_group = info["consumer_groups"][order_subscriber_fqn]
+        user_group = info[user_subscriber_fqn]
+        order_group = info[order_subscriber_fqn]
 
         # They may have different creation times
         assert "created_at" in user_group
@@ -213,18 +207,33 @@ class TestConsumerGroupCreation:
 
     @pytest.mark.simple_queuing
     def test_data_reset_clears_consumer_groups(self, test_domain):
-        """Test that _data_reset clears consumer groups"""
+        """Test that clear() removes consumer groups"""
         Engine(test_domain, test_mode=True)
 
         default_broker = test_domain.brokers["default"]
 
         # Verify groups exist
-        info_before = default_broker.info()
-        assert len(info_before["consumer_groups"]) > 0
+        info_before = default_broker._consumer_groups()
+        assert len(info_before) > 0
 
         # Reset data
-        default_broker._data_reset()
+        default_broker.clear()
 
         # Verify groups are cleared
-        info_after = default_broker.info()
-        assert len(info_after["consumer_groups"]) == 0
+        info_after = default_broker._consumer_groups()
+        assert len(info_after) == 0
+
+
+@pytest.mark.simple_queuing
+def test_consumer_groups_are_keyed_by_group_name(broker):
+    """_consumer_groups() returns one entry per created group, keyed by its name"""
+    broker._create_group("s", "g1")
+    broker._create_group("s2", "g2")
+
+    consumer_groups = broker._consumer_groups()
+
+    assert set(consumer_groups) == {"g1", "g2"}
+    for group_name, group_info in consumer_groups.items():
+        assert group_info["name"] == group_name
+        assert isinstance(group_info["consumer_count"], int)
+        assert isinstance(group_info["pending"], int)

@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from protean.adapters.repository.sqlalchemy import render_index_ddl
+from protean.adapters.database.sqlalchemy import render_index_ddl
 from protean.domain import Domain
 from protean.port.event_store import BaseEventStore
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata

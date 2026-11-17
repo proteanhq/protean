@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Self
 from protean._deprecation import warn_from_registry
 from protean.exceptions import NotSupportedError
 from protean.fields.resolved import serialize_custom_value
-from protean.port.provider import DatabaseCapabilities
+from protean.port.database import DatabaseCapabilities
 from protean.utils.globals import _find_uow
 from protean.utils.query import Q, split_lookup_key
 from protean.utils.reflection import attributes, fields, id_field

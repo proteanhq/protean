@@ -59,7 +59,7 @@ class ReadView(Generic[_ProjectionT]):
 
     def _repo(self) -> "BaseRepository":
         """Return the repository for a database-backed projection."""
-        return self._domain.providers.repository_for(self._projection_cls)
+        return self._domain.databases.repository_for(self._projection_cls)
 
     def _cache(self) -> "Cache":
         """Return the cache service for a cache-backed projection."""
@@ -81,7 +81,7 @@ class ReadView(Generic[_ProjectionT]):
                 f"projection `{self._projection_cls.__name__}`. "
                 f"Use get() for key-based lookups."
             )
-        repo = self._domain.providers.repository_for(self._projection_cls)
+        repo = self._domain.databases.repository_for(self._projection_cls)
         # ``QuerySet`` is typed against ``type[BaseEntity]`` but operates on any
         # persistable ``Element`` (both entities and projections share the same
         # ``meta_``/reflection surface). Cast until that public signature is

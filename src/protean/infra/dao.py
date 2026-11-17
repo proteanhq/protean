@@ -45,7 +45,7 @@ from protean.port.dao import (
     NativeClaimPort,
     RawQueryDAOPort,
 )
-from protean.port.provider import DatabaseCapabilities, DatabaseModelPort
+from protean.port.database import DatabaseCapabilities, DatabaseModelPort
 from protean.utils import DomainObjects, _callable_qualname
 from protean.utils.globals import _domain_now, current_domain, current_uow
 from protean.utils.query import Q
@@ -54,7 +54,7 @@ from protean.utils.reflection import declared_fields, fields, id_field, unique_f
 if TYPE_CHECKING:
     from protean.domain import Domain
     from protean.fields.base import Field
-    from protean.port.provider import SessionProtocol
+    from protean.port.database import SessionProtocol
 
 logger = logging.getLogger(__name__)
 

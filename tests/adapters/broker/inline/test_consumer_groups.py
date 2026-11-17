@@ -10,7 +10,7 @@ def test_consumer_group_creation_during_operations(broker):
     message = {"foo": "bar"}
 
     # Initially, consumer group doesn't exist
-    assert not broker._validate_consumer_group(consumer_group)
+    assert not broker._adapter._validate_consumer_group(consumer_group)
 
     # Publish a message
     broker.publish(stream, message)
@@ -20,11 +20,11 @@ def test_consumer_group_creation_during_operations(broker):
     assert retrieved is not None
 
     # Consumer group should now exist
-    assert broker._validate_consumer_group(consumer_group)
+    assert broker._adapter._validate_consumer_group(consumer_group)
 
     # Verify in internal structures
     group_key = f"{stream}:{consumer_group}"
-    assert group_key in broker._consumer_groups
+    assert group_key in broker._adapter._consumer_groups
 
 
 def test_multiple_consumer_groups_independent_processing(broker):
@@ -86,8 +86,8 @@ def test_consumer_position_tracking(broker):
     # Check positions
     group_key1 = f"{stream}:{consumer_group1}"
     group_key2 = f"{stream}:{consumer_group2}"
-    assert broker._consumer_positions[group_key1] == 3
-    assert broker._consumer_positions[group_key2] == 1
+    assert broker._adapter._consumer_positions[group_key1] == 3
+    assert broker._adapter._consumer_positions[group_key2] == 1
 
 
 def test_validate_consumer_group_not_exists(broker):
@@ -95,20 +95,20 @@ def test_validate_consumer_group_not_exists(broker):
     non_existent_group = "non_existent_group"
 
     # Should return False for non-existent group
-    result = broker._validate_consumer_group(non_existent_group)
+    result = broker._adapter._validate_consumer_group(non_existent_group)
     assert result is False
 
     # Create a consumer group
     stream = "test_stream"
     existing_group = "existing_group"
-    broker._ensure_group(existing_group, stream)
+    broker._create_group(stream, existing_group)
 
     # Should return True for existing group
-    result = broker._validate_consumer_group(existing_group)
+    result = broker._adapter._validate_consumer_group(existing_group)
     assert result is True
 
     # Should still return False for non-existent group
-    result = broker._validate_consumer_group(non_existent_group)
+    result = broker._adapter._validate_consumer_group(non_existent_group)
     assert result is False
 
 
@@ -164,17 +164,25 @@ def test_multiple_consumer_group_position_adjustment(broker):
         assert result is not None
 
     # Check initial positions
-    assert broker._consumer_positions[f"{stream}:{consumer_group1}"] == 1
-    assert broker._consumer_positions[f"{stream}:{consumer_group2}"] == 1
-    assert broker._consumer_positions[f"{stream}:{consumer_group3}"] == 1
+    assert broker._adapter._consumer_positions[f"{stream}:{consumer_group1}"] == 1
+    assert broker._adapter._consumer_positions[f"{stream}:{consumer_group2}"] == 1
+    assert broker._adapter._consumer_positions[f"{stream}:{consumer_group3}"] == 1
 
     # Requeue a message at position 1 for group1
-    broker._requeue_messages(stream, consumer_group1, [("new_msg", {"new": "data"})])
+    broker._adapter._requeue_messages(
+        stream, consumer_group1, [("new_msg", {"new": "data"})]
+    )
 
     # Positions for other groups at or beyond insertion point should be adjusted
-    assert broker._consumer_positions[f"{stream}:{consumer_group1}"] == 1  # No change
-    assert broker._consumer_positions[f"{stream}:{consumer_group2}"] == 2  # Adjusted
-    assert broker._consumer_positions[f"{stream}:{consumer_group3}"] == 2  # Adjusted
+    assert (
+        broker._adapter._consumer_positions[f"{stream}:{consumer_group1}"] == 1
+    )  # No change
+    assert (
+        broker._adapter._consumer_positions[f"{stream}:{consumer_group2}"] == 2
+    )  # Adjusted
+    assert (
+        broker._adapter._consumer_positions[f"{stream}:{consumer_group3}"] == 2
+    )  # Adjusted
 
 
 def test_requeue_messages_with_multiple_groups(broker):
@@ -197,19 +205,21 @@ def test_requeue_messages_with_multiple_groups(broker):
     # Positions: group1=1, group2=2
     group_key1 = f"{stream}:{consumer_group1}"
     group_key2 = f"{stream}:{consumer_group2}"
-    assert broker._consumer_positions[group_key1] == 1
-    assert broker._consumer_positions[group_key2] == 2
+    assert broker._adapter._consumer_positions[group_key1] == 1
+    assert broker._adapter._consumer_positions[group_key2] == 2
 
     # Requeue messages for group1
     messages_to_requeue = [("retry1", {"retry": 1}), ("retry2", {"retry": 2})]
-    broker._requeue_messages(stream, consumer_group1, messages_to_requeue)
+    broker._adapter._requeue_messages(stream, consumer_group1, messages_to_requeue)
 
     # Group1 position unchanged, group2 position adjusted
-    assert broker._consumer_positions[group_key1] == 1
-    assert broker._consumer_positions[group_key2] == 4  # 2 + 2 requeued messages
+    assert broker._adapter._consumer_positions[group_key1] == 1
+    assert (
+        broker._adapter._consumer_positions[group_key2] == 4
+    )  # 2 + 2 requeued messages
 
     # Verify messages were inserted correctly
-    assert len(broker._messages[stream]) == 4
+    assert len(broker._adapter._messages[stream]) == 4
 
 
 def test_empty_consumer_group_cleanup(broker):
@@ -219,20 +229,20 @@ def test_empty_consumer_group_cleanup(broker):
     identifier2 = "msg2"
 
     # Set operation state TTL to very short for testing
-    broker._operation_state_ttl = 0.01  # 10ms
+    broker._adapter._operation_state_ttl = 0.01  # 10ms
 
     # Store operation states
-    broker._store_operation_state(consumer_group, identifier1, "ACKNOWLEDGED")
-    broker._store_operation_state(consumer_group, identifier2, "NACKED")
+    broker._adapter._store_operation_state(consumer_group, identifier1, "ACKNOWLEDGED")
+    broker._adapter._store_operation_state(consumer_group, identifier2, "NACKED")
 
     # Wait for expiry
     time.sleep(0.02)
 
     # Clean up expired states
-    broker._cleanup_expired_operation_states()
+    broker._adapter._cleanup_expired_operation_states()
 
     # Consumer group should be removed when empty
-    assert consumer_group not in broker._operation_states
+    assert consumer_group not in broker._adapter._operation_states
 
 
 def test_consumer_group_info_tracking(broker):
@@ -242,8 +252,8 @@ def test_consumer_group_info_tracking(broker):
     consumer_group = "test_group"
 
     # Create consumer group for multiple streams
-    broker._ensure_group(consumer_group, stream1)
-    broker._ensure_group(consumer_group, stream2)
+    broker._create_group(stream1, consumer_group)
+    broker._create_group(stream2, consumer_group)
 
     # Publish and consume messages
     broker.publish(stream1, {"stream": 1})
@@ -252,16 +262,11 @@ def test_consumer_group_info_tracking(broker):
     broker.get_next(stream1, consumer_group)
     broker.get_next(stream2, consumer_group)
 
-    # Get info
-    info = broker._info()
+    # Get consumer group info
+    groups = broker._consumer_groups()
 
-    # Verify consumer group info
-    assert "consumer_groups" in info
-    assert consumer_group in info["consumer_groups"]
-
-    group_info = info["consumer_groups"][consumer_group]
-    assert "in_flight_messages" in group_info
-    assert stream1 in group_info["in_flight_messages"]
-    assert stream2 in group_info["in_flight_messages"]
-    assert group_info["in_flight_messages"][stream1] == 1
-    assert group_info["in_flight_messages"][stream2] == 1
+    # Verify consumer group info: one pending message on each stream
+    assert consumer_group in groups
+    assert groups[consumer_group]["pending"] == 2
+    assert len(broker._adapter._in_flight[f"{stream1}:{consumer_group}"]) == 1
+    assert len(broker._adapter._in_flight[f"{stream2}:{consumer_group}"]) == 1

@@ -22,10 +22,10 @@ from typing import Any, ClassVar, Protocol
 
 from protean.core.entity import BaseEntity
 from protean.core.queryset import ResultSet
-from protean.port.provider import (
+from protean.port.database import (
     DatabaseCapabilities,
     DatabaseModelPort,
-    ProviderPort,
+    DatabasePort,
     SessionProtocol,
 )
 from protean.utils.query import Q
@@ -84,7 +84,7 @@ class DAOPort(Protocol):
     supplies no constructor body.
     """
 
-    provider: ProviderPort
+    provider: DatabasePort
     entity_cls: type[BaseEntity]
     database_model_cls: type[DatabaseModelPort]
     schema_name: str

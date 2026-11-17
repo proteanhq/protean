@@ -2,7 +2,11 @@ import pytest
 
 from protean.core.entity import BaseEntity
 from protean.core.repository import BaseRepository
-from protean.exceptions import IncorrectUsageError, NotSupportedError
+from protean.exceptions import (
+    ConfigurationError,
+    IncorrectUsageError,
+    NotSupportedError,
+)
 from protean.fields import String
 from protean.utils import _fully_qualified_name
 from tests.shared import ELASTICSEARCH_URI
@@ -102,10 +106,10 @@ class TestRepositoryRegistration:
         )
         assert (
             "ALL"
-            in test_domain.providers._repositories[_fully_qualified_name(GenericUser)]
+            in test_domain.databases._repositories[_fully_qualified_name(GenericUser)]
         )
         assert (
-            test_domain.providers._repositories[_fully_qualified_name(GenericUser)][
+            test_domain.databases._repositories[_fully_qualified_name(GenericUser)][
                 "ALL"
             ].__name__
             == "GenericUserRepository"
@@ -123,12 +127,12 @@ class TestRepositoryRegistration:
         class User:
             name: String()
 
-        @test_domain.repository(part_of=User, database="memory")
+        @test_domain.repository(part_of=User, database_type="memory")
         class UserMemoryRepository:
             def special_method(self):
                 pass
 
-        @test_domain.repository(part_of=User, database="elasticsearch")
+        @test_domain.repository(part_of=User, database_type="elasticsearch")
         class UserElasticRepository:
             def special_method(self):
                 pass
@@ -136,26 +140,28 @@ class TestRepositoryRegistration:
         assert isinstance(test_domain.repository_for(User), UserMemoryRepository)
 
         # Next, we test for a secondary database repository by relinking the User aggregate
-        @test_domain.aggregate(provider="secondary")
+        @test_domain.aggregate(database="secondary")
         class User:
             name: String()
 
         assert isinstance(test_domain.repository_for(User), UserElasticRepository)
 
-    def test_incorrect_usage_error_on_repositories_associated_with_invalid_databases(
+    def test_init_rejects_a_repository_bound_to_an_unknown_database_type(
         self, test_domain
     ):
-        @test_domain.aggregate(provider="secondary")
+        @test_domain.aggregate
         class User:
             name: String()
 
-        with pytest.raises(IncorrectUsageError) as exc:
+        @test_domain.repository(part_of=User, database_type="UNKNOWN")
+        class CustomUserRepository:
+            def special_method(self):
+                pass
 
-            @test_domain.repository(part_of=User, database="UNKNOWN")
-            class CustomUserRepository:
-                def special_method(self):
-                    pass
+        with pytest.raises(ConfigurationError) as exc:
+            test_domain.init(traverse=False)
 
-        assert exc.value.args[0] == (
-            "Repository `CustomUserRepository` should be associated with a valid Database"
+        assert exc.value.args[0].startswith(
+            "`CustomUserRepository` declares database_type `UNKNOWN`, which no "
+            "registered database adapter provides. Use `ALL` or one of: "
         )

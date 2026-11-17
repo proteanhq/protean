@@ -131,7 +131,7 @@ def _database_status(domain: Domain) -> dict[str, Any]:
 
     try:
         with domain.domain_context():
-            provider = domain.providers.get("default")
+            provider = domain.databases.get("default")
             if provider is not None:
                 result["status"] = "healthy"
             else:
@@ -144,7 +144,7 @@ def _database_status(domain: Domain) -> dict[str, Any]:
 
 
 def _broker_status(domain: Domain) -> dict[str, Any]:
-    """Check broker health using health_stats()."""
+    """Check broker health using health()."""
     result: dict[str, Any] = {
         "status": "unknown",
         "provider": "none",
@@ -165,7 +165,7 @@ def _broker_status(domain: Domain) -> dict[str, Any]:
                 result["status"] = "not_configured"
                 return result
 
-            stats = broker.health_stats()
+            stats = broker.health()
             is_connected = stats.get("connected", False)
             details = stats.get("details", {})
 

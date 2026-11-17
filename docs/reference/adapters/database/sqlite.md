@@ -114,8 +114,8 @@ constraints. The pattern is identical to
 
 The SQLite provider is built on SQLAlchemy, so it emits the same structured log
 events as the [PostgreSQL provider](./postgresql.md#slow-query-detection).
-These are the ``protean.adapters.repository.sqlalchemy.slow_query`` WARNING and
-the ``protean.adapters.repository.sqlalchemy.query`` DEBUG events. Configure
+These are the ``protean.adapters.database.sqlalchemy.slow_query`` WARNING and
+the ``protean.adapters.database.sqlalchemy.query`` DEBUG events. Configure
 the threshold via ``[logging].slow_query_threshold_ms`` in ``domain.toml``.
 
 ## Limitations

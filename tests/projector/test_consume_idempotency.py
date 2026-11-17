@@ -300,7 +300,7 @@ class TestConsumeIdempotencyRelational:
         # ``--sqlite`` only signals the flag is available; the active provider is
         # set by ``--db``. Skip when it is the in-memory provider, which does not
         # enforce unique indexes (so the duplicate insert would not be rejected).
-        if type(test_domain.providers["default"]).__name__ == "MemoryProvider":
+        if type(test_domain.databases["default"]).__name__ == "MemoryDatabase":
             pytest.skip("unique index is enforced only by relational providers")
 
         _register(test_domain, idempotent=True)

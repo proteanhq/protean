@@ -20,5 +20,5 @@ with domain.domain_context():
     repo.add(User(name="Tim", age=17))
     repo.add(User(name="Lin", age=40, status="inactive"))
 
-    results = domain.providers["default"].raw('{"age__gt": 21, "status": "active"}')
+    results = domain.databases["default"].raw('{"age__gt": 21, "status": "active"}')
 # --8<-- [end:full]

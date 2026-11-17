@@ -12,19 +12,19 @@ import sys
 
 import pytest
 
-from protean.adapters.repository.elasticsearch import ElasticsearchDAO, ESProvider
-from protean.adapters.repository.memory import DictDAO, MemoryProvider, MemorySession
-from protean.adapters.repository.sqlalchemy import (
+from protean.adapters.database.elasticsearch import ElasticsearchDAO, ESDatabase
+from protean.adapters.database.memory import DictDAO, MemoryDatabase, MemorySession
+from protean.adapters.database.sqlalchemy import (
     SADAO,
-    MssqlProvider,
-    MysqlProvider,
-    PostgresqlProvider,
-    SAProvider,
-    SqliteProvider,
+    MssqlDatabase,
+    MysqlDatabase,
+    PostgresqlDatabase,
+    SADatabase,
+    SqliteDatabase,
 )
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Integer, String
-from protean.port.provider import DatabaseCapabilities
+from protean.port.database import DatabaseCapabilities
 from protean.utils.query import Q
 
 
@@ -143,7 +143,7 @@ class TestNoUnitOfWorkLookup:
     def test_an_adapter_dao_never_reads_the_unit_of_work(self, adapter_cls):
         assert not _reads_the_unit_of_work(adapter_cls)
 
-    @pytest.mark.parametrize("cls", [MemorySession, MemoryProvider, SAProvider])
+    @pytest.mark.parametrize("cls", [MemorySession, MemoryDatabase, SADatabase])
     def test_the_scan_sees_a_class_that_reads_the_unit_of_work(self, cls):
         assert _reads_the_unit_of_work(cls)
 
@@ -156,11 +156,11 @@ class TestInsertIfAbsentDeclared:
     @pytest.mark.parametrize(
         "provider_cls",
         [
-            MemoryProvider,
-            PostgresqlProvider,
-            SqliteProvider,
-            MssqlProvider,
-            MysqlProvider,
+            MemoryDatabase,
+            PostgresqlDatabase,
+            SqliteDatabase,
+            MssqlDatabase,
+            MysqlDatabase,
         ],
     )
     def test_declared_by_each_transactional_provider(self, provider_cls):
@@ -170,7 +170,7 @@ class TestInsertIfAbsentDeclared:
         assert DatabaseCapabilities.INSERT_IF_ABSENT in provider.capabilities
 
     def test_not_declared_by_elasticsearch(self):
-        provider = object.__new__(ESProvider)
+        provider = object.__new__(ESDatabase)
 
         assert DatabaseCapabilities.INSERT_IF_ABSENT not in provider.capabilities
 

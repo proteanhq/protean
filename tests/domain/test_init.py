@@ -1,7 +1,7 @@
 from unittest.mock import Mock, patch
 
-from protean.adapters.broker import Brokers
-from protean.adapters.repository import Providers
+from protean.adapters.database import Databases
+from protean.infra.broker import Brokers
 from protean.infra.cache import Caches
 from protean.infra.event_store import EventStore
 
@@ -71,7 +71,7 @@ class TestDomainInitMethodCalls:
 
 
 class TestDomainInitializationCalls:
-    @patch.object(Providers, "_initialize")
+    @patch.object(Databases, "_initialize")
     def test_domain_initializes_providers(self, mock_initialize, test_domain):
         test_domain._initialize()
         mock_initialize.assert_called_once()

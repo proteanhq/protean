@@ -105,10 +105,10 @@ class TestManifestIsCurrent:
             (
                 "databases",
                 [
-                    "src/protean/adapters/repository/__init__.py",
+                    "src/protean/adapters/database/__init__.py",
                     "src/protean/infra/registry.py",
                     "src/protean/port/dao.py",
-                    "src/protean/port/provider.py",
+                    "src/protean/port/database.py",
                 ],
             ),
             (
@@ -132,7 +132,7 @@ class TestManifestIsCurrent:
     def test_every_adapter_includes_the_shared_modules_it_runs_on(
         self, manifest, suite, shared
     ):
-        # Every database adapter loads through Providers and the DAO and
+        # Every database adapter loads through Databases and the DAO and
         # provider ports, every broker through the Brokers collection, and
         # every event store through the EventStore service and its port.
         # Every database, broker and event store is resolved by
@@ -425,7 +425,7 @@ class TestSelect:
     ):
         legs = {
             e.leg
-            for e in manifest.select(["src/protean/adapters/repository/sqlalchemy.py"])
+            for e in manifest.select(["src/protean/adapters/database/sqlalchemy.py"])
         }
         assert legs == {"postgresql", "redis", "sqlite", "mssql", "mysql"}
 
@@ -683,7 +683,7 @@ class TestSelectAdaptersCli:
     def test_prints_the_matrix_for_the_changed_files(self, tmp_path: Path):
         changed = tmp_path / "changed.txt"
         changed.write_text(
-            "src/protean/adapters/repository/elasticsearch.py\n\ndocs/x.md\n"
+            "src/protean/adapters/database/elasticsearch.py\n\ndocs/x.md\n"
         )
         with patch("protean.cli.test.TestRunner.run_command") as run:
             result = CliRunner().invoke(app, ["test", "select-adapters", str(changed)])

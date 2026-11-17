@@ -84,7 +84,7 @@ def _inline_broker(tmp_path, text=None):
     domain = domain_from_config(RETRY_OPTIONS, tmp_path, text=text)
     domain.init(traverse=False)
     with domain.domain_context():
-        broker = domain.brokers["default"]
+        broker = domain.brokers["default"]._adapter
     assert type(broker) is InlineBroker
     return broker
 
@@ -129,7 +129,7 @@ def test_development_section_uses_the_inline_broker(tmp_path, monkeypatch):
     domain.init(traverse=False)
 
     with domain.domain_context():
-        assert type(domain.brokers["default"]) is InlineBroker
+        assert type(domain.brokers["default"]._adapter) is InlineBroker
 
 
 def test_changed_development_provider_is_read(tmp_path, monkeypatch):
@@ -158,8 +158,8 @@ def test_production_section_uses_the_redis_broker(tmp_path, monkeypatch):
     with domain.domain_context():
         broker = domain.brokers["default"]
 
-    assert type(broker) is RedisBroker
-    assert broker.redis_instance.connection_pool.connection_kwargs["db"] == 7
+    assert type(broker._adapter) is RedisBroker
+    assert broker.get_connection().connection_pool.connection_kwargs["db"] == 7
 
 
 def test_production_section_defaults_to_the_documented_uri(tmp_path, monkeypatch):

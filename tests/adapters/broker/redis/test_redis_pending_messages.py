@@ -12,8 +12,8 @@ from protean.adapters.broker.redis import RedisBroker
 def redis_broker(test_domain):
     """Get the default Redis broker from test domain."""
     broker = test_domain.brokers["default"]
-    # Ensure it's a Redis broker
-    assert isinstance(broker, RedisBroker)
+    # Ensure it wraps a Redis broker
+    assert isinstance(broker._adapter, RedisBroker)
     return broker
 
 
@@ -112,7 +112,7 @@ class TestRedisPendingMessages:
         read_messages = redis_broker.read(stream, consumer_group, 5)
         assert len(read_messages) == 5
 
-        # All messages are now pending, but _get_next won't return them
+        # All messages are now pending, but get_next won't return them
         # because it prioritizes new messages to avoid duplicates
         pending_result = redis_broker.get_next(stream, consumer_group)
         # Should return None since there are no new messages
@@ -150,11 +150,11 @@ class TestRedisPendingMessages:
         result2 = redis_broker.get_next(stream, consumer_group)
         assert result2 is None  # No new messages
 
-        # Verify it's still in pending list via info
-        info = redis_broker.info()
-        assert stream in info["consumer_groups"]
-        assert consumer_group in info["consumer_groups"][stream]
-        assert info["consumer_groups"][stream][consumer_group]["pending"] > 0
+        # Verify it's still in pending list via the consumer groups
+        assert stream in redis_broker._adapter._get_streams_to_check()
+        groups = redis_broker._consumer_groups()
+        assert consumer_group in groups
+        assert groups[consumer_group]["pending"] > 0
 
     def test_ack_removes_from_pending(self, redis_broker):
         """Test that ACK removes message from pending list"""
@@ -170,8 +170,8 @@ class TestRedisPendingMessages:
         assert result is not None
 
         # Check pending count before ACK
-        info = redis_broker.info()
-        pending_before = info["consumer_groups"][stream][consumer_group]["pending"]
+        groups = redis_broker._consumer_groups()
+        pending_before = groups[consumer_group]["pending"]
         assert pending_before > 0
 
         # ACK the message
@@ -179,8 +179,8 @@ class TestRedisPendingMessages:
         assert ack_success is True
 
         # Check pending count after ACK
-        info = redis_broker.info()
-        pending_after = info["consumer_groups"][stream][consumer_group]["pending"]
+        groups = redis_broker._consumer_groups()
+        pending_after = groups[consumer_group]["pending"]
         assert pending_after == 0
 
         # Reading again should return None (no messages)
@@ -281,7 +281,7 @@ class TestRedisPendingMessages:
 
         # Read again with count=3 - will get new messages first, not pending
         batch2 = redis_broker.read(stream, consumer_group, 3)
-        # With the updated _read implementation, new messages are prioritized
+        # With the updated read implementation, new messages are prioritized
         # So batch2 should contain new messages (indices 5, 6, 7)
         if len(batch2) > 0:
             batch2_ids = {msg[0] for msg in batch2}
@@ -324,7 +324,7 @@ class TestRedisPendingMessages:
         assert len(messages) == 1
 
         # Create a new broker instance
-        new_broker = RedisBroker("test_new", test_domain, redis_broker.conn_info)
+        new_broker = RedisBroker("test_new", test_domain, redis_broker._adapter.config)
 
         # The pending message should be available to the same consumer
         messages2 = new_broker.read_blocking(

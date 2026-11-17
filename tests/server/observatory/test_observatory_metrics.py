@@ -14,7 +14,8 @@ import pytest
 import redis
 from fastapi.testclient import TestClient
 
-from protean.port.provider import ProviderHealth
+from protean.port.broker import BrokerHealth
+from protean.port.database import DatabaseHealth
 from protean.server.observatory import Observatory, metrics
 from protean.server.observatory.metrics import _scrape_cache, _ScrapeCache
 from tests.shared import provider_adapter
@@ -117,7 +118,7 @@ def _fake_redis(groups=(), consumers_by_group=None, used_memory=1024):
     real Redis broker is faked.
     """
     consumers_by_group = consumers_by_group or {}
-    fake = MagicMock()
+    fake = MagicMock(spec=redis.Redis)
     fake.ping.return_value = True
     fake.info.return_value = {"used_memory": used_memory, "connected_clients": 2}
     fake.scan.return_value = (0, [b"test::stream"])
@@ -131,7 +132,7 @@ def _fake_redis(groups=(), consumers_by_group=None, used_memory=1024):
 
 
 def _use_fake_redis(domain, monkeypatch, fake):
-    monkeypatch.setattr(domain.brokers["default"], "redis_instance", fake)
+    monkeypatch.setattr(domain.brokers["default"]._adapter, "redis_instance", fake)
 
 
 @pytest.mark.redis
@@ -141,7 +142,7 @@ class TestPerConsumerMetrics:
     def test_consumer_metrics_appear_after_xreadgroup(self, test_domain):
         """Per-consumer metrics appear once a consumer reads from a stream."""
         broker = test_domain.brokers.get("default")
-        redis_conn = broker.redis_instance
+        redis_conn = broker.get_connection()
 
         stream = "metrics-test::consumer-gauges"
         group = "MetricsConsumerGroup"
@@ -167,7 +168,7 @@ class TestPerConsumerMetrics:
     def test_consumer_metrics_help_and_type(self, test_domain):
         """Per-consumer metrics have HELP and TYPE annotations."""
         broker = test_domain.brokers.get("default")
-        redis_conn = broker.redis_instance
+        redis_conn = broker.get_connection()
 
         stream = "metrics-test::consumer-help"
         group = "HelpTestGroup"
@@ -546,8 +547,19 @@ HEALTH_DETAILS = {
 }
 
 
+def _health_record() -> BrokerHealth:
+    """The adapter health record whose envelope details equal HEALTH_DETAILS."""
+    details = dict(HEALTH_DETAILS)
+    return BrokerHealth(
+        healthy=details.pop("healthy"),
+        message_counts=details.pop("message_counts"),
+        consumer_groups=details.pop("consumer_groups"),
+        details=details,
+    )
+
+
 def _fake_redis_with_consumers():
-    fake = MagicMock()
+    fake = MagicMock(spec=redis.Redis)
     fake.ping.return_value = True
     fake.scan.return_value = (0, [b"orders::order"])
     fake.xinfo_groups.return_value = [
@@ -572,8 +584,9 @@ def _fake_redis_with_consumers():
 @pytest.fixture
 def full_text_client(test_domain, monkeypatch):
     broker = test_domain.brokers["default"]
-    monkeypatch.setattr(broker, "redis_instance", _fake_redis_with_consumers())
-    monkeypatch.setattr(broker, "_health_stats", lambda: dict(HEALTH_DETAILS))
+    fake = _fake_redis_with_consumers()
+    monkeypatch.setattr(broker._adapter, "redis_instance", fake)
+    monkeypatch.setattr(broker._adapter, "health", _health_record)
     subscriptions = [
         SimpleNamespace(
             handler_name="OrderHandler",
@@ -715,7 +728,7 @@ def test_failing_broker_health_check_keeps_the_consumer_section(
     """The per-consumer gauges read Redis directly, so a broker health check
     that raises drops only the broker and stream gauges."""
     broker = test_domain.brokers["default"]
-    monkeypatch.setattr(broker, "health_stats", _fail)
+    monkeypatch.setattr(broker, "health", _fail)
 
     response = full_text_client.get("/metrics")
 
@@ -771,7 +784,7 @@ def test_broker_up_needs_a_connected_and_healthy_broker(
 ):
     monkeypatch.setattr(
         test_domain.brokers["default"],
-        "health_stats",
+        "health",
         lambda: {"connected": connected, "details": {"healthy": healthy}},
     )
 
@@ -786,7 +799,7 @@ def test_broker_up_needs_a_connected_and_healthy_broker(
 def test_pool_stats_list_each_provider_that_reports_a_pool(test_domain, monkeypatch):
     provider = provider_adapter(test_domain, "default")
     monkeypatch.setattr(
-        provider, "health", lambda: ProviderHealth(pool={"size": 5, "checked_out": 2})
+        provider, "health", lambda: DatabaseHealth(pool={"size": 5, "checked_out": 2})
     )
 
     assert metrics._collect_pool_stats([test_domain]) == [
@@ -802,9 +815,9 @@ def test_broker_pool_stats_read_the_redis_connection_pool(test_domain, monkeypat
     pool = redis.ConnectionPool(max_connections=10)
     pool._created_connections = 3
     pool._available_connections = [object()]
-    fake = MagicMock()
+    fake = MagicMock(spec=redis.Redis)
     fake.connection_pool = pool
-    monkeypatch.setattr(test_domain.brokers["default"], "redis_instance", fake)
+    monkeypatch.setattr(test_domain.brokers["default"]._adapter, "redis_instance", fake)
 
     assert metrics._collect_broker_pool_stats([test_domain]) == [("default", 2, 1, 10)]
 
@@ -815,8 +828,7 @@ class _RaisingPoolAdapter:
     def health(self):
         raise RuntimeError("pool down")
 
-    @property
-    def redis_instance(self):
+    def get_connection(self):
         raise RuntimeError("pool down")
 
 
@@ -836,13 +848,13 @@ def test_pool_stats_keep_the_rows_before_a_provider_that_raises(
     test_domain, monkeypatch
 ):
     provider = provider_adapter(test_domain, "default")
-    monkeypatch.setattr(provider, "health", lambda: ProviderHealth(pool={"size": 5}))
+    monkeypatch.setattr(provider, "health", lambda: DatabaseHealth(pool={"size": 5}))
     analytics = SimpleNamespace(
-        database_type="SQLITE", health=lambda: ProviderHealth(pool={"size": 2})
+        database_type="SQLITE", health=lambda: DatabaseHealth(pool={"size": 2})
     )
 
     with _extra_entries(
-        test_domain.providers._providers,
+        test_domain.databases._databases,
         analytics=analytics,
         broken=_RaisingPoolAdapter(),
     ):
@@ -857,7 +869,8 @@ def test_pool_stats_keep_the_rows_before_a_provider_that_raises(
 def test_broker_pool_stats_keep_the_rows_before_a_broker_that_raises(test_domain):
     pool = redis.ConnectionPool(max_connections=10)
     pool._created_connections = 3
-    events = SimpleNamespace(redis_instance=MagicMock(connection_pool=pool))
+    client = MagicMock(spec=redis.Redis, connection_pool=pool)
+    events = SimpleNamespace(get_connection=lambda: client)
 
     with _extra_entries(
         test_domain.brokers._brokers, events=events, broken=_RaisingPoolAdapter()

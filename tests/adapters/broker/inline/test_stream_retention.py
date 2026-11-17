@@ -25,7 +25,7 @@ class TestInlineBrokerTrim:
 
         assert removed == 0
         # All ten messages are still stored; nothing was trimmed away.
-        assert len(broker._messages[stream]) == 10
+        assert len(broker._adapter._messages[stream]) == 10
 
     def test_base_broker_trim_default_is_noop(self, broker):
         """The BaseBroker default trim() (shadowed by the inline override) returns 0.
@@ -33,4 +33,4 @@ class TestInlineBrokerTrim:
         Calling the unbound base method exercises the port-level default that
         brokers without a persistent stream fall back to.
         """
-        assert BaseBroker.trim(broker, "test_stream", 5) == 0
+        assert BaseBroker.trim(broker._adapter, "test_stream", 5) == 0

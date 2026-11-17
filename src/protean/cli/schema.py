@@ -153,7 +153,7 @@ def write_index_ddl(
     of written paths. This is the database-agnostic path: it never executes
     DDL, only renders it for review or manual application.
     """
-    from protean.adapters.repository.sqlalchemy import (  # noqa: PLC0415
+    from protean.adapters.database.sqlalchemy import (  # noqa: PLC0415
         check_index_ddl_dialect,
     )
 
@@ -195,7 +195,7 @@ def _write_element_index_ddl(
     Skips a ``(schema_name, dialect)`` pair already in *seen* and adds each new
     pair to it. Writes no file for a dialect that renders no statement.
     """
-    from protean.adapters.repository.sqlalchemy import (  # noqa: PLC0415
+    from protean.adapters.database.sqlalchemy import (  # noqa: PLC0415
         render_index_ddl,
     )
 
@@ -279,7 +279,7 @@ def render(
         print("[red]Error:[/red] --indexes requires --domain (live index declarations)")
         raise typer.Abort()
 
-    from protean.adapters.repository.sqlalchemy import (  # noqa: PLC0415
+    from protean.adapters.database.sqlalchemy import (  # noqa: PLC0415
         check_index_ddl_dialect,
     )
 

@@ -440,7 +440,7 @@ def build_database_model_domain() -> Domain:
     domain.register(
         CustomerReportModel,
         part_of=Customer,
-        database="reporting",
+        database_type="elasticsearch",
         schema_name="customer_reports",
     )
 

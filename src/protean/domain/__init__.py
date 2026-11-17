@@ -81,7 +81,7 @@ if TYPE_CHECKING:
 
 from inflection import parameterize, titleize, transliterate, underscore
 
-from protean.adapters import Brokers, Caches, Providers
+from protean.adapters import Caches, Databases
 from protean.core.aggregate import aggregate_factory
 from protean.core.application_service import application_service_factory
 from protean.core.command import BaseCommand, command_factory
@@ -134,6 +134,7 @@ from protean.fields import (
     List as ListField,
 )
 from protean.fields.basic import ValueObjectList
+from protean.infra.broker import Brokers
 from protean.infra.causation import CausationNode
 from protean.infra.event_store import EventStore
 from protean.integrations.logging import (
@@ -381,7 +382,7 @@ class Domain:
         # :class:`protean.utils.Clock`.
         self.clock: Clock = SystemClock()
 
-        self.providers: Providers = Providers(self)
+        self.databases: Databases = Databases(self)
         self.event_store: EventStore = EventStore(self)
         self.brokers: Brokers = Brokers(self)
         self.caches: Caches = Caches(self)
@@ -389,10 +390,10 @@ class Domain:
         self._router: MessageRouter = MessageRouter()
 
         # Cache for holding Model to Entity/Aggregate associations.
-        # Structure mirrors Providers._repositories: keyed by the element's
+        # Structure mirrors Databases._repositories: keyed by the element's
         # fully qualified name, then by database type. A model registered
-        # with database=None sits under the None key and is the fallback for
-        # any provider.
+        # with database_type=None sits under the None key and is the fallback
+        # for any database type.
         self._database_models: dict[str, dict[str | None, type[BaseDatabaseModel]]] = (
             defaultdict(dict)
         )
@@ -435,6 +436,10 @@ class Domain:
         # Event classes that have already emitted a raise-time deprecation
         # warning, so a deprecated event warns once per type, not per instance.
         self._deprecated_events_warned: set[type] = set()
+
+        # Set once ``init()`` has validated the elements registered before it,
+        # so a later repository or database model is checked as it registers.
+        self._validated = False
 
         # Lazy-initialized idempotency store
         self._idempotency_store: IdempotencyStore | None = None
@@ -700,6 +705,7 @@ class Domain:
             self._missing_config_dir = None
 
         self._prepare(traverse=traverse)
+        self._validated = True
 
         # Initialize adapters after loading domain
         self._initialize(connect=connect)
@@ -707,7 +713,7 @@ class Domain:
         # An identity a SQL column cannot hold (an integer under the uuid
         # strategy overflows every SQL integer column) would only fail on the
         # first save; needs live providers, so it runs after _initialize().
-        self.providers.validate_identity_capacity()
+        self.databases.validate_identity_capacity()
 
         # Gate sequential_by handlers on broker STREAM_PARTITIONING support
         # (ADR-0028); needs live brokers, so it runs after _initialize().
@@ -730,21 +736,21 @@ class Domain:
         Markers live only in configured, managed providers. Running such a
         subscriber without deduplication would ignore its explicit opt-in.
         """
-        providers = self.providers._providers or {}
+        providers = self.databases._databases or {}
         for record in self.registry.subscribers.values():
             meta = record.cls.meta_
             if not meta.idempotent:
                 continue
-            provider = providers.get(meta.provider)
+            provider = providers.get(meta.database)
             if provider is None:
                 raise ConfigurationError(
-                    f"Idempotent subscriber `{record.cls.__name__}` uses provider "
-                    f"`{meta.provider}`, which is not configured"
+                    f"Idempotent subscriber `{record.cls.__name__}` uses database "
+                    f"`{meta.database}`, which is not configured"
                 )
             if not provider.managed:
                 raise ConfigurationError(
-                    f"Idempotent subscriber `{record.cls.__name__}` uses provider "
-                    f"`{meta.provider}`, which is not managed and so has no "
+                    f"Idempotent subscriber `{record.cls.__name__}` uses database "
+                    f"`{meta.database}`, which is not managed and so has no "
                     "marker store"
                 )
 
@@ -961,7 +967,7 @@ class Domain:
         With ``connect=False``, the database providers are created without
         the connection check.
         """
-        self.providers._initialize(connect=connect)
+        self.databases._initialize(connect=connect)
         self.caches._initialize()
         self.brokers._initialize()
         self.event_store._initialize()
@@ -983,7 +989,7 @@ class Domain:
             ("event store", self.event_store),
             ("brokers", self.brokers),
             ("caches", self.caches),
-            ("providers", self.providers),
+            ("databases", self.databases),
         ]
         for name, closeable in closeables:
             try:
@@ -1105,7 +1111,7 @@ class Domain:
                 database type is already recorded.
         """
         entity_key = fqn(model_cls.meta_.part_of)
-        db_key = model_cls.meta_.database  # e.g., "postgresql", "sqlite", or None
+        db_key = model_cls.meta_.database_type  # e.g., "postgresql", "sqlite", or None
         if db_key in self._database_models[entity_key]:
             raise IncorrectUsageError(
                 f"A database model for `{model_cls.meta_.part_of.__name__}` "
@@ -1142,6 +1148,12 @@ class Domain:
         # that are not visible on the bare ``type[_T]`` type parameter, so we
         # treat it as Any internally and re-narrow to ``type[_T]`` at return.
         new_cls: Any = factory(element_cls, self, **opts)
+
+        if self._validated and element_type in (
+            DomainObjects.REPOSITORY,
+            DomainObjects.DATABASE_MODEL,
+        ):
+            self.databases.validate_database_types([new_cls])
 
         # A string ``part_of`` is filed once ``domain.init()`` resolves it.
         if element_type == DomainObjects.DATABASE_MODEL and not isinstance(
@@ -2357,7 +2369,7 @@ class Domain:
                 )
 
             # This is a regular aggregate or a projection
-            repository = self.providers.repository_for(element_cls)
+            repository = self.databases.repository_for(element_cls)
         return repository
 
     def _event_sourced_repository_for(
@@ -2511,7 +2523,7 @@ class Domain:
         if projection.meta_.cache:
             return self.caches.get_connection(projection.meta_.cache)
         else:
-            return self.providers.get_connection(projection.meta_.provider)
+            return self.databases.get_connection(projection.meta_.database)
 
     ##########################
     # Snapshot Functionality #

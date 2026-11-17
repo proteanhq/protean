@@ -346,7 +346,7 @@ class TestRepositoryDatabaseOption:
         class Order:
             name = String(max_length=100)
 
-        @domain.repository(part_of=Order, database="memory")
+        @domain.repository(part_of=Order, database_type="memory")
         class OrderMemoryRepository:
             pass
 

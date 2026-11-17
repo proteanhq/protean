@@ -9,15 +9,17 @@ Pydantic's native machinery remains; FieldSpec itself is not stored on the class
 import contextlib
 import datetime as _dt
 import decimal
+import functools
 import inspect
 import warnings
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from enum import Enum
 from typing import Annotated, Any, Literal, final, get_args, get_origin
 from uuid import uuid4
 
 from pydantic import AfterValidator, BeforeValidator
 from pydantic import Field as PydanticField
+from pydantic_core import PydanticCustomError
 
 from protean.exceptions import ConfigurationError
 from protean.exceptions import ValidationError as ProteanValidationError
@@ -485,6 +487,16 @@ def _type_coercion_validators(spec: FieldSpec) -> list[Any]:
         # read the element type and expect a plain ``datetime``.
         validators.append(AfterValidator(_stdlib_timezone_each))
 
+    # Before, not after: Pydantic's lax mode has already turned a bool into
+    # ``1`` or ``1.0`` by the time an after-validator sees it.
+    if spec.python_type is int or spec.python_type is float:
+        validators.append(BeforeValidator(_reject_bool))
+    elif depth := _numeric_list_depth(spec.python_type):
+        # On the list itself, for the same reason as the datetime list above.
+        validators.append(
+            BeforeValidator(functools.partial(_reject_bool_each, depth=depth))
+        )
+
     return validators
 
 
@@ -697,6 +709,71 @@ def _is_datetime_list(tp: Any) -> bool:
     if get_origin(tp) is not list or len(args) != 1:
         return False
     return args[0] is _dt.datetime or _is_datetime_list(args[0])
+
+
+def _numeric_list_depth(tp: Any) -> int:
+    """How many lists deep ``tp`` nests before an ``int`` or ``float`` element.
+
+    Returns 0 when ``tp`` is not a list of numbers. An element declared with
+    ``choices`` resolves to a ``Literal`` of numbers and counts as numeric.
+    """
+    args = get_args(tp)
+    if get_origin(tp) is not list or len(args) != 1:
+        return 0
+    element = args[0]
+    if element is int or element is float or _is_numeric_literal(element):
+        return 1
+    inner = _numeric_list_depth(element)
+    return inner + 1 if inner else 0
+
+
+def _is_numeric_literal(tp: Any) -> bool:
+    """Whether ``tp`` is a ``Literal`` whose values are all ``int`` or ``float``."""
+    values = get_args(tp)
+    return (
+        get_origin(tp) is Literal
+        and bool(values)
+        and all(type(value) in (int, float) for value in values)
+    )
+
+
+def _reject_bool(v: Any) -> Any:
+    """Raise a Pydantic validation error for ``True`` or ``False``.
+
+    Any other value is returned unchanged.
+    """
+    if isinstance(v, bool):
+        raise PydanticCustomError(
+            "bool_not_number", "Input should be a valid number, not a boolean"
+        )
+    return v
+
+
+def _reject_bool_each(v: Any, depth: int = 1) -> Any:
+    """Apply :func:`_reject_bool` to each element of a list ``depth`` levels deep.
+
+    Every iterable Pydantic accepts as a list is checked, including a set, a
+    deque and a generator. A one-shot iterator is returned as a list holding
+    the same elements, since checking it consumes it. A value that is not an
+    iterable Pydantic accepts as a list is returned unchanged, so Pydantic
+    reports it as it did before.
+    """
+    if isinstance(v, (str, bytes, bytearray, Mapping)) or not isinstance(v, Iterable):
+        return v
+    # Walking a one-shot iterator consumes it, so Pydantic gets the list instead.
+    items = list(v) if isinstance(v, Iterator) else v
+    if depth == 1:
+        for item in items:
+            _reject_bool(item)
+        return items
+    originals = list(items)
+    checked = [_reject_bool_each(item, depth - 1) for item in originals]
+    # Keep the caller's value when no inner iterator had to be replaced.
+    if items is v and all(
+        new is old for new, old in zip(checked, originals, strict=True)
+    ):
+        return v
+    return checked
 
 
 def _coerce_to_str(v: Any) -> str:

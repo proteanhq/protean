@@ -67,7 +67,7 @@ def _init_with_in_memory(domain):
     """Initialize telemetry with in-memory exporters for testing.
 
     Returns (tracer_provider, span_exporter, metric_reader) so tests can
-    inspect captured spans and metrics.  Providers are stashed on the domain
+    inspect captured spans and metrics.  OpenTelemetry providers are stashed on the domain
     just like ``init_telemetry`` does, but without touching OTEL globals.
     """
     from opentelemetry.sdk.resources import Resource

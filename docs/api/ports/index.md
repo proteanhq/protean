@@ -8,21 +8,21 @@ For concrete adapter documentation, see
 
 <div class="grid cards" markdown>
 
--   **:material-database: ProviderPort**
+-   **:material-database: DatabasePort**
 
     ---
 
     Database provider interface for persistence adapters.
 
-    [:material-arrow-right-box: ProviderPort](provider.md)
+    [:material-arrow-right-box: DatabasePort](database.md)
 
--   **:material-message-flash: BaseBroker**
+-   **:material-message-flash: BrokerPort**
 
     ---
 
     Message broker interface for event distribution.
 
-    [:material-arrow-right-box: BaseBroker](broker.md)
+    [:material-arrow-right-box: BrokerPort](broker.md)
 
 -   **:material-history: EventStorePort**
 

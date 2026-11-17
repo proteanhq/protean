@@ -4,12 +4,12 @@ from unittest.mock import PropertyMock, patch
 
 import pytest
 
-from protean.adapters.repository.memory import MemorySession
+from protean.adapters.database.memory import MemorySession
 from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import TransactionError
 from protean.fields import Integer, String
-from protean.port.provider import DatabaseCapabilities
+from protean.port.database import DatabaseCapabilities
 
 
 class Tally(BaseAggregate):
@@ -50,7 +50,7 @@ def test_rollback_restores_versions_when_the_provider_has_real_transactions(
     test_domain,
 ):
     tally = _saved_tally(test_domain)
-    provider_cls = type(test_domain.providers["default"])
+    provider_cls = type(test_domain.databases["default"])
 
     with patch.object(
         provider_cls,
@@ -68,7 +68,7 @@ def test_rollback_keeps_the_written_version_when_the_provider_has_no_transaction
     test_domain,
 ):
     tally = _saved_tally(test_domain)
-    provider_cls = type(test_domain.providers["default"])
+    provider_cls = type(test_domain.databases["default"])
 
     # The memory session buffers writes until commit, so a rollback alone would
     # discard the write. Committing on rollback makes it behave like a store
@@ -97,7 +97,7 @@ def test_failure_in_a_later_provider_keeps_the_earlier_provider_committed(
 
     test_domain.config["databases"]["secondary"] = {"provider": "memory"}
     test_domain._initialize()
-    test_domain.register(Counter, provider="secondary")
+    test_domain.register(Counter, database="secondary")
     test_domain.init(traverse=False)
 
     tally = _saved_tally(test_domain)

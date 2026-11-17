@@ -3,8 +3,8 @@
 import pytest
 import sqlalchemy as sa
 
-from protean.adapters.repository.sqlalchemy import (
-    PostgresqlProvider,
+from protean.adapters.database.sqlalchemy import (
+    PostgresqlDatabase,
     SqlalchemyModel,
     _maybe_log_query,
 )
@@ -58,7 +58,7 @@ def test_configuration_shown_builds_a_postgresql_provider(tmp_path):
     domain.init(traverse=False)
 
     provider = provider_adapter(domain, "default")
-    assert type(provider) is PostgresqlProvider
+    assert type(provider) is PostgresqlDatabase
     url = provider._engine.url
     assert (url.host, url.port, url.database) == (
         "localhost",

@@ -33,7 +33,7 @@ def test_count_uses_a_flat_count(ticket_repo):
 
 @pytest.mark.database
 def test_a_wrapped_count_fails(ticket_repo):
-    engine = domain.providers["default"]._engine
+    engine = domain.databases["default"]._engine
     wrapped = "SELECT count(*) FROM (SELECT id FROM ticket LIMIT 5) AS anon_1"
 
     with pytest.raises(AssertionError):
@@ -76,7 +76,7 @@ def test_parent_inserted_before_children(order_repo, order):
 # --8<-- [start:explicit_engine]
 @pytest.mark.database
 def test_poll_on_an_explicit_engine(ticket_repo):
-    my_engine = domain.providers["default"]._engine
+    my_engine = domain.databases["default"]._engine
 
     with assert_query_count(1, engine=my_engine):
         ticket_repo.find_pending(limit=10)

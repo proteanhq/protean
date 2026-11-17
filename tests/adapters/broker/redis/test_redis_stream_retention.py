@@ -20,7 +20,7 @@ from tests.shared import REDIS_URI
 
 def _broker(test_domain) -> RedisBroker:
     broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
-    broker._data_reset()
+    broker.clear()
     return broker
 
 
@@ -50,8 +50,8 @@ class TestRedisStreamRetention:
 
         ids = [broker.publish(stream, {"n": i}) for i in range(10)]
 
-        broker._ensure_group("groupA", stream)
-        broker._ensure_group("groupB", stream)
+        broker.create_group(stream, "groupA")
+        broker.create_group(stream, "groupB")
 
         # Group A consumes everything; group B only the first three.
         assert _read_group(broker, "groupA", stream, 10) == ids
@@ -74,8 +74,8 @@ class TestRedisStreamRetention:
         broker = _broker(test_domain)
         stream = "orders"
 
-        broker._ensure_group("groupA", stream)
-        broker._ensure_group("groupB", stream)
+        broker.create_group(stream, "groupA")
+        broker.create_group(stream, "groupB")
         for i in range(10):
             broker.publish(stream, {"n": i})
 
@@ -97,7 +97,7 @@ class TestRedisStreamRetention:
         maxlen = 100
         for i in range(published):
             broker.publish(stream, {"n": i})
-        broker._ensure_group("solo", stream)
+        broker.create_group(stream, "solo")
 
         removed = broker.trim(stream, maxlen)
         xlen = broker._client.xlen(stream)

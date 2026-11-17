@@ -51,7 +51,7 @@ Session end:     drop schema for all providers
 
 Every Protean adapter exposes lifecycle methods designed for exactly this separation:
 
-### Database Providers (`domain.providers`)
+### Database Providers (`domain.databases`)
 
 | Method | Purpose |
 |--------|---------|
@@ -63,7 +63,7 @@ Every Protean adapter exposes lifecycle methods designed for exactly this separa
 
 | Method | Purpose |
 |--------|---------|
-| `broker._data_reset()` | Flush all messages and consumer group state |
+| `broker.clear()` | Flush all messages and consumer group state |
 
 ### Event Store (`domain.event_store`)
 
@@ -350,10 +350,10 @@ after the integration tests keep the integration fixture's database setting.
 def setup_database():
     domain.init()
     with domain.domain_context():
-        for provider in domain.providers.values():
+        for provider in domain.databases.values():
             provider.create_schema()
         yield
-        for provider in domain.providers.values():
+        for provider in domain.databases.values():
             provider.drop_schema()
 
 # Tests leak data into each other:
@@ -367,7 +367,7 @@ def test_no_orders_exist():
     assert len(orders.items) == 0  # FAILS: order from previous test
 ```
 
-Fix: use `DomainFixture.domain_context()`, which resets all data automatically. Or add a `function`-scoped `clean_data` fixture that calls `clear()` on all providers and the event store, and `_data_reset()` on all brokers.
+Fix: use `DomainFixture.domain_context()`, which resets all data automatically. Or add a `function`-scoped `clean_data` fixture that calls `clear()` on all providers, brokers and the event store.
 
 ### Recreating Schema Per Test
 
@@ -378,10 +378,10 @@ Fix: use `DomainFixture.domain_context()`, which resets all data automatically. 
 def setup_database():
     domain.init()
     with domain.domain_context():
-        for provider in domain.providers.values():
+        for provider in domain.databases.values():
             provider.create_schema()
         yield
-        for provider in domain.providers.values():
+        for provider in domain.databases.values():
             provider.drop_schema()
 ```
 
@@ -395,7 +395,7 @@ A fixture that recreates the schema per test is correct but slow. If you have 50
 @pytest.fixture(autouse=True)
 def clean_data():
     yield
-    for provider in domain.providers.values():
+    for provider in domain.databases.values():
         provider.clear()
     # Broker still has messages from the previous test!
 ```
@@ -434,7 +434,7 @@ The recommended approach is to use `DomainFixture` from `protean.integrations.py
 | Schema teardown | `domain.drop_database()` | Once per session |
 | Data truncation | `domain.truncate_database()` | On demand |
 | Data cleanup (database) | `provider.clear()` | After every test |
-| Data cleanup (broker) | `broker._data_reset()` | After every test |
+| Data cleanup (broker) | `broker.clear()` | After every test |
 | Data cleanup (event store) | `event_store.store.clear()` | After every test |
 
 `domain.truncate_database()` deletes all rows from every table while preserving

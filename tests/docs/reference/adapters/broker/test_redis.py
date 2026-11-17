@@ -42,7 +42,7 @@ def test_message_is_written_to_a_redis_stream(example):
 
 def test_pool_settings_reach_the_connection_pool(example):
     with example.domain.domain_context():
-        pool = example.domain.brokers["default"].redis_instance.connection_pool
+        pool = example.domain.brokers["default"].get_connection().connection_pool
 
     assert pool.max_connections == 10
     assert pool.connection_kwargs["socket_timeout"] == 5
@@ -56,8 +56,8 @@ def test_configuration_shown_sets_the_pool_options(tmp_path, monkeypatch):
     with domain.domain_context():
         broker = domain.brokers["default"]
 
-    assert isinstance(broker, RedisBroker)
-    pool = broker.redis_instance.connection_pool
+    assert isinstance(broker._adapter, RedisBroker)
+    pool = broker.get_connection().connection_pool
     assert pool.connection_kwargs["port"] == int(REDIS_URI.rsplit(":", 1)[1])
     assert pool.connection_kwargs["db"] == 7
     assert pool.max_connections == 10

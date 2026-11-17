@@ -162,7 +162,7 @@ def test_recreated_indexes_map_strings_as_keywords_and_keep_the_custom_model(
     with search_example.domain.domain_context():
         repo = search_example.domain.repository_for(search_example.Article)
         index = repo._database_model._index._name
-        connection = search_example.domain.providers["elasticsearch"].get_connection()
+        connection = search_example.domain.databases["elasticsearch"].get_connection()
         properties = connection.indices.get_mapping(index=index)[index]["mappings"][
             "properties"
         ]

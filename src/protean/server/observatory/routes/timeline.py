@@ -36,6 +36,7 @@ from protean.infra.causation import (
     build_tree_from_group,
     load_correlation_group,
 )
+from protean.server._redis import redis_client
 from protean.server.tracing import TRACE_STREAM, decode_trace, trace_number
 
 if TYPE_CHECKING:
@@ -531,11 +532,8 @@ def _load_traces_for_correlation(
         try:
             with d.domain_context():
                 broker = d.brokers.get("default")
-                if broker and hasattr(broker, "redis_instance"):
-                    # ``redis_instance`` is specific to the Redis broker adapters
-                    # and is not part of the BaseBroker contract; access it
-                    # dynamically after the ``hasattr`` guard.
-                    redis_conn = broker.redis_instance
+                redis_conn = redis_client(broker)
+                if redis_conn is not None:
                     break
         except Exception:  # a broken domain is skipped while looking for Redis; logged
             logger.debug(

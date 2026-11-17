@@ -58,8 +58,8 @@ classes for each of these components with its own implementation.
 
 ### Provider
 
-**Port**: `protean.port.provider.ProviderPort`, with
-`protean.port.provider.RawQueryProviderPort` for raw queries
+**Port**: `protean.port.database.DatabasePort`, with
+`protean.port.database.RawQueryDatabasePort` for raw queries
 
 The Provider is the main component responsible for interfacing with the
 specific database technology. It contains the configuration and setup needed
@@ -71,7 +71,7 @@ connections the application needs. It also implements the behavior
 specific to its database, such as connection pooling, transaction management,
 and query optimization.
 
-To add a new provider, subclass `BaseProvider` first, then `ProviderPort`, and
+To add a new provider, subclass `BaseDatabase` first, then `DatabasePort`, and
 implement the Port's members for your database technology.
 
 ### Data Access Object (DAO)
@@ -132,9 +132,9 @@ Implementing a model for your database technology can be slightly involved,
 as ORM packages can heavily depend upon internal structures. Every
 database package is structured differently. Consult existing models for
 PostgreSQL
-([SQLAlchemy](https://github.com/proteanhq/protean/blob/main/src/protean/adapters/repository/sqlalchemy.py#L139))
+([SQLAlchemy](https://github.com/proteanhq/protean/blob/main/src/protean/adapters/database/sqlalchemy.py))
 and Elasticsearch
-([Elasticsearch](https://github.com/proteanhq/protean/blob/main/src/protean/adapters/repository/elasticsearch.py#L43))
+([Elasticsearch](https://github.com/proteanhq/protean/blob/main/src/protean/adapters/database/elasticsearch.py))
 for examples on constructing model classes.
 
 Once you define a base model for your provider, Protean auto-generates the model
@@ -179,7 +179,7 @@ for full details.
 
 Providers are discovered dynamically through Python
 [entry points](https://packaging.python.org/en/latest/specifications/entry-points/).
-Built-in adapters register under the `protean.providers` (databases),
+Built-in adapters register under the `protean.databases` (databases),
 `protean.brokers` (brokers), `protean.event_stores` (event stores) and
 `protean.caches` (caches) entry-point groups. Third-party adapter packages
 register in the same way, making them automatically available after

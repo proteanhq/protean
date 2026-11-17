@@ -4,10 +4,10 @@ An adapter package registers a name with a dotted class path, usually from a
 ``register()`` function it declares as an entry point in the port's group:
 
 ==================  ========================  ==========================
-Instance            Entry-point group         Port base class
+Instance            Entry-point group         Port type
 ==================  ========================  ==========================
-``providers``       ``protean.providers``     ``BaseProvider``
-``brokers``         ``protean.brokers``       ``BaseBroker``
+``databases``       ``protean.databases``     ``BaseDatabase``
+``brokers``         ``protean.brokers``       ``BrokerPort``
 ``event_stores``    ``protean.event_stores``  ``BaseEventStore``
 ``caches``          ``protean.caches``        ``CachePort``
 ==================  ========================  ==========================
@@ -23,10 +23,10 @@ from protean.port.dao import REQUIRED_LOOKUPS, LookupPort
 
 if TYPE_CHECKING:
     # Runtime imports would cycle: the adapter modules import this one.
-    from protean.port.broker import BaseBroker
+    from protean.port.broker import BrokerPort
     from protean.port.cache import CachePort
+    from protean.port.database import BaseDatabase
     from protean.port.event_store import BaseEventStore
-    from protean.port.provider import BaseProvider
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,8 @@ class AdapterRegistry(Generic[PortT]):
         port_name: The port's display name, used in error messages.
         after_load: Called with the name and class after each successful
             ``get()``, for checks that apply to one port only.
+        renamed_from: The group's earlier name. Discovery logs a warning that
+            names each entry point still declared under it, and loads none.
     """
 
     def __init__(
@@ -54,10 +56,12 @@ class AdapterRegistry(Generic[PortT]):
         group: str,
         port_name: str,
         after_load: Callable[[str, type[PortT]], None] | None = None,
+        renamed_from: str | None = None,
     ) -> None:
         self.group = group
         self.port_name = port_name
         self.after_load = after_load
+        self.renamed_from = renamed_from
         self._paths: dict[str, str] = {}
         self._discovered = False
 
@@ -66,7 +70,11 @@ class AdapterRegistry(Generic[PortT]):
         if self._discovered:
             return
 
-        for entry_point in metadata.entry_points().select(group=self.group):
+        entry_points = metadata.entry_points()
+        if self.renamed_from:
+            self._warn_about_the_old_group(entry_points, self.renamed_from)
+
+        for entry_point in entry_points.select(group=self.group):
             try:
                 register_func = entry_point.load()
                 register_func()
@@ -82,6 +90,19 @@ class AdapterRegistry(Generic[PortT]):
                 )
 
         self._discovered = True
+
+    def _warn_about_the_old_group(
+        self, entry_points: metadata.EntryPoints, old_group: str
+    ) -> None:
+        """Log a warning naming each entry point declared under ``old_group``."""
+        stale = sorted(
+            entry_point.name for entry_point in entry_points.select(group=old_group)
+        )
+        if stale:
+            logger.warning(
+                f"Ignoring {self.port_name} plugin(s) {', '.join(stale)}: the "
+                f"entry-point group '{old_group}' is now '{self.group}'."
+            )
 
     def register(self, name: str, class_path: str) -> None:
         """Map ``name`` to the dotted path of an adapter class.
@@ -105,7 +126,7 @@ class AdapterRegistry(Generic[PortT]):
                 is not an absolute ``module.ClassName`` path, importing the module raises ``ImportError``,
                 the module has no such class, the class leaves abstract
                 members unimplemented, or the ``after_load`` check rejects it,
-                as the providers registry does for a provider class that lacks
+                as the databases registry does for a provider class that lacks
                 a required lookup.
         """
         self._discover_plugins()
@@ -156,7 +177,7 @@ class AdapterRegistry(Generic[PortT]):
         self._paths.clear()
 
 
-def _check_required_lookups(name: str, provider_cls: type["BaseProvider"]) -> None:
+def _check_required_lookups(name: str, provider_cls: type["BaseDatabase"]) -> None:
     """Raise ``ConfigurationError`` naming the provider and every lookup in
     ``REQUIRED_LOOKUPS`` that ``provider_cls`` does not register, or registers
     as a class that does not subclass ``LookupPort``."""
@@ -181,10 +202,13 @@ def _check_required_lookups(name: str, provider_cls: type["BaseProvider"]) -> No
         )
 
 
-providers: AdapterRegistry["BaseProvider"] = AdapterRegistry(
-    "protean.providers", "database provider", after_load=_check_required_lookups
+databases: AdapterRegistry["BaseDatabase"] = AdapterRegistry(
+    "protean.databases",
+    "database provider",
+    after_load=_check_required_lookups,
+    renamed_from="protean.providers",
 )
-brokers: AdapterRegistry["BaseBroker"] = AdapterRegistry("protean.brokers", "broker")
+brokers: AdapterRegistry["BrokerPort"] = AdapterRegistry("protean.brokers", "broker")
 event_stores: AdapterRegistry["BaseEventStore"] = AdapterRegistry(
     "protean.event_stores", "event store"
 )

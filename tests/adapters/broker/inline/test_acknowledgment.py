@@ -22,14 +22,14 @@ def test_ack_removes_from_in_flight_tracking(broker):
     assert retrieved_message is not None
 
     # Verify message is in-flight
-    assert broker._is_in_flight_message(stream, consumer_group, identifier)
+    assert broker._adapter._is_in_flight_message(stream, consumer_group, identifier)
 
     # Acknowledge the message
     ack_result = broker.ack(stream, identifier, consumer_group)
     assert ack_result is True
 
     # Verify message is no longer in-flight
-    assert not broker._is_in_flight_message(stream, consumer_group, identifier)
+    assert not broker._adapter._is_in_flight_message(stream, consumer_group, identifier)
 
 
 def test_ack_cleans_up_message_ownership(broker):
@@ -44,7 +44,7 @@ def test_ack_cleans_up_message_ownership(broker):
     assert retrieved_message is not None
 
     # Verify message ownership exists
-    assert broker._validate_message_ownership(identifier, consumer_group)
+    assert broker._adapter._validate_message_ownership(identifier, consumer_group)
 
     # Acknowledge the message
     ack_result = broker.ack(stream, identifier, consumer_group)
@@ -78,7 +78,7 @@ def test_ack_previously_nacked_message(broker):
     message = {"foo": "bar"}
 
     # Configure broker with short retry delay
-    broker._retry_delay = 0.01
+    broker._adapter._retry_delay = 0.01
 
     # Publish and get message
     identifier = broker.publish(stream, message)
@@ -91,17 +91,17 @@ def test_ack_previously_nacked_message(broker):
 
     # Verify message is in failed queue
     group_key = f"{stream}:{consumer_group}"
-    assert len(broker._failed_messages[group_key]) == 1
+    assert len(broker._adapter._failed_messages[group_key]) == 1
 
     # Now ACK the previously NACKed message
     ack_result = broker.ack(stream, identifier, consumer_group)
     assert ack_result is True
 
     # Verify message is removed from failed queue
-    assert len(broker._failed_messages[group_key]) == 0
+    assert len(broker._adapter._failed_messages[group_key]) == 0
 
     # Verify operation state is now ACKNOWLEDGED
-    state = broker._get_operation_state(consumer_group, identifier)
+    state = broker._adapter._get_operation_state(consumer_group, identifier)
     assert state == OperationState.ACKNOWLEDGED
 
 
@@ -117,10 +117,12 @@ def test_ack_nacked_message_not_in_failed_queue(broker):
     assert retrieved is not None
 
     # Store NACKED state but don't add to failed messages
-    broker._store_operation_state(consumer_group, identifier, OperationState.NACKED)
+    broker._adapter._store_operation_state(
+        consumer_group, identifier, OperationState.NACKED
+    )
 
     # Remove from in-flight to simulate edge case
-    broker._remove_in_flight_message(stream, consumer_group, identifier)
+    broker._adapter._remove_in_flight_message(stream, consumer_group, identifier)
 
     # Try to ACK - should fail since message is not in failed queue
     ack_result = broker.ack(stream, identifier, consumer_group)
@@ -137,7 +139,7 @@ def test_nack_moves_message_to_retry_queue(broker):
     message = {"foo": "bar"}
 
     # Configure broker with short retry delay for testing
-    broker._retry_delay = 0.1  # 100ms for fast testing
+    broker._adapter._retry_delay = 0.1  # 100ms for fast testing
 
     # Publish a message
     identifier = broker.publish(stream, message)
@@ -150,13 +152,8 @@ def test_nack_moves_message_to_retry_queue(broker):
     assert retrieved_payload == message
 
     # Verify message is in in-flight tracking
-    info_before_nack = broker.info()
-    if consumer_group in info_before_nack["consumer_groups"]:
-        in_flight_info = info_before_nack["consumer_groups"][consumer_group].get(
-            "in_flight_messages", {}
-        )
-        if stream in in_flight_info:
-            assert in_flight_info[stream] >= 1
+    group_key = f"{stream}:{consumer_group}"
+    assert len(broker._adapter._in_flight[group_key]) >= 1
 
     # Nack the message
     nack_result = broker.nack(stream, identifier, consumer_group)
@@ -167,14 +164,7 @@ def test_nack_moves_message_to_retry_queue(broker):
     assert immediate_retry is None
 
     # Verify message is removed from in-flight tracking
-    info_after_nack = broker.info()
-    if consumer_group in info_after_nack["consumer_groups"]:
-        in_flight_info = info_after_nack["consumer_groups"][consumer_group].get(
-            "in_flight_messages", {}
-        )
-        if stream in in_flight_info:
-            # Should be 0 or less than before
-            assert in_flight_info[stream] == 0
+    assert len(broker._adapter._in_flight[group_key]) == 0
 
     # Wait for retry delay and verify message becomes available again
     time.sleep(0.15)  # Wait slightly longer than retry delay
@@ -194,7 +184,7 @@ def test_nack_with_retry_mechanism(broker):
     message = {"foo": "bar"}
 
     # Configure broker with short retry delay for testing
-    broker._retry_delay = 0.1  # 100ms for fast testing
+    broker._adapter._retry_delay = 0.1  # 100ms for fast testing
 
     # Publish a message
     identifier = broker.publish(stream, message)
@@ -244,8 +234,8 @@ def test_nack_max_retries_exceeded(broker):
     message = {"foo": "bar"}
 
     # Configure broker with short retry delay and low max retries
-    broker._retry_delay = 0.01  # 10ms for fast testing
-    broker._max_retries = 2  # Only 2 retries allowed
+    broker._adapter._retry_delay = 0.01  # 10ms for fast testing
+    broker._adapter._max_retries = 2  # Only 2 retries allowed
 
     # Publish a message
     identifier = broker.publish(stream, message)
@@ -271,7 +261,7 @@ def test_nack_max_retries_exceeded(broker):
     assert nack_result is True
 
     # Message should be in DLQ now
-    dlq_messages = broker.get_dlq_messages(consumer_group, stream)
+    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
     assert stream in dlq_messages
     assert len(dlq_messages[stream]) == 1
     dlq_id, dlq_msg, dlq_reason, _ = dlq_messages[stream][0]
@@ -292,14 +282,14 @@ def test_nack_removes_from_in_flight_tracking(broker):
     assert retrieved_message is not None
 
     # Verify message is in-flight
-    assert broker._is_in_flight_message(stream, consumer_group, identifier)
+    assert broker._adapter._is_in_flight_message(stream, consumer_group, identifier)
 
     # Nack the message
     nack_result = broker.nack(stream, identifier, consumer_group)
     assert nack_result is True
 
     # Verify message is no longer in-flight
-    assert not broker._is_in_flight_message(stream, consumer_group, identifier)
+    assert not broker._adapter._is_in_flight_message(stream, consumer_group, identifier)
 
 
 def test_nack_retry_count_tracking(broker):
@@ -309,7 +299,7 @@ def test_nack_retry_count_tracking(broker):
     message = {"foo": "bar"}
 
     # Configure broker with short retry delay
-    broker._retry_delay = 0.01  # 10ms for fast testing
+    broker._adapter._retry_delay = 0.01  # 10ms for fast testing
 
     # Publish a message
     identifier = broker.publish(stream, message)
@@ -323,7 +313,9 @@ def test_nack_retry_count_tracking(broker):
         assert retrieved_message is not None
 
         # Check retry count before nack
-        retry_count = broker._get_retry_count(stream, consumer_group, identifier)
+        retry_count = broker._adapter._get_retry_count(
+            stream, consumer_group, identifier
+        )
         assert retry_count == expected_retry_count - 1
 
         # Nack the message
@@ -331,7 +323,9 @@ def test_nack_retry_count_tracking(broker):
         assert nack_result is True
 
         # Check retry count after nack
-        retry_count = broker._get_retry_count(stream, consumer_group, identifier)
+        retry_count = broker._adapter._get_retry_count(
+            stream, consumer_group, identifier
+        )
         assert retry_count == expected_retry_count
 
 
@@ -369,7 +363,7 @@ def test_nack_message_not_in_flight(broker):
     assert retrieved is not None
 
     # Manually remove from in-flight to simulate edge case
-    broker._remove_in_flight_message(stream, consumer_group, identifier)
+    broker._adapter._remove_in_flight_message(stream, consumer_group, identifier)
 
     # Try to NACK - should fail
     nack_result = broker.nack(stream, identifier, consumer_group)
@@ -399,4 +393,4 @@ def test_nack_with_logging_failure(broker):
 
         # Verify message was moved to failed queue
         group_key = f"{stream}:{consumer_group}"
-        assert len(broker._failed_messages[group_key]) == 1
+        assert len(broker._adapter._failed_messages[group_key]) == 1

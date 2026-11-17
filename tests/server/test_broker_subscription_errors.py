@@ -75,7 +75,7 @@ def set_message_processing_async(test_domain):
 def broker(test_domain, monkeypatch):
     """The domain's inline broker, set to redeliver a NACKed message at once."""
     broker = test_domain.brokers["default"]
-    monkeypatch.setattr(broker, "_retry_delay", 0)
+    monkeypatch.setattr(broker._adapter, "_retry_delay", 0)
     return broker
 
 
@@ -112,8 +112,8 @@ def _dlq_payloads(broker, stream: str) -> list[dict]:
 
 
 def _in_flight(broker, sub) -> int:
-    groups = broker.info()["consumer_groups"]
-    return groups[sub.subscriber_name]["in_flight_messages"][sub.stream_name]
+    """Count the subscriber's delivered, unacknowledged messages on its stream."""
+    return broker._consumer_groups()[sub.subscriber_name]["pending"]
 
 
 # ── Test classes ─────────────────────────────────────────────────────────

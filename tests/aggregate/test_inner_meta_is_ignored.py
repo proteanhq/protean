@@ -21,16 +21,16 @@ def test_inner_meta_on_an_aggregate_is_ignored(test_domain):
     test_domain.init(traverse=False)
 
     assert Ledger.meta_.schema_name == "ledger"
-    assert Ledger.meta_.provider == "default"
+    assert Ledger.meta_.database == "default"
 
 
 def test_decorator_options_configure_an_aggregate(test_domain):
-    @test_domain.aggregate(schema_name="custom_ledgers", provider="secondary")
+    @test_domain.aggregate(schema_name="custom_ledgers", database="secondary")
     class Ledger:
         name = String()
 
     assert Ledger.meta_.schema_name == "custom_ledgers"
-    assert Ledger.meta_.provider == "secondary"
+    assert Ledger.meta_.database == "secondary"
 
 
 def test_inner_meta_on_an_entity_is_ignored(test_domain):

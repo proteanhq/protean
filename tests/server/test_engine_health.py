@@ -437,7 +437,7 @@ class TestHealthServerIntegration:
     def test_readyz_degraded_when_provider_fails(self, health_server):
         """Readiness returns degraded when a provider is unavailable."""
         engine, _, loop, port = health_server
-        for provider in engine.domain.providers.values():
+        for provider in engine.domain.databases.values():
             provider.ping = lambda: False
         status, body = _parse_http(_fetch_health(loop, port, path="/readyz"))
         assert "503" in status

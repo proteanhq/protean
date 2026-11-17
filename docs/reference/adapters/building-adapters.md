@@ -22,8 +22,8 @@ Each adapter package provides:
 
 ## Database Adapters
 
-Database adapters subclass `BaseProvider`, implement `ProviderPort` (or
-`RawQueryProviderPort` for raw queries), and declare their
+Database adapters subclass `BaseDatabase`, implement `DatabasePort` (or
+`RawQueryDatabasePort` for raw queries), and declare their
 capabilities through the `DatabaseCapabilities` flag system.
 
 See [Building Custom Database Adapters](./database/custom-databases.md)
@@ -37,8 +37,8 @@ for a complete guide with a worked DynamoDB example, including:
 
 ## Broker Adapters
 
-Broker adapters implement the `BaseBroker` interface and declare their
-capabilities through the `BrokerCapabilities` tier system.
+Broker adapters subclass `BaseBroker` and `BrokerPort`, in that order, and
+declare their capabilities through the `BrokerCapabilities` tier system.
 
 See [Building Custom Brokers](./broker/custom-brokers.md)
 for a complete guide with a worked Kafka example, including:

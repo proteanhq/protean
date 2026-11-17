@@ -24,7 +24,7 @@ page.
 | `max_bytes` | int | `10485760` (10 MB) | Max size per rotating log file before rotation. |
 | `backup_count` | int | `5` | Number of rotated files to retain. |
 | `slow_handler_threshold_ms` | float | `500` | Duration in ms above which a handler emits a `protean.perf.slow_handler` WARNING and the wide event is tagged `status="slow"`. Set to `0` to disable slow-handler tagging. |
-| `slow_query_threshold_ms` | float | `100` | Duration in ms above which a SQLAlchemy query emits a `protean.adapters.repository.sqlalchemy.slow_query` WARNING. |
+| `slow_query_threshold_ms` | float | `100` | Duration in ms above which a SQLAlchemy query emits a `protean.adapters.database.sqlalchemy.slow_query` WARNING. |
 | `slow_query_truncate_chars` | int | `500` | Max SQL statement length in the slow-query log event. Trailing characters are replaced with `...`. `0` disables truncation. |
 | `redact` | list[str] | see [Redaction](#redaction) | Additional keys (case-insensitive) to mask with `[REDACTED]`. Unioned with the built-in defaults, never replaces them. One exception: `redact = []` currently turns redaction off, which is a bug. |
 | `per_logger` | table | `{}` | Map of logger name → level. Applied after the global setup so individual loggers can be tuned. |
@@ -648,14 +648,14 @@ events rely on the traceback rather than per-record `extra` fields.
 
 ---
 
-### `protean.adapters.repository.sqlalchemy`
+### `protean.adapters.database.sqlalchemy`
 
 Level: WARNING. The adapter installs SQLAlchemy engine listeners at
 provider construction time.
 
 #### `repository.sqlalchemy.slow_query`
 
-Emitted on the `protean.adapters.repository.sqlalchemy.slow_query` child
+Emitted on the `protean.adapters.database.sqlalchemy.slow_query` child
 logger whenever a query's duration exceeds `slow_query_threshold_ms`.
 
 | Field | Type | Notes |
@@ -667,7 +667,7 @@ logger whenever a query's duration exceeds `slow_query_threshold_ms`.
 
 #### `repository.sqlalchemy.query`
 
-Emitted on the sibling `protean.adapters.repository.sqlalchemy.query`
+Emitted on the sibling `protean.adapters.database.sqlalchemy.query`
 logger at DEBUG for every query. Off by default, enable by setting its level to
 `DEBUG` in `[logging.per_logger]`.
 
@@ -675,7 +675,7 @@ Same field set as `slow_query`, minus `threshold_ms`.
 
 ---
 
-### `protean.adapters.repository.elasticsearch`
+### `protean.adapters.database.elasticsearch`
 
 Level: WARNING. Index lifecycle and query failures. Event names follow
 `repository.elasticsearch.<event>`.

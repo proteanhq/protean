@@ -4,7 +4,7 @@ Runs as an async task inside the Engine, following the same lifecycle
 pattern as OutboxProcessor.  It periodically:
 
 1. Trims DLQ messages older than the configured retention period using
-   ``BaseBroker.dlq_trim()``.
+   ``Broker.dlq_trim()``.
 2. Checks DLQ depth against a threshold and logs a WARNING / calls an
    optional user-supplied callback when the depth meets or exceeds the
    threshold.
@@ -29,7 +29,7 @@ from protean.utils.telemetry import get_domain_metrics
 
 if TYPE_CHECKING:
     from protean.domain import Domain
-    from protean.port.broker import BaseBroker
+    from protean.infra.broker import Broker
     from protean.server.engine import Engine
     from protean.utils.dlq import SubscriptionInfo
 
@@ -203,14 +203,14 @@ class DLQMaintenanceTask:
 
     @staticmethod
     def _trim_and_depth(
-        broker: BaseBroker, dlq_stream: str, min_id: str
+        broker: Broker, dlq_stream: str, min_id: str
     ) -> tuple[int, int]:
         """Run trim + depth in a single thread call."""
         trimmed = broker.dlq_trim(dlq_stream, min_id)
         depth = broker.dlq_depth(dlq_stream)
         return trimmed, depth
 
-    def _get_broker(self) -> BaseBroker | None:
+    def _get_broker(self) -> Broker | None:
         """Return the first broker that supports DLQ, or None."""
         for broker in self.domain.brokers.values():
             if broker.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):

@@ -22,10 +22,11 @@ from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Literal, NamedTuple, Protocol, cast, overload
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 from uuid import uuid4
 
 from protean.port.event_store import row_data
+from protean.server._redis import redis_client
 from protean.server.subscription.config_resolver import ConfigResolver
 from protean.server.subscription.event_store_subscription import (
     checkpoint_ahead_of_failed_stream,
@@ -45,38 +46,9 @@ from protean.utils.outbox import _outbox_provider_names
 
 if TYPE_CHECKING:
     from protean.domain import Domain
+    from protean.infra.broker import Broker
 
 logger = logging.getLogger(__name__)
-
-
-class _RedisStyleBroker(Protocol):
-    """Structural view of the Redis-backed broker surface used for lag lookups.
-
-    The concrete Redis broker adapters expose ``redis_instance`` (the live
-    ``redis.Redis`` client) and the ``_get_field_value`` helper, neither of
-    which is part of the ``BaseBroker`` port. Guarded ``hasattr`` checks at the
-    call sites narrow a ``BaseBroker`` to this shape. ``redis_instance`` is typed
-    ``Any`` because the ``redis`` client is an optional dependency not importable
-    at module scope here.
-    """
-
-    redis_instance: Any
-
-    @overload
-    def _get_field_value(
-        self,
-        info_dict: dict[Any, Any],
-        field_name: str,
-        convert_to_int: Literal[False] = ...,
-    ) -> str | None: ...
-
-    @overload
-    def _get_field_value(
-        self,
-        info_dict: dict[Any, Any],
-        field_name: str,
-        convert_to_int: Literal[True],
-    ) -> int | None: ...
 
 
 # ---------------------------------------------------------------------------
@@ -338,15 +310,13 @@ def _collect_partitioned_stream_status(
     Lag, pending and length add up across partitions. Consumers do not: they are
     counted by name, because one worker appears once in every partition it reads.
     """
-    base_broker = domain.brokers.get("default")
-    if not base_broker or not hasattr(base_broker, "redis_instance"):
+    broker = domain.brokers.get("default")
+    redis_conn: Any = redis_client(broker)
+    if broker is None or redis_conn is None:
         return _unknown_status(name, handler_cls.__name__, "stream", stream_category)  # pragma: no cover  # only RedisBroker advertises STREAM_PARTITIONING  # fmt: skip
 
-    broker = cast(_RedisStyleBroker, base_broker)
-    redis_conn = broker.redis_instance
-
     try:
-        keys = base_broker._partition_keys(stream_category)
+        keys = broker.partition_keys(stream_category)
     except Exception as exc:  # noqa: BLE001 - status probe: any fault means unknown
         logger.debug("Error listing partitions for %s: %s", stream_category, exc)
         return _unknown_status(name, handler_cls.__name__, "stream", stream_category)
@@ -369,7 +339,7 @@ def _collect_partitioned_stream_status(
         )
 
     readings = [
-        _read_partition(broker, f"{stream_category}:{key}", consumer_group)
+        _read_partition(redis_conn, f"{stream_category}:{key}", consumer_group)
         for key in sorted(keys)
     ]
     known_lags = [reading.lag for reading in readings if reading.lag is not None]
@@ -406,14 +376,13 @@ class _PartitionReading(NamedTuple):
 
 
 def _read_partition(
-    broker: _RedisStyleBroker, partition: str, consumer_group: str
+    redis_conn: Any, partition: str, consumer_group: str
 ) -> _PartitionReading:
     """Read one partition's length, the group's pending and lag, and its consumers.
 
     ``lag`` is ``None`` when no reading of it was possible. A partition whose
     groups cannot be read reports its length and nothing else.
     """
-    redis_conn = broker.redis_instance
     length = 0
     try:
         length = redis_conn.xlen(partition)
@@ -424,32 +393,38 @@ def _read_partition(
     except Exception:  # a status probe skips a partition it cannot read; logged
         logger.debug("Could not read groups of partition %s", partition, exc_info=True)
         return _PartitionReading(length, 0, None, set())
-    pending, lag = _partition_group_reading(broker, partition, consumer_group, groups)
+    pending, lag = _partition_group_reading(
+        redis_conn, partition, consumer_group, groups
+    )
     return _PartitionReading(
         length,
         pending,
         lag,
-        _partition_consumer_names(broker, partition, consumer_group),
+        _partition_consumer_names(redis_conn, partition, consumer_group),
     )
 
 
 def _partition_group_reading(
-    broker: _RedisStyleBroker,
+    redis_conn: Any,
     partition: str,
     consumer_group: str,
     groups: list[Any],
 ) -> tuple[int, int | None]:
     """Return the consumer group's pending count and lag on one partition."""
+    # The Redis adapter module imports redis, an optional extra, so it is
+    # imported only once a Redis client is known to exist.
+    from protean.adapters.broker.redis import get_field_value  # noqa: PLC0415
+
     for group in groups:
-        if broker._get_field_value(group, "name") != consumer_group:
+        if get_field_value(group, "name") != consumer_group:
             continue
-        pending = broker._get_field_value(group, "pending", convert_to_int=True) or 0
+        pending = get_field_value(group, "pending", convert_to_int=True) or 0
         # Only a real reading counts as knowing the lag. Finding the group
         # is not enough: a broker that reports neither would otherwise
         # contribute 0 from every partition and describe a caught-up
         # subscription whose lag was never read, which is the failure this
         # whole function exists to remove.
-        native_lag = broker._get_field_value(group, "lag", convert_to_int=True)
+        native_lag = get_field_value(group, "lag", convert_to_int=True)
         if native_lag is not None:
             return pending, native_lag
         # No native `lag` (Redis before 7.0, or nil). Count what is left after
@@ -458,30 +433,32 @@ def _partition_group_reading(
         # already promises for stream subscriptions. Without this, a
         # partitioned category on Redis 6 reports `unknown` while an
         # identical unpartitioned one reports a number.
-        last_delivered_id = broker._get_field_value(group, "last-delivered-id")
-        return pending, _count_remaining(
-            broker.redis_instance, partition, last_delivered_id
-        )
+        last_delivered_id = get_field_value(group, "last-delivered-id")
+        return pending, _count_remaining(redis_conn, partition, last_delivered_id)
     return 0, None
 
 
 def _partition_consumer_names(
-    broker: _RedisStyleBroker, partition: str, consumer_group: str
+    redis_conn: Any, partition: str, consumer_group: str
 ) -> set[str]:
     """Return the names of the group's consumers on one partition."""
+    # The Redis adapter module imports redis, an optional extra, so it is
+    # imported only once a Redis client is known to exist.
+    from protean.adapters.broker.redis import get_field_value  # noqa: PLC0415
+
     # Consumers are counted by name, not summed. Each partition is its own
     # stream with its own copy of the consumer group, so a single worker
     # reading five partitions is five consumers by `XINFO GROUPS` and one
     # worker in reality. Summing reports the partition count dressed up as a
     # consumer count. The names are what identify a worker across streams.
     try:
-        consumers = broker.redis_instance.xinfo_consumers(partition, consumer_group)
+        consumers = redis_conn.xinfo_consumers(partition, consumer_group)
     except Exception as exc:  # noqa: BLE001 - status probe: count no consumers
         logger.debug("Could not read consumers of %s: %r", partition, exc)
         consumers = []
     names: set[str] = set()
     for consumer in consumers:
-        consumer_name = broker._get_field_value(consumer, "name")
+        consumer_name = get_field_value(consumer, "name")
         if consumer_name is not None:
             names.add(consumer_name)
     return names
@@ -508,14 +485,14 @@ def _collect_stream_status(
                     domain, name, handler_cls, stream_category, consumer_group
                 )
 
-            base_broker = domain.brokers.get("default")
-            if not base_broker or not hasattr(base_broker, "redis_instance"):
+            redis_conn: Any = redis_client(domain.brokers.get("default"))
+            if redis_conn is None:
                 return _unknown_status(
                     name, handler_cls.__name__, "stream", stream_category
                 )
 
             return _redis_stream_status(
-                cast(_RedisStyleBroker, base_broker),
+                redis_conn,
                 name,
                 handler_cls.__name__,
                 "stream",
@@ -539,7 +516,7 @@ class _GroupReading(NamedTuple):
 
 
 def _redis_stream_status(
-    broker: _RedisStyleBroker,
+    redis_conn: Any,
     name: str,
     handler_name: str,
     subscription_type: Literal["stream", "broker"],
@@ -551,10 +528,8 @@ def _redis_stream_status(
     Only a ``"stream"`` subscription reads a DLQ depth. A ``"broker"`` one
     reports 0.
     """
-    redis_conn = broker.redis_instance
-
     stream_length = _stream_length(redis_conn, stream)
-    group = _read_group(broker, stream, consumer_group)
+    group = _read_group(redis_conn, stream, consumer_group)
 
     lag = group.lag
     # Fallback: count messages after last-delivered-id via xrange
@@ -580,36 +555,35 @@ def _redis_stream_status(
     )
 
 
-def _read_group(
-    broker: _RedisStyleBroker, stream: str, consumer_group: str
-) -> _GroupReading:
+def _read_group(redis_conn: Any, stream: str, consumer_group: str) -> _GroupReading:
     """Read one consumer group's counters.
 
     A counter that cannot be read keeps its empty value. The counters read
     before a failure keep what they read.
     """
+    # The Redis adapter module imports redis, an optional extra, so it is
+    # imported only once a Redis client is known to exist.
+    from protean.adapters.broker.redis import get_field_value  # noqa: PLC0415
+
     reading = _GroupReading()
     try:
-        for g in broker.redis_instance.xinfo_groups(stream):
-            if broker._get_field_value(g, "name") != consumer_group:
+        for g in redis_conn.xinfo_groups(stream):
+            if get_field_value(g, "name") != consumer_group:
                 continue
             # One field at a time, so a later field that fails to decode does
             # not throw away the ones already read.
             reading = reading._replace(
-                pending=broker._get_field_value(g, "pending", convert_to_int=True) or 0
+                pending=get_field_value(g, "pending", convert_to_int=True) or 0
             )
             reading = reading._replace(
-                last_delivered_id=broker._get_field_value(g, "last-delivered-id")
+                last_delivered_id=get_field_value(g, "last-delivered-id")
             )
             # Redis 7.0+ native lag field
             reading = reading._replace(
-                lag=broker._get_field_value(g, "lag", convert_to_int=True)
+                lag=get_field_value(g, "lag", convert_to_int=True)
             )
             reading = reading._replace(
-                consumer_count=broker._get_field_value(
-                    g, "consumers", convert_to_int=True
-                )
-                or 0
+                consumer_count=get_field_value(g, "consumers", convert_to_int=True) or 0
             )
             break
     # a status probe reports unknown lag instead of raising; logged
@@ -666,6 +640,18 @@ def _dlq_depth(redis_conn: Any, stream_category: str) -> int:
 # ---------------------------------------------------------------------------
 
 
+def _group_counts(broker: Broker, consumer_group: str) -> tuple[int, int]:
+    """Return ``(pending, consumer_count)`` for ``consumer_group``.
+
+    A count the broker does not report, or reports as ``None``, is 0.
+    """
+    info = broker._consumer_groups().get(consumer_group)
+    if info is None:
+        return 0, 0
+    # A third-party adapter may leave out a key ``ConsumerGroupInfo`` requires
+    return info.get("pending") or 0, info.get("consumer_count") or 0
+
+
 def _collect_broker_status(
     domain: Domain,
     name: str,
@@ -685,9 +671,10 @@ def _collect_broker_status(
                 )
 
             # Try Redis-style introspection if available
-            if hasattr(base_broker, "redis_instance"):
+            redis_conn: Any = redis_client(base_broker)
+            if redis_conn is not None:
                 return _redis_stream_status(
-                    cast(_RedisStyleBroker, base_broker),
+                    redis_conn,
                     name,
                     handler_cls.__name__,
                     "broker",
@@ -695,11 +682,8 @@ def _collect_broker_status(
                     consumer_group,
                 )
 
-            # Non-Redis brokers: use info() API
-            info = base_broker.info()
-            cg_info = info.get("consumer_groups", {}).get(consumer_group, {})
-            pending = cg_info.get("pending", 0)
-            consumer_count = cg_info.get("consumer_count", 0)
+            # Non-Redis brokers: read the consumer group records
+            pending, consumer_count = _group_counts(base_broker, consumer_group)
             status = "ok" if pending == 0 else "lagging"
 
             return SubscriptionStatus(

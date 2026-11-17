@@ -79,7 +79,7 @@ _HAS_PROJECTIONS = {ch07, bookshelf, bookshelf.api, ch21}
 # ---------------------------------------------------------------------------
 def _cleanup(domain) -> None:
     """Reset all stores and close connections after a test."""
-    for provider_name in domain.providers:
+    for provider_name in domain.databases:
         provider = provider_adapter(domain, provider_name)
         try:
             provider.clear()

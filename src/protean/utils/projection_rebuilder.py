@@ -233,7 +233,7 @@ def _truncate_projection(
 
     marker_repo = None
     if handler_ids:
-        provider_name = projection_cls.meta_.provider
+        provider_name = projection_cls.meta_.database
         try:
             marker_repo = domain._get_processed_message_repo(provider_name)
         except KeyError:

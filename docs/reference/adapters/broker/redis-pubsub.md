@@ -160,7 +160,7 @@ it to `DEBUG` with the standard `logging` module when you troubleshoot.
 
 ### Health Checks
 
-`health_stats()` returns the common health dict. The Redis details, such as
+`health()` returns the common health dict. The Redis details, such as
 `connected_clients` and `used_memory_human`, are under `details`:
 
 ```python

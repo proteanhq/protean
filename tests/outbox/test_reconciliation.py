@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 from sqlalchemy import text
 
-from protean.adapters.repository.memory import MemorySession
+from protean.adapters.database.memory import MemorySession
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
@@ -1083,7 +1083,7 @@ class TestReconcileHonorsTheProvider:
 
         domain = _make_domain_with(
             tmp_path,
-            (Report, {"provider": "analytics", "event_sourced": True}),
+            (Report, {"database": "analytics", "event_sourced": True}),
             (ReportFiled, {"part_of": Report}),
             before_init=add_analytics_database,
         )
@@ -1811,7 +1811,7 @@ class TestReconcileSkipsStateBasedAggregates:
 
         domain = _make_domain_with(
             tmp_path,
-            (Note, {"provider": "analytics"}),
+            (Note, {"database": "analytics"}),
             (NoteAdded, {"part_of": Note}),
             before_init=add_analytics_database,
         )

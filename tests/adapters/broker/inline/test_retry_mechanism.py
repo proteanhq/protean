@@ -23,7 +23,7 @@ def test_basic_retry_mechanism(broker):
     message = {"foo": "bar"}
 
     # Configure short retry delay
-    broker._retry_delay = 0.05  # 50ms
+    broker._adapter._retry_delay = 0.05  # 50ms
 
     # Publish and get message
     identifier = broker.publish(stream, message)
@@ -65,14 +65,14 @@ def test_exponential_backoff(broker):
     consumer_group = "test_consumer_group"
     message = {"foo": "bar"}
 
-    broker._retry_delay = 0.05
-    broker._backoff_multiplier = 2.0
-    broker._max_retries = 3
+    broker._adapter._retry_delay = 0.05
+    broker._adapter._backoff_multiplier = 2.0
+    broker._adapter._max_retries = 3
 
     identifier = broker.publish(stream, message)
     assert broker.get_next(stream, consumer_group) is not None
 
-    for attempt in range(broker._max_retries):
+    for attempt in range(broker._adapter._max_retries):
         # `nack` records `now() + delay` at some instant inside this window, so
         # the delay it chose is bracketed by it. The bracket is what makes this
         # deterministic: a slow machine widens the window, which admits a later
@@ -85,7 +85,9 @@ def test_exponential_backoff(broker):
         assert broker.get_next(stream, consumer_group) is None
 
         scheduled = scheduled_retry_time(broker, stream, consumer_group, identifier)
-        expected_delay = broker._retry_delay * broker._backoff_multiplier**attempt
+        expected_delay = (
+            broker._adapter._retry_delay * broker._adapter._backoff_multiplier**attempt
+        )
         assert scheduled - after - _CLOCK_EPSILON <= expected_delay
         assert expected_delay <= scheduled - before + _CLOCK_EPSILON
 
@@ -100,9 +102,9 @@ def test_max_retries_enforcement(broker):
     message = {"foo": "bar"}
 
     # Configure with low max retries
-    broker._retry_delay = 0.01
-    broker._max_retries = 2
-    broker._enable_dlq = True
+    broker._adapter._retry_delay = 0.01
+    broker._adapter._max_retries = 2
+    broker._adapter._enable_dlq = True
 
     # Publish message
     identifier = broker.publish(stream, message)
@@ -118,7 +120,7 @@ def test_max_retries_enforcement(broker):
         broker.nack(stream, identifier, consumer_group)
 
     # Message should be in DLQ
-    dlq_messages = broker.get_dlq_messages(consumer_group, stream)
+    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
     assert len(dlq_messages[stream]) == 1
     assert dlq_messages[stream][0][0] == identifier
 
@@ -135,8 +137,8 @@ def test_retry_count_persistence(broker):
     message = {"foo": "bar"}
 
     # Configure retry
-    broker._retry_delay = 0.01
-    broker._max_retries = 5
+    broker._adapter._retry_delay = 0.01
+    broker._adapter._max_retries = 5
 
     # Publish message
     identifier = broker.publish(stream, message)
@@ -154,7 +156,7 @@ def test_retry_count_persistence(broker):
         assert result is not None
 
         # Check retry count
-        count = broker._get_retry_count(stream, consumer_group, identifier)
+        count = broker._adapter._get_retry_count(stream, consumer_group, identifier)
         expected_counts.append(count)
 
         # NACK to trigger retry
@@ -172,7 +174,7 @@ def test_retry_with_multiple_messages(broker):
 
     # Configure retry with a delay large enough that NACKed messages
     # are never ready for retry before the explicit sleep below.
-    broker._retry_delay = 0.5
+    broker._adapter._retry_delay = 0.5
 
     # Publish messages
     identifiers = [broker.publish(stream, msg) for msg in messages]
@@ -212,7 +214,7 @@ def test_retry_with_mixed_ack_nack(broker):
     consumer_group = "test_consumer_group"
 
     # Configure retry with a delay large enough to avoid race conditions on slow CI
-    broker._retry_delay = 0.5
+    broker._adapter._retry_delay = 0.5
 
     # Publish messages
     broker.publish(stream, {"id": 1})
@@ -253,7 +255,7 @@ def test_retry_cleanup_on_ack(broker):
     message = {"foo": "bar"}
 
     # Configure retry
-    broker._retry_delay = 0.01
+    broker._adapter._retry_delay = 0.01
 
     # Publish message
     identifier = broker.publish(stream, message)
@@ -263,7 +265,7 @@ def test_retry_cleanup_on_ack(broker):
     broker.nack(stream, identifier, consumer_group)
 
     # Verify retry count exists
-    count = broker._get_retry_count(stream, consumer_group, identifier)
+    count = broker._adapter._get_retry_count(stream, consumer_group, identifier)
     assert count == 1
 
     # Wait and get message again
@@ -275,7 +277,7 @@ def test_retry_cleanup_on_ack(broker):
     broker.ack(stream, identifier, consumer_group)
 
     # Retry count should be cleaned up
-    count = broker._get_retry_count(stream, consumer_group, identifier)
+    count = broker._adapter._get_retry_count(stream, consumer_group, identifier)
     assert count == 0
 
 
@@ -286,7 +288,7 @@ def test_retry_failed_message_structure(broker):
     message = {"test": "data"}
 
     # Configure retry
-    broker._retry_delay = 0.05
+    broker._adapter._retry_delay = 0.05
 
     # Publish and get message
     identifier = broker.publish(stream, message)
@@ -297,9 +299,9 @@ def test_retry_failed_message_structure(broker):
 
     # Check failed message structure
     group_key = retry_group_key(stream, consumer_group)
-    assert len(broker._failed_messages[group_key]) == 1
+    assert len(broker._adapter._failed_messages[group_key]) == 1
 
-    failed_msg = broker._failed_messages[group_key][0]
+    failed_msg = broker._adapter._failed_messages[group_key][0]
     assert failed_msg[0] == identifier  # Message ID
     assert failed_msg[1] == message  # Message content
     assert failed_msg[2] == 1  # Retry count
@@ -313,7 +315,7 @@ def test_get_retry_ready_messages(broker):
     consumer_group = "test_consumer_group"
 
     # Configure short retry with enough buffer
-    broker._retry_delay = 0.05  # 50ms retry delay
+    broker._adapter._retry_delay = 0.05  # 50ms retry delay
 
     # Publish and NACK multiple messages
     ids = []
@@ -328,12 +330,12 @@ def test_get_retry_ready_messages(broker):
         broker.nack(stream, msg_id, consumer_group)
 
     # Initially no messages ready (they all have future retry times)
-    ready = broker._get_retry_ready_messages(stream, consumer_group)
+    ready = broker._adapter._get_retry_ready_messages(stream, consumer_group)
     assert len(ready) == 0
 
     # Wait for messages to be ready
     time.sleep(0.06)  # Wait longer than retry delay
-    ready = broker._get_retry_ready_messages(stream, consumer_group)
+    ready = broker._adapter._get_retry_ready_messages(stream, consumer_group)
     assert len(ready) == 3
 
     # Verify message IDs match
@@ -352,15 +354,15 @@ def test_cleanup_operations_during_nack(broker):
     broker.get_next(stream, consumer_group)
 
     # Verify message is in-flight before NACK
-    assert broker._is_in_flight_message(stream, consumer_group, identifier)
+    assert broker._adapter._is_in_flight_message(stream, consumer_group, identifier)
 
     # NACK the message
     broker.nack(stream, identifier, consumer_group)
 
     # Verify cleanup occurred
-    assert not broker._is_in_flight_message(stream, consumer_group, identifier)
+    assert not broker._adapter._is_in_flight_message(stream, consumer_group, identifier)
 
     # Verify message is in failed queue
     group_key = retry_group_key(stream, consumer_group)
-    assert len(broker._failed_messages[group_key]) == 1
-    assert broker._failed_messages[group_key][0][0] == identifier
+    assert len(broker._adapter._failed_messages[group_key]) == 1
+    assert broker._adapter._failed_messages[group_key][0][0] == identifier

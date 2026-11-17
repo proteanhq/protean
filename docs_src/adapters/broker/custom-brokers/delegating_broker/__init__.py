@@ -1,23 +1,32 @@
 # --8<-- [start:full]
 # --8<-- [start:broker]
+from collections.abc import Mapping
 from typing import Any
 
 from protean import Domain
 from protean.adapters.broker.inline import InlineBroker
 from protean.infra.registry import brokers
-from protean.port.broker import BaseBroker, BrokerCapabilities, DLQEntry
+from protean.port.broker import (
+    BaseBroker,
+    BrokerCapabilities,
+    BrokerHealth,
+    BrokerMessage,
+    BrokerPort,
+    ConsumerGroupInfo,
+    DLQEntry,
+)
 
 
-class DelegatingBroker(BaseBroker):
+class DelegatingBroker(BaseBroker, BrokerPort):
     """A broker that hands every operation to an in-memory InlineBroker.
 
     Replace the delegate calls with calls to your messaging client.
     """
 
-    def __init__(self, name: str, domain: "Domain", conn_info: dict[str, Any]) -> None:
-        super().__init__(name, domain, conn_info)
+    def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
+        super().__init__(name, domain, config)
         # Initialize your broker connection here
-        self._delegate = InlineBroker(name, domain, conn_info)
+        self._delegate = InlineBroker(name, domain, config)
 
     @property
     def capabilities(self) -> BrokerCapabilities:
@@ -25,45 +34,75 @@ class DelegatingBroker(BaseBroker):
         return self._delegate.capabilities
 
     # Publishing and reading
-    def _publish(self, stream: str, message: dict[str, Any]) -> str:
-        return self._delegate._publish(stream, message)
+    def publish(self, stream: str, message: dict[str, Any]) -> str:
+        return self._delegate.publish(stream, message)
 
-    def _get_next(
-        self, stream: str, consumer_group: str
-    ) -> tuple[str, dict[str, Any]] | None:
-        return self._delegate._get_next(stream, consumer_group)
-
-    def _read(
-        self, stream: str, consumer_group: str, no_of_messages: int
-    ) -> list[tuple[str, dict[str, Any]]]:
-        return self._delegate._read(stream, consumer_group, no_of_messages)
+    def read(
+        self,
+        stream: str,
+        consumer_group: str,
+        limit: int,
+        *,
+        new_messages: bool = False,
+    ) -> list[BrokerMessage]:
+        return self._delegate.read(
+            stream, consumer_group, limit, new_messages=new_messages
+        )
 
     # Acknowledgment
-    def _ack(self, stream: str, identifier: str, consumer_group: str) -> bool:
-        return self._delegate._ack(stream, identifier, consumer_group)
+    def ack(self, stream: str, message_id: str, consumer_group: str) -> bool:
+        return self._delegate.ack(stream, message_id, consumer_group)
 
-    def _nack(self, stream: str, identifier: str, consumer_group: str) -> bool:
-        return self._delegate._nack(stream, identifier, consumer_group)
+    def nack(self, stream: str, message_id: str, consumer_group: str) -> bool:
+        return self._delegate.nack(stream, message_id, consumer_group)
 
     # Consumer groups
-    def _ensure_group(self, group_name: str, stream: str | None = None) -> None:
-        self._delegate._ensure_group(group_name, stream)
+    def create_group(self, stream: str, consumer_group: str) -> None:
+        self._delegate.create_group(stream, consumer_group)
+
+    def consumer_groups(self) -> dict[str, ConsumerGroupInfo]:
+        return self._delegate.consumer_groups()
 
     # Connection and health
-    def _ping(self) -> bool:
-        return self._delegate._ping()
+    def ping(self) -> bool:
+        return self._delegate.ping()
 
-    def _health_stats(self) -> dict[str, Any]:
-        return self._delegate._health_stats()
+    def health(self) -> BrokerHealth:
+        return self._delegate.health()
 
-    def _ensure_connection(self) -> bool:
-        return self._delegate._ensure_connection()
+    def get_connection(self) -> object:
+        return self._delegate.get_connection()
 
-    def _info(self) -> dict[str, Any]:
-        return self._delegate._info()
+    def reconnect(self) -> bool:
+        return self._delegate.reconnect()
 
-    def _data_reset(self) -> None:
-        self._delegate._data_reset()
+    def clear(self) -> None:
+        self._delegate.clear()
+
+    def close(self) -> None:
+        self._delegate.close()
+
+    # Subscription hooks
+    def mark_subscription_owned(self, stream: str, consumer_group: str) -> None:
+        self._delegate.mark_subscription_owned(stream, consumer_group)
+
+    def remove_stale_consumers(
+        self, stream: str, consumer_group: str, current_consumer: str
+    ) -> int:
+        return self._delegate.remove_stale_consumers(
+            stream, consumer_group, current_consumer
+        )
+
+    def reclaim_idle_pending(
+        self,
+        stream: str,
+        consumer_group: str,
+        consumer_name: str | None,
+        min_idle_ms: int,
+    ) -> dict[str, int]:
+        return self._delegate.reclaim_idle_pending(
+            stream, consumer_group, consumer_name, min_idle_ms
+        )
 
     # Dead letter queue
     def _dlq_list(self, dlq_streams: list[str], limit: int) -> list[DLQEntry]:

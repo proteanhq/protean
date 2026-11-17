@@ -32,7 +32,7 @@ class TestSetup:
 
         with mock.patch.object(domain, "init") as mock_init:
             # Mock providers to avoid real DB calls
-            domain.providers = {}
+            domain.databases = {}
             bed.setup()
             mock_init.assert_called_once()
 
@@ -42,7 +42,7 @@ class TestSetup:
         mock_provider = mock.MagicMock()
 
         with mock.patch.object(domain, "init"):
-            domain.providers = {"default": mock_provider}
+            domain.databases = {"default": mock_provider}
             bed.setup()
             mock_provider.create_schema.assert_called_once()
 
@@ -54,7 +54,7 @@ class TestTeardown:
         """teardown() calls drop_schema on each provider."""
         bed = DomainFixture(domain)
         mock_provider = mock.MagicMock()
-        domain.providers = {"default": mock_provider}
+        domain.databases = {"default": mock_provider}
 
         bed.teardown()
         mock_provider.drop_schema.assert_called_once()
@@ -71,7 +71,7 @@ class TestDomainContext:
         mock_provider = mock.MagicMock()
         mock_broker = mock.MagicMock()
         mock_event_store = mock.MagicMock()
-        domain.providers = {"default": mock_provider}
+        domain.databases = {"default": mock_provider}
         domain.brokers = {"default": mock_broker}
         domain.event_store = mock_event_store
 
@@ -85,7 +85,7 @@ class TestDomainContext:
         mock_provider = mock.MagicMock()
         mock_broker = mock.MagicMock()
         mock_event_store = mock.MagicMock()
-        domain.providers = {"default": mock_provider}
+        domain.databases = {"default": mock_provider}
         domain.brokers = {"default": mock_broker}
         domain.event_store = mock_event_store
 
@@ -101,14 +101,14 @@ class TestDomainContext:
         mock_provider = mock.MagicMock()
         mock_broker = mock.MagicMock()
         mock_event_store = mock.MagicMock()
-        domain.providers = {"default": mock_provider}
+        domain.databases = {"default": mock_provider}
         domain.brokers = {"default": mock_broker}
         domain.event_store = mock_event_store
 
         with bed.domain_context():
             pass
 
-        mock_broker._data_reset.assert_called_once()
+        mock_broker.clear.assert_called_once()
 
     def test_resets_event_store(self, domain):
         """Context manager resets event store on exit."""
@@ -117,7 +117,7 @@ class TestDomainContext:
         mock_provider = mock.MagicMock()
         mock_broker = mock.MagicMock()
         mock_event_store = mock.MagicMock()
-        domain.providers = {"default": mock_provider}
+        domain.databases = {"default": mock_provider}
         domain.brokers = {"default": mock_broker}
         domain.event_store = mock_event_store
 
@@ -133,7 +133,7 @@ class TestDomainContext:
         mock_provider = mock.MagicMock()
         mock_broker = mock.MagicMock()
         mock_event_store = mock.MagicMock()
-        domain.providers = {"default": mock_provider}
+        domain.databases = {"default": mock_provider}
         domain.brokers = {"default": mock_broker}
         domain.event_store = mock_event_store
 
@@ -142,7 +142,7 @@ class TestDomainContext:
 
         # Cleanup still happens
         mock_provider.clear.assert_called_once()
-        mock_broker._data_reset.assert_called_once()
+        mock_broker.clear.assert_called_once()
         mock_event_store.store.clear.assert_called_once()
 
     def test_activates_domain_context(self, domain):
@@ -152,7 +152,7 @@ class TestDomainContext:
         mock_provider = mock.MagicMock()
         mock_broker = mock.MagicMock()
         mock_event_store = mock.MagicMock()
-        domain.providers = {"default": mock_provider}
+        domain.databases = {"default": mock_provider}
         domain.brokers = {"default": mock_broker}
         domain.event_store = mock_event_store
 
@@ -164,11 +164,11 @@ class TestDomainContext:
 
 def _mock_stores(domain):
     """Replace the domain's stores with mocks and return them."""
-    domain.providers = {"default": mock.MagicMock()}
+    domain.databases = {"default": mock.MagicMock()}
     domain.brokers = {"default": mock.MagicMock()}
     domain.event_store = mock.MagicMock()
     return (
-        domain.providers["default"],
+        domain.databases["default"],
         domain.brokers["default"],
         domain.event_store.store,
     )
@@ -227,10 +227,10 @@ class TestDomainContextIsolation:
             _restore_ctx_stack(top_before)
 
         provider_a.clear.assert_called_once()
-        broker_a._data_reset.assert_called_once()
+        broker_a.clear.assert_called_once()
         store_a.clear.assert_called_once()
         provider_b.clear.assert_not_called()
-        broker_b._data_reset.assert_not_called()
+        broker_b.clear.assert_not_called()
         store_b.clear.assert_not_called()
 
     @pytest.mark.no_test_domain
@@ -485,7 +485,10 @@ class TestDescribeBroker:
         domain.init()
         broker = domain.brokers["external"]
         # Redis rejects such a URI when the broker is built, so set it after.
-        broker.conn_info = {**broker.conn_info, "URI": "redis://:se#cret@host/0"}
+        broker._adapter.config = {
+            **broker._adapter.config,
+            "URI": "redis://:se#cret@host/0",
+        }
 
         assert (
             _describe_broker("external", broker) == "Broker 'external' (redis provider)"

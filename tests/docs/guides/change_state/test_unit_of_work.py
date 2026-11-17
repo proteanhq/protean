@@ -12,7 +12,7 @@ import threading
 import pytest
 
 from protean import UnitOfWork, current_uow
-from protean.adapters.repository.memory import MemorySession
+from protean.adapters.database.memory import MemorySession
 from protean.exceptions import ObjectNotFoundError, ValidationError
 from tests.docs.guides.change_state.failing import (
     AddFails,

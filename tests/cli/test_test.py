@@ -762,7 +762,7 @@ class TestFullMatrixSplit:
     ):
         # This file's tests carry no ``mssql`` marker. They need MSSQL because
         # they sit under the ``mssql`` package.
-        path = "tests/adapters/repository/sqlalchemy_repo/mssql/test_mssql_provider.py"
+        path = "tests/adapters/database/sqlalchemy_repo/mssql/test_mssql_provider.py"
         result = subprocess.run(
             [
                 sys.executable,
@@ -1307,39 +1307,39 @@ class TestProviderHasCapabilityForMarker:
     """Test _provider_has_capability_for_marker helper."""
 
     def test_memory_has_basic_storage(self):
-        from protean.port.provider import DatabaseCapabilities
+        from protean.port.database import DatabaseCapabilities
 
         caps = DatabaseCapabilities.IN_MEMORY
         assert _provider_has_capability_for_marker(caps, "basic_storage") is True
 
     def test_memory_has_transactional(self):
         """Memory has SIMULATED_TRANSACTIONS which satisfies transactional."""
-        from protean.port.provider import DatabaseCapabilities
+        from protean.port.database import DatabaseCapabilities
 
         caps = DatabaseCapabilities.IN_MEMORY
         assert _provider_has_capability_for_marker(caps, "transactional") is True
 
     def test_memory_lacks_atomic_transactions(self):
         """Memory does not have real TRANSACTIONS."""
-        from protean.port.provider import DatabaseCapabilities
+        from protean.port.database import DatabaseCapabilities
 
         caps = DatabaseCapabilities.IN_MEMORY
         assert _provider_has_capability_for_marker(caps, "atomic_transactions") is False
 
     def test_memory_has_raw_queries(self):
-        from protean.port.provider import DatabaseCapabilities
+        from protean.port.database import DatabaseCapabilities
 
         caps = DatabaseCapabilities.IN_MEMORY
         assert _provider_has_capability_for_marker(caps, "raw_queries") is True
 
     def test_memory_lacks_schema_management(self):
-        from protean.port.provider import DatabaseCapabilities
+        from protean.port.database import DatabaseCapabilities
 
         caps = DatabaseCapabilities.IN_MEMORY
         assert _provider_has_capability_for_marker(caps, "schema_management") is False
 
     def test_relational_has_all_core_markers(self):
-        from protean.port.provider import DatabaseCapabilities
+        from protean.port.database import DatabaseCapabilities
 
         caps = DatabaseCapabilities.RELATIONAL
         assert _provider_has_capability_for_marker(caps, "basic_storage") is True
@@ -1349,13 +1349,13 @@ class TestProviderHasCapabilityForMarker:
         assert _provider_has_capability_for_marker(caps, "schema_management") is True
 
     def test_relational_lacks_native_json(self):
-        from protean.port.provider import DatabaseCapabilities
+        from protean.port.database import DatabaseCapabilities
 
         caps = DatabaseCapabilities.RELATIONAL
         assert _provider_has_capability_for_marker(caps, "native_json") is False
 
     def test_relational_full_has_native_types(self):
-        from protean.port.provider import DatabaseCapabilities
+        from protean.port.database import DatabaseCapabilities
 
         caps = (
             DatabaseCapabilities.RELATIONAL
@@ -1366,21 +1366,21 @@ class TestProviderHasCapabilityForMarker:
         assert _provider_has_capability_for_marker(caps, "native_array") is True
 
     def test_document_store_has_basic_and_schema(self):
-        from protean.port.provider import DatabaseCapabilities
+        from protean.port.database import DatabaseCapabilities
 
         caps = DatabaseCapabilities.DOCUMENT_STORE
         assert _provider_has_capability_for_marker(caps, "basic_storage") is True
         assert _provider_has_capability_for_marker(caps, "schema_management") is True
 
     def test_document_store_lacks_transactions(self):
-        from protean.port.provider import DatabaseCapabilities
+        from protean.port.database import DatabaseCapabilities
 
         caps = DatabaseCapabilities.DOCUMENT_STORE
         assert _provider_has_capability_for_marker(caps, "transactional") is False
         assert _provider_has_capability_for_marker(caps, "atomic_transactions") is False
 
     def test_unknown_marker_returns_false(self):
-        from protean.port.provider import DatabaseCapabilities
+        from protean.port.database import DatabaseCapabilities
 
         caps = DatabaseCapabilities.IN_MEMORY
         assert _provider_has_capability_for_marker(caps, "nonexistent_marker") is False
@@ -1390,7 +1390,7 @@ class TestGetApplicableMarkers:
     """Test _get_applicable_markers helper."""
 
     def test_memory_markers(self):
-        from protean.port.provider import DatabaseCapabilities
+        from protean.port.database import DatabaseCapabilities
 
         caps = DatabaseCapabilities.IN_MEMORY
         run, skip = _get_applicable_markers(caps)
@@ -1404,7 +1404,7 @@ class TestGetApplicableMarkers:
 
     def test_requested_capabilities_filter(self):
         """Only requested capabilities should appear in output."""
-        from protean.port.provider import DatabaseCapabilities
+        from protean.port.database import DatabaseCapabilities
 
         caps = DatabaseCapabilities.IN_MEMORY
         run, skip = _get_applicable_markers(caps, ["basic_storage", "native_json"])
@@ -1412,7 +1412,7 @@ class TestGetApplicableMarkers:
         assert skip == ["native_json"]
 
     def test_relational_all_core_markers(self):
-        from protean.port.provider import DatabaseCapabilities
+        from protean.port.database import DatabaseCapabilities
 
         caps = DatabaseCapabilities.RELATIONAL
         run, skip = _get_applicable_markers(caps)
@@ -1425,7 +1425,7 @@ class TestGetApplicableMarkers:
         assert "native_array" in skip
 
     def test_empty_requested_yields_no_markers(self):
-        from protean.port.provider import DatabaseCapabilities
+        from protean.port.database import DatabaseCapabilities
 
         caps = DatabaseCapabilities.IN_MEMORY
         run, skip = _get_applicable_markers(caps, [])
@@ -1592,7 +1592,7 @@ class TestPrintConformanceReport:
             CapabilityResult("basic_storage", "PASS", passed=42, total=42),
             CapabilityResult("raw_queries", "PASS", passed=5, total=5),
         ]
-        _print_conformance_report("memory", "MemoryProvider", results, ["native_json"])
+        _print_conformance_report("memory", "MemoryDatabase", results, ["native_json"])
 
         captured = capsys.readouterr()
         assert "Conformance Report: memory" in captured.out
@@ -1633,7 +1633,7 @@ class TestPrintConformanceReport:
         """Test report shows skipped capabilities."""
         results = []
         skipped = ["atomic_transactions", "schema_management", "native_json"]
-        _print_conformance_report("memory", "MemoryProvider", results, skipped)
+        _print_conformance_report("memory", "MemoryDatabase", results, skipped)
 
         captured = capsys.readouterr()
         assert "3 capabilities skipped" in captured.out

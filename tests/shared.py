@@ -24,7 +24,7 @@ def provider_adapter(domain: Domain, name: str = "default") -> Any:
     ``dao_for`` and the like) take the adapter from here, so a change in how the
     domain holds its providers edits this one function.
     """
-    return domain.providers[name]
+    return domain.databases[name]
 
 
 class FrozenClock:

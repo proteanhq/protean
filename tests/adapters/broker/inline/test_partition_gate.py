@@ -23,7 +23,7 @@ def broker(test_domain) -> InlineBroker:
 
 
 def test_inline_broker_does_not_advertise_partitioning(broker: InlineBroker) -> None:
-    assert not broker.has_capability(BrokerCapabilities.STREAM_PARTITIONING)
+    assert BrokerCapabilities.STREAM_PARTITIONING not in broker.capabilities
 
 
 @pytest.mark.parametrize(

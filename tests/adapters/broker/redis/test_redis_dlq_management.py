@@ -15,7 +15,7 @@ from tests.shared import REDIS_URI
 
 def _broker(test_domain) -> RedisBroker:
     broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
-    broker._data_reset()
+    broker.clear()
     return broker
 
 
@@ -148,7 +148,7 @@ class TestRedisDLQManagement:
         # Removed from the DLQ...
         assert broker.dlq_inspect("orders:dlq", dlq_id) is None
         # ...and republished (without DLQ metadata) to the target stream.
-        messages = broker.read("orders", "replay-group", no_of_messages=10)
+        messages = broker.read("orders", "replay-group", limit=10)
         assert len(messages) == 1
         _, replayed_payload = messages[0]
         assert replayed_payload["amount"] == 10
@@ -167,7 +167,7 @@ class TestRedisDLQManagement:
 
         assert broker.dlq_replay_all("orders:dlq", "orders") == 3
         assert broker.dlq_depth("orders:dlq") == 0
-        assert len(broker.read("orders", "replay-group", no_of_messages=10)) == 3
+        assert len(broker.read("orders", "replay-group", limit=10)) == 3
 
     def test_dlq_purge(self, test_domain):
         broker = _broker(test_domain)

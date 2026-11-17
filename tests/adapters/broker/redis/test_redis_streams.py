@@ -3,7 +3,7 @@ import logging
 import pytest
 import redis
 
-from protean.adapters.broker.redis import RedisBroker
+from protean.adapters.broker.redis import RedisBroker, get_field_value
 from tests.shared import REDIS_URI
 
 
@@ -24,10 +24,8 @@ def test_redis_streams_consumer_group_creation(redis_broker):
     redis_broker.get_next(stream, consumer_group)
 
     # Check that consumer group exists
-    info = redis_broker.info()
-    assert "consumer_groups" in info
-    assert stream in info["consumer_groups"]
-    assert consumer_group in info["consumer_groups"][stream]
+    assert stream in redis_broker._adapter._get_streams_to_check()
+    assert consumer_group in redis_broker._consumer_groups()
 
 
 @pytest.mark.redis
@@ -115,13 +113,10 @@ def test_redis_streams_nack_pending_behavior(redis_broker):
 
     # For Redis Streams, nacked messages remain in pending list
     # This behavior is different from inline brokers
-    info = redis_broker.info()
-    if (
-        stream in info["consumer_groups"]
-        and consumer_group in info["consumer_groups"][stream]
-    ):
+    groups = redis_broker._consumer_groups()
+    if consumer_group in groups:
         # Check that there's a pending message
-        assert info["consumer_groups"][stream][consumer_group]["pending"] > 0
+        assert groups[consumer_group]["pending"] > 0
 
 
 @pytest.mark.redis
@@ -134,7 +129,7 @@ def test_redis_streams_concurrent_consumers(redis_broker):
     broker1 = redis_broker
 
     # Create second broker instance (simulating different consumer)
-    broker2 = RedisBroker("test2", redis_broker.domain, redis_broker.conn_info)
+    broker2 = RedisBroker("test2", redis_broker.domain, redis_broker._adapter.config)
 
     messages = [{"data": f"msg_{i}"} for i in range(10)]
 
@@ -168,13 +163,12 @@ def test_redis_streams_stream_info_details(redis_broker):
     redis_broker.get_next(stream, consumer_group)
 
     # Get detailed info
-    info = redis_broker.info()
+    groups = redis_broker._consumer_groups()
 
-    assert "consumer_groups" in info
-    assert stream in info["consumer_groups"]
-    assert consumer_group in info["consumer_groups"][stream]
+    assert stream in redis_broker._adapter._get_streams_to_check()
+    assert consumer_group in groups
 
-    group_info = info["consumer_groups"][stream][consumer_group]
+    group_info = groups[consumer_group]
     assert "consumers" in group_info
     assert "pending" in group_info
     assert "last_delivered_id" in group_info
@@ -203,24 +197,18 @@ def test_redis_streams_message_expiration_and_cleanup(redis_broker):
     assert result is not None
 
     # Message should still be in pending list
-    info = redis_broker.info()
-    if (
-        stream in info["consumer_groups"]
-        and consumer_group in info["consumer_groups"][stream]
-    ):
-        assert info["consumer_groups"][stream][consumer_group]["pending"] > 0
+    groups = redis_broker._consumer_groups()
+    if consumer_group in groups:
+        assert groups[consumer_group]["pending"] > 0
 
     # Now ack the message
     redis_broker.ack(stream, identifier, consumer_group)
 
     # Check pending count decreased
-    info_after_ack = redis_broker.info()
-    if (
-        stream in info_after_ack["consumer_groups"]
-        and consumer_group in info_after_ack["consumer_groups"][stream]
-    ):
+    groups_after_ack = redis_broker._consumer_groups()
+    if consumer_group in groups_after_ack:
         # Pending count should be 0 or less than before
-        assert info_after_ack["consumer_groups"][stream][consumer_group]["pending"] == 0
+        assert groups_after_ack[consumer_group]["pending"] == 0
 
 
 @pytest.mark.redis
@@ -248,7 +236,7 @@ def test_redis_streams_message_ordering(redis_broker):
 
 @pytest.mark.redis
 def test_get_next_with_unexpected_exception(redis_broker, monkeypatch):
-    """Test _get_next method handling unexpected exceptions"""
+    """Test get_next handling unexpected exceptions"""
     stream = "test_stream"
     consumer_group = "test_group"
 
@@ -256,7 +244,9 @@ def test_get_next_with_unexpected_exception(redis_broker, monkeypatch):
     def mock_xreadgroup(*args, **kwargs):
         raise Exception("Unexpected Redis error")
 
-    monkeypatch.setattr(redis_broker.redis_instance, "xreadgroup", mock_xreadgroup)
+    monkeypatch.setattr(
+        redis_broker._adapter.redis_instance, "xreadgroup", mock_xreadgroup
+    )
 
     result = redis_broker.get_next(stream, consumer_group)
     assert result is None
@@ -269,7 +259,7 @@ def test_deserialize_message_with_no_data_field(redis_broker):
     # Fields without the expected "data" key
     fields = {"other_field": "some_value"}
 
-    result = redis_broker._deserialize_message(fields)
+    result = redis_broker._adapter._deserialize_message(fields)
     assert result == {}
 
 
@@ -307,7 +297,7 @@ def test_ack_with_redis_response_error(redis_broker, monkeypatch):
     def mock_xack(*args, **kwargs):
         raise redis_module.ResponseError("Redis ACK error")
 
-    monkeypatch.setattr(redis_broker.redis_instance, "xack", mock_xack)
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "xack", mock_xack)
 
     result = redis_broker.ack(stream, identifier, consumer_group)
     assert result is False
@@ -323,7 +313,7 @@ def test_ack_with_unexpected_exception(redis_broker, monkeypatch):
     def mock_xack(*args, **kwargs):
         raise Exception("Unexpected ACK error")
 
-    monkeypatch.setattr(redis_broker.redis_instance, "xack", mock_xack)
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "xack", mock_xack)
 
     result = redis_broker.ack(stream, identifier, consumer_group)
     assert result is False
@@ -352,57 +342,62 @@ def test_is_message_pending_message_id_mismatch(redis_broker, monkeypatch):
         return [{"message_id": b"9999999999999-0", "consumer": b"test"}]
 
     monkeypatch.setattr(
-        redis_broker.redis_instance, "xpending_range", mock_xpending_range
+        redis_broker._adapter.redis_instance, "xpending_range", mock_xpending_range
     )
 
-    result = redis_broker._is_message_pending(stream, consumer_group, identifier)
+    result = redis_broker._adapter._is_message_pending(
+        stream, consumer_group, identifier
+    )
     assert result is False
 
 
 @pytest.mark.redis
-def test_ensure_group_without_stream(redis_broker):
-    """Test _ensure_group called without stream parameter"""
-    # This should trigger the early return path
-    redis_broker._ensure_group("test_group", stream=None)
-    # If it returns without error, the early exit worked
+def test_create_group_creates_a_missing_stream(redis_broker):
+    """create_group creates the stream when it does not exist yet"""
+    adapter = redis_broker._adapter
+    assert adapter.redis_instance.exists("test_stream") == 0
+
+    adapter.create_group("test_stream", "test_group")
+
+    assert adapter.redis_instance.exists("test_stream") == 1
+    assert "test_stream:test_group" in adapter._created_groups
 
 
 @pytest.mark.redis
-def test_ensure_group_with_other_redis_error(redis_broker, monkeypatch):
-    """Test _ensure_group handling non-BUSYGROUP Redis errors"""
+def test_create_group_with_other_redis_error(redis_broker, monkeypatch):
+    """Test create_group handling non-BUSYGROUP Redis errors"""
     import redis as redis_module
 
     def mock_xgroup_create(*args, **kwargs):
         raise redis_module.ResponseError("Some other Redis error")
 
     monkeypatch.setattr(
-        redis_broker.redis_instance, "xgroup_create", mock_xgroup_create
+        redis_broker._adapter.redis_instance, "xgroup_create", mock_xgroup_create
     )
 
     # This should trigger the warning log path
-    redis_broker._ensure_group("test_group", "test_stream")
+    redis_broker._adapter.create_group("test_stream", "test_group")
 
 
 @pytest.mark.redis
-def test_info_with_exception(redis_broker, monkeypatch):
-    """Test _info method handling exceptions"""
+def test_consumer_groups_with_exception(redis_broker, monkeypatch):
+    """Test consumer_groups handling exceptions"""
 
     def mock_get_streams_to_check():
         raise Exception("Error getting streams")
 
     monkeypatch.setattr(
-        redis_broker, "_get_streams_to_check", mock_get_streams_to_check
+        redis_broker._adapter, "_get_streams_to_check", mock_get_streams_to_check
     )
 
-    info = redis_broker.info()
-    # Should return basic structure even with exception
-    assert "consumer_groups" in info
+    # Should return an empty result even with exception
+    assert redis_broker._consumer_groups() == {}
 
 
 @pytest.mark.redis
 def test_get_stream_info_non_existent_stream(redis_broker):
     """Test _get_stream_info for non-existent stream"""
-    result = redis_broker._get_stream_info("non_existent_stream")
+    result = redis_broker._adapter._get_stream_info("non_existent_stream")
     assert result is None
 
 
@@ -419,12 +414,14 @@ def test_get_stream_info_with_non_dict_group_info(redis_broker, monkeypatch):
     def mock_xinfo_consumers(*args, **kwargs):
         return [{"name": b"consumer1", "pending": b"0"}]
 
-    monkeypatch.setattr(redis_broker.redis_instance, "xinfo_groups", mock_xinfo_groups)
     monkeypatch.setattr(
-        redis_broker.redis_instance, "xinfo_consumers", mock_xinfo_consumers
+        redis_broker._adapter.redis_instance, "xinfo_groups", mock_xinfo_groups
+    )
+    monkeypatch.setattr(
+        redis_broker._adapter.redis_instance, "xinfo_consumers", mock_xinfo_consumers
     )
 
-    result = redis_broker._get_stream_info("test_stream")
+    result = redis_broker._adapter._get_stream_info("test_stream")
     # Should only process the valid dict entry
     assert isinstance(result, dict)
     assert "valid_group" in result
@@ -436,7 +433,7 @@ def test_extract_group_data_with_no_group_name(redis_broker):
     # Mock group info without proper name field
     group_info = {"other_field": b"value"}
 
-    result = redis_broker._extract_group_data(group_info, "test_stream")
+    result = redis_broker._adapter._extract_group_data(group_info, "test_stream")
     assert result is None
 
 
@@ -445,7 +442,7 @@ def test_extract_consumers_data_with_non_dict_consumer(redis_broker):
     """Test _extract_consumers_data handling non-dict consumer info"""
     consumers_info = ["not_a_dict", {"name": b"valid_consumer", "pending": b"1"}]
 
-    result = redis_broker._extract_consumers_data(consumers_info)
+    result = redis_broker._adapter._extract_consumers_data(consumers_info)
     # Should only process the valid dict entry
     assert len(result) == 1
     assert result[0]["name"] == "valid_consumer"
@@ -460,70 +457,72 @@ def test_extract_consumers_data_with_none_consumer_name(redis_broker, monkeypatc
             return None  # Simulate missing name
         return "1" if convert_to_int else "value"
 
-    monkeypatch.setattr(redis_broker, "_get_field_value", mock_get_field_value)
+    monkeypatch.setattr(
+        "protean.adapters.broker.redis.get_field_value", mock_get_field_value
+    )
 
     consumers_info = [{"name": b"test", "pending": b"1"}]
-    result = redis_broker._extract_consumers_data(consumers_info)
+    result = redis_broker._adapter._extract_consumers_data(consumers_info)
 
     # Should skip consumer with None name
     assert len(result) == 0
 
 
 @pytest.mark.redis
-def test_get_field_value_field_not_found(redis_broker):
-    """Test _get_field_value when field is not found"""
+def test_get_field_value_field_not_found():
+    """Test get_field_value when field is not found"""
     info_dict = {"other_field": b"value"}
 
-    result = redis_broker._get_field_value(info_dict, "missing_field")
+    result = get_field_value(info_dict, "missing_field")
     assert result is None
 
 
 @pytest.mark.redis
 def test_decode_if_bytes_with_non_bytes(redis_broker):
     """Test _decode_if_bytes with non-bytes input"""
-    result = redis_broker._decode_if_bytes("already_string")
+    result = redis_broker._adapter._decode_if_bytes("already_string")
     assert result == "already_string"
 
-    result = redis_broker._decode_if_bytes(123)
+    result = redis_broker._adapter._decode_if_bytes(123)
     assert result == "123"
 
 
 @pytest.mark.redis
-def test_extract_message_from_response_empty_response(redis_broker):
-    """Test _extract_message_from_response with empty/None response"""
+def test_extract_messages_from_response_empty_response(redis_broker):
+    """Test _extract_messages_from_response with empty/None response"""
     # Test with None response
-    result = redis_broker._extract_message_from_response(None)
-    assert result is None
+    result = redis_broker._adapter._extract_messages_from_response(None)
+    assert result == []
 
     # Test with empty response
-    result = redis_broker._extract_message_from_response([])
-    assert result is None
+    result = redis_broker._adapter._extract_messages_from_response([])
+    assert result == []
 
     # Test with response where first element has empty messages
-    result = redis_broker._extract_message_from_response([("stream", [])])
-    assert result is None
+    result = redis_broker._adapter._extract_messages_from_response([("stream", [])])
+    assert result == []
 
 
 @pytest.mark.redis
-def test_extract_message_from_response_no_messages(redis_broker):
-    """Test _extract_message_from_response when no messages in response"""
+def test_extract_messages_from_response_no_messages(redis_broker):
+    """Test _extract_messages_from_response when no messages in response"""
     # Response structure but no actual messages
     response = [("test_stream", [])]
 
-    result = redis_broker._extract_message_from_response(response)
-    assert result is None
+    result = redis_broker._adapter._extract_messages_from_response(response)
+    assert result == []
 
 
 @pytest.mark.redis
-def test_extract_message_from_response_complex_empty_cases(redis_broker):
-    """Test _extract_message_from_response with various empty response structures"""
+def test_extract_messages_from_response_complex_empty_cases(redis_broker):
+    """Test _extract_messages_from_response with various empty response structures"""
     # Test with response[0][1] being falsy but not None
-    result = redis_broker._extract_message_from_response([("stream", False)])
-    assert result is None
+    result = redis_broker._adapter._extract_messages_from_response([("stream", False)])
+    assert result == []
 
     # Test with response[0][1] being 0
-    result = redis_broker._extract_message_from_response([("stream", 0)])
-    assert result is None
+    result = redis_broker._adapter._extract_messages_from_response([("stream", 0)])
+    assert result == []
 
 
 @pytest.mark.redis
@@ -536,18 +535,22 @@ def test_handle_redis_error_nogroup_and_recursive_call(redis_broker, monkeypatch
 
     call_count = 0
 
-    def mock_get_next(*args, **kwargs):
+    def mock_read_new_messages(*args, **kwargs):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
             # First call - simulate the NOGROUP error scenario
             error = redis_module.ResponseError("NOGROUP No such key 'test_group'")
-            return redis_broker._handle_redis_error(error, stream, consumer_group)
+            return redis_broker._adapter._handle_redis_error(
+                error, stream, consumer_group, 1
+            )
         else:
-            # Second call - return None to simulate no messages
-            return None
+            # Second call - return no messages
+            return []
 
-    monkeypatch.setattr(redis_broker, "_get_next", mock_get_next)
+    monkeypatch.setattr(
+        redis_broker._adapter, "_read_new_messages", mock_read_new_messages
+    )
 
     result = redis_broker.get_next(stream, consumer_group)
     assert result is None
@@ -573,40 +576,37 @@ def test_read_method_early_break(redis_broker):
 
 
 @pytest.mark.redis
-def test_ensure_group_already_exists_early_return(redis_broker):
-    """Test _ensure_group early return when group already in cache"""
+def test_create_group_already_exists_early_return(redis_broker):
+    """Test create_group early return when group already in cache"""
     stream = "test_stream"
     consumer_group = "test_group"
 
     # First call - creates the group
-    redis_broker._ensure_group(consumer_group, stream)
+    redis_broker._create_group(stream, consumer_group)
 
     # Add to created groups to simulate cached state
     group_key = f"{stream}:{consumer_group}"
-    redis_broker._created_groups.add(group_key)
+    redis_broker._adapter._created_groups.add(group_key)
 
     # Second call - should return early
-    redis_broker._ensure_group(consumer_group, stream)
+    redis_broker._create_group(stream, consumer_group)
 
     # If we get here without error, the early return worked
 
 
 @pytest.mark.redis
-def test_info_method_no_streams_to_check(redis_broker, monkeypatch):
-    """Test _info method when there are no streams to check"""
+def test_consumer_groups_with_no_streams_to_check(redis_broker, monkeypatch):
+    """Test consumer_groups when there are no streams to check"""
 
     def mock_get_streams_to_check():
         return set()  # Return empty set
 
     monkeypatch.setattr(
-        redis_broker, "_get_streams_to_check", mock_get_streams_to_check
+        redis_broker._adapter, "_get_streams_to_check", mock_get_streams_to_check
     )
 
-    info = redis_broker.info()
-
-    # Should return basic structure with empty consumer_groups
-    assert "consumer_groups" in info
-    assert len(info["consumer_groups"]) == 0
+    # Should return no consumer groups
+    assert len(redis_broker._consumer_groups()) == 0
 
 
 @pytest.mark.redis
@@ -616,15 +616,17 @@ def test_get_stream_info_empty_stream_info(redis_broker, monkeypatch):
     def mock_xinfo_groups(*args, **kwargs):
         return []  # Return empty list
 
-    monkeypatch.setattr(redis_broker.redis_instance, "xinfo_groups", mock_xinfo_groups)
+    monkeypatch.setattr(
+        redis_broker._adapter.redis_instance, "xinfo_groups", mock_xinfo_groups
+    )
 
-    result = redis_broker._get_stream_info("test_stream")
+    result = redis_broker._adapter._get_stream_info("test_stream")
     assert result is None  # Should return None for empty stream_info
 
 
 @pytest.mark.redis
 def test_get_next_with_malformed_response_structure(redis_broker, monkeypatch):
-    """Test _get_next handling malformed Redis response structures"""
+    """Test get_next handling malformed Redis response structures"""
     stream = "test_stream"
     consumer_group = "test_group"
 
@@ -633,43 +635,47 @@ def test_get_next_with_malformed_response_structure(redis_broker, monkeypatch):
         # Return response where response[0][1] exists but messages is empty
         return [("test_stream", [])]
 
-    monkeypatch.setattr(redis_broker.redis_instance, "xreadgroup", mock_xreadgroup)
+    monkeypatch.setattr(
+        redis_broker._adapter.redis_instance, "xreadgroup", mock_xreadgroup
+    )
 
     result = redis_broker.get_next(stream, consumer_group)
     assert result is None
 
 
 @pytest.mark.redis
-def test_extract_message_from_response_edge_cases(redis_broker):
+def test_extract_messages_from_response_edge_cases(redis_broker):
     """Test edge cases in message extraction from Redis responses"""
     # Test with empty response
     empty_response = []
-    result = redis_broker._extract_message_from_response(empty_response)
-    assert result is None
+    result = redis_broker._adapter._extract_messages_from_response(empty_response)
+    assert result == []
 
     # Test with response but no stream data
     response_no_stream = [["stream", []]]
-    result = redis_broker._extract_message_from_response(response_no_stream)
-    assert result is None
+    result = redis_broker._adapter._extract_messages_from_response(response_no_stream)
+    assert result == []
 
     # Test with response but empty messages
     response_empty_messages = [["stream", []]]
-    result = redis_broker._extract_message_from_response(response_empty_messages)
-    assert result is None
+    result = redis_broker._adapter._extract_messages_from_response(
+        response_empty_messages
+    )
+    assert result == []
 
 
 @pytest.mark.redis
 def test_handle_redis_error_non_nogroup_error(redis_broker):
     """Test handling of non-NOGROUP Redis errors"""
-    # Mock _handle_redis_error to test the non-NOGROUP path
+    # Call _handle_redis_error directly to test the non-NOGROUP path
     non_nogroup_error = redis.ResponseError(
         "WRONGTYPE Operation against a key holding the wrong kind of value"
     )
 
-    result = redis_broker._handle_redis_error(
-        non_nogroup_error, "test_stream", "test_group"
+    result = redis_broker._adapter._handle_redis_error(
+        non_nogroup_error, "test_stream", "test_group", 1
     )
-    assert result is None
+    assert result == []
 
 
 @pytest.mark.redis
@@ -678,7 +684,7 @@ def test_deserialize_message_with_json_decode_error(redis_broker):
     # Create fields with invalid JSON
     fields = {b"data": b"invalid json {"}
 
-    result = redis_broker._deserialize_message(fields)
+    result = redis_broker._adapter._deserialize_message(fields)
     assert result == {}
 
 
@@ -688,7 +694,7 @@ def test_deserialize_message_with_unicode_decode_error(redis_broker):
     # Create fields with invalid Unicode bytes
     fields = {b"data": b"\xff\xfe invalid unicode"}
 
-    result = redis_broker._deserialize_message(fields)
+    result = redis_broker._adapter._deserialize_message(fields)
     assert result == {}
 
 
@@ -699,7 +705,9 @@ def test_nack_with_unexpected_exception(redis_broker, monkeypatch):
     def mock_is_message_pending(*args, **kwargs):
         raise Exception("Unexpected error during pending check")
 
-    monkeypatch.setattr(redis_broker, "_is_message_pending", mock_is_message_pending)
+    monkeypatch.setattr(
+        redis_broker._adapter, "_is_message_pending", mock_is_message_pending
+    )
 
     result = redis_broker.nack("test_stream", "test_id", "test_group")
     assert result is False
@@ -715,16 +723,18 @@ def test_is_message_pending_with_redis_error(redis_broker, monkeypatch):
         )
 
     monkeypatch.setattr(
-        redis_broker.redis_instance, "xpending_range", mock_xpending_range
+        redis_broker._adapter.redis_instance, "xpending_range", mock_xpending_range
     )
 
-    result = redis_broker._is_message_pending("test_stream", "test_group", "test_id")
+    result = redis_broker._adapter._is_message_pending(
+        "test_stream", "test_group", "test_id"
+    )
     assert result is False
 
 
 @pytest.mark.redis
-def test_ensure_group_with_non_busygroup_error(redis_broker, monkeypatch):
-    """Test _ensure_group with non-BUSYGROUP Redis errors"""
+def test_create_group_with_non_busygroup_error(redis_broker, monkeypatch):
+    """Test create_group with non-BUSYGROUP Redis errors"""
 
     def mock_xgroup_create(*args, **kwargs):
         raise redis.ResponseError(
@@ -732,26 +742,26 @@ def test_ensure_group_with_non_busygroup_error(redis_broker, monkeypatch):
         )
 
     monkeypatch.setattr(
-        redis_broker.redis_instance, "xgroup_create", mock_xgroup_create
+        redis_broker._adapter.redis_instance, "xgroup_create", mock_xgroup_create
     )
 
     # Should handle the error gracefully without raising
-    redis_broker._ensure_group("test_group", "test_stream")
+    redis_broker._adapter.create_group("test_stream", "test_group")
 
 
 @pytest.mark.redis
-def test_ensure_group_with_unexpected_exception(redis_broker, monkeypatch):
-    """Test _ensure_group with unexpected exceptions"""
+def test_create_group_with_unexpected_exception(redis_broker, monkeypatch):
+    """Test create_group with unexpected exceptions"""
 
     def mock_xgroup_create(*args, **kwargs):
         raise Exception("Unexpected error during group creation")
 
     monkeypatch.setattr(
-        redis_broker.redis_instance, "xgroup_create", mock_xgroup_create
+        redis_broker._adapter.redis_instance, "xgroup_create", mock_xgroup_create
     )
 
     # Should handle the error gracefully without raising
-    redis_broker._ensure_group("test_group", "test_stream")
+    redis_broker._adapter.create_group("test_stream", "test_group")
 
 
 @pytest.mark.redis
@@ -762,11 +772,11 @@ def test_extract_group_data_with_redis_error(redis_broker, monkeypatch):
         raise redis.ResponseError("NOGROUP No such consumer group")
 
     monkeypatch.setattr(
-        redis_broker.redis_instance, "xinfo_consumers", mock_xinfo_consumers
+        redis_broker._adapter.redis_instance, "xinfo_consumers", mock_xinfo_consumers
     )
 
     group_info = {b"name": b"test_group", b"pending": b"0"}
-    result = redis_broker._extract_group_data(group_info, "test_stream")
+    result = redis_broker._adapter._extract_group_data(group_info, "test_stream")
     assert result is None
 
 
@@ -774,13 +784,13 @@ def test_extract_group_data_with_redis_error(redis_broker, monkeypatch):
 def test_extract_group_data_skips_a_group_with_a_name_that_is_not_utf8(redis_broker):
     """Another client can join a group under a consumer name that is not UTF-8"""
     stream = "test::bad-consumer-name"
-    redis_broker._ensure_group("BadNameGroup", stream)
-    redis_broker.redis_instance.xgroup_createconsumer(
+    redis_broker._create_group(stream, "BadNameGroup")
+    redis_broker._adapter.redis_instance.xgroup_createconsumer(
         stream, "BadNameGroup", b"\xff\xfe-bad"
     )
 
     group_info = {b"name": b"BadNameGroup", b"pending": b"0"}
-    assert redis_broker._extract_group_data(group_info, stream) is None
+    assert redis_broker._adapter._extract_group_data(group_info, stream) is None
 
 
 @pytest.mark.redis
@@ -790,32 +800,34 @@ def test_extract_group_data_lets_other_errors_through(redis_broker, monkeypatch)
     def mock_get_field_value(*args, **kwargs):
         raise KeyError("Field extraction error")
 
-    monkeypatch.setattr(redis_broker, "_get_field_value", mock_get_field_value)
+    monkeypatch.setattr(
+        "protean.adapters.broker.redis.get_field_value", mock_get_field_value
+    )
 
     group_info = {b"name": b"test_group", b"pending": b"0"}
     with pytest.raises(KeyError, match="Field extraction error"):
-        redis_broker._extract_group_data(group_info, "test_stream")
+        redis_broker._adapter._extract_group_data(group_info, "test_stream")
 
 
 @pytest.mark.redis
-def test_get_field_value_convert_to_int_error(redis_broker):
-    """Test _get_field_value with integer conversion errors"""
+def test_get_field_value_convert_to_int_error():
+    """Test get_field_value with integer conversion errors"""
     info_dict = {b"pending": b"not_a_number"}
 
-    result = redis_broker._get_field_value(info_dict, "pending", convert_to_int=True)
+    result = get_field_value(info_dict, "pending", convert_to_int=True)
     assert result == 0  # Should return 0 for conversion errors
 
 
 @pytest.mark.redis
 def test_ping_with_exception(redis_broker, monkeypatch):
-    """Test _ping with connection exceptions"""
+    """Test ping with connection exceptions"""
 
     def mock_ping():
         raise redis.ConnectionError("Connection error")
 
-    monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "ping", mock_ping)
 
-    result = redis_broker._ping()
+    result = redis_broker._adapter.ping()
     assert result is False
 
 
@@ -831,9 +843,9 @@ def test_ping_returns_false_on_a_socket_error_or_a_malformed_reply(
     def mock_ping():
         raise error
 
-    monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "ping", mock_ping)
 
-    assert redis_broker._ping() is False
+    assert redis_broker._adapter.ping() is False
 
 
 @pytest.mark.redis
@@ -843,19 +855,19 @@ def test_ping_lets_other_errors_through(redis_broker, monkeypatch):
     def mock_ping():
         raise RuntimeError("bug in ping")
 
-    monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "ping", mock_ping)
 
     with pytest.raises(RuntimeError, match="bug in ping"):
-        redis_broker._ping()
+        redis_broker._adapter.ping()
 
 
 @pytest.mark.redis
 def test_calculate_message_counts_skips_a_key_of_another_type(redis_broker):
     """A key that holds a string, not a stream, is not counted"""
-    redis_broker.redis_instance.set("test_stream", "not-a-stream")
-    redis_broker._subscribers["test_stream"] = []
+    redis_broker._adapter.redis_instance.set("test_stream", "not-a-stream")
+    redis_broker._adapter._created_groups_set.add("test_stream:test_group")
 
-    result = redis_broker._calculate_message_counts()
+    result = redis_broker._adapter._calculate_message_counts()
     assert result["total_messages"] == 0
     assert result["in_flight"] == 0
     assert result["failed"] == 0
@@ -869,12 +881,14 @@ def test_calculate_message_counts_with_group_errors(redis_broker, monkeypatch):
     def mock_xinfo_groups(*args, **kwargs):
         raise redis.ResponseError("NOGROUP No such key 'test_stream' or consumer group")
 
-    monkeypatch.setattr(redis_broker.redis_instance, "xinfo_groups", mock_xinfo_groups)
+    monkeypatch.setattr(
+        redis_broker._adapter.redis_instance, "xinfo_groups", mock_xinfo_groups
+    )
 
     # Add a stream to check
-    redis_broker._subscribers["test_stream"] = []
+    redis_broker._adapter._created_groups_set.add("test_stream:test_group")
 
-    result = redis_broker._calculate_message_counts()
+    result = redis_broker._adapter._calculate_message_counts()
     assert result["total_messages"] == 0
     assert result["in_flight"] == 0
 
@@ -886,11 +900,11 @@ def test_calculate_message_counts_with_redis_error(redis_broker, monkeypatch):
     def mock_xlen(*args, **kwargs):
         raise redis.ConnectionError("Connection lost")
 
-    monkeypatch.setattr(redis_broker.redis_instance, "xlen", mock_xlen)
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "xlen", mock_xlen)
     redis_broker.publish("test_stream", {"data": "x"})
-    redis_broker._subscribers["test_stream"] = []
+    redis_broker._adapter._created_groups_set.add("test_stream:test_group")
 
-    result = redis_broker._calculate_message_counts()
+    result = redis_broker._adapter._calculate_message_counts()
     assert result["total_messages"] == 0
     assert result["in_flight"] == 0
     assert result["failed"] == 0
@@ -905,11 +919,11 @@ def test_calculate_message_counts_lets_other_errors_through(redis_broker, monkey
         raise RuntimeError("Unexpected error getting streams")
 
     monkeypatch.setattr(
-        redis_broker, "_get_streams_to_check", mock_get_streams_to_check
+        redis_broker._adapter, "_get_streams_to_check", mock_get_streams_to_check
     )
 
     with pytest.raises(RuntimeError, match="Unexpected error getting streams"):
-        redis_broker._calculate_message_counts()
+        redis_broker._adapter._calculate_message_counts()
 
 
 @pytest.mark.redis
@@ -919,10 +933,10 @@ def test_calculate_streams_info_with_redis_error(redis_broker, monkeypatch):
     def mock_type(*args, **kwargs):
         raise redis.ConnectionError("Connection lost")
 
-    monkeypatch.setattr(redis_broker.redis_instance, "type", mock_type)
-    redis_broker._subscribers["test_stream"] = []
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "type", mock_type)
+    redis_broker._adapter._created_groups_set.add("test_stream:test_group")
 
-    result = redis_broker._calculate_streams_info()
+    result = redis_broker._adapter._calculate_streams_info()
     assert result["count"] == 0
     assert result["names"] == []
 
@@ -935,11 +949,11 @@ def test_calculate_streams_info_lets_other_errors_through(redis_broker, monkeypa
         raise RuntimeError("Unexpected error getting streams")
 
     monkeypatch.setattr(
-        redis_broker, "_get_streams_to_check", mock_get_streams_to_check
+        redis_broker._adapter, "_get_streams_to_check", mock_get_streams_to_check
     )
 
     with pytest.raises(RuntimeError, match="Unexpected error getting streams"):
-        redis_broker._calculate_streams_info()
+        redis_broker._adapter._calculate_streams_info()
 
 
 @pytest.mark.redis
@@ -950,31 +964,31 @@ def test_calculate_consumer_groups_info_lets_errors_through(redis_broker, monkey
         raise RuntimeError("Unexpected error accessing created groups")
 
     monkeypatch.setattr(
-        type(redis_broker), "_created_groups", property(mock_created_groups)
+        type(redis_broker._adapter), "_created_groups", property(mock_created_groups)
     )
 
     with pytest.raises(RuntimeError, match="accessing created groups"):
-        redis_broker._calculate_consumer_groups_info()
+        redis_broker._adapter._calculate_consumer_groups_info()
 
 
 @pytest.mark.redis
-def test_health_stats_with_exception(redis_broker, monkeypatch):
-    """Test _health_stats with Redis info exceptions"""
+def test_adapter_health_with_exception(redis_broker, monkeypatch):
+    """Test the adapter health with Redis info exceptions"""
 
     def mock_info():
         raise Exception("Redis info command failed")
 
-    monkeypatch.setattr(redis_broker.redis_instance, "info", mock_info)
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "info", mock_info)
 
-    result = redis_broker._health_stats()
-    assert result["healthy"] is False
-    assert "error" in result
-    assert result["message_counts"]["total_messages"] == 0
+    result = redis_broker._adapter.health()
+    assert result.healthy is False
+    assert "error" in result.details
+    assert result.message_counts["total_messages"] == 0
 
 
 @pytest.mark.redis
-def test_health_stats_with_loading_flag(redis_broker, monkeypatch):
-    """Test _health_stats with Redis loading flag set"""
+def test_adapter_health_with_loading_flag(redis_broker, monkeypatch):
+    """Test the adapter health with Redis loading flag set"""
 
     def mock_info():
         return {
@@ -985,17 +999,17 @@ def test_health_stats_with_loading_flag(redis_broker, monkeypatch):
             "rejected_connections": 0,
         }
 
-    monkeypatch.setattr(redis_broker.redis_instance, "info", mock_info)
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "info", mock_info)
 
-    result = redis_broker._health_stats()
-    assert result["healthy"] is False
-    assert "warning" in result
-    assert "loading data from disk" in result["warning"]
+    result = redis_broker._adapter.health()
+    assert result.healthy is False
+    assert "warning" in result.details
+    assert "loading data from disk" in result.details["warning"]
 
 
 @pytest.mark.redis
-def test_health_stats_with_rejected_connections(redis_broker, monkeypatch):
-    """Test _health_stats with rejected connections"""
+def test_adapter_health_with_rejected_connections(redis_broker, monkeypatch):
+    """Test the adapter health with rejected connections"""
 
     def mock_info():
         return {
@@ -1006,17 +1020,17 @@ def test_health_stats_with_rejected_connections(redis_broker, monkeypatch):
             "rejected_connections": 5,  # This should trigger the rejected connections warning
         }
 
-    monkeypatch.setattr(redis_broker.redis_instance, "info", mock_info)
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "info", mock_info)
 
-    result = redis_broker._health_stats()
-    assert result["healthy"] is False
-    assert "warning" in result
-    assert "rejected connections" in result["warning"]
+    result = redis_broker._adapter.health()
+    assert result.healthy is False
+    assert "warning" in result.details
+    assert "rejected connections" in result.details["warning"]
 
 
 @pytest.mark.redis
-def test_ensure_connection_with_first_ping_success(redis_broker, monkeypatch):
-    """Test _ensure_connection when first ping succeeds"""
+def test_reconnect_with_first_ping_success(redis_broker, monkeypatch):
+    """Test reconnect when first ping succeeds"""
     ping_call_count = 0
 
     def mock_ping():
@@ -1024,16 +1038,16 @@ def test_ensure_connection_with_first_ping_success(redis_broker, monkeypatch):
         ping_call_count += 1
         return True
 
-    monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "ping", mock_ping)
 
-    result = redis_broker._ensure_connection()
+    result = redis_broker._adapter.reconnect()
     assert result is True
     assert ping_call_count == 1
 
 
 @pytest.mark.redis
-def test_ensure_connection_with_reconnection_success(redis_broker, monkeypatch):
-    """Test _ensure_connection with successful reconnection"""
+def test_reconnect_with_reconnection_success(redis_broker, monkeypatch):
+    """Test reconnect with successful reconnection"""
     ping_call_count = 0
 
     def mock_ping():
@@ -1042,39 +1056,39 @@ def test_ensure_connection_with_reconnection_success(redis_broker, monkeypatch):
         # First ping fails; second ping succeeds
         return ping_call_count != 1
 
-    def mock_redis_from_url(url):
-        return redis_broker.redis_instance
+    def mock_redis_from_url(url, **kwargs):
+        return redis_broker._adapter.redis_instance
 
-    monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "ping", mock_ping)
 
     monkeypatch.setattr(redis.Redis, "from_url", mock_redis_from_url)
 
-    result = redis_broker._ensure_connection()
+    result = redis_broker._adapter.reconnect()
     assert result is True
     assert ping_call_count == 2
 
 
 @pytest.mark.redis
-def test_ensure_connection_with_reconnection_failure(redis_broker, monkeypatch):
-    """Test _ensure_connection with failed reconnection"""
+def test_reconnect_with_reconnection_failure(redis_broker, monkeypatch):
+    """Test reconnect with failed reconnection"""
 
     def mock_ping():
         return False  # Always fails
 
-    def mock_redis_from_url(url):
-        return redis_broker.redis_instance
+    def mock_redis_from_url(url, **kwargs):
+        return redis_broker._adapter.redis_instance
 
-    monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "ping", mock_ping)
 
     monkeypatch.setattr(redis.Redis, "from_url", mock_redis_from_url)
 
-    result = redis_broker._ensure_connection()
+    result = redis_broker._adapter.reconnect()
     assert result is False
 
 
 @pytest.mark.redis
-def test_ensure_connection_with_exception_and_recovery(redis_broker, monkeypatch):
-    """Test _ensure_connection with exception and final recovery"""
+def test_reconnect_with_exception_and_recovery(redis_broker, monkeypatch):
+    """Test reconnect with exception and final recovery"""
     ping_call_count = 0
 
     def mock_ping():
@@ -1084,33 +1098,33 @@ def test_ensure_connection_with_exception_and_recovery(redis_broker, monkeypatch
             raise redis.ConnectionError("Connection error")
         return True  # Final attempt succeeds
 
-    def mock_redis_from_url(url):
-        return redis_broker.redis_instance
+    def mock_redis_from_url(url, **kwargs):
+        return redis_broker._adapter.redis_instance
 
-    monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "ping", mock_ping)
 
     monkeypatch.setattr(redis.Redis, "from_url", mock_redis_from_url)
 
-    result = redis_broker._ensure_connection()
+    result = redis_broker._adapter.reconnect()
     assert result is True
     assert ping_call_count == 3
 
 
 @pytest.mark.redis
-def test_ensure_connection_with_complete_failure(redis_broker, monkeypatch):
-    """Test _ensure_connection with complete failure"""
+def test_reconnect_with_complete_failure(redis_broker, monkeypatch):
+    """Test reconnect with complete failure"""
 
     def mock_ping():
         raise redis.ConnectionError("Connection error")
 
-    def mock_redis_from_url(url):
-        return redis_broker.redis_instance
+    def mock_redis_from_url(url, **kwargs):
+        return redis_broker._adapter.redis_instance
 
-    monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "ping", mock_ping)
 
     monkeypatch.setattr(redis.Redis, "from_url", mock_redis_from_url)
 
-    result = redis_broker._ensure_connection()
+    result = redis_broker._adapter.reconnect()
     assert result is False
 
 
@@ -1120,7 +1134,7 @@ def test_ensure_connection_with_complete_failure(redis_broker, monkeypatch):
     [OSError("socket closed"), ValueError("malformed reply")],
     ids=["socket-error", "malformed-reply"],
 )
-def test_ensure_connection_retries_after_a_socket_error_or_a_malformed_reply(
+def test_reconnect_retries_after_a_socket_error_or_a_malformed_reply(
     redis_broker, monkeypatch, error
 ):
     calls = []
@@ -1131,45 +1145,47 @@ def test_ensure_connection_retries_after_a_socket_error_or_a_malformed_reply(
             raise error
         return True
 
-    monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "ping", mock_ping)
     monkeypatch.setattr(
-        redis.Redis, "from_url", lambda url: redis_broker.redis_instance
+        redis.Redis,
+        "from_url",
+        lambda url, **kwargs: redis_broker._adapter.redis_instance,
     )
 
-    assert redis_broker._ensure_connection() is True
+    assert redis_broker._adapter.reconnect() is True
     assert len(calls) == 2
 
 
 @pytest.mark.redis
-def test_ensure_connection_lets_other_errors_through(redis_broker, monkeypatch):
+def test_reconnect_lets_other_errors_through(redis_broker, monkeypatch):
     """An error from ping that is neither a Redis nor a socket error reaches the caller"""
 
     def mock_ping():
         raise RuntimeError("bug in ping")
 
-    monkeypatch.setattr(redis_broker.redis_instance, "ping", mock_ping)
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "ping", mock_ping)
 
     with pytest.raises(RuntimeError, match="bug in ping"):
-        redis_broker._ensure_connection()
+        redis_broker._adapter.reconnect()
 
 
 @pytest.mark.redis
-def test_data_reset_with_exception(redis_broker, monkeypatch, caplog):
-    """Test _data_reset with Redis exception"""
+def test_clear_with_exception(redis_broker, monkeypatch, caplog):
+    """Test clear with Redis exception"""
 
     def mock_flushdb():
         raise Exception("Flush operation failed")
 
-    monkeypatch.setattr(redis_broker.redis_instance, "flushdb", mock_flushdb)
-    redis_broker._created_groups_set.add("stream:group")
+    monkeypatch.setattr(redis_broker._adapter.redis_instance, "flushdb", mock_flushdb)
+    redis_broker._adapter._created_groups_set.add("stream:group")
 
     # Should handle the exception gracefully without raising
     with caplog.at_level(logging.ERROR):
-        redis_broker._data_reset()
+        redis_broker.clear()
 
     # The groups are cleared inside the try block after the flush, so a
     # failed flush leaves them in place and logs the error.
-    assert redis_broker._created_groups_set == {"stream:group"}
+    assert redis_broker._adapter._created_groups_set == {"stream:group"}
     assert any(
         r.levelname == "ERROR" and "broker.redis.data_reset_failed" in r.message
         for r in caplog.records
@@ -1177,7 +1193,7 @@ def test_data_reset_with_exception(redis_broker, monkeypatch, caplog):
 
 
 @pytest.mark.redis
-def test_data_reset_leaves_other_databases_alone(redis_broker):
+def test_clear_leaves_other_databases_alone(redis_broker):
     # Redis database 14 is outside every domain and adapter config in the
     # suite, so no reset or teardown flushes it while this test runs under
     # xdist. The tests that share it each use their own key.
@@ -1186,11 +1202,11 @@ def test_data_reset_leaves_other_databases_alone(redis_broker):
     try:
         other_db.set(other_key, "kept")
         redis_broker.publish("reset_stream", {"data": "test"})
-        assert redis_broker.redis_instance.exists("reset_stream") == 1
+        assert redis_broker._adapter.redis_instance.exists("reset_stream") == 1
 
-        redis_broker._data_reset()
+        redis_broker.clear()
 
-        assert redis_broker.redis_instance.exists("reset_stream") == 0
+        assert redis_broker._adapter.redis_instance.exists("reset_stream") == 0
         assert other_db.get(other_key) == b"kept"
     finally:
         other_db.delete(other_key)

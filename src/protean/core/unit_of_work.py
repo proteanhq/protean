@@ -11,7 +11,7 @@ from protean.exceptions import (
     TransactionError,
     ValidationError,
 )
-from protean.port.provider import DatabaseCapabilities
+from protean.port.database import DatabaseCapabilities
 from protean.utils import Processing
 from protean.utils.globals import _uow_context_stack, current_domain, g
 from protean.utils.processing import current_priority
@@ -25,7 +25,7 @@ from protean.utils.telemetry import (
 
 if TYPE_CHECKING:
     from protean.core.aggregate import BaseAggregate
-    from protean.port.provider import SessionProtocol
+    from protean.port.database import SessionProtocol
 
 
 class _UoWStack(Protocol):
@@ -215,11 +215,11 @@ class UnitOfWork:
     ) -> "BaseAggregate | None":
         """The instance of ``aggregate_cls`` with ``identifier`` already
         tracked in this transaction, if there is one."""
-        provider_map = self._identity_map.get(aggregate_cls.meta_.provider, {})
+        provider_map = self._identity_map.get(aggregate_cls.meta_.database, {})
         return provider_map.get((aggregate_cls, identifier))
 
     def _add_to_identity_map(self, aggregate: Any, saved: bool = False) -> None:
-        provider_name = aggregate.meta_.provider
+        provider_name = aggregate.meta_.database
         key = self._identity_key(aggregate)
         self._identity_map[provider_name][key] = aggregate
         if saved:
@@ -285,7 +285,7 @@ class UnitOfWork:
         aggregates advance as they would on commit.
         """
         for provider_name, item in self._state_based_items():
-            provider = self.domain.providers[provider_name]
+            provider = self.domain.databases[provider_name]
             if (
                 DatabaseCapabilities.TRANSACTIONS in provider.capabilities
                 or DatabaseCapabilities.SIMULATED_TRANSACTIONS in provider.capabilities
@@ -325,7 +325,7 @@ class UnitOfWork:
         self._transaction = object()
 
         # Log transaction capability warnings for each configured provider
-        for provider_name, provider in self.domain.providers.items():
+        for provider_name, provider in self.domain.databases.items():
             if DatabaseCapabilities.TRANSACTIONS not in provider.capabilities:
                 if DatabaseCapabilities.SIMULATED_TRANSACTIONS in provider.capabilities:
                     logger.debug(
@@ -916,7 +916,7 @@ class UnitOfWork:
         self._reset()
 
     def _get_session(self, provider_name: str) -> "SessionProtocol":
-        provider = self.domain.providers[provider_name]
+        provider = self.domain.databases[provider_name]
         return provider.get_session()
 
     def _initialize_session(self, provider_name: str) -> "SessionProtocol":

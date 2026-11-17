@@ -40,7 +40,7 @@ from protean.utils.dlq import collect_dlq_streams, discover_subscriptions
 
 if TYPE_CHECKING:
     from protean.domain import Domain
-    from protean.port.broker import BaseBroker
+    from protean.infra.broker import Broker
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -55,7 +55,7 @@ def callback() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _get_broker(domain: Domain) -> BaseBroker:
+def _get_broker(domain: Domain) -> Broker:
     """Retrieve the default broker from the domain."""
     broker = domain.brokers.get("default")
     if broker is None:

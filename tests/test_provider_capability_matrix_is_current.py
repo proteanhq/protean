@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from protean.infra.registry import providers
-from protean.port.provider import DatabaseCapabilities
+from protean.infra.registry import databases
+from protean.port.database import DatabaseCapabilities
 
 DOCS = (
     Path(__file__).resolve().parents[1]
@@ -79,11 +79,11 @@ def _first_table(lines: list[str]) -> list[str]:
 def _provider_names() -> set[str]:
     """Protean's own provider names, from its entry points.
 
-    Read here rather than from ``providers.list()``, which is empty until
+    Read here rather than from ``databases.list()``, which is empty until
     something triggers plugin discovery. A guard that enumerates an empty set
     passes on every page, including a blank one.
 
-    Scoped to the ``protean`` distribution because ``protean.providers`` is a
+    Scoped to the ``protean`` distribution because ``protean.databases`` is a
     public extension point. A third-party provider is not something this page
     documents, and enumerating every installed distribution would fail the
     guard for whoever has one, after importing their plugin to ask.
@@ -91,22 +91,22 @@ def _provider_names() -> set[str]:
     return {
         ep.name
         for ep in metadata.distribution("protean").entry_points.select(
-            group="protean.providers"
+            group="protean.databases"
         )
     }
 
 
 def _declared(provider_name: str) -> DatabaseCapabilities:
-    provider_cls = providers.get(provider_name)
+    provider_cls = databases.get(provider_name)
     # ``capabilities`` is a property on the class; read it off the descriptor so
     # nothing has to be constructed against a live server.
     return provider_cls.capabilities.fget(provider_cls)  # type: ignore[attr-defined]
 
 
 def _install_a_third_party_provider(tmp_path, monkeypatch):
-    """Put a distribution advertising `protean.providers` on sys.path.
+    """Put a distribution advertising `protean.databases` on sys.path.
 
-    `protean.providers` is a public extension point, so this is a supported
+    `protean.databases` is a public extension point, so this is a supported
     thing for someone to have installed. It must not turn a guard about
     Protean's own providers red.
     """
@@ -117,7 +117,7 @@ def _install_a_third_party_provider(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     (dist / "entry_points.txt").write_text(
-        "[protean.providers]\nacmedb = acme_protean_db:register\n", encoding="utf-8"
+        "[protean.databases]\nacmedb = acme_protean_db:register\n", encoding="utf-8"
     )
     monkeypatch.syspath_prepend(str(tmp_path))
     metadata.MetadataPathFinder.invalidate_caches()
@@ -178,7 +178,7 @@ class TestCapabilityMatrix:
         _install_a_third_party_provider(tmp_path, monkeypatch)
 
         assert "acmedb" in {
-            ep.name for ep in metadata.entry_points().select(group="protean.providers")
+            ep.name for ep in metadata.entry_points().select(group="protean.databases")
         }
         assert "acmedb" not in _provider_names()
 

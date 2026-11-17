@@ -16,21 +16,21 @@ from types import SimpleNamespace
 
 import pytest
 
-from protean.adapters.repository.elasticsearch import ElasticsearchDAO, ESProvider
-from protean.adapters.repository.memory import DictDAO, MemoryProvider, MemorySession
-from protean.adapters.repository.sqlalchemy import (
+from protean.adapters.database.elasticsearch import ElasticsearchDAO, ESDatabase
+from protean.adapters.database.memory import DictDAO, MemoryDatabase, MemorySession
+from protean.adapters.database.sqlalchemy import (
     SADAO,
-    MssqlProvider,
-    MysqlProvider,
-    PostgresqlProvider,
-    SqliteProvider,
+    MssqlDatabase,
+    MysqlDatabase,
+    PostgresqlDatabase,
+    SqliteDatabase,
 )
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ConfigurationError
 from protean.fields import Integer, String
 from protean.infra.dao import DAO, portable_claim
 from protean.port.dao import DAOPort, HoldBack, NativeClaimPort
-from protean.port.provider import DatabaseCapabilities
+from protean.port.database import DatabaseCapabilities
 from protean.utils.query import Q
 
 
@@ -163,12 +163,12 @@ class TestMissingPortRaises:
     @pytest.mark.parametrize(
         ("provider_cls", "adapter_cls"),
         [
-            (MemoryProvider, DictDAO),
-            (PostgresqlProvider, SADAO),
-            (SqliteProvider, SADAO),
-            (MssqlProvider, SADAO),
-            (MysqlProvider, SADAO),
-            (ESProvider, ElasticsearchDAO),
+            (MemoryDatabase, DictDAO),
+            (PostgresqlDatabase, SADAO),
+            (SqliteDatabase, SADAO),
+            (MssqlDatabase, SADAO),
+            (MysqlDatabase, SADAO),
+            (ESDatabase, ElasticsearchDAO),
         ],
     )
     def test_each_built_in_adapter_has_the_ports_of_its_flags(

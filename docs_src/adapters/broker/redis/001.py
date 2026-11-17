@@ -1,8 +1,9 @@
 # --8<-- [start:full]
 import os
 
+import redis
+
 from protean import Domain
-from protean.adapters.broker.redis import RedisBroker
 
 domain = Domain(name="RedisStreams")
 domain.config["brokers"]["default"] = {
@@ -16,7 +17,7 @@ domain.init(traverse=False)
 
 with domain.domain_context():
     broker = domain.brokers["default"]
-    assert isinstance(broker, RedisBroker)
+    assert isinstance(broker.get_connection(), redis.Redis)
 
     # XADD to the "user-events" stream
     broker.publish("user-events", {"type": "user.created", "user_id": "123"})

@@ -58,7 +58,7 @@ logic, enforce invariants, and own the transaction lifecycle.
 | `event_sourced` | `False` | Enables event sourcing for this aggregate |
 | `fact_events` | `False` | Auto-generates fact events on state changes |
 | `indexes` | `()` | List of [`Index`](indexes.md) declarations for the persistence layer |
-| `provider` | `"default"` | Database provider name |
+| `database` | `"default"` | Database provider name |
 | `schema_name` | `snake_case(cls)` | Table or collection name |
 | `stream_category` | `snake_case(cls)` | Message stream category |
 | `limit` | `100` | Default query result limit |
@@ -87,7 +87,7 @@ accessed through their parent aggregate and cannot exist independently.
 | **`part_of`** | — | **Required.** Parent aggregate class, or the parent entity for a nested entity |
 | `auto_add_id_field` | `True` | Auto-adds an `id` identity field |
 | `indexes` | `()` | List of [`Index`](indexes.md) declarations for the persistence layer |
-| `provider` | `"default"` | Database provider name |
+| `database` | `"default"` | Database provider name |
 | `schema_name` | `snake_case(cls)` | Table or collection name |
 | `limit` | `100` | Default query result limit |
 
@@ -273,8 +273,8 @@ fields (`Reference`, `HasOne`, `HasMany`) are not allowed.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `abstract` | `False` | Cannot be instantiated when `True` |
-| `provider` | `"default"` | Database provider name |
-| `cache` | `None` | Cache provider (takes precedence over `provider`) |
+| `database` | `"default"` | Database provider name |
+| `cache` | `None` | Cache provider (takes precedence over `database`) |
 | `schema_name` | `snake_case(cls)` | Table or collection name |
 | `indexes` | `()` | List of [`Index`](indexes.md) declarations for the persistence layer |
 | `order_by` | `()` | Default field ordering |
@@ -345,7 +345,7 @@ anti-corruption layer, translating external payloads into domain operations.
 | **`stream`** | — | **Required.** Broker stream name to subscribe to |
 | `broker` | `"default"` | Broker provider name |
 | `idempotent` | `False` | Skip a message whose payload `metadata.headers.id` this subscriber already processed |
-| `provider` | `"default"` | Database provider that stores the idempotency markers when `idempotent=True` |
+| `database` | `"default"` | Database provider that stores the idempotency markers when `idempotent=True` |
 
 Guide: [Subscribers](../../guides/consume-state/subscribers.md)
 
@@ -361,7 +361,7 @@ repository automatically; custom repositories add domain-specific queries.
 | Option | Default | Description |
 |--------|---------|-------------|
 | **`part_of`** | — | **Required.** Aggregate class being persisted |
-| `database` | `"ALL"` | Target database provider(s) |
+| `database_type` | `"ALL"` | Database type the repository applies to |
 
 Guide: [Repositories](../../guides/change-state/repositories.md)
 
@@ -373,5 +373,5 @@ aggregates, entities or projections are stored.
 | Option | Default | Description |
 |--------|---------|-------------|
 | **`part_of`** | — | **Required.** Associated aggregate, entity or projection |
-| `database` | `None` | Database type: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql` or `elasticsearch` |
+| `database_type` | `None` | Database type: `memory`, `sqlite`, `postgresql`, `mysql`, `mssql`, `elasticsearch`, or a registered custom adapter's `database_type` |
 | `schema_name` | from aggregate | Table or collection name |
