@@ -3,7 +3,7 @@
 import pytest
 import sqlalchemy as sa
 
-from protean.adapters.repository.sqlalchemy import SqliteProvider
+from protean.adapters.database.sqlalchemy import SqliteDatabase
 from tests.docs.support import domain_from_config, load_example
 from tests.shared import provider_adapter
 
@@ -33,7 +33,7 @@ def test_configuration_shown_builds_a_sqlite_provider(tmp_path, monkeypatch):
     domain.init(traverse=False)
 
     provider = provider_adapter(domain, "default")
-    assert type(provider) is SqliteProvider
+    assert type(provider) is SqliteDatabase
     assert provider._engine.url.database == str(database)
 
 

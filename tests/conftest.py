@@ -435,7 +435,7 @@ def run_around_tests(test_domain, request):
     yield
 
     if test_domain:
-        for provider_name in test_domain.providers:
+        for provider_name in test_domain.databases:
             provider = provider_adapter(test_domain, provider_name)
             try:
                 provider.clear()

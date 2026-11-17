@@ -900,20 +900,20 @@ class TestIsNullLookupOnMemoryAdapter:
         repo.add(Person(id=2, first_name="Bob", last_name="Wonder", age=40))
 
     def test_isnull_lookup_evaluates_true_when_source_is_none(self):
-        from protean.adapters.repository.memory import IsNull
+        from protean.adapters.database.memory import IsNull
 
         assert IsNull(None, True).evaluate() is True
         assert IsNull("value", True).evaluate() is False
 
     def test_isnull_lookup_evaluates_false_when_source_is_not_none(self):
-        from protean.adapters.repository.memory import IsNull
+        from protean.adapters.database.memory import IsNull
 
         assert IsNull(None, False).evaluate() is False
         assert IsNull("value", False).evaluate() is True
 
     def test_isnull_lookup_is_null_safe(self):
         """``IsNull`` opts into evaluation when source is None via ``null_safe``."""
-        from protean.adapters.repository.memory import IsNull
+        from protean.adapters.database.memory import IsNull
 
         assert getattr(IsNull, "null_safe", False) is True
 

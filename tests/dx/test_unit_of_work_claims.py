@@ -216,6 +216,6 @@ def test_a_get_in_a_unit_of_work_returns_the_instance_already_tracked():
             first.name = "changed"
             second = domain.repository_for(Order).get(order.id)
 
-            assert (Order, order.id) in uow._identity_map[Order.meta_.provider]
+            assert (Order, order.id) in uow._identity_map[Order.meta_.database]
             assert second is first
             assert second.name == "changed"

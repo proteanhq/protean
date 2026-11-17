@@ -2,7 +2,7 @@
 
 import pytest
 
-from protean.adapters.repository.elasticsearch import ESProvider
+from protean.adapters.database.elasticsearch import ESDatabase
 from protean.infra import registry
 from tests.docs.support import domain_from_config, load_example
 
@@ -13,11 +13,11 @@ def test_aggregate_is_stored_through_the_named_database():
     example = load_example("guides/compose-a-domain/production-configuration/001.py")
     example.domain.init(traverse=False)
 
-    assert example.ProductSearch.meta_.provider == "analytics"
+    assert example.ProductSearch.meta_.database == "analytics"
 
     with example.domain.domain_context():
         repo = example.domain.repository_for(example.ProductSearch)
-        assert repo._provider is example.domain.providers["analytics"]
+        assert repo._provider is example.domain.databases["analytics"]
 
         product = example.ProductSearch()
         repo.add(product)
@@ -34,8 +34,8 @@ def _base_urls(domain, name):
     ``domain.init()`` would ping the documented hosts, which are not the test service.
     """
     conn_info = dict(domain.config["databases"][name])
-    provider = registry.providers.get(conn_info["provider"])(name, domain, conn_info)
-    assert type(provider) is ESProvider
+    provider = registry.databases.get(conn_info["provider"])(name, domain, conn_info)
+    assert type(provider) is ESDatabase
     return [node.base_url for node in provider._client.transport.node_pool.all()]
 
 

@@ -35,7 +35,7 @@ domain.register(
     ProductReportingModel,
     part_of=Product,
     schema_name="product_reports",
-    database="postgresql",
+    database_type="postgresql",
 )
 # --8<-- [end:options]
 

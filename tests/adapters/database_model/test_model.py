@@ -103,8 +103,8 @@ class TestMultipleModelsPerAggregate:
             name = Text()
 
         test_domain.register(Order)
-        test_domain.register(OrderMemoryModel, part_of=Order, database="memory")
-        test_domain.register(OrderOtherModel, part_of=Order, database="postgresql")
+        test_domain.register(OrderMemoryModel, part_of=Order, database_type="memory")
+        test_domain.register(OrderOtherModel, part_of=Order, database_type="postgresql")
 
         entity_key = _fully_qualified_name(Order)
         assert "memory" in test_domain._database_models[entity_key]
@@ -127,7 +127,9 @@ class TestMultipleModelsPerAggregate:
 
         test_domain.register(Product)
         test_domain.register(ProductGenericModel, part_of=Product)  # database=None
-        test_domain.register(ProductMemoryModel, part_of=Product, database="memory")
+        test_domain.register(
+            ProductMemoryModel, part_of=Product, database_type="memory"
+        )
         test_domain.init(traverse=False)
 
         repo = test_domain.repository_for(Product)
@@ -164,7 +166,9 @@ class TestMultipleModelsPerAggregate:
             name = Text()
 
         test_domain.register(Gadget)
-        test_domain.register(GadgetPostgresModel, part_of=Gadget, database="postgresql")
+        test_domain.register(
+            GadgetPostgresModel, part_of=Gadget, database_type="postgresql"
+        )
         test_domain.init(traverse=False)
 
         # Default test provider is memory — no memory-specific or generic model
@@ -188,7 +192,7 @@ class TestMultipleModelsPerAggregate:
             name = Text()
 
         test_domain.register(Invoice)
-        test_domain.register(InvoiceModel1, part_of=Invoice, database="memory")
+        test_domain.register(InvoiceModel1, part_of=Invoice, database_type="memory")
 
         with pytest.raises(IncorrectUsageError, match="already registered"):
-            test_domain.register(InvoiceModel2, part_of=Invoice, database="memory")
+            test_domain.register(InvoiceModel2, part_of=Invoice, database_type="memory")

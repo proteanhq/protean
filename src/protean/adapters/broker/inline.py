@@ -39,7 +39,7 @@ OPERATION_STATE_TTL_MAX = 60.0
 
 
 class InlineBroker(BaseBroker, BrokerPort):
-    __broker__ = "inline"
+    broker_type = "inline"
 
     def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
         super().__init__(name, domain, config)

@@ -139,7 +139,7 @@ class ReportRepository:
         )
 ```
 
-A result that cannot become an aggregate, such as an aggregation or a two-column summary, needs the provider-level `raw()` instead. It hands back the rows as the database returned them. Look the provider up through the aggregate's own `meta_.provider`, so the query runs against the database the repository is wired to:
+A result that cannot become an aggregate, such as an aggregation or a two-column summary, needs the provider-level `raw()` instead. It hands back the rows as the database returned them. Look the provider up through the aggregate's own `meta_.database`, so the query runs against the database the repository is wired to:
 
 ```python
 from protean import current_domain
@@ -148,7 +148,7 @@ from protean import current_domain
 class ReportRepository:
     def find_summary_stats(self):
         """Aggregate in the database and read the rows back as they come."""
-        return current_domain.providers[Report.meta_.provider].raw(
+        return current_domain.databases[Report.meta_.database].raw(
             "SELECT report_type, SUM(total_value) FROM report GROUP BY report_type"
         )
 ```

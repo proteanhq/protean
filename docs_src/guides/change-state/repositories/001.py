@@ -12,13 +12,13 @@ domain = Domain(
 )
 
 
-@domain.aggregate(provider="reporting")
+@domain.aggregate(database="reporting")
 class Person:
     name: String(required=True, max_length=50)
     active: Boolean(default=True)
 
 
-@domain.repository(part_of=Person, database="memory")
+@domain.repository(part_of=Person, database_type="memory")
 class PersonReportingRepository:
     def active_users_summary(self) -> list:
         return self.query.filter(active=True).all().items

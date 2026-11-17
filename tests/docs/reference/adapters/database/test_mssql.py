@@ -61,7 +61,7 @@ def test_configuration_shown_carries_the_password(tmp_path, monkeypatch):
     domain = domain_from_config("adapters/database/mssql/configuration.toml", tmp_path)
     conn_info = dict(domain.config["databases"]["default"])
 
-    provider = registry.providers.get(conn_info["provider"])(
+    provider = registry.databases.get(conn_info["provider"])(
         "default", domain, conn_info
     )
 

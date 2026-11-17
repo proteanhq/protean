@@ -11,7 +11,7 @@ Pass options to the `@domain.projection` decorator or to `domain.register()`.
 By default, projections use the `"default"` database provider:
 
 ```python
-@domain.projection  # Uses provider="default"
+@domain.projection  # Uses database="default"
 class ProductInventory:
     product_id: Identifier(identifier=True)
     name: String(required=True)
@@ -21,7 +21,7 @@ Specify a custom provider:
 
 ```python
 # fragment
-@domain.projection(provider="postgres")
+@domain.projection(database="postgres")
 class ProductInventory:
     product_id: Identifier(identifier=True)
     name: String(required=True)
@@ -39,15 +39,15 @@ class ActiveSession:
     user_id: Identifier(required=True)
 ```
 
-**Important**: When both `cache` and `provider` are specified, `cache` takes precedence and `provider` is set to `None`. A projection connects to only one data source.
+**Important**: When both `cache` and `database` are specified, `cache` takes precedence and `database` is set to `None`. A projection connects to only one data source.
 
-### No provider or cache
+### No database or cache
 
 Registering with both set to `None` raises `NotSupportedError`, message "MyProjection projection needs to have either a database or a cache provider":
 
 ```python
 # fragment
-domain.register(MyProjection, provider=None, cache=None)
+domain.register(MyProjection, database=None, cache=None)
 ```
 
 ## Schema options

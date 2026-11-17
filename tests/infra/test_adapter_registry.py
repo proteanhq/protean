@@ -13,27 +13,27 @@ import pytest
 from protean import Domain
 from protean.adapters.broker.inline import InlineBroker
 from protean.adapters.cache.memory import MemoryCache
+from protean.adapters.database.memory import MemoryDatabase
 from protean.adapters.event_store.memory import MemoryEventStore
-from protean.adapters.repository.memory import MemoryProvider
 from protean.exceptions import ConfigurationError
 from protean.infra.registry import (
     AdapterRegistry,
     brokers,
     caches,
+    databases,
     event_stores,
-    providers,
 )
 from protean.port.broker import BaseBroker
 from protean.port.cache import CachePort
 from protean.port.dao import REQUIRED_LOOKUPS
+from protean.port.database import BaseDatabase
 from protean.port.event_store import BaseEventStore
-from protean.port.provider import BaseProvider
 from tests.infra.adapters import (
     PROVIDERS_WITHOUT_LOOKUP,
     CustomBroker,
     CustomCache,
+    CustomDatabase,
     CustomEventStore,
-    CustomProvider,
     ProviderWithoutInAndIsnull,
     ProviderWithPlainIsnull,
 )
@@ -58,14 +58,14 @@ class Port:
 
 PORTS = [
     Port(
-        providers,
-        "protean.providers",
+        databases,
+        "protean.databases",
         "database provider",
-        BaseProvider,
-        MemoryProvider,
-        CustomProvider,
+        BaseDatabase,
+        MemoryDatabase,
+        CustomDatabase,
         lambda name: {"databases": {"default": {"provider": name}}},
-        lambda domain: domain.providers["default"],
+        lambda domain: domain.databases["default"],
     ),
     Port(
         brokers,
@@ -324,12 +324,12 @@ class TestAfterLoad:
     def test_provider_missing_a_required_lookup_is_rejected(self, lookup_name):
         provider_cls = PROVIDERS_WITHOUT_LOOKUP[lookup_name]
         assert lookup_name not in provider_cls.get_lookups()
-        providers.clear()
-        providers._discovered = True
-        providers.register("short", _path(provider_cls))
+        databases.clear()
+        databases._discovered = True
+        databases.register("short", _path(provider_cls))
 
         with pytest.raises(ConfigurationError) as exc_info:
-            providers.get("short")
+            databases.get("short")
 
         assert str(exc_info.value) == (
             f"Database provider 'short' ({provider_cls.__name__}) does not "
@@ -337,12 +337,12 @@ class TestAfterLoad:
         )
 
     def test_error_names_every_missing_lookup(self):
-        providers.clear()
-        providers._discovered = True
-        providers.register("short", _path(ProviderWithoutInAndIsnull))
+        databases.clear()
+        databases._discovered = True
+        databases.register("short", _path(ProviderWithoutInAndIsnull))
 
         with pytest.raises(ConfigurationError) as exc_info:
-            providers.get("short")
+            databases.get("short")
 
         assert str(exc_info.value) == (
             "Database provider 'short' (ProviderWithoutInAndIsnull) does not "
@@ -350,12 +350,12 @@ class TestAfterLoad:
         )
 
     def test_required_lookup_that_is_not_a_lookup_port_is_rejected(self):
-        providers.clear()
-        providers._discovered = True
-        providers.register("plain", _path(ProviderWithPlainIsnull))
+        databases.clear()
+        databases._discovered = True
+        databases.register("plain", _path(ProviderWithPlainIsnull))
 
         with pytest.raises(ConfigurationError) as exc_info:
-            providers.get("plain")
+            databases.get("plain")
 
         assert str(exc_info.value) == (
             "Database provider 'plain' (ProviderWithPlainIsnull) registers "
@@ -363,11 +363,11 @@ class TestAfterLoad:
         )
 
     def test_provider_with_every_lookup_loads(self):
-        providers.clear()
-        providers._discovered = True
-        providers.register("full", _path(MemoryProvider))
+        databases.clear()
+        databases._discovered = True
+        databases.register("full", _path(MemoryDatabase))
 
-        assert providers.get("full") is MemoryProvider
+        assert databases.get("full") is MemoryDatabase
 
     @pytest.mark.parametrize("registry", [brokers, event_stores, caches])
     def test_other_ports_run_no_after_load_check(self, registry):
@@ -579,12 +579,12 @@ class TestBuiltInRegistration:
     @pytest.mark.parametrize(
         ("registry", "name", "class_path", "extra"),
         [
-            (providers, "memory", "repository.memory.MemoryProvider", None),
-            (providers, "postgresql", "repository.sqlalchemy.PostgresqlProvider", "sqlalchemy"),
-            (providers, "sqlite", "repository.sqlalchemy.SqliteProvider", "sqlalchemy"),
-            (providers, "mysql", "repository.sqlalchemy.MysqlProvider", "sqlalchemy"),
-            (providers, "mssql", "repository.sqlalchemy.MssqlProvider", "sqlalchemy"),
-            (providers, "elasticsearch", "repository.elasticsearch.ESProvider", "elasticsearch"),
+            (databases, "memory", "database.memory.MemoryDatabase", None),
+            (databases, "postgresql", "database.sqlalchemy.PostgresqlDatabase", "sqlalchemy"),
+            (databases, "sqlite", "database.sqlalchemy.SqliteDatabase", "sqlalchemy"),
+            (databases, "mysql", "database.sqlalchemy.MysqlDatabase", "sqlalchemy"),
+            (databases, "mssql", "database.sqlalchemy.MssqlDatabase", "sqlalchemy"),
+            (databases, "elasticsearch", "database.elasticsearch.ESDatabase", "elasticsearch"),
             (brokers, "inline", "broker.inline.InlineBroker", None),
             (brokers, "redis", "broker.redis.RedisBroker", "redis"),
             (brokers, "redis_pubsub", "broker.redis_pubsub.RedisPubSubBroker", "redis"),
@@ -615,13 +615,13 @@ class TestBuiltInRegistration:
 
     def test_mysql_registration_without_sqlalchemy_registers_nothing(self):
         """The provider is optional, so `import protean` works without SQLAlchemy."""
-        from protean.adapters.repository.sqlalchemy import register_mysql
+        from protean.adapters.database.sqlalchemy import register_mysql
 
-        providers.clear()
+        databases.clear()
         with module_unavailable("sqlalchemy"):
             register_mysql()
 
-        assert "mysql" not in providers.list()
+        assert "mysql" not in databases.list()
 
 
 @pytest.mark.no_test_domain
@@ -661,11 +661,11 @@ class TestRemovedNames:
     @pytest.mark.parametrize(
         ("module", "name"),
         [
-            ("protean.port.provider", "registry"),
-            ("protean.port.provider", "ProviderRegistry"),
+            ("protean.port.database", "registry"),
+            ("protean.port.database", "ProviderRegistry"),
             ("protean.port.broker", "registry"),
             ("protean.port.broker", "BrokerRegistry"),
-            ("protean.adapters.repository", "registry"),
+            ("protean.adapters.database", "registry"),
             ("protean.adapters.broker", "registry"),
             ("protean.adapters.event_store", "EVENT_STORE_PROVIDERS"),
             ("protean.adapters.cache", "CACHE_PROVIDERS"),
@@ -673,3 +673,73 @@ class TestRemovedNames:
     )
     def test_name_is_not_defined(self, module, name):
         assert not hasattr(import_module(module), name)
+
+
+@pytest.mark.no_test_domain
+class TestInstalledDatabaseEntryPoints:
+    """The installed distribution advertises its database adapters under
+    ``protean.databases``, and nothing under the old ``protean.providers``."""
+
+    def test_built_in_adapters_load_from_the_databases_group(self):
+        eps = metadata.entry_points(group="protean.databases")
+        protean_eps = {ep.name: ep.value for ep in eps if ep.dist.name == "protean"}
+
+        assert protean_eps == {
+            "elasticsearch": "protean.adapters.database.elasticsearch:register",
+            "memory": "protean.adapters.database.memory:register",
+            "mssql": "protean.adapters.database.sqlalchemy:register_mssql",
+            "mysql": "protean.adapters.database.sqlalchemy:register_mysql",
+            "postgresql": "protean.adapters.database.sqlalchemy:register_postgresql",
+            "sqlite": "protean.adapters.database.sqlalchemy:register_sqlite",
+        }
+
+    def test_the_old_providers_group_is_empty(self):
+        eps = metadata.entry_points(group="protean.providers")
+
+        assert [ep for ep in eps if ep.dist.name == "protean"] == []
+
+
+@pytest.mark.no_test_domain
+class TestRenamedGroup:
+    """An entry point still declared under a registry's earlier group name is
+    named in a warning and not loaded."""
+
+    def _registry(self) -> AdapterRegistry[Any]:
+        return AdapterRegistry(
+            "protean.databases", "database provider", renamed_from="protean.providers"
+        )
+
+    def test_an_entry_point_in_the_old_group_is_named_in_a_warning(self, caplog):
+        caplog.set_level(logging.DEBUG, logger=LOGGER)
+        registry = self._registry()
+        eps = _entry_points(
+            (
+                "dynamo",
+                "tests.infra.adapters:register_custom_database",
+                "protean.providers",
+            )
+        )
+
+        with patch("importlib.metadata.entry_points", return_value=eps):
+            registry._discover_plugins()
+
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert [r.getMessage() for r in warnings] == [
+            (
+                "Ignoring database provider plugin(s) dynamo: the entry-point group "
+                "'protean.providers' is now 'protean.databases'."
+            )
+        ]
+        assert registry.list() == {}
+
+    def test_no_warning_when_the_old_group_is_empty(self, caplog):
+        caplog.set_level(logging.DEBUG, logger=LOGGER)
+        registry = self._registry()
+
+        with patch("importlib.metadata.entry_points", return_value=_entry_points()):
+            registry._discover_plugins()
+
+        assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
+
+    def test_the_databases_registry_names_the_old_group(self):
+        assert databases.renamed_from == "protean.providers"

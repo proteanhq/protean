@@ -15,7 +15,7 @@ import redis
 from fastapi.testclient import TestClient
 
 from protean.port.broker import BrokerHealth
-from protean.port.provider import ProviderHealth
+from protean.port.database import DatabaseHealth
 from protean.server.observatory import Observatory, metrics
 from protean.server.observatory.metrics import _scrape_cache, _ScrapeCache
 from tests.shared import provider_adapter
@@ -799,7 +799,7 @@ def test_broker_up_needs_a_connected_and_healthy_broker(
 def test_pool_stats_list_each_provider_that_reports_a_pool(test_domain, monkeypatch):
     provider = provider_adapter(test_domain, "default")
     monkeypatch.setattr(
-        provider, "health", lambda: ProviderHealth(pool={"size": 5, "checked_out": 2})
+        provider, "health", lambda: DatabaseHealth(pool={"size": 5, "checked_out": 2})
     )
 
     assert metrics._collect_pool_stats([test_domain]) == [
@@ -848,13 +848,13 @@ def test_pool_stats_keep_the_rows_before_a_provider_that_raises(
     test_domain, monkeypatch
 ):
     provider = provider_adapter(test_domain, "default")
-    monkeypatch.setattr(provider, "health", lambda: ProviderHealth(pool={"size": 5}))
+    monkeypatch.setattr(provider, "health", lambda: DatabaseHealth(pool={"size": 5}))
     analytics = SimpleNamespace(
-        database_type="SQLITE", health=lambda: ProviderHealth(pool={"size": 2})
+        database_type="SQLITE", health=lambda: DatabaseHealth(pool={"size": 2})
     )
 
     with _extra_entries(
-        test_domain.providers._providers,
+        test_domain.databases._databases,
         analytics=analytics,
         broken=_RaisingPoolAdapter(),
     ):

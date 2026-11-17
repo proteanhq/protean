@@ -95,7 +95,7 @@ class DomainFixture:
             yield self.domain
         finally:
             try:
-                for provider in self.domain.providers.values():
+                for provider in self.domain.databases.values():
                     provider.clear()
 
                 for broker in self.domain.brokers.values():

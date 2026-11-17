@@ -3,7 +3,15 @@ from abc import ABCMeta, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum, Flag, auto
-from typing import TYPE_CHECKING, Any, NamedTuple, NotRequired, Protocol, TypedDict
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    NamedTuple,
+    NotRequired,
+    Protocol,
+    TypedDict,
+)
 
 from protean.exceptions import NotSupportedError, ProteanException
 
@@ -337,7 +345,12 @@ class BaseBroker(metaclass=ABCMeta):
     The core operations are on ``BrokerPort``. This class holds the optional
     groups of operations until they move into sub-protocols of the Port, and
     it is removed when they do.
+
+    Each adapter sets ``broker_type`` to the name it is known by, such as
+    ``"inline"``, ``"redis"`` or ``"redis_pubsub"``.
     """
+
+    broker_type: ClassVar[str]
 
     if TYPE_CHECKING:
         # Port members that the wrappers below call. Each adapter defines them

@@ -12,9 +12,9 @@ from pathlib import Path
 import pytest
 import sqlalchemy
 
-from protean.adapters.repository.memory import MemoryProvider
-from protean.adapters.repository.sqlalchemy import SAProvider
-from protean.port.provider import BaseProvider
+from protean.adapters.database.memory import MemoryDatabase
+from protean.adapters.database.sqlalchemy import SADatabase
+from protean.port.database import BaseDatabase
 from tests.support.migrations import (
     MigrationsProject,
     block_alembic,
@@ -71,13 +71,13 @@ class Order:
 """
 
 SHOP_ORDER = """
-@domain.aggregate(provider="shop")
+@domain.aggregate(database="shop")
 class Order:
     name = String(max_length=50)
 """
 
 SHOP_ORDER_WITH_DISCOUNT = """
-@domain.aggregate(provider="shop")
+@domain.aggregate(database="shop")
 class Order:
     name = String(max_length=50)
     discount = Integer()
@@ -504,7 +504,7 @@ class TestCheckEnvironmentErrors:
             }
         }
         project.write(ORDER)
-        monkeypatch.setattr(MemoryProvider, "ping", lambda self: False)
+        monkeypatch.setattr(MemoryDatabase, "ping", lambda self: False)
 
         result = project.run("check")
 
@@ -557,7 +557,7 @@ class TestCheckEnvironmentErrors:
         # An adapter that declares SCHEMA_MIGRATIONS and keeps the default
         # ``_schema_migrator``.
         monkeypatch.setattr(
-            SAProvider, "_schema_migrator", BaseProvider._schema_migrator
+            SADatabase, "_schema_migrator", BaseDatabase._schema_migrator
         )
 
         result = project.run("check")

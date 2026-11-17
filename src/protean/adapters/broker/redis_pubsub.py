@@ -34,7 +34,7 @@ class RedisPubSubBroker(BaseBroker, BrokerPort):
     but does not support ack/nack or advanced message processing.
     """
 
-    __broker__ = "redis_pubsub"
+    broker_type = "redis_pubsub"
 
     def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
         super().__init__(name, domain, config)

@@ -19,7 +19,7 @@ import pytest
 
 from protean.exceptions import ConfigurationError
 from protean.port.broker import BrokerCapabilities
-from protean.port.provider import DatabaseCapabilities
+from protean.port.database import DatabaseCapabilities
 from tests.conformance.conftest import (
     BUILTIN_ADAPTER_CONFIGS,
     CONFORMANCE_DIR,
@@ -37,11 +37,11 @@ PLUGIN = Path(__file__).parent / "conftest.py"
 DATABASE_SUITE = """
 import pytest
 
-from protean.port.provider import DatabaseCapabilities as Caps
+from protean.port.database import DatabaseCapabilities as Caps
 
 
 def test_ungated(adapter):
-    assert type(adapter).__name__ == "MemoryProvider"
+    assert type(adapter).__name__ == "MemoryDatabase"
 
 
 @pytest.mark.requires(Caps.CRUD)

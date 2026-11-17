@@ -66,7 +66,7 @@ field.
 The name to store and retrieve the entity from the persistence store. By
 default, `schema_name` is the snake case version of the Entity's name.
 
-### `provider`
+### `database`
 
 Inherited from the parent aggregate. Entities are always persisted in the same
 persistence store as their aggregate. You cannot configure a separate provider

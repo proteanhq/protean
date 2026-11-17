@@ -1370,24 +1370,24 @@ def backfill_suffix_from_config(config: Any) -> str:
 
 
 def _outbox_provider_names(domain: Any) -> list[str]:
-    """Return the database providers that get outbox processors, in ``domain.providers`` order.
+    """Return the database providers that get outbox processors, in ``domain.databases`` order.
 
     A provider qualifies when it is managed and a concrete aggregate names it in
-    its ``provider`` option. Event-sourced aggregates count. Abstract aggregates
+    its ``database`` option. Event-sourced aggregates count. Abstract aggregates
     and the framework's internal elements do not.
     """
     # The unit of work writes outbox rows only to the providers of the
     # aggregates it persists, so a provider no aggregate names would get a
     # processor that polls an empty table. An abstract aggregate is skipped
-    # because a concrete subclass does not inherit its ``provider``.
+    # because a concrete subclass does not inherit its ``database``.
     used = {
-        record.cls.meta_.provider
+        record.cls.meta_.database
         for record in domain.registry.aggregates.values()
         if not getattr(record.cls.meta_, "abstract", False)
     }
     return [
         name
-        for name, provider in domain.providers.items()
+        for name, provider in domain.databases.items()
         if getattr(provider, "managed", True) and name in used
     ]
 
@@ -1439,7 +1439,7 @@ def _resolve_outboxed_event_class(
     part_of = getattr(element_cls.meta_, "part_of", None)
     if part_of is None or part_of.element_type != DomainObjects.AGGREGATE:
         return None
-    if part_of.meta_.provider != provider_name:
+    if part_of.meta_.database != provider_name:
         return None
     return cast("type[BaseEvent]", element_cls)
 
@@ -1461,7 +1461,7 @@ def _is_repairable_event(domain: Any, message: Any, provider_name: str) -> bool:
 def _has_event_sourced_aggregate(domain: Any, provider_name: str) -> bool:
     """Whether a concrete event-sourced aggregate names *provider_name*."""
     return any(
-        record.cls.meta_.is_event_sourced and record.cls.meta_.provider == provider_name
+        record.cls.meta_.is_event_sourced and record.cls.meta_.database == provider_name
         for record in domain.registry.aggregates.values()
         if not getattr(record.cls.meta_, "abstract", False)
     )

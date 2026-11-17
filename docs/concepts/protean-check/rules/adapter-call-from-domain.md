@@ -67,7 +67,7 @@ flag:
   are visited, so a plain helper class calling an adapter is out of scope.
 - **A fetched or injected receiver**: An adapter held in a local variable
   (`broker = self.brokers["default"]; broker.publish(...)`) or reached through
-  `current_domain.providers[...]` has an unresolvable receiver root.
+  `current_domain.databases[...]` has an unresolvable receiver root.
 - **A self-rooted call**: `self._dao.filter(...)` resolves to no FQN, so
   legitimate repository/DAO use is never flagged.
 

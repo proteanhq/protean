@@ -1,7 +1,7 @@
 """Unit tests for ``QuerySet.only()`` projection and the ``Record`` value type.
 
 These run against the in-memory adapter (no marker). Cross-adapter behaviour
-is covered in ``tests/adapters/repository/generic/test_queryset.py``.
+is covered in ``tests/adapters/database/generic/test_queryset.py``.
 """
 
 import pytest

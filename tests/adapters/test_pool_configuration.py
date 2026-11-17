@@ -198,45 +198,45 @@ class TestSQLAlchemyPoolDefaults:
 
     def test_postgresql_default_pool_size(self, test_domain):
         """PostgreSQL provider should default to pool_size=5."""
-        from protean.adapters.repository.sqlalchemy import PostgresqlProvider
+        from protean.adapters.database.sqlalchemy import PostgresqlDatabase
 
-        args = PostgresqlProvider._get_database_specific_engine_args(None)
+        args = PostgresqlDatabase._get_database_specific_engine_args(None)
         assert args["pool_size"] == 5
 
     def test_postgresql_default_max_overflow(self, test_domain):
         """PostgreSQL provider should default to max_overflow=10."""
-        from protean.adapters.repository.sqlalchemy import PostgresqlProvider
+        from protean.adapters.database.sqlalchemy import PostgresqlDatabase
 
-        args = PostgresqlProvider._get_database_specific_engine_args(None)
+        args = PostgresqlDatabase._get_database_specific_engine_args(None)
         assert args["max_overflow"] == 10
 
     def test_mssql_default_pool_size(self, test_domain):
         """MSSQL provider should default to pool_size=5."""
-        from protean.adapters.repository.sqlalchemy import MssqlProvider
+        from protean.adapters.database.sqlalchemy import MssqlDatabase
 
-        args = MssqlProvider._get_database_specific_engine_args(None)
+        args = MssqlDatabase._get_database_specific_engine_args(None)
         assert args["pool_size"] == 5
 
     def test_mssql_default_max_overflow(self, test_domain):
         """MSSQL provider should default to max_overflow=10."""
-        from protean.adapters.repository.sqlalchemy import MssqlProvider
+        from protean.adapters.database.sqlalchemy import MssqlDatabase
 
-        args = MssqlProvider._get_database_specific_engine_args(None)
+        args = MssqlDatabase._get_database_specific_engine_args(None)
         assert args["max_overflow"] == 10
 
     def test_pool_pre_ping_enabled_by_default(self, test_domain):
         """PostgreSQL and MSSQL should have pool_pre_ping enabled."""
-        from protean.adapters.repository.sqlalchemy import (
-            MssqlProvider,
-            PostgresqlProvider,
+        from protean.adapters.database.sqlalchemy import (
+            MssqlDatabase,
+            PostgresqlDatabase,
         )
 
         assert (
-            PostgresqlProvider._get_database_specific_engine_args(None)["pool_pre_ping"]
+            PostgresqlDatabase._get_database_specific_engine_args(None)["pool_pre_ping"]
             is True
         )
         assert (
-            MssqlProvider._get_database_specific_engine_args(None)["pool_pre_ping"]
+            MssqlDatabase._get_database_specific_engine_args(None)["pool_pre_ping"]
             is True
         )
 

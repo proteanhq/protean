@@ -189,9 +189,9 @@ class ElementResolver:
         """Propagate aggregate-level options (like provider) to child entities."""
         registry = self._domain._domain_registry
         for element in registry._elements[DomainObjects.ENTITY.value].values():
-            if not hasattr(element.cls.meta_, "provider"):
-                element.cls.meta_.provider = (
-                    element.cls.meta_.aggregate_cluster.meta_.provider
+            if not hasattr(element.cls.meta_, "database"):
+                element.cls.meta_.database = (
+                    element.cls.meta_.aggregate_cluster.meta_.database
                 )
 
 

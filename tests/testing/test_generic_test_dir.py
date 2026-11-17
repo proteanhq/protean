@@ -30,7 +30,7 @@ class TestGetGenericTestDir:
         assert result.name == "generic"
 
     def test_returns_the_database_suite_folder(self):
-        assert generic_test_dir() == REPO_ROOT / "tests/adapters/repository/generic"
+        assert generic_test_dir() == REPO_ROOT / "tests/adapters/database/generic"
 
     def test_returned_path_contains_test_files(self):
         """Test the returned directory actually contains test files."""

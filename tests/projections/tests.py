@@ -130,8 +130,8 @@ def register_elements(test_domain):
     test_domain.register(NotAPerson)
     test_domain.register(DbPerson, schema_name="peoples")
     test_domain.register(SqlPerson, schema_name="people")
-    test_domain.register(DifferentDbPerson, provider="non-default")
-    test_domain.register(SqlDifferentDbPerson, provider="non-default-sql")
+    test_domain.register(DifferentDbPerson, database="non-default")
+    test_domain.register(SqlDifferentDbPerson, database="non-default-sql")
     test_domain.register(OrderedPerson, order_by="first_name")
     test_domain.register(OrderedPersonSubclass, order_by="last_name")
     test_domain.register(Building)
@@ -201,7 +201,7 @@ class TestProjectionMeta:
         # Persistence attributes (projections own these directly, no separate Model)
         assert hasattr(Person.meta_, "abstract")
         assert hasattr(Person.meta_, "schema_name")
-        assert hasattr(Person.meta_, "provider")
+        assert hasattr(Person.meta_, "database")
         assert hasattr(Person.meta_, "cache")
 
         assert id_field(Person) is not None
@@ -244,13 +244,13 @@ class TestProjectionMeta:
         assert SqlPerson.meta_.schema_name == "people"
 
     def test_default_and_overridden_provider_in_meta(self):
-        assert Person.meta_.provider == "default"
-        assert DifferentDbPerson.meta_.provider == "non-default"
+        assert Person.meta_.database == "default"
+        assert DifferentDbPerson.meta_.database == "non-default"
 
     def test_provider_can_be_overridden_in_projection_subclass(self):
         """Test that `provider` can be overridden"""
-        assert hasattr(SqlDifferentDbPerson.meta_, "provider")
-        assert SqlDifferentDbPerson.meta_.provider == "non-default-sql"
+        assert hasattr(SqlDifferentDbPerson.meta_, "database")
+        assert SqlDifferentDbPerson.meta_.database == "non-default-sql"
 
     def test_default_and_overridden_order_by_in_meta(self):
         assert Person.meta_.order_by == ()
@@ -276,7 +276,7 @@ class TestProjectionMeta:
                 age: Integer(default=21)
 
             test_domain.register(
-                PersonWithNoDatabaseAndCache, provider=None, cache=None
+                PersonWithNoDatabaseAndCache, database=None, cache=None
             )
 
     def test_that_specifying_cache_overrides_database_provider(self, test_domain):
@@ -288,7 +288,7 @@ class TestProjectionMeta:
 
         test_domain.register(PersonWithCache, cache="default")
 
-        assert PersonWithCache.meta_.provider is None
+        assert PersonWithCache.meta_.database is None
 
 
 class TestIdentity:

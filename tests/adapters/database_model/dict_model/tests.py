@@ -1,6 +1,6 @@
 import pytest
 
-from protean.adapters.repository.memory import MemoryModel
+from protean.adapters.database.memory import MemoryModel
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Text
 

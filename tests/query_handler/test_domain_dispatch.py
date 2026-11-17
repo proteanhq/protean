@@ -94,7 +94,7 @@ class TestDispatchWithReadView:
         """QueryHandler can use domain.view_for() inside handler methods."""
 
         # Add projection data first
-        repo = test_domain.providers.repository_for(OrderSummary)
+        repo = test_domain.databases.repository_for(OrderSummary)
         repo.add(
             OrderSummary(
                 order_id="order-1",

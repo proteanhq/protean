@@ -297,7 +297,7 @@ class Tallied(BaseEvent):
 @pytest.mark.transactional
 def test_numbering_restarts_for_each_provider(test_domain):
     test_domain.config["databases"]["secondary"] = {"provider": "memory"}
-    test_domain.register(Tally, provider="secondary")
+    test_domain.register(Tally, database="secondary")
     test_domain.register(Tallied, part_of=Tally)
     test_domain.init(traverse=False)
 

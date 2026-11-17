@@ -158,9 +158,9 @@ Protean installs SQLAlchemy ``before_cursor_execute`` /
 ``after_cursor_execute`` listeners on the engine at provider construction
 time and emits two structured log events per query:
 
-- ``protean.adapters.repository.sqlalchemy.query`` at **DEBUG** for every
+- ``protean.adapters.database.sqlalchemy.query`` at **DEBUG** for every
   query (opt-in via normal level configuration).
-- ``protean.adapters.repository.sqlalchemy.slow_query`` at **WARNING** when
+- ``protean.adapters.database.sqlalchemy.slow_query`` at **WARNING** when
   a query exceeds the configured threshold.
 
 Both events carry ``statement``, ``parameters``, ``duration_ms``, and

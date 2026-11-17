@@ -55,8 +55,8 @@ case "$TARGET" in
     TESTS="tests/event_sourced_repository tests/event_sourced_aggregates"
     ;;
   repositories-dao)
-    MODULE="src/protean/adapters/repository/memory.py"
-    TESTS="tests/adapters/repository/memory tests/dao tests/repository"
+    MODULE="src/protean/adapters/database/memory.py"
+    TESTS="tests/adapters/database/memory tests/dao tests/repository"
     ;;
   upcaster)
     MODULE="src/protean/core/upcaster.py"

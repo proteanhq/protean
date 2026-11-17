@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Mapping
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeVar, cast
 
@@ -13,9 +14,8 @@ from protean.exceptions import (
 from protean.fields import HasMany, HasOne
 from protean.fields.tempdata import HasManyChanges, HasOneChanges
 from protean.port.dao import BaseDAO
-from protean.port.provider import BaseProvider, DatabaseModelPort
+from protean.port.database import BaseDatabase, DatabaseModelPort
 from protean.utils import (
-    Database,
     DomainObjects,
     _derive_element_class,
     _fully_qualified_name,
@@ -50,10 +50,12 @@ class BaseRepository(Element, OptionsMixin):
     element_type = DomainObjects.REPOSITORY
 
     _default_options: ClassVar[list[tuple[str, Any]]] = [
-        ("database", "ALL"),
+        ("database_type", "ALL"),
         ("part_of", None),
         ("suppress_checks", ()),
     ]
+
+    _renamed_options: ClassVar[Mapping[str, str]] = {"database": "database_type"}
 
     def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         # Prevent instantiation of `BaseRepository itself`
@@ -61,7 +63,7 @@ class BaseRepository(Element, OptionsMixin):
             raise NotSupportedError("BaseRepository cannot be instantiated")
         return super().__new__(cls)
 
-    def __init__(self, domain: "Domain", provider: BaseProvider) -> None:
+    def __init__(self, domain: "Domain", provider: BaseDatabase) -> None:
         self._domain = domain
         self._provider = provider
 
@@ -71,7 +73,7 @@ class BaseRepository(Element, OptionsMixin):
         """Retrieve Database Model class connected to Entity"""
         # Look up custom models registered for this entity, keyed by database type.
         # Prefer a model targeting this provider's database type; fall back to a
-        # generic model (database=None) if no type-specific one exists.
+        # generic model (database_type=None) if no type-specific one exists.
         entity_models = self._domain._database_models.get(
             _fully_qualified_name(self.meta_.part_of), {}
         )
@@ -556,14 +558,6 @@ def repository_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[
     ):
         raise IncorrectUsageError(
             f"Repository `{repository_cls.__name__}` can only be associated with an Aggregate"
-        )
-
-    # Ensure the value of `database` is among known databases
-    if repository_cls.meta_.database != "ALL" and repository_cls.meta_.database not in [
-        database.value for database in Database
-    ]:
-        raise IncorrectUsageError(
-            f"Repository `{repository_cls.__name__}` should be associated with a valid Database"
         )
 
     return element_cls

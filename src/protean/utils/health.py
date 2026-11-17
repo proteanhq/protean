@@ -25,7 +25,7 @@ def check_providers(domain: Domain) -> tuple[dict[str, str], bool]:
     statuses: dict[str, str] = {}
     all_ok = True
     try:
-        for name, provider in domain.providers.items():
+        for name, provider in domain.databases.items():
             try:
                 alive = provider.ping()
                 statuses[name] = STATUS_OK if alive else STATUS_UNAVAILABLE

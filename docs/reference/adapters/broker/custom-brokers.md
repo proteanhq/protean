@@ -147,7 +147,7 @@ if TYPE_CHECKING:
 class KafkaBroker(BaseBroker, BrokerPort):
     """Kafka broker implementation for Protean."""
 
-    __broker__ = "kafka"
+    broker_type = "kafka"
 
     def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
         super().__init__(name, domain, config)

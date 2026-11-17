@@ -1047,6 +1047,16 @@ class TestEmitter:
             emit_model(ir, "m.Order")
         assert "fact_events=True" in str(exc.value)
 
+    def test_non_default_database_names_the_decorator_option(self):
+        # The IR key is ``provider``; the decorator option a user sets is ``database``.
+        ir = _synthetic_ir()
+        ir["clusters"]["m.Order"]["aggregate"]["options"] = {"provider": "reporting"}
+        with pytest.raises(ModelEmitError) as exc:
+            emit_model(ir, "m.Order")
+        assert "aggregate option database='reporting' rather than 'default'" in str(
+            exc.value
+        )
+
     def test_event_sourced_aggregate_option_raises(self):
         ir = _synthetic_ir()
         ir["clusters"]["m.Order"]["aggregate"]["options"] = {"is_event_sourced": True}

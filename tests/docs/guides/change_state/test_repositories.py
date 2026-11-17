@@ -120,7 +120,7 @@ def test_reporting_provider_is_configured_as_a_memory_database(reporting):
     databases = reporting.domain.config["databases"]
 
     assert databases["reporting"] == {"provider": "memory"}
-    assert reporting.Person.meta_.provider == "reporting"
+    assert reporting.Person.meta_.database == "reporting"
 
 
 def test_repository_for_returns_the_memory_repository(reporting):
@@ -129,7 +129,7 @@ def test_repository_for_returns_the_memory_repository(reporting):
 
         assert isinstance(repo, reporting.PersonReportingRepository)
         # The repository is tied to memory databases only.
-        assert reporting.PersonReportingRepository.meta_.database == "memory"
+        assert reporting.PersonReportingRepository.meta_.database_type == "memory"
 
 
 def test_active_users_summary_returns_only_active_people(reporting):
@@ -159,7 +159,7 @@ def test_an_aggregate_without_a_custom_repository_gets_the_default(
 
     assert isinstance(repo, BaseRepository)
     assert type(repo).__name__ == "PersonRepository"
-    assert type(repo).__module__ == "protean.adapters.repository"
+    assert type(repo).__module__ == "protean.adapters.database"
 
 
 def test_the_default_repository_gets_what_add_stored(default_repository):

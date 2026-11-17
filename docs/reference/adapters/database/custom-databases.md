@@ -17,19 +17,19 @@ All database adapters are built from five components that work together:
 
 ### 1. Provider
 
-**Extends**: `protean.port.provider.BaseProvider`, and implements
-`protean.port.provider.ProviderPort`
+**Extends**: `protean.port.database.BaseDatabase`, and implements
+`protean.port.database.DatabasePort`
 
 The Provider is the central coordinator. It manages connections, sessions, and
-the database lifecycle. List `BaseProvider` first in the class bases, then the
-port the provider implements. `ProviderPort` declares the members every
-provider has. `RawQueryProviderPort` adds `raw()`, and a provider that declares
+the database lifecycle. List `BaseDatabase` first in the class bases, then the
+port the provider implements. `DatabasePort` declares the members every
+provider has. `RawQueryDatabasePort` adds `raw()`, and a provider that declares
 `DatabaseCapabilities.RAW_QUERIES` implements it. You implement the abstract
 methods and the `capabilities` property listed in the table below.
 
 The provider class also sets a `database_type` attribute to the database's
 name. Protean reads it when it picks a custom repository or database model
-registered for one database (`database="..."`). Without it, getting a
+registered for one database type (`database_type="..."`). Without it, getting a
 repository fails with an `AttributeError`.
 
 | Method | Purpose |
@@ -38,7 +38,7 @@ repository fails with an `AttributeError`.
 | `get_session()` | Return a session object for transaction management |
 | `get_connection()` | Return the underlying database connection |
 | `ping()` | Health check, return `True` if the database is reachable |
-| `health()` | Return a `ProviderHealth`; its `pool` holds connection pool counters, or `None` |
+| `health()` | Return a `DatabaseHealth`; its `pool` holds connection pool counters, or `None` |
 | `dao_for(entity_cls, model_cls)` | Return a DAO for a given entity |
 | `model_for(entity_cls, model_cls=None)` | Build a database model, or decorate `model_cls` when given |
 | `clear()` | Delete all data (used in tests) |
@@ -50,14 +50,14 @@ the database needs the work:
 - `create_schema()` creates tables, indices, or collections.
 - `drop_schema()` drops all storage structures.
 
-A provider that implements `RawQueryProviderPort` also implements
+A provider that implements `RawQueryDatabasePort` also implements
 `raw(query, data=None)`, which runs a native query. On a provider without its
-own `raw()`, the `BaseProvider` version raises `NotSupportedError`.
+own `raw()`, the `BaseDatabase` version raises `NotSupportedError`.
 
-`ProviderPort` also declares the class method `get_lookups()`, which returns
-the lookups the provider registers. `BaseProvider` gets it from
-`RegisterLookupMixin`, so a provider that subclasses `BaseProvider` does not
-define it. A provider that implements `ProviderPort` without `BaseProvider`
+`DatabasePort` also declares the class method `get_lookups()`, which returns
+the lookups the provider registers. `BaseDatabase` gets it from
+`RegisterLookupMixin`, so a provider that subclasses `BaseDatabase` does not
+define it. A provider that implements `DatabasePort` without `BaseDatabase`
 defines it.
 
 ### 2. DAO (Data Access Object)
@@ -95,7 +95,7 @@ by catching the store's unique-index error and checking for the key again.
 ### 3. DatabaseModel
 
 **Extends**: `protean.core.database_model.BaseDatabaseModel` and
-`protean.port.provider.DatabaseModelPort`
+`protean.port.database.DatabaseModelPort`
 
 The DatabaseModel converts between domain entities and database records.
 `DatabaseModelPort` lists the three class methods Protean calls on it.
@@ -147,7 +147,7 @@ Every adapter must register
 [12 required lookups](./index.md#required-lookups), including `isnull`
 (`Q(field__isnull=True/False)`), which core framework machinery such as the
 outbox poll path relies on. Register them with the
-`@YourProvider.register_lookup` decorator:
+`@YourDatabase.register_lookup` decorator:
 
 ```python
 # fragment
@@ -163,7 +163,7 @@ class YourLookup(LookupPort):
         raise NotImplementedError
 
 
-@YourProvider.register_lookup
+@YourDatabase.register_lookup
 class Exact(YourLookup):
     lookup_name = "exact"
 
@@ -177,7 +177,7 @@ class that does not register all 12 required lookups.
 ### 5. Registration Function
 
 A `register()` function that registers the provider class with
-`protean.infra.registry.providers`, the `AdapterRegistry` for database
+`protean.infra.registry.databases`, the `AdapterRegistry` for database
 providers. Wrap dependency imports in `try/except` so the adapter is
 silently skipped if dependencies are not installed:
 
@@ -187,9 +187,9 @@ def register():
     """Register with Protean if dependencies are available."""
     try:
         import boto3  # Check that our dependency is installed
-        from protean.infra.registry import providers
+        from protean.infra.registry import databases
 
-        providers.register("dynamodb", "my_package.provider.DynamoDBProvider")
+        databases.register("dynamodb", "my_package.provider.DynamoDBDatabase")
     except ImportError:
         pass  # DynamoDB SDK not installed, skip registration
 ```
@@ -197,7 +197,7 @@ def register():
 ## Example: A Delegating Provider
 
 The provider below implements every abstract method by handing it to the
-in-memory `MemoryProvider`, and copies its lookups. Replace those calls with
+in-memory `MemoryDatabase`, and copies its lookups. Replace those calls with
 calls to your database client:
 
 ```python
@@ -245,7 +245,7 @@ dependencies = [
     "boto3>=1.28",
 ]
 
-[project.entry-points."protean.providers"]
+[project.entry-points."protean.databases"]
 dynamodb = "protean_dynamodb:register"
 ```
 
@@ -260,11 +260,11 @@ def register():
     """Register the DynamoDB provider with Protean."""
     try:
         import boto3
-        from protean.infra.registry import providers
+        from protean.infra.registry import databases
 
-        providers.register(
+        databases.register(
             "dynamodb",
-            "protean_dynamodb.provider.DynamoDBProvider",
+            "protean_dynamodb.provider.DynamoDBDatabase",
         )
     except ImportError:
         pass
@@ -278,11 +278,11 @@ def register():
 """DynamoDB provider implementation."""
 
 import boto3
-from protean.port.provider import (
-    BaseProvider,
+from protean.port.database import (
+    BaseDatabase,
     DatabaseCapabilities,
-    ProviderHealth,
-    ProviderPort,
+    DatabaseHealth,
+    DatabasePort,
 )
 
 
@@ -303,7 +303,7 @@ class DynamoDBSession:
         pass
 
 
-class DynamoDBProvider(BaseProvider, ProviderPort):
+class DynamoDBDatabase(BaseDatabase, DatabasePort):
     """DynamoDB database provider for Protean."""
 
     database_type = "dynamodb"
@@ -334,9 +334,9 @@ class DynamoDBProvider(BaseProvider, ProviderPort):
         except Exception:
             return False
 
-    def health(self) -> ProviderHealth:
+    def health(self) -> DatabaseHealth:
         # boto3 manages connections internally and exposes no pool counters
-        return ProviderHealth(pool=None)
+        return DatabaseHealth(pool=None)
 
     def dao_for(self, entity_cls, model_cls):
         from protean_dynamodb.dao import DynamoDBDAO
@@ -416,7 +416,7 @@ Protean routes data through the adapter components as follows:
 
 ```
 Domain.init()
-  → providers.get(name)                    # loads your Provider class
+  → databases.get(name)                    # loads your Provider class
   → Provider.__init__(name, domain, config)
   → Provider.create_schema()  # if setup_database() called
 ```
@@ -474,7 +474,7 @@ combine them freely:
 
 ```python
 # fragment
-from protean.port.provider import DatabaseCapabilities
+from protean.port.database import DatabaseCapabilities
 
 @property
 def capabilities(self) -> DatabaseCapabilities:
@@ -550,7 +550,7 @@ def capabilities(self) -> DatabaseCapabilities:
 
 An adapter that declares the flag also overrides `_schema_migrator(directory)`.
 It returns an object that satisfies the `SchemaMigrator` protocol from
-`protean.port.provider`. The protocol has five methods:
+`protean.port.database`. The protocol has five methods:
 
 - `init(domain_path)` creates the migrations folder in `directory`. It raises
   `ConfigurationError` when the folder exists and is not empty.
@@ -572,7 +572,7 @@ error.
 Callers use `provider.schema_migrator(directory)`. It raises
 `NotSupportedError` when the provider does not declare the flag. An adapter
 that declares the flag and does not override `_schema_migrator` gets the
-`BaseProvider` version, which raises the same error. An adapter that leaves
+`BaseDatabase` version, which raises the same error. An adapter that leaves
 the flag out needs neither method. The conformance suite does not check
 `SCHEMA_MIGRATIONS`, so test the migrator in the adapter's own tests.
 
@@ -633,7 +633,7 @@ pytest --db-provider=dynamodb --db-uri="http://localhost:8000" \
 
 ## Related pages
 
-- Review [existing adapter implementations](https://github.com/proteanhq/protean/tree/main/src/protean/adapters/repository)
+- Review [existing adapter implementations](https://github.com/proteanhq/protean/tree/main/src/protean/adapters/database)
   for reference
 - Understand [database capabilities](./index.md#database-capabilities) in
   detail

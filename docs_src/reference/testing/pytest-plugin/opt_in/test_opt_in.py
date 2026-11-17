@@ -27,6 +27,6 @@ seen_domains = []
 
 @pytest.mark.parametrize("run", [1, 2])
 def test_each_test_gets_a_fresh_initialized_domain(test_domain, run):
-    assert test_domain.providers["default"].config["provider"] == "memory"
+    assert test_domain.databases["default"].config["provider"] == "memory"
     assert all(earlier is not test_domain for earlier in seen_domains)
     seen_domains.append(test_domain)

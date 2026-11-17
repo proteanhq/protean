@@ -54,7 +54,7 @@ class ProductInventory:
 3. **Use @domain.projection decorator**: Register with domain: `@domain.projection` or `domain.register(MyProjection)`
 4. **Projections are denormalized**: Flatten nested/related data into basic fields
 5. **Default provider is "default"**: Uses the default database provider unless overridden
-6. **Cache overrides provider**: When both `cache` and `provider` are specified, `cache` takes precedence
+6. **Cache overrides database**: When both `cache` and `database` are specified, `cache` takes precedence
 7. **Default query limit is 100**: Can be overridden; set to `None` or negative for unlimited
 8. **Schema name auto-derived**: Defaults to underscore-cased class name (e.g., `ProductInventory` -> `product_inventory`)
 9. **Identifier values are immutable**: Once set, the identifier field cannot be changed
@@ -64,8 +64,8 @@ class ProductInventory:
 
 | Option | Default | Purpose |
 |--------|---------|---------|
-| `provider` | `"default"` | Database provider for storing projection data |
-| `cache` | `None` | Cache provider (e.g., `"redis"`); overrides `provider` when set |
+| `database` | `"default"` | Database provider for storing projection data |
+| `cache` | `None` | Cache provider (e.g., `"redis"`); overrides `database` when set |
 | `schema_name` | underscore class name | Custom table/schema name in the database |
 | `order_by` | `()` | Default ordering for query results |
 | `limit` | `100` | Default query result limit; `None` for unlimited |
@@ -98,7 +98,7 @@ Projections also accept `ValueObject` fields (`from protean.fields import ValueO
 
 ```python
 # fragment
-@domain.projection(provider="postgres", schema_name="product_inventory")
+@domain.projection(database="postgres", schema_name="product_inventory")
 class ProductInventory:
     product_id: Identifier(identifier=True, required=True)
     name: String(max_length=100, required=True)
@@ -201,14 +201,14 @@ class OrderView:
     shipping_zip: String()
 ```
 
-### No provider and no cache
+### No database and no cache
 
 ```python
 # fragment
-domain.register(MyProjection, provider=None, cache=None)  # Wrong!
+domain.register(MyProjection, database=None, cache=None)  # Wrong!
 ```
 
-Instead: Always have at least a provider or a cache
+Instead: Always have at least a database or a cache
 
 ### No projector to populate it
 

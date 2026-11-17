@@ -336,7 +336,7 @@ def test_an_idempotent_subscriber_rejects_a_payload_without_an_id(caplog):
 
 def test_an_idempotent_subscriber_on_an_unconfigured_provider_fails_init():
     example = load_example("guides/consume-state/subscribers/005.py")
-    example.OrderSubscriber.meta_.provider = "reporting"
+    example.OrderSubscriber.meta_.database = "reporting"
 
     with pytest.raises(
         ConfigurationError, match="`reporting`, which is not configured"

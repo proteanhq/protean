@@ -129,7 +129,7 @@ class TestMemoryGetValueOverride:
         test_domain.init(traverse=False)
 
     def test_memory_model_get_value_uses_dict_access(self, test_domain):
-        from protean.adapters.repository.memory import MemoryModel
+        from protean.adapters.database.memory import MemoryModel
 
         model_cls = test_domain.repository_for(PersonSimple)._database_model
         assert issubclass(model_cls, MemoryModel)
@@ -145,7 +145,7 @@ class TestMemoryGetValueOverride:
 
     def test_memory_model_to_entity_uses_base_implementation(self, test_domain):
         """MemoryModel should use the base to_entity() — it no longer overrides it."""
-        from protean.adapters.repository.memory import MemoryModel
+        from protean.adapters.database.memory import MemoryModel
 
         # Verify that MemoryModel does NOT define its own to_entity
         assert "to_entity" not in MemoryModel.__dict__
@@ -157,7 +157,7 @@ class TestSqlalchemyGetValueDefault:
     """SQLAlchemy adapter uses the base ``_get_value()`` default (``getattr``)."""
 
     def test_sqlalchemy_model_does_not_override_to_entity(self):
-        from protean.adapters.repository.sqlalchemy import SqlalchemyModel
+        from protean.adapters.database.sqlalchemy import SqlalchemyModel
 
         # SqlalchemyModel should NOT define its own to_entity or _get_value
         assert "to_entity" not in SqlalchemyModel.__dict__

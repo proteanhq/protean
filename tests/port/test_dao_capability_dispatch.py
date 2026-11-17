@@ -13,12 +13,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from protean.adapters.repository.memory import DictDAO, MemorySession
+from protean.adapters.database.memory import DictDAO, MemorySession
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ConfigurationError
 from protean.fields import Integer, String
 from protean.port.dao import BaseDAO, HoldBack, NativeClaimPort, portable_claim
-from protean.port.provider import DatabaseCapabilities
+from protean.port.database import DatabaseCapabilities
 from protean.utils.query import Q
 
 

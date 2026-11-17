@@ -7,7 +7,7 @@ import redis
 from fastapi.testclient import TestClient
 
 from protean.adapters.broker.redis import RedisBroker
-from protean.adapters.repository.elasticsearch import ESProvider
+from protean.adapters.database.elasticsearch import ESDatabase
 from protean.domain.context import has_domain_context
 from protean.exceptions import ConfigurationError
 from protean.infra import registry
@@ -277,11 +277,11 @@ def test_catalogue_domain_stores_in_elasticsearch(tmp_path):
     domain = domain_from_config(CATALOGUE, tmp_path, name="Catalogue")
     conn_info = dict(domain.config["databases"]["default"])
 
-    provider = registry.providers.get(conn_info["provider"])(
+    provider = registry.databases.get(conn_info["provider"])(
         "default", domain, conn_info
     )
 
-    assert type(provider) is ESProvider
+    assert type(provider) is ESDatabase
     nodes = provider._client.transport.node_pool.all()
     assert [node.base_url for node in nodes] == ["http://localhost:9200"]
 

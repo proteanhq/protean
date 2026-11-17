@@ -130,7 +130,7 @@ on its own.
 
 **Adapter coverage.** The Memory path is validated end to end. The SQLAlchemy
 `_update` path emits the same observations for a standalone (non-UoW) update, which
-is what `tests/adapters/repository/sqlalchemy_repo/postgresql/test_postgresql_occ_trace.py`
+is what `tests/adapters/database/sqlalchemy_repo/postgresql/test_postgresql_occ_trace.py`
 pins. Under `repository.add` the version-guarded flush is deferred to the Unit of
 Work commit, so both a *concurrent* SQL commit and its conflict resolve there
 rather than in `_update` (the SQL emits are gated on the standalone path for that

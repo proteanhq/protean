@@ -6,7 +6,7 @@ from myapp.models import User
 
 
 def test_the_provider_follows_test_db():
-    provider = domain.providers["default"].config["provider"]
+    provider = domain.databases["default"].config["provider"]
     assert provider == os.environ.get("TEST_DB", "memory")
 
 

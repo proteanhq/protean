@@ -411,7 +411,7 @@ def _trigger_test_adapter_marker_capabilities() -> None:
 
 
 def _trigger_test_adapter_test_dir() -> None:
-    _check_test_dir("database", "tests/adapters/repository/generic")
+    _check_test_dir("database", "tests/adapters/database/generic")
 
 
 # Each runtime deprecation's slug → a callable that exercises its deprecated

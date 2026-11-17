@@ -1,6 +1,6 @@
 import copy
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, ClassVar
 
 logger = logging.getLogger(__name__)
@@ -109,6 +109,11 @@ class OptionsMixin:
     # internal options; :func:`protean.utils.derive_element_class` rejects any
     # such key passed through the decorator or ``domain.register``.
     _internal_options: ClassVar[frozenset[str]] = frozenset()
+
+    # Old option names mapped to the names that replaced them. Element Roots
+    # override this, and registration rejects an old name with an error that
+    # names its replacement.
+    _renamed_options: ClassVar[Mapping[str, str]] = {}
 
     @classmethod
     def _set_defaults(cls) -> None:

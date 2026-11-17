@@ -11,9 +11,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from protean.adapters.repository.sqlalchemy import SqliteProvider
+from protean.adapters.database.sqlalchemy import SqliteDatabase
 from protean.cli import app
-from protean.port.provider import BaseProvider
+from protean.port.database import BaseDatabase
 from tests.support.migrations import block_alembic
 
 pytestmark = [pytest.mark.sqlite, pytest.mark.no_test_domain]
@@ -153,7 +153,7 @@ class TestInitWritesTheFolder:
 
         env_py = (project / "migrations" / "env.py").read_text(encoding="utf-8")
         assert env_py == (
-            "from protean.adapters.repository.schema_migrator import run_migrations"
+            "from protean.adapters.database.schema_migrator import run_migrations"
             "\n\nrun_migrations()\n"
         )
 
@@ -288,7 +288,7 @@ class TestInitRefuses:
         assert result.exit_code != 0
         assert "Provider 'default' (memory)" in result.output
         assert "SCHEMA_MIGRATIONS" in result.output
-        assert "Providers that declare it: analytics." in result.output
+        assert "Databases that declare it: analytics." in result.output
         assert not (project / "migrations").exists()
 
     def test_no_provider_declares_the_capability(self, project):
@@ -343,7 +343,7 @@ class TestInitRefuses:
     ):
         write_domain(project, {"default": sqlite(project / "shop.db")})
         monkeypatch.setattr(
-            SqliteProvider, "_schema_migrator", BaseProvider._schema_migrator
+            SqliteDatabase, "_schema_migrator", BaseDatabase._schema_migrator
         )
 
         result = runner.invoke(app, ["db", "init", "--domain", "domain.py"])
