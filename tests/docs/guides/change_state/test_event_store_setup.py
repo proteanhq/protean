@@ -5,6 +5,7 @@ example fresh and writes account ``acc-001`` itself: an ``AccountOpened`` event
 at position 0, then one ``Deposited`` event per deposit.
 """
 
+import inspect
 from datetime import UTC, datetime
 
 import pytest
@@ -114,6 +115,10 @@ def test_the_category_is_read_through_read_all_in_pages_of_1000(example, monkeyp
 
     assert calls == [("myapp::account", {"page_size": 1000})]
     assert deposited == sum(DEPOSITS)
+    # The adapter's delegate always passes ``page_size`` on, so the recorded
+    # call alone cannot show that the example sets it.
+    source = inspect.getsource(example.read_account_events)
+    assert 'store.read_all("myapp::account", page_size=1000)' in source
 
 
 def test_the_account_replays_from_its_events(example):

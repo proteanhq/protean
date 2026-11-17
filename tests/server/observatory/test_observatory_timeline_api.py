@@ -1598,8 +1598,8 @@ class TestCausationTreeTimestampFormatting:
 
 class TestCollectorsSkipDomainsWithoutStore:
     """A freshly constructed ``Domain`` (never ``init()``-ed) has no event
-    store adapter: ``event_store._adapter is None``.  Each collector must skip such a domain
-    and return its empty result rather than raise."""
+    store adapter: ``event_store._adapter is None``. Each collector must skip
+    such a domain and return its empty result rather than raise."""
 
     @staticmethod
     def _domain_without_store() -> Domain:

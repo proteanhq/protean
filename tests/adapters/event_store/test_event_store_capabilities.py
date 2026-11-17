@@ -87,7 +87,7 @@ class TestMessageDBStoreCapabilities:
 
 
 class _StoreWithoutCapabilities(EventStorePort):
-    """Implements every abstract member of ``EventStorePort`` except ``capabilities``."""
+    """Implements every abstract member of ``EventStorePort`` but ``capabilities``."""
 
     def write_message(self, *args: Any, **kwargs: Any) -> int:  # pragma: no cover
         raise NotImplementedError

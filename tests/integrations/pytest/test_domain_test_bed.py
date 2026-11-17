@@ -116,9 +116,9 @@ class TestDomainContext:
 
         mock_provider = mock.MagicMock()
         mock_broker = mock.MagicMock()
-        mock_event_store = mock.MagicMock()
+        adapter = mock.MagicMock()
         # ``Domain._require_event_store`` reads the adapter through ``store``.
-        mock_event_store.store = mock_event_store._adapter
+        mock_event_store = mock.MagicMock(store=adapter, _adapter=adapter)
         domain.databases = {"default": mock_provider}
         domain.brokers = {"default": mock_broker}
         domain.event_store = mock_event_store
@@ -134,9 +134,9 @@ class TestDomainContext:
 
         mock_provider = mock.MagicMock()
         mock_broker = mock.MagicMock()
-        mock_event_store = mock.MagicMock()
+        adapter = mock.MagicMock()
         # ``Domain._require_event_store`` reads the adapter through ``store``.
-        mock_event_store.store = mock_event_store._adapter
+        mock_event_store = mock.MagicMock(store=adapter, _adapter=adapter)
         domain.databases = {"default": mock_provider}
         domain.brokers = {"default": mock_broker}
         domain.event_store = mock_event_store

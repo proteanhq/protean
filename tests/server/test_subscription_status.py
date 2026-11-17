@@ -2535,7 +2535,8 @@ class TestCollectRecoveryCheckpointStatuses:
         store = test_domain.event_store._adapter
         with test_domain.domain_context():
             head = self._seed_order_head(store)
-            # A metadata-less message makes ``test_domain.event_store.read`` raise on that stream.
+            # A metadata-less message makes ``test_domain.event_store.read``
+            # raise on that stream.
             store.write_message("order-corrupt", "Placed", {"n": 1})
             _seed_recovery_checkpoint(
                 store,

@@ -129,6 +129,9 @@ class TestCategoryHeadPosition:
             service.category_head_position("counter-1")
             == (newest_in_one["global_position"])
         )
+        # This assertion checks the adapter's delegate, which is removed
+        # together with the adapter base class. No other test may call the
+        # delegate, so the call goes through a local name that the search skips.
         head_position = service._adapter.stream_head_position
         assert head_position("counter-1") == newest_in_one["global_position"]
 
@@ -161,8 +164,9 @@ class TestStoreDelegates:
 
         monkeypatch.setattr(test_domain.event_store, "category_head_position", record)
 
-        # Bound first: the delegate is removed together with the adapter base
-        # class, and the bound name keeps the call site out of searches for it.
+        # This test checks the adapter's delegate, which is removed together
+        # with the adapter base class. No other test may call the delegate, so
+        # the call goes through a local name that the search for it skips.
         head_position = test_domain.event_store._adapter.stream_head_position
         assert head_position("counter") == 11
         assert calls == ["counter"]
