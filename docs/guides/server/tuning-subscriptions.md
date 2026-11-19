@@ -99,6 +99,9 @@ Trimming is approximate in both cases (Redis's `~`), so the stream settles
 slightly above the target. Exact trimming costs far more for a bound that did
 not need to be exact.
 
+The cap needs a broker that declares `STREAM_RETENTION`, such as Redis Streams.
+On any other broker Protean skips the trim without a log line.
+
 Retention is size-based only. There is no time-based option, so choose from how
 far behind you will let a consumer fall, not from how long you want to keep
 history. For history, use the event store.

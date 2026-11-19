@@ -465,9 +465,9 @@ class Broker:
     # Stream retention, for the stream subscription.
 
     def _trim(self, stream: str, maxlen: int) -> int:
-        """Trim ``stream`` to at most ``maxlen`` entries.
+        """Trim ``stream`` toward ``maxlen`` entries by the adapter's rule.
 
-        Returns ``0`` without calling the adapter when the broker lacks
+        Returns the number of entries removed, or ``0`` without calling the adapter when the broker lacks
         ``STREAM_RETENTION``.
         """
         if BrokerCapabilities.STREAM_RETENTION not in self.capabilities:

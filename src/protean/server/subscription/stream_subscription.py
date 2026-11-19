@@ -587,7 +587,7 @@ class StreamSubscription(BaseSubscription):
         # Guard against a non-positive cap. `validate()` rejects `<= 0`, but the
         # constructor accepts `retention_maxlen` unchecked, so a direct
         # `StreamSubscription(..., retention_maxlen=0)` would otherwise reach
-        # `_trim(stream, 0)` and empty the stream.
+        # `_trim(stream, 0)`, and a broker's trim could empty the stream.
         if (
             self.retention_maxlen is None
             or self.retention_maxlen <= 0

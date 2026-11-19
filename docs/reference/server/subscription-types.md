@@ -181,6 +181,10 @@ Trimming is approximate (Redis's `~`): the stream is trimmed a whole node at a
 time, so it may settle slightly above `retention_maxlen`, never below it. This
 is size-based retention only; there is no time-based TTL.
 
+Trimming needs a broker that declares `STREAM_RETENTION`, such as Redis
+Streams. On any other broker the subscription skips the trim without a log
+line, so `retention_maxlen` has no effect.
+
 Each built-in profile carries a default cap (see
 [Stream retention defaults](configuration.md#stream-retention-defaults)).
 

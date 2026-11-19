@@ -33,13 +33,16 @@ A broker opts in by advertising the capability and subclassing
 --8<-- "adapters/broker/partitioning/001.py:declare"
 ```
 
-Without `STREAM_PARTITIONING`, `sequential_by` is a **no-op**: the publisher does
-not split streams and consumers stay on the base stream with a regular
+On the inline broker, `sequential_by` is a **no-op**: the publisher does not
+split streams and consumers stay on the base stream with a regular
 subscription. That is deliberate, so a domain declaring `sequential_by` still
-runs on the inline broker in tests, without ordering guarantees.
+runs on the inline broker in tests. The inline broker processes messages one
+at a time in submission order. Any other broker that does not declare
+`STREAM_PARTITIONING` is rejected at `domain.init()` with `IncorrectUsageError`
+when the domain declares `sequential_by`.
 
-`PartitioningPort` extends `BrokerPort` with the nine methods in the tables
-below, and the adapter implements all of them. If a broker declares
+`PartitioningPort` extends `BrokerPort` with the nine methods in the Discovery
+and Ownership tables below, and the adapter implements all of them. If a broker declares
 `STREAM_PARTITIONING` and does not subclass `PartitioningPort`, `domain.init()`
 raises `ConfigurationError`. The message names the methods the broker does not
 implement, if any. End the adapter module with
@@ -63,9 +66,11 @@ An index rather than a keyspace scan is the point: partition keys are unbounded
 (one per order, per customer), so discovery has to be O(partitions), not
 O(keys in the broker).
 
-**`reap_partition` must be atomic and conservative.** Reap only when no consumer
-group on any of the partition's streams has pending entries *and* all have been
-idle for at least `min_idle_ms`. When priority lanes are on, the caller passes
+**`reap_partition` must be atomic and conservative.** An empty stream can always
+be reaped. A stream that holds entries can be reaped only when it has at least
+one consumer group, every group has read and acknowledged every entry, and its
+newest entry is at least `min_idle_ms` old. Reap the partition only when each
+of its streams passes this check. When priority lanes are on, the caller passes
 `backfill_suffix`. The adapter then checks and deletes the key's backfill lane
 together with the main stream. An adapter that skips the backfill lane leaves
 unconsumed work in it. Keep the partition's lease generation counter after a
@@ -87,11 +92,11 @@ generation, so a resumed stale owner cannot act.
 | Method | Contract |
 |--------|----------|
 | `acquire_partition_lease(lease_key, generation_key, owner_id, ttl_ms)` | Take the lease. Return the new generation, or `None` if held by someone else. Must be atomic against concurrent callers. |
-| `renew_partition_lease(lease_key, fence_token, ttl_ms)` | Extend the TTL. Return `False` if the lease was lost, which the caller treats as "stop immediately". |
+| `renew_partition_lease(lease_key, fence_token, ttl_ms)` | Set the lease to expire `ttl_ms` milliseconds from now. Return `False` if the lease was lost, which the caller treats as "stop immediately". |
 | `release_partition_lease(lease_key, fence_token)` | Release on graceful shutdown. Return `False` if not held. |
 | `read_partition_fenced(stream, consumer_group, consumer_name, lease_key, fence_token, limit, new_messages)` | Read up to `limit` messages, rejecting a stale fence token. Return a list of `BrokerMessage`. |
 | `ack_partition_fenced(stream, message_id, consumer_group, lease_key, fence_token)` | Ack, rejecting a stale fence token. |
-| `reclaim_partition_pending(stream, consumer_group, consumer_name, min_idle_ms, limit)` | Take over up to `limit` entries left pending by a dead owner. Return a list of `BrokerMessage`. |
+| `reclaim_partition_pending(stream, consumer_group, consumer_name, min_idle_ms, limit)` | Take over the entries left pending by a dead owner, `limit` per page. Return a list of `BrokerMessage`. |
 
 An operation refused for a stale token raises
 [`LeaseLostError`](#leaselosterror). Treat it as final: stop processing the
@@ -120,15 +125,17 @@ End the adapter module with
 
 | Method | Contract |
 |--------|----------|
-| `trim(stream, maxlen)` | Trim `stream`, returning the number of entries removed. |
+| `trim(stream, maxlen)` | Trim `stream` toward `maxlen` entries, returning the number of entries removed. |
 
-`trim` should keep the entries a consumer group has not read yet. The Redis
-adapter's rule is worth copying. With **two or more** consumer groups, trim to
-the minimum `last-delivered-id` across them and **ignore `maxlen`**, because
-consumer progress bounds the stream. With **zero or one**, cap at `maxlen`. A
-single group more than `maxlen` entries behind then loses its oldest unread
-entries, so document that limit for operators.
-Refuse a non-positive `maxlen` rather than emptying the stream. See
+The Redis adapter's rule is worth copying. With **two or more** consumer groups,
+it trims to the minimum `last-delivered-id` across them and **ignores
+`maxlen`**, because consumer progress bounds the stream. That removes only
+entries every group has had delivered, including entries delivered and not yet
+acknowledged. With **zero or one** group, it caps the stream at about `maxlen`
+entries. A single group more than `maxlen` entries behind then loses its oldest
+unread entries, so document that limit for operators. Both trims are
+approximate, so the stream can stay a little above the target. Refuse a
+non-positive `maxlen` rather than emptying the stream. See
 [Tuning subscriptions](../../../guides/server/tuning-subscriptions.md#stop-a-stream-from-growing-forever)
 for the operator-facing consequences.
 

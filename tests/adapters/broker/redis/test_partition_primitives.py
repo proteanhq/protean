@@ -90,6 +90,28 @@ def test_fenced_read_and_stale_owner_rejected(broker: RedisBroker) -> None:
         )
 
 
+def test_fenced_read_returns_at_most_limit_messages(broker: RedisBroker) -> None:
+    cat = _cat()
+    stream = f"{cat}:a"
+    group = "grp.Handler"
+    lease = f"{group}:a:__lease__"
+    gen_key = f"{group}:a:__generation__"
+    for i in range(3):
+        broker.publish(stream, _payload(i))
+    gen = broker.acquire_partition_lease(lease, gen_key, "owner-1", 5000)
+    fence = f"owner-1:{gen}"
+
+    first = broker.read_partition_fenced(
+        stream, group, fence, lease, fence, limit=1, new_messages=True
+    )
+    second = broker.read_partition_fenced(
+        stream, group, fence, lease, fence, limit=2, new_messages=True
+    )
+
+    assert [m[1]["data"]["seq"] for m in first] == [0]
+    assert [m[1]["data"]["seq"] for m in second] == [1, 2]
+
+
 def test_fenced_ack_and_stale_owner_rejected(broker: RedisBroker) -> None:
     cat = _cat()
     stream = f"{cat}:a"
@@ -130,6 +152,27 @@ def test_reclaim_pending_via_xautoclaim(broker: RedisBroker) -> None:
         stream, group, "owner-2:2", min_idle_ms=0, limit=100
     )
     assert sorted(m[1]["data"]["seq"] for m in reclaimed) == [0, 1, 2]
+
+
+def test_reclaim_pages_through_more_pending_than_limit(broker: RedisBroker) -> None:
+    cat = _cat()
+    stream = f"{cat}:a"
+    group = "grp.Handler"
+    lease = f"{group}:a:__lease__"
+    gen_key = f"{group}:a:__generation__"
+    for i in range(3):
+        broker.publish(stream, _payload(i))
+    gen = broker.acquire_partition_lease(lease, gen_key, "owner-1", 5000)
+    fence = f"owner-1:{gen}"
+    broker.read_partition_fenced(
+        stream, group, fence, lease, fence, limit=3, new_messages=True
+    )
+
+    reclaimed = broker.reclaim_partition_pending(
+        stream, group, "owner-2:2", min_idle_ms=0, limit=1
+    )
+
+    assert [m[1]["data"]["seq"] for m in reclaimed] == [0, 1, 2]
 
 
 def test_reap_only_when_idle_and_drained(broker: RedisBroker) -> None:

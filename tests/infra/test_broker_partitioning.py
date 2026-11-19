@@ -15,6 +15,7 @@ from protean.port.broker import (
     CAPABILITY_PORTS,
     BrokerCapabilities,
     BrokerMessage,
+    BrokerPort,
     LeaseLostError,
     PartitioningPort,
     StreamRetentionPort,
@@ -48,6 +49,8 @@ class PartitioningStubAdapter(StubAdapter, PartitioningPort):
             | BrokerCapabilities.STREAM_PARTITIONING,
         )
         self.partition_errors: list[Exception] = []
+        # What each boolean partition method returns.
+        self.result = True
 
     def _record(self, *call: Any) -> None:
         self.calls.append(call)
@@ -69,7 +72,7 @@ class PartitioningStubAdapter(StubAdapter, PartitioningPort):
         backfill_suffix: str | None,
     ) -> bool:
         self._record("reap_partition", category, key, min_idle_ms, backfill_suffix)
-        return True
+        return self.result
 
     def acquire_partition_lease(
         self, lease_key: str, generation_key: str, owner_id: str, ttl_ms: int
@@ -83,11 +86,11 @@ class PartitioningStubAdapter(StubAdapter, PartitioningPort):
         self, lease_key: str, fence_token: str, ttl_ms: int
     ) -> bool:
         self._record("renew_partition_lease", lease_key, fence_token, ttl_ms)
-        return True
+        return self.result
 
     def release_partition_lease(self, lease_key: str, fence_token: str) -> bool:
         self._record("release_partition_lease", lease_key, fence_token)
-        return True
+        return self.result
 
     def read_partition_fenced(
         self,
@@ -127,7 +130,7 @@ class PartitioningStubAdapter(StubAdapter, PartitioningPort):
             lease_key,
             fence_token,
         )
-        return True
+        return self.result
 
     def reclaim_partition_pending(
         self,
@@ -203,6 +206,32 @@ class TestTheCapabilityTable:
         assert (
             CAPABILITY_PORTS[BrokerCapabilities.STREAM_RETENTION] is StreamRetentionPort
         )
+
+    def test_retention_sits_directly_after_partitioning(self):
+        flags = list(BrokerCapabilities)
+        assert (
+            flags.index(BrokerCapabilities.STREAM_RETENTION)
+            == flags.index(BrokerCapabilities.STREAM_PARTITIONING) + 1
+        )
+
+    def test_partition_calls_cover_every_partitioning_port_member(self):
+        port_members = (
+            PartitioningPort.__abstractmethods__ - BrokerPort.__abstractmethods__
+        )
+        assert port_members
+        assert {operation.lstrip("_") for operation, _ in PARTITION_CALLS} == (
+            port_members
+        )
+
+    def test_the_service_has_no_public_partition_or_trim_method(self):
+        public_names = PartitioningPort.__abstractmethods__ - (
+            BrokerPort.__abstractmethods__
+        ) | {"trim"}
+        assert len(public_names) == 10
+        assert [name for name in public_names if hasattr(Broker, name)] == []
+
+    def test_the_inline_broker_has_no_trim(self):
+        assert not hasattr(InlineBroker, "trim")
 
     def test_only_the_redis_streams_broker_subclasses_the_ports(self):
         for port in (PartitioningPort, StreamRetentionPort):
@@ -308,6 +337,22 @@ class TestAPartitioningBroker:
 
         assert len(_calls_named(partitioning_adapter, operation.lstrip("_"))) == 1
         assert _calls_named(partitioning_adapter, "reconnect") == []
+
+    @pytest.mark.parametrize(
+        ("operation", "args"),
+        [
+            ("_reap_partition", ("cat", "a", 50)),
+            ("_renew_partition_lease", ("lease", "owner:7", 2000)),
+            ("_release_partition_lease", ("lease", "owner:7")),
+            ("_ack_partition_fenced", ("s", "1-0", "g", "lease", "owner:7")),
+        ],
+    )
+    def test_a_false_adapter_result_is_passed_through(
+        self, partitioning_adapter, operation, args
+    ):
+        partitioning_adapter.result = False
+
+        assert getattr(Broker(partitioning_adapter), operation)(*args) is False
 
 
 class TestTrim:

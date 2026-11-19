@@ -12,6 +12,7 @@ from protean.adapters.broker.inline import InlineBroker
 from protean.exceptions import NotSupportedError
 from protean.infra.broker import Broker
 from protean.port.broker import BrokerCapabilities
+from tests.infra.test_broker_partitioning import PARTITION_CALLS
 
 
 @pytest.fixture(autouse=True)
@@ -28,20 +29,7 @@ def test_inline_broker_does_not_advertise_partitioning(broker: Broker) -> None:
     assert BrokerCapabilities.STREAM_PARTITIONING not in broker.capabilities
 
 
-@pytest.mark.parametrize(
-    ("operation", "args"),
-    [
-        ("_record_partition", ("cat", "a")),
-        ("_partition_keys", ("cat",)),
-        ("_reap_partition", ("cat", "a", 0)),
-        ("_acquire_partition_lease", ("lease", "gen", "owner", 1000)),
-        ("_renew_partition_lease", ("lease", "owner:1", 1000)),
-        ("_release_partition_lease", ("lease", "owner:1")),
-        ("_read_partition_fenced", ("s", "g", "c", "lease", "owner:1")),
-        ("_ack_partition_fenced", ("s", "0-0", "g", "lease", "owner:1")),
-        ("_reclaim_partition_pending", ("s", "g", "c")),
-    ],
-)
+@pytest.mark.parametrize(("operation", "args"), PARTITION_CALLS)
 def test_partition_operations_raise_not_supported(
     broker: Broker, operation: str, args: tuple
 ) -> None:

@@ -421,13 +421,15 @@ class PartitioningPort(BrokerPort, Protocol):
     ) -> bool:
         """Remove a drained, idle partition from the index and delete its streams.
 
-        The check and the delete happen in one atomic step. The partition is
-        reaped only when every consumer group on each of its streams has read
-        and acknowledged every entry, and the newest entry on each stream is
-        at least ``min_idle_ms`` old. An empty stream is always reaped. When
-        priority lanes are enabled, ``backfill_suffix`` names the backfill
-        lane ``{category}:{key}:{backfill_suffix}``, which is then checked and
-        deleted with the main stream. The partition's generation counter is
+        The check and the delete happen in one atomic step. A stream that
+        holds entries passes the check only when it has at least one consumer
+        group, every group on it has read and acknowledged every entry, and
+        its newest entry is at least ``min_idle_ms`` old. An empty stream
+        always passes. The partition is reaped only when each of its streams
+        passes. When priority lanes are enabled, ``backfill_suffix`` names the
+        backfill lane ``{category}:{key}:{backfill_suffix}``, which is checked
+        and deleted with the main stream, so a backfill lane with unread
+        entries keeps an empty main stream from being reaped. The partition's generation counter is
         kept, so a partition created again under the same key keeps a rising
         generation. The partition's current owner calls it once it has
         drained the partition. See ADR-0028 decision 7.
@@ -452,7 +454,7 @@ class PartitioningPort(BrokerPort, Protocol):
     def renew_partition_lease(
         self, lease_key: str, fence_token: str, ttl_ms: int
     ) -> bool:
-        """Extend a held lease by ``ttl_ms`` milliseconds.
+        """Renew a held lease so that it expires ``ttl_ms`` milliseconds from now.
 
         ``fence_token`` is ``{owner_id}:{generation}``. The renew succeeds only
         while the lease still holds that exact token, so an owner that lost
@@ -484,8 +486,8 @@ class PartitioningPort(BrokerPort, Protocol):
         """Read up to ``limit`` messages from a partition stream, fenced by the lease.
 
         The lease check and the read are one atomic step (ADR-0028 decision
-        5). A caller that no longer holds the lease at ``fence_token`` reads
-        nothing. ``new_messages=True`` reads undelivered entries, and
+        5). A caller that no longer holds the lease at ``fence_token`` gets
+        ``LeaseLostError`` and reads no message. ``new_messages=True`` reads undelivered entries, and
         ``new_messages=False`` reads the entries already delivered to this
         consumer and not acknowledged. Does not wait for messages.
 
@@ -531,10 +533,13 @@ class PartitioningPort(BrokerPort, Protocol):
         On failover the new owner reclaims the previous owner's unacknowledged
         entries so none are lost or skipped (ADR-0028 decision 5). Claims
         entries idle for at least ``min_idle_ms`` milliseconds, ``limit`` per
-        page, until none are left.
+        page, and stops at the end of the pending list or at the first page
+        that claims nothing.
 
         Returns:
-            The reclaimed messages, now pending on ``consumer_name``.
+            The reclaimed messages, now pending on ``consumer_name``. A claimed
+            entry whose payload was already trimmed from the stream is left
+            out.
         """
 
 
@@ -548,11 +553,13 @@ class StreamRetentionPort(BrokerPort, Protocol):
 
     @abstractmethod
     def trim(self, stream: str, maxlen: int) -> int:
-        """Trim ``stream`` to at most ``maxlen`` entries.
+        """Trim ``stream`` toward ``maxlen`` entries.
 
         The stream subscription calls it after each processed batch when the
-        subscription sets ``retention_maxlen``. An adapter documents which
-        entries its trim may remove when a consumer group has not read them
+        subscription sets ``retention_maxlen``. The trim need not be exact,
+        and an adapter may use a different rule, such as the read position
+        of its consumer groups. Each adapter's docstring states its rule and
+        which entries it may remove when a consumer group has not read them
         yet.
 
         Returns:
