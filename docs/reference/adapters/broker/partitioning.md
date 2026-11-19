@@ -122,10 +122,12 @@ End the adapter module with
 |--------|----------|
 | `trim(stream, maxlen)` | Trim `stream`, returning the number of entries removed. |
 
-`trim` must not delete anything a consumer group still needs. The Redis
+`trim` should keep the entries a consumer group has not read yet. The Redis
 adapter's rule is worth copying. With **two or more** consumer groups, trim to
 the minimum `last-delivered-id` across them and **ignore `maxlen`**, because
-consumer progress bounds the stream. With **zero or one**, cap at `maxlen`.
+consumer progress bounds the stream. With **zero or one**, cap at `maxlen`. A
+single group more than `maxlen` entries behind then loses its oldest unread
+entries, so document that limit for operators.
 Refuse a non-positive `maxlen` rather than emptying the stream. See
 [Tuning subscriptions](../../../guides/server/tuning-subscriptions.md#stop-a-stream-from-growing-forever)
 for the operator-facing consequences.
