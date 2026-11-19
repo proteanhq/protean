@@ -4,11 +4,12 @@ commit the sessions, then run the after-commit callbacks."""
 
 import pytest
 
-from protean.adapters.database.memory import DictDAO, MemorySession
+from protean.adapters.database.memory import MemorySession
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork, run_after_commit
 from protean.fields import String
+from protean.infra.dao import DAO
 from protean.port.event_store import BaseEventStore
 from protean.utils.globals import _uow_context_stack
 
@@ -26,7 +27,7 @@ class TicketOpened(BaseEvent):
 
 @pytest.fixture(scope="session")
 def db_config():
-    # The ``steps`` fixture traces the memory adapter's session and DAO.
+    # The ``steps`` fixture traces the memory adapter's session.
     return {"provider": "memory"}
 
 
@@ -51,7 +52,7 @@ def steps(monkeypatch) -> list[tuple[str, bool]]:
     orig_flush = MemorySession.flush
     orig_commit = MemorySession.commit
     orig_append = BaseEventStore.append
-    orig_save_if_absent = DictDAO.save_if_absent
+    orig_save_if_absent = DAO.save_if_absent
 
     def traced_flush(self):
         recorded.append(("flush", on_stack()))
@@ -72,7 +73,7 @@ def steps(monkeypatch) -> list[tuple[str, bool]]:
     monkeypatch.setattr(MemorySession, "flush", traced_flush)
     monkeypatch.setattr(MemorySession, "commit", traced_commit)
     monkeypatch.setattr(BaseEventStore, "append", traced_append)
-    monkeypatch.setattr(DictDAO, "save_if_absent", traced_save_if_absent)
+    monkeypatch.setattr(DAO, "save_if_absent", traced_save_if_absent)
     return recorded
 
 
