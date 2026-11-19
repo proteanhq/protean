@@ -752,8 +752,12 @@ class DictDAO(BaseDAO):
         return model_obj
 
     def _filter_items(
-        self, criteria: Q, db: dict[typing.Any, typing.Any]
+        self,
+        criteria: Q,
+        db: dict[typing.Any, typing.Any],
+        negated: bool = False,
     ) -> dict[typing.Any, typing.Any]:
+<<<<<<< HEAD:src/protean/adapters/repository/memory.py
         """Recursive function to filter items from dictionary"""
         # Filter the dictionary objects based on the filters
         # ``_evaluate_lookup`` is defined on ``MemoryProvider``; ``self.provider``
@@ -762,33 +766,52 @@ class DictDAO(BaseDAO):
         provider = cast(MemoryProvider, self.provider)
         negated = criteria.negated
         input_db = None
+=======
+        """Return the records in ``db`` that match ``criteria``.
+>>>>>>> e70ef84d (Fix negated Q filters that combine conditions (#2272)):src/protean/adapters/database/memory.py
 
-        if criteria.connector == criteria.AND:
+        With ``negated`` set, return the records that match ``NOT criteria``
+        instead.
+        """
+        # The negation is pushed down to each condition (De Morgan): ``NOT``
+        # flips the connector, and a condition is negated when exactly one of
+        # the outer negation and this node's own negation applies. A negated
+        # comparison never matches NULL, and a negated ``isnull`` flips
+        # plainly because SQL never evaluates ``IS NULL`` to UNKNOWN, so the
+        # result equals SQL's three-valued ``NOT`` of the whole expression.
+        child_negated = negated != criteria.negated
+        is_and = (criteria.connector == criteria.AND) != negated
+
+        if is_and:
             # Trim database records over successive iterations
             #   Whatever is left at the end satisfy all criteria (AND)
             input_db = db
             for child in criteria.children:
-                if isinstance(child, Q):
-                    input_db = self._filter_items(child, input_db)
-                else:
-                    input_db = provider._evaluate_lookup(
-                        child[0], child[1], negated, input_db
-                    )
-        else:
-            # Grow database records over successive iterations
-            #   Whatever is left at the end satisfy any criteria (OR)
-            input_db = {}
-            for child in criteria.children:
-                if isinstance(child, Q):
-                    results = self._filter_items(child, db)
-                else:
-                    results = provider._evaluate_lookup(child[0], child[1], negated, db)
+                input_db = self._filter_child(child, input_db, child_negated)
+            return input_db
 
-                input_db = {**input_db, **results}
-
+        # Grow database records over successive iterations
+        #   Whatever is left at the end satisfy any criteria (OR)
+        input_db = {}
+        for child in criteria.children:
+            input_db = {**input_db, **self._filter_child(child, db, child_negated)}
         return input_db
 
+<<<<<<< HEAD:src/protean/adapters/repository/memory.py
     def _filter(
+=======
+    def _filter_child(
+        self,
+        child: typing.Any,
+        db: dict[typing.Any, typing.Any],
+        negated: bool,
+    ) -> dict[typing.Any, typing.Any]:
+        if isinstance(child, Q):
+            return self._filter_items(child, db, negated)
+        return self.provider._evaluate_lookup(child[0], child[1], negated, db)
+
+    def filter(
+>>>>>>> e70ef84d (Fix negated Q filters that combine conditions (#2272)):src/protean/adapters/database/memory.py
         self,
         criteria: Q,
         offset: int = 0,
