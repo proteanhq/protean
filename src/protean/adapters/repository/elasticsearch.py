@@ -329,7 +329,10 @@ class ElasticsearchDAO(BaseDAO):
         combine = operator.and_ if criteria.connector == criteria.AND else operator.or_
         return functools.reduce(combine, parts)
 
-<<<<<<< HEAD:src/protean/adapters/repository/elasticsearch.py
+    def _build_nested_filter(self, child: Q, negated: bool) -> _Any:
+        nested = self._build_filters(child)
+        return ~nested if negated else nested
+
     def _lookup_expression(self, child: tuple[str, _Any], negated: bool) -> _Any:
         """The query expression for one ``(lookup key, value)`` criterion.
 
@@ -348,13 +351,6 @@ class ElasticsearchDAO(BaseDAO):
         return expression
 
     def _filter(
-=======
-    def _build_nested_filter(self, child: Q, negated: bool) -> _Any:
-        nested = self._build_filters(child)
-        return ~nested if negated else nested
-
-    def filter(
->>>>>>> e70ef84d (Fix negated Q filters that combine conditions (#2272)):src/protean/adapters/database/elasticsearch.py
         self,
         criteria: Q,
         offset: int = 0,

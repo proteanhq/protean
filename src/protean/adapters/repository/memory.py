@@ -757,18 +757,7 @@ class DictDAO(BaseDAO):
         db: dict[typing.Any, typing.Any],
         negated: bool = False,
     ) -> dict[typing.Any, typing.Any]:
-<<<<<<< HEAD:src/protean/adapters/repository/memory.py
-        """Recursive function to filter items from dictionary"""
-        # Filter the dictionary objects based on the filters
-        # ``_evaluate_lookup`` is defined on ``MemoryProvider``; ``self.provider``
-        # is typed as the wider ``BaseProvider`` on the DAO, and a ``DictDAO`` is
-        # only ever wired to a ``MemoryProvider``, so narrow here.
-        provider = cast(MemoryProvider, self.provider)
-        negated = criteria.negated
-        input_db = None
-=======
         """Return the records in ``db`` that match ``criteria``.
->>>>>>> e70ef84d (Fix negated Q filters that combine conditions (#2272)):src/protean/adapters/database/memory.py
 
         With ``negated`` set, return the records that match ``NOT criteria``
         instead.
@@ -797,9 +786,6 @@ class DictDAO(BaseDAO):
             input_db = {**input_db, **self._filter_child(child, db, child_negated)}
         return input_db
 
-<<<<<<< HEAD:src/protean/adapters/repository/memory.py
-    def _filter(
-=======
     def _filter_child(
         self,
         child: typing.Any,
@@ -808,10 +794,13 @@ class DictDAO(BaseDAO):
     ) -> dict[typing.Any, typing.Any]:
         if isinstance(child, Q):
             return self._filter_items(child, db, negated)
-        return self.provider._evaluate_lookup(child[0], child[1], negated, db)
+        # ``_evaluate_lookup`` is defined on ``MemoryProvider``; ``self.provider``
+        # is typed as the wider ``BaseProvider`` on the DAO, and a ``DictDAO`` is
+        # only ever wired to a ``MemoryProvider``, so narrow here.
+        provider = cast(MemoryProvider, self.provider)
+        return provider._evaluate_lookup(child[0], child[1], negated, db)
 
-    def filter(
->>>>>>> e70ef84d (Fix negated Q filters that combine conditions (#2272)):src/protean/adapters/database/memory.py
+    def _filter(
         self,
         criteria: Q,
         offset: int = 0,

@@ -1762,15 +1762,10 @@ class SADAO(BaseDAO):
         params = []
         for child in criteria.children:
             if isinstance(child, Q):
-<<<<<<< HEAD:src/protean/adapters/repository/sqlalchemy.py
-                # Call the function again with the child
-                params.append(self._build_filters(child))
-=======
                 # Call the function again with the child. A negated node
                 # negates a nested node as a whole.
-                nested = self._build_filters(child, model)
+                nested = self._build_filters(child)
                 params.append(~nested if criteria.negated else nested)
->>>>>>> e70ef84d (Fix negated Q filters that combine conditions (#2272)):src/protean/adapters/database/sqlalchemy.py
             else:
                 # Find the lookup class and the key
                 stripped_key, lookup_class = self.provider._extract_lookup(child[0])
