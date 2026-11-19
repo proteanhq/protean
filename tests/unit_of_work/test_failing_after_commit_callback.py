@@ -120,7 +120,7 @@ class TestCommitAfterAFailingCallback:
 
         broker = test_domain.brokers["default"]
         messages = broker.read("accounts", "test-group", 10)
-        assert [m.payload for m in messages] == [{"data": "opened"}]
+        assert [payload for _, payload in messages] == [{"data": "opened"}]
 
     def test_the_events_are_still_dispatched_under_sync_processing(self, test_domain):
         test_domain.config["event_processing"] = Processing.SYNC.value

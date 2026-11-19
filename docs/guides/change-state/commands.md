@@ -101,16 +101,11 @@ token that identifies the specific request:
 
 If the same idempotency key is submitted again, `domain.process()` returns the
 cached result from the first processing without invoking the handler again.
-<<<<<<< HEAD
-This makes retries safe, a client that re-sends a request due to a timeout gets
-the same response regardless of whether the original succeeded.
-=======
 Retries are therefore safe. A client can re-send a request due to a timeout and
 get the same response, whether or not the original succeeded. The store keeps
 the result as JSON. When the handler returns a value that is not
 JSON-serializable, such as a `set`, the store logs a warning and does not
 record the result, so a retry with the same key runs the handler again.
->>>>>>> 0a816315 (Log a failing after-commit callback instead of failing the commit (#2279))
 
 The idempotency key is stored in the command's metadata headers, not in the
 command payload. This keeps the command's domain data clean:
