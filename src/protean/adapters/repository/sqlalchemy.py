@@ -1762,8 +1762,10 @@ class SADAO(BaseDAO):
         params = []
         for child in criteria.children:
             if isinstance(child, Q):
-                # Call the function again with the child
-                params.append(self._build_filters(child))
+                # Call the function again with the child. A negated node
+                # negates a nested node as a whole.
+                nested = self._build_filters(child)
+                params.append(~nested if criteria.negated else nested)
             else:
                 # Find the lookup class and the key
                 stripped_key, lookup_class = self.provider._extract_lookup(child[0])

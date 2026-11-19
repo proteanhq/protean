@@ -141,7 +141,10 @@ A Q object extends `Node`, which holds:
 - **`children`**: A list of leaf tuples `(field_name, value)` or nested
   `Node`/`Q` instances.
 - **`connector`**: `"AND"` or `"OR"`, determining how children are combined.
-- **`negated`**: A boolean flag that inverts the match.
+- **`negated`**: A boolean flag that negates the node. In a query filter,
+  each child is negated before the `connector` combines them, and a nested
+  node is negated as a whole. In a partial index (`Index(where=...)`), the
+  combined children are negated as one expression.
 
 ```python
 # fragment
@@ -178,14 +181,28 @@ Q(country="CA") | Q(country="US")
     └── Node(connector=AND, children=[("country", "US")])
 ```
 
-Negation wraps the node and flips the `negated` flag:
+Negation builds a new node with the `negated` flag set. A single condition
+becomes a direct child of the new node:
 
 ```
 ~Q(country="US")
 
-→ Node(connector=AND, negated=True)
-    └── Node(connector=AND, children=[("country", "US")])
+→ Node(connector=AND, negated=True, children=[("country", "US")])
 ```
+
+A node with several conditions stays whole as a nested child:
+
+```
+~Q(country="US", age__gte=18)
+
+→ Node(connector=AND, negated=True)
+    └── Node(connector=AND, children=[("age__gte", 18), ("country", "US")])
+```
+
+A negated node negates each of its conditions, and it negates each nested node
+as a whole. So `~(Q(a=1) & Q(b=2))` and `~Q(a=1, b=2)` mean "not both". `exclude(a=1, b=2)`
+builds one negated node that holds both conditions, so it drops a record that
+matches either one.
 
 ### Squashing
 

@@ -115,6 +115,18 @@ class TestQ:
         assert kwargs.get("_negated") is True
 
 
+class TestQInvert:
+    def test_invert_single_condition_keeps_the_flat_tree(self):
+        assert ~Q(a=1) == Q(a=1, _negated=True)
+
+    def test_invert_empty_q_stays_empty(self):
+        assert not ~Q()
+
+    def test_repeated_invert_of_empty_q_stays_empty(self):
+        assert not ~~Q()
+        assert not ~~~Q()
+
+
 # ---------------------------------------------------------------------------
 # Tests: RegisterLookupMixin._delist_lookup
 # ---------------------------------------------------------------------------

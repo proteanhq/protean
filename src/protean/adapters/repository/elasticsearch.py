@@ -314,8 +314,9 @@ class ElasticsearchDAO(BaseDAO):
 
     def _build_filters(self, criteria: Q) -> _Any:
         """Recursively build the filters from the criteria object"""
+        # A negated node negates each condition and each nested node as a whole.
         parts = [
-            self._build_filters(child)
+            self._build_nested_filter(child, criteria.negated)
             if isinstance(child, Q)
             else self._lookup_expression(child, criteria.negated)
             for child in criteria.children
@@ -327,6 +328,10 @@ class ElasticsearchDAO(BaseDAO):
         # ``match_all``, breaks OR: ``match_all | x`` matches every document.
         combine = operator.and_ if criteria.connector == criteria.AND else operator.or_
         return functools.reduce(combine, parts)
+
+    def _build_nested_filter(self, child: Q, negated: bool) -> _Any:
+        nested = self._build_filters(child)
+        return ~nested if negated else nested
 
     def _lookup_expression(self, child: tuple[str, _Any], negated: bool) -> _Any:
         """The query expression for one ``(lookup key, value)`` criterion.
