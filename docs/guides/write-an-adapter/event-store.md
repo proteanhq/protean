@@ -30,7 +30,7 @@ The adapter implements these members:
 - `clear`, which deletes every message, for test runs only
 
 `close`, `create_schema` and `drop_schema` have defaults that do nothing.
-Override `close` when the store holds connections. An adapter that declares
+When the store holds connections, override `close`. An adapter that declares
 `SCHEMA_MANAGEMENT` overrides `create_schema` and `drop_schema`.
 
 The constructor takes `(name, domain, config)`, where `config` is the
@@ -58,8 +58,8 @@ describes every flag and which built-in store declares it.
 
 ## Write the adapter
 
-Protean's event-store adapters live in `src/protean/adapters/event_store/`,
-one module per store. The class subclasses `EventStorePort`, sets `name`,
+Each of Protean's event-store adapters is one module in
+`src/protean/adapters/event_store/`. The class subclasses `EventStorePort`, sets `name`,
 `domain` and `config`, and opens the store's client in its constructor. Each
 member keeps the signature `EventStorePort` gives it. The example forwards
 every call to the memory store:
@@ -96,14 +96,14 @@ table in Protean's `pyproject.toml`:
 --8<-- "guides/write-an-adapter/event-store/entry-points.toml"
 ```
 
-Run `uv sync --all-extras --all-groups` after you edit `pyproject.toml`, so
-the installed package lists the new entry point.
+After you edit `pyproject.toml`, run `uv sync --all-extras --all-groups`.
+The installed package then lists the new entry point.
 
 ## Run the conformance suite
 
 The event-store conformance suite checks the adapter against the Port and
 against each flag it declares. Run it from a source checkout of Protean. The
-suite lives in `tests/conformance/event_store/`, and the wheel that
+suite is in `tests/conformance/event_store/`. The wheel that
 `pip install protean` fetches does not include the `tests/` folder.
 
 ```shell
@@ -113,8 +113,8 @@ protean test test-adapter --port event_store --provider <name>
 `<name>` is the name `register()` uses, `delegating_memory` for the example.
 The command prints a row for the tests that need no flag and a row for each
 flag the adapter declares. Each flag the adapter does not declare shows as
-`SKIP (not declared)`. Pass `--uri` or `--config` when the store needs a
-connection URI or other settings. The suite deletes every message after each
+`SKIP (not declared)`. When the store needs a connection URI or other settings, pass `--uri` or
+`--config`. The suite deletes every message after each
 test, so point it only at a test database.
 
 [Adapter Conformance Testing](../../reference/testing/conformance.md#cli-protean-test-test-adapter)
