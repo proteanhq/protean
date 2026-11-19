@@ -71,6 +71,10 @@ def register_elements(test_domain):
     test_domain.register(ItemEvents, part_of=Item)
     test_domain.init(traverse=False)
 
+    # An inactive store skips result serialization, so these tests would pass
+    # without reaching the failure path.
+    assert test_domain.idempotency_store.is_active
+
     test_domain.idempotency_store.flush()
     yield
     test_domain.idempotency_store.flush()
