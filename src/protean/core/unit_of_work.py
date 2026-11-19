@@ -53,7 +53,10 @@ def run_after_commit(callback: Callable[[], None]) -> None:
 
     With no UnitOfWork active, the callback runs now. Otherwise it waits for the
     outermost UnitOfWork (a nested one is never on the stack) to commit, and is
-    dropped if that transaction rolls back.
+    dropped if that transaction rolls back. A callback registered while a
+    UnitOfWork is active that raises an ``Exception`` is logged and does not
+    fail the commit. With no UnitOfWork
+    active, its exception propagates to the caller.
     """
     outermost = _uow_stack.top
     if outermost is None:
@@ -406,8 +409,15 @@ class UnitOfWork:
             self._do_commit(span)
 
     def _run_after_commit(self) -> None:
+        """Run every after-commit callback, logging each ``Exception`` it raises."""
         for callback in self._after_commit:
-            callback()
+            # The writes are durable by now, so a raising callback cannot undo
+            # them. Failing the commit would only skip publishing and event
+            # dispatch for those writes.
+            try:
+                callback()
+            except Exception:
+                logger.exception("uow.after_commit_callback_failed")
 
     def _do_commit(self, span: Any) -> None:
         """Internal commit logic wrapped by the ``protean.uow.commit`` span."""
@@ -712,6 +722,125 @@ class UnitOfWork:
 
         self._reset()
 
+<<<<<<< HEAD
+=======
+    def _run_post_commit_work(
+        self, span: Any, all_events: defaultdict[str, list[Any]]
+    ) -> None:
+        """Run the after-commit callbacks, publish to brokers, dispatch events
+        under sync event processing, then run the deferred commands.
+
+        Raises:
+            TransactionError: If an event handler or a deferred command failed.
+            Exception: The failure of a publish, unchanged, when every
+                deferred command then ran without failing. The events are not
+                dispatched.
+        """
+        self._run_after_commit()
+        try:
+            self._publish_messages()
+        except Exception as exc:
+            # The deferred commands are already stored as handled by Protean,
+            # so the engine will never handle them. Run them before this
+            # failure is reported, or nothing ever will.
+            deferred_failures = self._run_deferred_commands()
+            if deferred_failures:
+                self._raise_post_commit_failures(
+                    span, all_events, [exc, *deferred_failures]
+                )
+            raise
+
+        self._run_post_commit_handlers(span, all_events)
+
+    def _publish_messages(self) -> None:
+        """Dispatch this commit's messages to their designated broker."""
+        for stream, message, broker_name in self._messages_to_dispatch:
+            if broker_name and broker_name in self.domain.brokers:
+                self.domain.brokers[broker_name].publish(stream, message)
+            else:
+                # No specific broker designated; publish to default
+                self.domain.brokers["default"].publish(stream, message)
+
+    def _run_post_commit_handlers(
+        self, span: Any, all_events: defaultdict[str, list[Any]]
+    ) -> None:
+        """Dispatch this commit's events under sync event processing, then run
+        the deferred commands.
+
+        Raises:
+            TransactionError: If an event handler or a deferred command failed,
+                with that failure (or an ``ExceptionGroup`` of several) as its
+                cause. The rest still ran.
+        """
+        failures: list[Exception] = []
+
+        # Consume all events produced in this session — breadth-first.
+        # Events are enqueued and drained (not dispatched re-entrantly) so
+        # that each handler's UnitOfWork, including a process manager's
+        # transition, commits fully before the next handler runs. A nested
+        # commit (a handler that raises further events) enqueues onto the
+        # same chain-scoped queue; only the outermost drain runs it. See
+        # ADR-0016.
+        if current_domain.config["event_processing"] == Processing.SYNC.value:
+            try:
+                dispatch_events_sync(
+                    (event for events in all_events.values() for event in events),
+                    current_domain.handlers_for,
+                )
+            except Exception as exc:  # noqa: BLE001 - collected and raised below
+                failures.append(exc)
+
+        failures.extend(self._run_deferred_commands())
+        self._raise_post_commit_failures(span, all_events, failures)
+
+    def _run_deferred_commands(self) -> list[Exception]:
+        """Run every deferred command once, in the order deferred, and return
+        the failures."""
+        # Take the list first, so a second ``commit()`` after a failed one does
+        # not run a command again.
+        commands, self._deferred_commands = self._deferred_commands, []
+
+        # Each command runs even when an earlier one failed: they are
+        # independent requests, and each was already stored as handled by
+        # Protean. A BaseException (KeyboardInterrupt, SystemExit) stops the
+        # process, which leaves the rest unhandled like any stop after commit.
+        failures: list[Exception] = []
+        for run_command in commands:
+            try:
+                run_command()
+            except Exception as exc:  # noqa: BLE001 - collected and returned
+                failures.append(exc)
+        return failures
+
+    def _raise_post_commit_failures(
+        self,
+        span: Any,
+        all_events: defaultdict[str, list[Any]],
+        failures: list[Exception],
+    ) -> None:
+        """Raise ``TransactionError`` when ``failures`` is not empty.
+
+        Its cause is the one failure, or an ``ExceptionGroup`` of several.
+        """
+        # Every write of this commit is durable by now, so a failure is reported
+        # as a TransactionError, whatever its type. An ExpectedVersionError
+        # passed through unchanged would make the enclosing handler's version
+        # retry run it again: the command would save its write a second time,
+        # and a call to an outside system before a deferred command would be
+        # repeated.
+        if not failures:
+            return
+
+        failure: Exception = (
+            failures[0]
+            if len(failures) == 1
+            else ExceptionGroup(f"{len(failures)} failures after the commit", failures)
+        )
+        logger.error("uow.commit_failed", exc_info=failure)
+        set_span_error(span, failure)
+        raise self._transaction_error(failure, all_events) from failure
+
+>>>>>>> 0a816315 (Log a failing after-commit callback instead of failing the commit (#2279))
     def _transaction_error(
         self, exc: Exception, all_events: defaultdict[str, list[Any]]
     ) -> TransactionError:

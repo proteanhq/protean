@@ -98,14 +98,25 @@ class IdempotencyStore:
 
         Args:
             idempotency_key: The caller-provided idempotency key.
-            result: The handler result (must be JSON-serializable).
+            result: The handler result. A result ``json.dumps`` rejects is
+                logged and not recorded, so a retry with the same key runs
+                the command again.
             ttl: Override the default TTL (seconds).
         """
         if not self._redis:
             return
 
         ttl = ttl if ttl is not None else self._ttl
-        entry = json.dumps({"status": "success", "result": result})
+        try:
+            entry = json.dumps({"status": "success", "result": result})
+        except Exception:  # an unrecordable result must not fail the command; logged
+            logger.warning(
+                "Idempotency result for key %s is not JSON-serializable, "
+                "so it is not recorded",
+                idempotency_key,
+                exc_info=True,
+            )
+            return
         try:
             self._redis.setex(self._key(idempotency_key), ttl, entry)
         except Exception:  # a failed write must not fail the handled command; logged
