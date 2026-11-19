@@ -1767,6 +1767,7 @@ class TestPortConformance:
             "BLOCKING_READ",
             "REPLAY",
             "STREAM_PARTITIONING",
+            "STREAM_RETENTION",
         ]
         cli_test_adapter(port="broker", provider="inline")
 

@@ -551,8 +551,9 @@ class StreamRetentionPort(BrokerPort, Protocol):
         """Trim ``stream`` to at most ``maxlen`` entries.
 
         The stream subscription calls it after each processed batch when the
-        subscription sets ``retention_maxlen``. The broker never removes an
-        entry a consumer group still needs.
+        subscription sets ``retention_maxlen``. An adapter documents which
+        entries its trim may remove when a consumer group has not read them
+        yet.
 
         Returns:
             The number of entries removed.
