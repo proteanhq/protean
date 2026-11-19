@@ -50,8 +50,9 @@ for a complete guide with a worked Kafka example, including:
 
 ## Event Store and Cache Adapters
 
-Event store adapters extend `BaseEventStore`, which subclasses the
-`EventStorePort` protocol. An adapter implements the protocol's members:
+Event store adapters subclass the `EventStorePort` protocol and set `name`,
+`domain` and `config` in their own `__init__`. An adapter implements the
+protocol's members:
 `write_message`, the reads by stream, category and whole store
 (`get_stream_messages`, `get_category_messages`, `get_all_messages`), the
 matching last-message reads, `stream_ids`, `ping`, `health`, `get_connection`
