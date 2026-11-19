@@ -580,7 +580,7 @@ class DeadLetterQueuePort(BrokerPort, Protocol):
     """The dead-letter queue of a broker that declares ``DEAD_LETTER_QUEUE``.
 
     A broker that declares ``BrokerCapabilities.DEAD_LETTER_QUEUE`` subclasses
-    this Protocol and implements all seven members. The ``Broker`` service
+    this Protocol and implements every member. The ``Broker`` service
     calls them when the broker declares the flag, and returns an empty answer
     when it does not.
 

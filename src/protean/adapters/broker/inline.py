@@ -617,7 +617,7 @@ class InlineBroker(BaseBroker, DeadLetterQueuePort):
         """Publish a message to ``{stream}:dlq`` with a ``_dlq_metadata`` record.
 
         The record has the keys the engine writes when it dead-letters a
-        message, plus ``failure_reason``.
+        message, except ``consumer``, plus ``failure_reason``.
         """
         dlq_message = {
             **message,
