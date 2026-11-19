@@ -414,6 +414,38 @@ class TestAGroupReadingTheDLQStream:
         assert broker.get_next(DLQ_STREAM, self.READER) is None
         assert broker.dlq_depth(DLQ_STREAM) == 0
 
+    def test_a_redelivered_entry_is_listed_and_replayed_once(self, broker, clock):
+        _dead_letter(broker, {"n": 0})
+        broker._adapter._max_retries = 3
+        broker._adapter._retry_delay = 0
+        retrieved = broker.get_next(DLQ_STREAM, self.READER)
+        assert broker.nack(DLQ_STREAM, retrieved[0], self.READER) is True
+
+        redelivered = broker.get_next(DLQ_STREAM, self.READER)
+
+        assert redelivered[0] == retrieved[0]
+        assert broker.dlq_depth(DLQ_STREAM) == 1
+        assert len(broker.dlq_list([DLQ_STREAM])) == 1
+        assert broker.dlq_replay(DLQ_STREAM, retrieved[0], "target") is True
+        assert broker.dlq_depth(DLQ_STREAM) == 0
+        assert len(broker._adapter._messages["target"]) == 1
+
+    def test_a_purged_entry_queued_for_redelivery_is_not_redelivered(
+        self, broker, clock
+    ):
+        for n in range(2):
+            _dead_letter(broker, {"n": n})
+        broker._adapter._max_retries = 3
+        broker._adapter._retry_delay = 0
+        for _ in range(2):
+            retrieved = broker.get_next(DLQ_STREAM, self.READER)
+            assert broker.nack(DLQ_STREAM, retrieved[0], self.READER) is True
+        assert broker.get_next(DLQ_STREAM, self.READER) is not None
+
+        assert broker.dlq_purge(DLQ_STREAM) == 2
+
+        assert broker.get_next(DLQ_STREAM, self.READER) is None
+
     def test_a_group_name_with_a_colon_keeps_its_position(self, broker, clock):
         reader = "app:reader"
         for n in range(3):

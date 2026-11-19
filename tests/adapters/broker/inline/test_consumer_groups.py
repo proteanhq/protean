@@ -147,79 +147,38 @@ def test_consumer_group_isolation_for_ack_nack(broker):
     assert nack_result is False  # Idempotent
 
 
-def test_multiple_consumer_group_position_adjustment(broker):
-    """Test position adjustment when messages are requeued for multiple groups."""
+def test_requeue_leaves_the_stream_and_other_groups_unchanged(broker):
+    """A requeued message goes to its own group, not back onto the stream."""
     stream = "test_stream"
-    consumer_group1 = "group1"
-    consumer_group2 = "group2"
-    consumer_group3 = "group3"
 
-    # Publish initial messages
     for i in range(3):
         broker.publish(stream, {"id": i})
+    for group in ["group1", "group2"]:
+        assert broker.get_next(stream, group) is not None
 
-    # All groups consume first message
-    for group in [consumer_group1, consumer_group2, consumer_group3]:
-        result = broker.get_next(stream, group)
-        assert result is not None
+    broker._adapter._requeue_messages(stream, "group1", [("retry1", {"retry": 1})])
 
-    # Check initial positions
-    assert broker._adapter._consumer_positions[f"{stream}:{consumer_group1}"] == 1
-    assert broker._adapter._consumer_positions[f"{stream}:{consumer_group2}"] == 1
-    assert broker._adapter._consumer_positions[f"{stream}:{consumer_group3}"] == 1
-
-    # Requeue a message at position 1 for group1
-    broker._adapter._requeue_messages(
-        stream, consumer_group1, [("new_msg", {"new": "data"})]
-    )
-
-    # Positions for other groups at or beyond insertion point should be adjusted
-    assert (
-        broker._adapter._consumer_positions[f"{stream}:{consumer_group1}"] == 1
-    )  # No change
-    assert (
-        broker._adapter._consumer_positions[f"{stream}:{consumer_group2}"] == 2
-    )  # Adjusted
-    assert (
-        broker._adapter._consumer_positions[f"{stream}:{consumer_group3}"] == 2
-    )  # Adjusted
+    assert len(broker._adapter._messages[stream]) == 3
+    assert broker._adapter._consumer_positions[f"{stream}:group1"] == 1
+    assert broker._adapter._consumer_positions[f"{stream}:group2"] == 1
+    assert broker.get_next(stream, "group1")[0] == "retry1"
+    assert broker.get_next(stream, "group2")[1] == {"id": 1}
 
 
-def test_requeue_messages_with_multiple_groups(broker):
-    """Test requeuing messages with multiple consumer groups."""
+def test_requeued_messages_are_redelivered_in_order_before_new_ones(broker):
+    """Requeued messages come back in the order given, then the stream resumes."""
     stream = "test_stream"
-    consumer_group1 = "group1"
-    consumer_group2 = "group2"
-
-    # Publish initial messages
     broker.publish(stream, {"id": 1})
     broker.publish(stream, {"id": 2})
+    broker.get_next(stream, "group1")
 
-    # Both groups consume first message
-    broker.get_next(stream, consumer_group1)
-    broker.get_next(stream, consumer_group2)
+    broker._adapter._requeue_messages(
+        stream, "group1", [("retry1", {"retry": 1}), ("retry2", {"retry": 2})]
+    )
 
-    # Group2 consumes second message
-    broker.get_next(stream, consumer_group2)
-
-    # Positions: group1=1, group2=2
-    group_key1 = f"{stream}:{consumer_group1}"
-    group_key2 = f"{stream}:{consumer_group2}"
-    assert broker._adapter._consumer_positions[group_key1] == 1
-    assert broker._adapter._consumer_positions[group_key2] == 2
-
-    # Requeue messages for group1
-    messages_to_requeue = [("retry1", {"retry": 1}), ("retry2", {"retry": 2})]
-    broker._adapter._requeue_messages(stream, consumer_group1, messages_to_requeue)
-
-    # Group1 position unchanged, group2 position adjusted
-    assert broker._adapter._consumer_positions[group_key1] == 1
-    assert (
-        broker._adapter._consumer_positions[group_key2] == 4
-    )  # 2 + 2 requeued messages
-
-    # Verify messages were inserted correctly
-    assert len(broker._adapter._messages[stream]) == 4
+    assert broker.get_next(stream, "group1")[0] == "retry1"
+    assert broker.get_next(stream, "group1")[0] == "retry2"
+    assert broker.get_next(stream, "group1")[1] == {"id": 2}
 
 
 def test_empty_consumer_group_cleanup(broker):

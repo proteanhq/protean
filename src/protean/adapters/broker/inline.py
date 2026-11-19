@@ -89,6 +89,13 @@ class InlineBroker(BaseBroker, DeadLetterQueuePort):
             str, list[tuple[str, dict[str, Any], int, float]]
         ] = defaultdict(list)
 
+        # Nacked messages due for redelivery, keyed by "stream:consumer_group".
+        # They wait here, not in the stream, so a retry adds no copy that
+        # other groups would read and DLQ counts would include.
+        self._redeliveries: defaultdict[str, list[tuple[str, dict[str, Any]]]] = (
+            defaultdict(list)
+        )
+
         # Retry count per message identifier, keyed by "stream:consumer_group"
         self._retry_counts: defaultdict[str, dict[str, int]] = defaultdict(dict)
 
@@ -140,8 +147,8 @@ class InlineBroker(BaseBroker, DeadLetterQueuePort):
         """Read up to ``limit`` messages the group has not received yet.
 
         The inline broker hands a message to a group once and redelivers a
-        nacked one by putting it back on the stream, so ``new_messages`` makes
-        no difference here.
+        nacked one to that group alone, so ``new_messages`` makes no
+        difference here.
         """
         self.create_group(stream, consumer_group)
 
@@ -167,6 +174,11 @@ class InlineBroker(BaseBroker, DeadLetterQueuePort):
         # First, check for any failed messages that are ready for retry
         self._requeue_failed_messages(stream, consumer_group)
 
+        redeliveries = self._redeliveries[group_key]
+        if redeliveries:
+            identifier, message = redeliveries.pop(0)
+            return self._deliver(stream, consumer_group, identifier, message)
+
         # Check current position for this consumer group
         position = self._consumer_positions[group_key]
 
@@ -177,19 +189,29 @@ class InlineBroker(BaseBroker, DeadLetterQueuePort):
             # Increment position for this consumer group
             self._consumer_positions[group_key] += 1
 
-            # Track message ownership
-            self._message_ownership[identifier][consumer_group] = True
-
-            # Clear any previous operation state for fresh processing
-            self._clear_operation_state(consumer_group, identifier)
-
-            # Move message to in-flight status
-            self._store_in_flight_message(stream, consumer_group, identifier, message)
-
-            return BrokerMessage(identifier, message)
+            return self._deliver(stream, consumer_group, identifier, message)
 
         # There is no message in the stream for this consumer group
         return None
+
+    def _deliver(
+        self,
+        stream: str,
+        consumer_group: str,
+        identifier: str,
+        message: dict[str, Any],
+    ) -> BrokerMessage:
+        """Hand ``identifier`` to ``consumer_group`` and hold it in flight."""
+        # Track message ownership
+        self._message_ownership[identifier][consumer_group] = True
+
+        # Clear any previous operation state for fresh processing
+        self._clear_operation_state(consumer_group, identifier)
+
+        # Move message to in-flight status
+        self._store_in_flight_message(stream, consumer_group, identifier, message)
+
+        return BrokerMessage(identifier, message)
 
     def ack(self, stream: str, message_id: str, consumer_group: str) -> bool:
         """Template method for message acknowledgment with common logic"""
@@ -707,26 +729,10 @@ class InlineBroker(BaseBroker, DeadLetterQueuePort):
         consumer_group: str,
         messages: list[tuple[str, dict[str, Any]]],
     ) -> None:
-        """Requeue messages back to the main queue"""
-        if messages:
-            # Add ready messages back to the queue at the current position for this consumer group
-            group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
-            current_position = self._consumer_positions[group_key]
-
-            # Insert messages in reverse order to maintain order
-            for identifier, message in reversed(messages):
-                self._messages[stream].insert(current_position, (identifier, message))
-                # Adjust all consumer group positions that are at or beyond this position
-                for other_group_key in self._consumer_positions:
-                    if (
-                        other_group_key != group_key
-                        and other_group_key.startswith(
-                            f"{stream}{CONSUMER_GROUP_SEPARATOR}"
-                        )
-                        and self._consumer_positions[other_group_key]
-                        >= current_position
-                    ):
-                        self._consumer_positions[other_group_key] += 1
+        """Queue ``messages`` for redelivery to ``consumer_group`` before its
+        next unread message."""
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+        self._redeliveries[group_key].extend(messages)
 
     def _cleanup_message_ownership(self, identifier: str, consumer_group: str) -> None:
         """Clean up message ownership tracking"""
@@ -896,6 +902,10 @@ class InlineBroker(BaseBroker, DeadLetterQueuePort):
         """Drop every record ``consumer_group`` keeps of ``identifier`` on ``stream``."""
         self._remove_in_flight_message(stream, consumer_group, identifier)
         self._remove_failed_message(stream, consumer_group, identifier)
+        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+        self._redeliveries[group_key] = [
+            entry for entry in self._redeliveries[group_key] if entry[0] != identifier
+        ]
         self._remove_retry_count(stream, consumer_group, identifier)
         self._cleanup_message_ownership(identifier, consumer_group)
         self._clear_operation_state(consumer_group, identifier)
@@ -965,6 +975,7 @@ class InlineBroker(BaseBroker, DeadLetterQueuePort):
         self._consumer_groups.clear()
         self._in_flight.clear()
         self._failed_messages.clear()
+        self._redeliveries.clear()
         self._retry_counts.clear()
         self._consumer_positions.clear()
         self._message_ownership.clear()
