@@ -75,14 +75,14 @@ class TestWritePositionAsync:
 
     @pytest.mark.asyncio
     async def test_write_position_uses_to_thread(self, subscription):
-        """write_position() wraps store.write_message() in asyncio.to_thread()."""
+        """write_position() wraps event_store._write_message() in asyncio.to_thread()."""
         with patch("asyncio.to_thread", wraps=asyncio.to_thread) as mock_to_thread:
             await subscription.write_position(5)
 
-        # Verify to_thread was called with store.write_message
+        # Verify to_thread was called with event_store._write_message
         mock_to_thread.assert_called_once()
         args = mock_to_thread.call_args
-        assert args[0][0] == subscription.store.write_message
+        assert args[0][0] == subscription.event_store._write_message
 
     @pytest.mark.asyncio
     async def test_write_position_resets_counter(self, subscription):
@@ -110,13 +110,13 @@ class TestFetchLastPositionAsync:
 
     @pytest.mark.asyncio
     async def test_fetch_last_position_uses_to_thread(self, subscription):
-        """fetch_last_position() wraps store.get_last_stream_message() in asyncio.to_thread()."""
+        """fetch_last_position() wraps event_store._get_last_stream_message() in asyncio.to_thread()."""
         with patch("asyncio.to_thread", wraps=asyncio.to_thread) as mock_to_thread:
             await subscription.fetch_last_position()
 
         mock_to_thread.assert_called_once()
         args = mock_to_thread.call_args
-        assert args[0][0] == subscription.store.get_last_stream_message
+        assert args[0][0] == subscription.event_store._get_last_stream_message
 
     @pytest.mark.asyncio
     async def test_fetch_last_position_returns_minus_one_initially(self, subscription):
@@ -143,13 +143,13 @@ class TestGetNextBatchAsync:
 
     @pytest.mark.asyncio
     async def test_get_next_batch_uses_to_thread(self, subscription):
-        """get_next_batch_of_messages() wraps store.read() in asyncio.to_thread()."""
+        """get_next_batch_of_messages() wraps event_store.read() in asyncio.to_thread()."""
         with patch("asyncio.to_thread", wraps=asyncio.to_thread) as mock_to_thread:
             await subscription.get_next_batch_of_messages()
 
         mock_to_thread.assert_called_once()
         args = mock_to_thread.call_args
-        assert args[0][0] == subscription.store.read
+        assert args[0][0] == subscription.event_store.read
 
     @pytest.mark.asyncio
     async def test_get_next_batch_for_all_uses_to_thread(self, subscription):
@@ -162,7 +162,7 @@ class TestGetNextBatchAsync:
 
         mock_to_thread.assert_called_once()
         args = mock_to_thread.call_args
-        assert args[0][0] == subscription.store._read_with_snapshot_positions
+        assert args[0][0] == subscription.event_store._read_with_snapshot_positions
 
     @pytest.mark.asyncio
     async def test_get_next_batch_returns_empty_when_no_messages(self, subscription):

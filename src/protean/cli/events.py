@@ -230,8 +230,7 @@ def read(
     """Read and display events from a stream."""
     derived_domain = load_domain(domain)
     with derived_domain.domain_context():
-        store = derived_domain.event_store.store
-        assert store is not None  # guaranteed by load_domain -> init()
+        store = derived_domain.event_store
         messages = store._read_raw(stream, position=position, limit=limit)
 
         if not messages:
@@ -257,8 +256,7 @@ def stats(
     """Show stream statistics across the domain."""
     derived_domain = load_domain(domain)
     with derived_domain.domain_context():
-        store = derived_domain.event_store.store
-        assert store is not None  # guaranteed by load_domain -> init()
+        store = derived_domain.event_store
         aggregates = derived_domain.registry._elements.get(
             DomainObjects.AGGREGATE.value, {}
         )
@@ -287,7 +285,7 @@ def stats(
             # A failed read on one aggregate leaves its row at zero and the
             # rest of the table still renders.
             try:
-                identifiers = store.stream_ids(stream_category)
+                identifiers = store._stream_ids(stream_category)
                 instance_count = len(identifiers)
             except Exception as exc:  # noqa: BLE001 - one stream's failure must not stop the table
                 logger.warning(
@@ -296,7 +294,7 @@ def stats(
                 instance_count = 0
 
             try:
-                all_events = store.get_category_messages(
+                all_events = store._get_category_messages(
                     stream_category, limit=1_000_000
                 )
                 event_count = len(all_events)
@@ -354,8 +352,7 @@ def search(
     """Search for events by type across streams."""
     derived_domain = load_domain(domain)
     with derived_domain.domain_context():
-        store = derived_domain.event_store.store
-        assert store is not None  # guaranteed by load_domain -> init()
+        store = derived_domain.event_store
         stream = category if category else "$all"
         all_messages = store._read_raw(stream, limit=1_000_000)
 
@@ -412,8 +409,7 @@ def history(
         if aggregate_cls is None:
             raise typer.Abort()
 
-        store = derived_domain.event_store.store
-        assert store is not None  # guaranteed by load_domain -> init()
+        store = derived_domain.event_store
         stream_category = aggregate_cls.meta_.stream_category
         stream_name = f"{stream_category}-{identifier}"
 
@@ -455,7 +451,7 @@ def history(
 
         # Check for snapshot
         snapshot_stream = f"{stream_category}:snapshot-{identifier}"
-        snapshot = store.get_last_stream_message(snapshot_stream)
+        snapshot = store._get_last_stream_message(snapshot_stream)
         if snapshot:
             snap_version = (snapshot["data"] or {}).get("_version", "?")
             print(f"Snapshot exists at version {snap_version}")
@@ -483,12 +479,11 @@ def trace(
     """Follow the full causal chain for a correlation ID across all streams."""
     derived_domain = load_domain(domain)
     with derived_domain.domain_context():
-        store = derived_domain.event_store.store
-        assert store is not None  # guaranteed by load_domain -> init()
+        store = derived_domain.event_store
 
         if flat:
             # Flat table display (original behavior)
-            all_messages = store.get_all_messages(limit=1_000_000)
+            all_messages = store._get_all_messages(limit=1_000_000)
 
             matched = [
                 m for m in all_messages if _extract_trace_ids(m)[0] == correlation_id

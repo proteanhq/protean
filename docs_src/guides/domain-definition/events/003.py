@@ -28,9 +28,7 @@ with domain.domain_context():
     # Persist the user
     domain.repository_for(User).add(user)
 
-    event_message = domain.event_store.store.read(
-        f"authentication::user-fact-{user.id}"
-    )[0]
+    event_message = domain.event_store.read(f"authentication::user-fact-{user.id}")[0]
     event = event_message.to_domain_object()
 
     print(json.dumps(event.to_dict(), indent=4))

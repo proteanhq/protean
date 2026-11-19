@@ -9,8 +9,7 @@ messages between the parts of a Protean-based application.
 
 An event store is fundamentally an append-only log. Events are written to named
 streams and read back in order. Protean's event store, `domain.event_store`,
-provides these features. Causation tracing is on its adapter,
-`domain.event_store.store`.
+provides these features:
 
 - **Stream writes**: Append events and commands to named streams
 - **Stream reads**: Read messages from streams by position
@@ -19,7 +18,7 @@ provides these features. Causation tracing is on its adapter,
 - **Temporal queries**: Load an aggregate at a specific version or point in
   time
 - **Snapshots**: Create and restore aggregate snapshots for performance
-- **Causation tracing** (on `domain.event_store.store`): Traverse causal
+- **Causation tracing**: Traverse causal
   chains to understand how events triggered other events
 
 ## Available Event Stores
@@ -47,7 +46,7 @@ durable event storage with SQL-based stream operations.
 
 Each event store declares the guarantees it makes as an `EventStoreCapabilities`
 flag on its `capabilities` property. After `domain.init()`, check one guarantee
-with `EventStoreCapabilities.DURABLE in domain.event_store.store.capabilities`.
+with `EventStoreCapabilities.DURABLE in domain.event_store.capabilities`.
 
 | Flag | What the store promises |
 |------|-------------------------|
@@ -126,7 +125,7 @@ store automatically.
 
 ### Reading Streams
 
-The event store adapter is at `domain.event_store.store`. Each aggregate
+Read through `domain.event_store`. Each aggregate
 instance has its own stream, named after the aggregate's stream category and
 its identifier. For the account above, the stream is
 `banking::account-<id>`.

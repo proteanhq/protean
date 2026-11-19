@@ -14,7 +14,7 @@ from protean.utils import DomainObjects, fqn
 
 if TYPE_CHECKING:
     from protean.domain import Domain
-    from protean.port.event_store import BaseEventStore
+    from protean.infra.event_store import EventStore
     from protean.utils.eventing import Message
 
 
@@ -83,7 +83,9 @@ def failed_positions_stream(handler_fqn: str, stream_category: str) -> str:
     return f"failed-{handler_fqn}-{stream_category}"
 
 
-def exhausted_records(store: BaseEventStore, failed_stream: str) -> dict[int, Message]:
+def exhausted_records(
+    event_store: EventStore, failed_stream: str
+) -> dict[int, Message]:
     """Return each position whose latest record in ``failed_stream`` is Exhausted.
 
     Reads the whole stream with ``read_all`` and folds last-status-wins per
@@ -98,7 +100,7 @@ def exhausted_records(store: BaseEventStore, failed_stream: str) -> dict[int, Me
     )
 
     latest: dict[int, tuple[str, Message]] = {}
-    for message in store.read_all(failed_stream):
+    for message in event_store.read_all(failed_stream):
         position = message.data.get("position")
         headers = message.metadata.headers if message.metadata else None
         status = headers.type if headers else None

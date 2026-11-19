@@ -48,7 +48,7 @@ class Account:
 
 # --8<-- [start:read]
 def read_account_events():
-    store = domain.event_store.store
+    store = domain.event_store
 
     # Read from beginning of stream
     messages = store.read("myapp::account-acc-001")

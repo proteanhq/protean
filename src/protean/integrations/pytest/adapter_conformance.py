@@ -363,11 +363,11 @@ def run_around_tests(test_domain: Domain | None) -> Iterator[None]:
             cache = test_domain.caches[cache_name]
             cache.clear()
 
-        if test_domain.event_store.store:
+        if test_domain.event_store._adapter is not None:
             try:
-                test_domain.event_store.store.clear()
+                test_domain.event_store.clear()
             finally:
-                test_domain.event_store.store.close()
+                test_domain.event_store.close()
 
 
 @pytest.fixture(autouse=True)

@@ -417,8 +417,8 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
             not a start event.
         """
         stream_name = f"{cls.meta_.stream_category}-{correlation_value}"
-        store = current_domain.event_store.store
-        if store is None:
+        store = current_domain.event_store
+        if store._adapter is None:
             raise ConfigurationError("Event store is not configured")
         messages = list(store.read_all(stream_name))
 
@@ -599,8 +599,8 @@ class BaseProcessManager(Element, BaseModel, HandlerMixin, OptionsMixin):
         )
 
         # Write directly to event store
-        store = current_domain.event_store.store
-        if store is None:  # pragma: no cover  # _load_or_create raised first
+        store = current_domain.event_store
+        if store._adapter is None:  # pragma: no cover  # _load_or_create raised first
             raise ConfigurationError("Event store is not configured")
         store.append(transition_event)
 

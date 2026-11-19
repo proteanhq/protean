@@ -312,6 +312,3 @@ class TestBeforeInit:
             call(service)
 
         assert exc_info.value.code == DiagnosticCode.CONFIG_EVENT_STORE_NOT_INITIALIZED
-
-    def test_store_is_none(self):
-        assert EventStore(None).store is None  # type: ignore[arg-type]

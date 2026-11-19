@@ -210,8 +210,8 @@ def _event_store_status(domain: Domain) -> dict[str, Any]:
 
     try:
         with domain.domain_context():
-            store = domain.event_store.store
-            if store is not None:
+            store = domain.event_store
+            if store._adapter is not None:
                 result["status"] = "healthy"
             else:
                 result["status"] = "not_configured"

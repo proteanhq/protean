@@ -101,7 +101,7 @@ def trace_ids(event, message):
 
 # --8<-- [start:traverse]
 def traverse(some_message, command_message):
-    store = domain.event_store.store
+    store = domain.event_store
 
     # Walk UP from a message to the root command
     chain = store.trace_causation(some_message)

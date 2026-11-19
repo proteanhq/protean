@@ -160,7 +160,7 @@ def show_validation_errors():
 # --8<-- [start:causation_tree]
 def causation_tree(correlation_id):
     with domain.domain_context():
-        tree = domain.event_store.store.build_causation_tree(correlation_id)
+        tree = domain.event_store.build_causation_tree(correlation_id)
         # Returns a CausationNode: the command, with its events as .children
     return tree
 

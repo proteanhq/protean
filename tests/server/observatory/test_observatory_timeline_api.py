@@ -15,7 +15,7 @@ import logging
 import uuid
 from datetime import UTC
 from datetime import datetime as dt
-from unittest.mock import PropertyMock, patch
+from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
@@ -26,7 +26,6 @@ from protean.core.event import BaseEvent
 from protean.domain import Domain
 from protean.fields import Identifier, String
 from protean.infra.causation import build_tree_from_group, load_correlation_group
-from protean.infra.event_store import EventStore
 from protean.server.observatory import Observatory
 from protean.server.observatory.routes.timeline import (
     _domain_from_stream,
@@ -1396,18 +1395,11 @@ class TestUniqueStoreDomains:
         d1 = _domain_with_store_uri(tmp_path, "d1", "postgresql://shared")
         d2 = _domain_with_store_uri(tmp_path, "broken", "postgresql://shared")
 
-        # Reading the store of the second domain fails, as a store whose
-        # set-up raised would; the first read returns d1's real store.
-        with (
-            patch.object(
-                EventStore,
-                "store",
-                new_callable=PropertyMock,
-                side_effect=[d1.event_store._adapter, RuntimeError("no store")],
-            ),
-            caplog.at_level(
-                logging.DEBUG, logger="protean.server.observatory.routes.timeline"
-            ),
+        # The adapter of the second domain holds a config that is not a
+        # mapping, so reading its URI raises.
+        d2.event_store._adapter.config = "not a mapping"
+        with caplog.at_level(
+            logging.DEBUG, logger="protean.server.observatory.routes.timeline"
         ):
             result = _unique_store_domains([d1, d2])
 
@@ -1430,6 +1422,23 @@ class TestUniqueStoreDomains:
 
         result = _unique_store_domains([d1, d2])
         assert len(result) == 2
+
+    def test_uri_comes_from_the_adapter_config(self, tmp_path):
+        """The key is the URI in the adapter's config, not the domain's config."""
+        d1 = _domain_with_store_uri(tmp_path, "d1", "postgresql://db-a")
+        d2 = _domain_with_store_uri(tmp_path, "d2", "postgresql://db-b")
+        d2.event_store._adapter.config = {"database_uri": "postgresql://db-a"}
+
+        assert _unique_store_domains([d1, d2]) == [d1]
+
+    def test_adapter_without_config_is_treated_as_unique(self, tmp_path):
+        """An adapter with no ``config`` attribute falls back to its id()."""
+        d1 = _domain_with_store_uri(tmp_path, "d1", "postgresql://shared")
+        d2 = _domain_with_store_uri(tmp_path, "d2", "postgresql://shared")
+        del d1.event_store._adapter.config
+        del d2.event_store._adapter.config
+
+        assert _unique_store_domains([d1, d2]) == [d1, d2]
 
     def test_store_with_empty_database_uri_falls_back_to_id(self, tmp_path):
         """Empty database_uri string falls back to id()-based key."""

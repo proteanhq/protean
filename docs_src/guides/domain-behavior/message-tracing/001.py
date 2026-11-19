@@ -132,7 +132,7 @@ def place_and_reserve():
 
 # --8<-- [start:trace_causation]
 def show_causation(message_id, some_message):
-    store = domain.event_store.store
+    store = domain.event_store
 
     # From a message ID string, such as "myapp::order-abc123-0.1"
     chain = store.trace_causation(message_id)

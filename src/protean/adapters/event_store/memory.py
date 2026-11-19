@@ -8,7 +8,6 @@ from uuid import uuid4
 from protean.exceptions import ExpectedVersionError, NotSupportedError
 from protean.infra.registry import event_stores
 from protean.port.event_store import (
-    BaseEventStore,
     EventStoreCapabilities,
     EventStoreHealth,
     EventStorePort,
@@ -45,7 +44,7 @@ def _copies(rows: Iterable[RawMessage]) -> list[RawMessage]:
     return [_copy(row) for row in rows]
 
 
-class MemoryEventStore(BaseEventStore):
+class MemoryEventStore(EventStorePort):
     """An event store that keeps its messages in process memory.
 
     Messages live in an append-only list, and ``global_position`` is a row's
@@ -54,7 +53,9 @@ class MemoryEventStore(BaseEventStore):
     """
 
     def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
-        super().__init__(name, domain, config)
+        self.name = name
+        self.domain = domain
+        self.config = config
 
         self._messages: list[RawMessage] = []
         # Stream name to the list indexes of its rows, in position order.

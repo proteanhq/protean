@@ -655,6 +655,10 @@ def _event_sourced_span(spans, name):
     )
 
 
+def _event_store_adapter_name(domain) -> str:
+    return type(domain.event_store._adapter).__name__
+
+
 class TestEventSourcedRepositoryAddSpan:
     """BaseEventSourcedRepository.add() emits ``protean.repository.add``."""
 
@@ -668,7 +672,9 @@ class TestEventSourcedRepositoryAddSpan:
             span_exporter.get_finished_spans(), "protean.repository.add"
         )
         assert add_span.attributes["protean.aggregate.type"] == "Wallet"
-        assert "protean.provider" in add_span.attributes
+        assert add_span.attributes["protean.provider"] == _event_store_adapter_name(
+            test_domain
+        )
 
 
 class TestEventSourcedRepositoryGetSpan:
@@ -688,7 +694,9 @@ class TestEventSourcedRepositoryGetSpan:
             span_exporter.get_finished_spans(), "protean.repository.get"
         )
         assert get_span.attributes["protean.aggregate.type"] == "Wallet"
-        assert "protean.provider" in get_span.attributes
+        assert get_span.attributes["protean.provider"] == _event_store_adapter_name(
+            test_domain
+        )
 
 
 class TestEventSourcedRepositoryGetOrNoneSpan:
@@ -713,7 +721,9 @@ class TestEventSourcedRepositoryGetOrNoneSpan:
         span = get_or_none_spans[0]
         assert span.attributes["protean.repository.kind"] == "event_sourced"
         assert span.attributes["protean.aggregate.type"] == "Wallet"
-        assert "protean.provider" in span.attributes
+        assert span.attributes["protean.provider"] == _event_store_adapter_name(
+            test_domain
+        )
         assert not [s for s in spans if s.name == "protean.repository.get"]
 
     def test_miss_does_not_mark_span_as_error(self, test_domain, span_exporter):

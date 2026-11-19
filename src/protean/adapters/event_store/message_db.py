@@ -11,7 +11,6 @@ from message_db.connection import ConnectionPool
 
 from protean.exceptions import ConfigurationError, ExpectedVersionError
 from protean.port.event_store import (
-    BaseEventStore,
     EventStoreCapabilities,
     EventStoreHealth,
     EventStorePort,
@@ -65,7 +64,7 @@ def _truncate_message_store(database_uri: str) -> None:
         conn.close()
 
 
-class MessageDBStore(BaseEventStore):
+class MessageDBStore(EventStorePort):
     """MessageDB event store adapter.
 
     Connection pool parameters can be configured via config:
@@ -76,7 +75,9 @@ class MessageDBStore(BaseEventStore):
     _POOL_KEYS = frozenset({"max_connections"})
 
     def __init__(self, name: str, domain: Domain, config: Mapping[str, Any]) -> None:
-        super().__init__(name, domain, config)
+        self.name = name
+        self.domain = domain
+        self.config = config
 
         self._client: MessageDB | None = None
         self._pool_kwargs: dict[str, Any] = {

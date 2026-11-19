@@ -1008,8 +1008,7 @@ def _flush_sessions(uow: UnitOfWork) -> None:
 
 def _append_events(all_events: defaultdict[str, list[Any]]) -> None:
     """Append every event to the active domain's event store, in order."""
-    event_store = current_domain.event_store.store
-    assert event_store is not None
+    event_store = current_domain.event_store
     for events in all_events.values():
         for event in events:
             event_store.append(event)

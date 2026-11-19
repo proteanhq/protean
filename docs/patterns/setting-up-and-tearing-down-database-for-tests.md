@@ -69,7 +69,7 @@ Every Protean adapter exposes lifecycle methods designed for exactly this separa
 
 | Method | Purpose |
 |--------|---------|
-| `domain.event_store.store.clear()` | Flush all stored events |
+| `domain.event_store.clear()` | Flush all stored events |
 
 The in-memory adapters implement these same methods as no-ops or simple dictionary clears, so the same fixture code works regardless of which adapter is active.
 
@@ -435,7 +435,7 @@ The recommended approach is to use `DomainFixture` from `protean.integrations.py
 | Data truncation | `domain.truncate_database()` | On demand |
 | Data cleanup (database) | `provider.clear()` | After every test |
 | Data cleanup (broker) | `broker.clear()` | After every test |
-| Data cleanup (event store) | `event_store.store.clear()` | After every test |
+| Data cleanup (event store) | `event_store.clear()` | After every test |
 
 `domain.truncate_database()` deletes all rows from every table while preserving
 the schema. It is also available as a CLI command (`protean db truncate`) for

@@ -47,6 +47,7 @@ from protean.utils.outbox import _outbox_provider_names
 if TYPE_CHECKING:
     from protean.domain import Domain
     from protean.infra.broker import Broker
+    from protean.infra.event_store import EventStore
 
 logger = logging.getLogger(__name__)
 
@@ -179,8 +180,8 @@ def _collect_event_store_status(
 
     try:
         with domain.domain_context():
-            store = domain.event_store.store
-            if store is None:
+            event_store = domain.event_store
+            if event_store._adapter is None:
                 return _event_store_unknown(
                     name,
                     handler_cls.__name__,
@@ -190,12 +191,12 @@ def _collect_event_store_status(
                 )
 
             # Current position (and when it was last written) from the stream
-            last_msg = store.get_last_stream_message(position_stream)
+            last_msg = event_store._get_last_stream_message(position_stream)
             current_position = row_data(last_msg)["position"] if last_msg else -1
             last_updated = _extract_position_time(last_msg)
 
             # Head of the category stream
-            head_position = store.stream_head_position(stream_category)
+            head_position = event_store.category_head_position(stream_category)
 
             # Lag
             if head_position >= 0:
@@ -209,7 +210,7 @@ def _collect_event_store_status(
 
             # A failed-stream read fault costs only the depth, not the row.
             try:
-                dlq_depth = len(exhausted_records(store, failed_stream))
+                dlq_depth = len(exhausted_records(event_store, failed_stream))
             except Exception as exc:  # noqa: BLE001 - status probe: depth falls back to 0
                 logger.debug("Could not read DLQ depth of %s: %r", failed_stream, exc)
                 dlq_depth = 0
@@ -1018,14 +1019,14 @@ def reset_checkpoint_to_head(domain: Domain, status: SubscriptionStatus) -> int:
         ) from exc
 
     with domain.domain_context():
-        store = domain.event_store.store
-        if store is None:
+        event_store = domain.event_store
+        if event_store._adapter is None:
             raise ValueError(
                 f"Cannot reset checkpoint for {status.name!r}: the domain has no "
                 f"event store configured."
             )
 
-        store.write_message(
+        event_store._write_message(
             status.position_stream,
             "Read",
             {"position": head},
@@ -1133,29 +1134,29 @@ def _collect_one_recovery_checkpoint(
     head = parsed_head if parsed_head is not None else -1
     try:
         with domain.domain_context():
-            store = domain.event_store.store
-            if store is None:
+            event_store = domain.event_store
+            if event_store._adapter is None:
                 return _recovery_unknown(status, head)
             # Reading the head lets the recovery lane run even when the
             # read-position collection failed (its ``status`` then carries no
             # head), so a subscription with an unreadable read-position checkpoint
             # but readable recovery streams is not skipped.
             if parsed_head is None:
-                head = _read_recovery_head(store, status, head)
+                head = _read_recovery_head(event_store, status, head)
             if _recovery_checkpoint_ahead(
-                store,
+                event_store,
                 status.name,
                 status.recovery_checkpoint_stream,
                 status.failed_positions_stream,
             ):
                 return _recovery_unknown(status, head)
             unresolved, _watermark, _read = reconstruct_unresolved(
-                store,
+                event_store,
                 status.recovery_checkpoint_stream,
                 status.failed_positions_stream,
             )
             stale_positions, any_unverified = _find_stale_positions(
-                store, status, unresolved
+                event_store, status, unresolved
             )
     except Exception as exc:  # noqa: BLE001 - report any failure as unverified
         # The reconstruction (or a store-wide failure) can raise on its own: a
@@ -1189,11 +1190,13 @@ def _collect_one_recovery_checkpoint(
     )
 
 
-def _read_recovery_head(store: Any, status: SubscriptionStatus, head: int) -> int:
+def _read_recovery_head(
+    event_store: EventStore, status: SubscriptionStatus, head: int
+) -> int:
     """Return the category's head position, or ``head`` when it cannot be read."""
     # A head-read failure must not block the scan, so fall back to the seeded head.
     try:
-        position: int = store.stream_head_position(status.stream_category)
+        position: int = event_store.category_head_position(status.stream_category)
         return position
     except Exception as exc:  # noqa: BLE001 - a head-read failure must not block the scan
         logger.debug("Could not read stream head for %s: %s", status.name, exc)
@@ -1201,10 +1204,12 @@ def _read_recovery_head(store: Any, status: SubscriptionStatus, head: int) -> in
 
 
 def _recovery_checkpoint_ahead(
-    store: Any, name: str, checkpoint_stream: str, failed_stream: str
+    event_store: EventStore, name: str, checkpoint_stream: str, failed_stream: str
 ) -> bool:
     """Return whether the recovery checkpoint is ahead of its failed stream, warning when it is."""
-    if not checkpoint_ahead_of_failed_stream(store, checkpoint_stream, failed_stream):
+    if not checkpoint_ahead_of_failed_stream(
+        event_store, checkpoint_stream, failed_stream
+    ):
         return False
     # A restore left the recovery checkpoint ahead of the failed
     # stream it references (the checkpoint was captured after that
@@ -1225,7 +1230,7 @@ def _recovery_checkpoint_ahead(
 
 
 def _find_stale_positions(
-    store: Any, status: SubscriptionStatus, unresolved: Mapping[int, Any]
+    event_store: EventStore, status: SubscriptionStatus, unresolved: Mapping[int, Any]
 ) -> tuple[list[int], bool]:
     """Return the sorted positions whose message is gone, and whether any re-read failed."""
     stale_positions: list[int] = []
@@ -1239,7 +1244,9 @@ def _find_stale_positions(
     # a plain comprehension would by aborting the whole scan.
     for pos, info in unresolved.items():
         try:
-            found = read_recovery_message(store, status.stream_category, pos, info)
+            found = read_recovery_message(
+                event_store, status.stream_category, pos, info
+            )
         except Exception as exc:  # noqa: BLE001 - one bad position must not discard the rest
             logger.warning(
                 "Could not re-read recovery position %s for %s: %s",
@@ -1347,8 +1354,8 @@ def reset_recovery_checkpoint(
     pruned = {pos: info for pos, info in finding.unresolved.items() if pos not in stale}
 
     with domain.domain_context():
-        store = domain.event_store.store
-        if store is None:
+        event_store = domain.event_store
+        if event_store._adapter is None:
             raise ValueError(
                 f"Cannot reset recovery checkpoint for {finding.name!r}: the "
                 f"domain has no event store configured."
@@ -1358,7 +1365,7 @@ def reset_recovery_checkpoint(
         # already read, so the rebuild on restart does not read the record that
         # names a stale position again and add it back.
         write_recovery_checkpoint_record(
-            store,
+            event_store,
             finding.recovery_checkpoint_stream,
             finding.stream_category,
             domain.clock.now().isoformat(),

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections import deque
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Flag, auto
@@ -10,14 +9,7 @@ from typing import TYPE_CHECKING, Any, Protocol, TypedDict
 
 if TYPE_CHECKING:
     from protean.domain import Domain
-    from protean.infra.causation import CausationNode
-    from protean.infra.integrity import IntegrityReport
     from protean.port.health import PoolStats
-
-from protean.core.aggregate import BaseAggregate
-from protean.core.command import BaseCommand
-from protean.core.event import BaseEvent
-from protean.utils.eventing import Message
 
 # Snapshot rows are written with ``message_type="SNAPSHOT"`` and no metadata
 # (see ``EventStore._load_aggregate_current`` and ``EventStore.create_snapshot``
@@ -218,108 +210,3 @@ class EventStorePort(Protocol):
         The default does nothing.
         """
         return
-
-
-class BaseEventStore(EventStorePort):
-    """The base class of every event-store adapter.
-
-    Each adapter subclasses it and implements the `EventStorePort` members.
-    Its `read`, `read_all`, `read_last_message`, `stream_head_position`,
-    `append`, `load_aggregate`, `create_snapshot`, `create_snapshots`,
-    `trace_causation`, `trace_effects`, `build_causation_tree` and `verify`
-    call the domain's `EventStore` service, so they act on the domain's
-    adapter, `self.domain.event_store._adapter`, not on this instance.
-    """
-
-    def __init__(self, name: str, domain: Domain, config: Mapping[str, Any]) -> None:
-        self.name = name
-        self.domain = domain
-        self.config = config
-
-    # ------------------------------------------------------------------
-    # Delegates to the domain's `EventStore` service
-    # ------------------------------------------------------------------
-
-    def _read_raw(
-        self, stream: str, position: int = 0, limit: int = 1000
-    ) -> list[RawMessage]:
-        return self.domain.event_store._read_raw(stream, position, limit)
-
-    def _read_last_raw(self, stream: str) -> RawMessage | None:
-        return self.domain.event_store._read_last_raw(stream)
-
-    def category(self, stream: str) -> str:
-        return self.domain.event_store.category(stream)
-
-    def read(self, stream: str, position: int = 0, limit: int = 1000) -> list[Message]:
-        return self.domain.event_store.read(stream, position, limit)
-
-    def _read_with_snapshot_positions(
-        self, stream: str, position: int = 0, limit: int = 1000
-    ) -> tuple[list[Message], list[int]]:
-        return self.domain.event_store._read_with_snapshot_positions(
-            stream, position, limit
-        )
-
-    def read_all(
-        self, stream: str = "$all", *, page_size: int = 1000
-    ) -> Iterator[Message]:
-        return self.domain.event_store.read_all(stream, page_size=page_size)
-
-    def _read_all_raw(
-        self, stream: str = "$all", *, page_size: int = 1000
-    ) -> Iterator[RawMessage]:
-        return self.domain.event_store._read_all_raw(stream, page_size=page_size)
-
-    def read_last_message(self, stream: str) -> Message | None:
-        return self.domain.event_store.read_last_message(stream)
-
-    def stream_head_position(self, stream_category: str) -> int:
-        return self.domain.event_store.category_head_position(stream_category)
-
-    def append(self, object: BaseEvent | BaseCommand) -> int:
-        return self.domain.event_store.append(object)
-
-    def load_aggregate(
-        self,
-        part_of: type[BaseAggregate],
-        identifier: str,
-        *,
-        at_version: int | None = None,
-        as_of: datetime | None = None,
-    ) -> BaseAggregate | None:
-        return self.domain.event_store.load_aggregate(
-            part_of, identifier, at_version=at_version, as_of=as_of
-        )
-
-    def _read_stream_fully(
-        self,
-        stream: str,
-        start_position: int = 0,
-        max_rows: int | None = None,
-        *,
-        page_size: int = 1000,
-    ) -> deque[RawMessage]:
-        return self.domain.event_store._read_stream_fully(
-            stream, start_position, max_rows, page_size=page_size
-        )
-
-    def create_snapshot(self, part_of: type[BaseAggregate], identifier: str) -> bool:
-        return self.domain.event_store.create_snapshot(part_of, identifier)
-
-    def create_snapshots(self, part_of: type[BaseAggregate]) -> int:
-        return self.domain.event_store.create_snapshots(part_of)
-
-    def trace_causation(self, message_id: str | Message) -> list[Message]:
-        return self.domain.event_store.trace_causation(message_id)
-
-    def trace_effects(
-        self, message_id: str | Message, *, recursive: bool = True
-    ) -> list[Message]:
-        return self.domain.event_store.trace_effects(message_id, recursive=recursive)
-
-    def build_causation_tree(self, correlation_id: str) -> CausationNode | None:
-        return self.domain.event_store.build_causation_tree(correlation_id)
-
-    def verify(self) -> IntegrityReport:
-        return self.domain.event_store.verify()

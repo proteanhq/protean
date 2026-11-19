@@ -29,12 +29,12 @@ def _register(name):
 # The same pair for the event store: whichever runs second finds the other
 # test's event unless the cleanup fixture resets the store.
 def test_alice_registration_is_stored():
-    assert list(domain.event_store.store.read_all()) == []
+    assert list(domain.event_store.read_all()) == []
     _register("Alice")
-    assert len(list(domain.event_store.store.read_all())) == 1
+    assert len(list(domain.event_store.read_all())) == 1
 
 
 def test_bob_registration_is_stored():
-    assert list(domain.event_store.store.read_all()) == []
+    assert list(domain.event_store.read_all()) == []
     _register("Bob")
-    assert len(list(domain.event_store.store.read_all())) == 1
+    assert len(list(domain.event_store.read_all())) == 1

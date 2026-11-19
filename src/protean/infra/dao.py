@@ -635,8 +635,7 @@ class DAO:
         id_f = id_field(entity)
         assert id_f is not None and id_f.field_name is not None
         identifier = getattr(entity, id_f.field_name)
-        store = current_domain.event_store.store
-        assert store is not None
+        store = current_domain.event_store
         last_message = store.read_last_message(
             f"{entity.meta_.stream_category}-{identifier}"
         )

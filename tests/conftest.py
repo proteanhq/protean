@@ -364,11 +364,9 @@ def small_read_page(monkeypatch, test_domain):
 
     Lowers the page-size default of the ``EventStore`` service readers
     (``read``, ``read_all``, ``_read_raw``, ``_read_all_raw``,
-    ``_read_stream_fully`` and ``_read_with_snapshot_positions``), the same
-    delegating readers on the configured adapter's class, and that class's
-    stream, category and all readers, so a test can write a stream longer than
-    one page in a few rows. The adapter's delegating readers pass their own
-    default on to the service, so both sets are lowered. Writing 1,000 rows to
+    ``_read_stream_fully`` and ``_read_with_snapshot_positions``) and the
+    configured adapter class's stream, category and all readers, so a test can
+    write a stream longer than one page in a few rows. Writing 1,000 rows to
     the memory store takes minutes. A caller that passes its own page size,
     such as ``limit=1_000_000``, keeps it.
     """
@@ -377,9 +375,6 @@ def small_read_page(monkeypatch, test_domain):
         EventStore.read,
         EventStore._read_raw,
         EventStore._read_with_snapshot_positions,
-        store_cls.read,
-        store_cls._read_raw,
-        store_cls._read_with_snapshot_positions,
         store_cls.get_stream_messages,
         store_cls.get_category_messages,
         store_cls.get_all_messages,
@@ -392,9 +387,6 @@ def small_read_page(monkeypatch, test_domain):
         EventStore.read_all,
         EventStore._read_all_raw,
         EventStore._read_stream_fully,
-        store_cls.read_all,
-        store_cls._read_all_raw,
-        store_cls._read_stream_fully,
     ):
         kwdefaults = func.__kwdefaults__
         assert kwdefaults is not None and kwdefaults["page_size"] == 1000

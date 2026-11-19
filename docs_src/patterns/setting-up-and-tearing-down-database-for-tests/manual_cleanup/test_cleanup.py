@@ -42,14 +42,14 @@ def _place_order(customer_id):
 
 
 def test_first_event_is_stored():
-    store = domain.event_store.store
+    store = domain.event_store
     assert list(store.read_all()) == []
     _place_order("c1")
     assert len(list(store.read_all())) == 1
 
 
 def test_second_event_is_stored():
-    store = domain.event_store.store
+    store = domain.event_store
     assert list(store.read_all()) == []
     _place_order("c2")
     assert len(list(store.read_all())) == 1

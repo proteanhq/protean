@@ -190,3 +190,9 @@ leaves the corrupting failure mode in place for event-sourced aggregates. That
 failure mode is the core defect, so documentation is insufficient on its own.
 We keep the repair path as part of this decision, but the reorder in decision 1
 is the change that stops the event store from missing committed events.
+
+## References
+
+- In 0.19 the event store's `append` moved to the `EventStore` service, so the
+  call in Context is now `current_domain.event_store.append(event)`. See the
+  [0.19 migration guide](../reference/migration/v0-19.md#eventstore-moved-to-proteaninfraevent_store).

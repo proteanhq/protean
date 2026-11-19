@@ -178,7 +178,7 @@ def _drive_to_exhaustion(sub: EventStoreSubscription, msg: Message) -> None:
 
 def _exhausted_record(sub: EventStoreSubscription, position: int) -> Message:
     """Return the Exhausted record for ``position`` on the subscription's stream."""
-    for message in sub.store.read_all(sub.failed_positions_stream):
+    for message in sub.event_store.read_all(sub.failed_positions_stream):
         if message.data.get("position") != position:
             continue
         headers = message.metadata.headers if message.metadata else None
@@ -190,7 +190,7 @@ def _exhausted_record(sub: EventStoreSubscription, position: int) -> Message:
 def _latest_status(sub: EventStoreSubscription, position: int) -> str | None:
     """Return the last-written status for ``position`` (last-status-wins)."""
     status: str | None = None
-    for message in sub.store.read_all(sub.failed_positions_stream):
+    for message in sub.event_store.read_all(sub.failed_positions_stream):
         if message.data.get("position") != position:
             continue
         headers = message.metadata.headers if message.metadata else None
@@ -202,7 +202,7 @@ def _latest_status(sub: EventStoreSubscription, position: int) -> str | None:
 def _rebuild(sub: EventStoreSubscription) -> dict[int, dict]:
     """Reconstruct the unresolved set the way a restart (and recover) would."""
     unresolved, _watermark, _read = reconstruct_unresolved(
-        sub.store, sub.recovery_checkpoint_stream, sub.failed_positions_stream
+        sub.event_store, sub.recovery_checkpoint_stream, sub.failed_positions_stream
     )
     return unresolved
 
@@ -292,7 +292,7 @@ class TestPurgeExhausted:
     def _purge(sub: EventStoreSubscription, position: int, record: Message) -> None:
         """Append a Purged marker the way ``protean eventstore dlq purge`` does."""
         write_recovery_status_record(
-            sub.store,
+            sub.event_store,
             sub.failed_positions_stream,
             sub.stream_category,
             sub.engine.domain.clock.now().isoformat(),
@@ -312,7 +312,9 @@ class TestPurgeExhausted:
         _drive_to_exhaustion(sub, msg)
         record = _exhausted_record(sub, 1)
 
-        records_before = len(list(sub.store.read_all(sub.failed_positions_stream)))
+        records_before = len(
+            list(sub.event_store.read_all(sub.failed_positions_stream))
+        )
         ToggleHandler.calls = 0
 
         self._purge(sub, 1, record)
@@ -325,7 +327,7 @@ class TestPurgeExhausted:
         assert 1 not in _rebuild(sub)
         # History is kept, not deleted: the Exhausted record is still present,
         # and the Purged record is appended (one more record than before).
-        records_after = list(sub.store.read_all(sub.failed_positions_stream))
+        records_after = list(sub.event_store.read_all(sub.failed_positions_stream))
         assert len(records_after) == records_before + 1
         statuses = [
             m.metadata.headers.type for m in records_after if m.metadata.headers
@@ -364,7 +366,7 @@ class TestPurgeExhausted:
 
         asyncio.run(write_failed())
         write_recovery_status_record(
-            sub.store,
+            sub.event_store,
             sub.failed_positions_stream,
             sub.stream_category,
             sub.engine.domain.clock.now().isoformat(),
@@ -577,7 +579,7 @@ def _replay(sub: EventStoreSubscription, message: Message) -> ReplayOutcome:
 
 
 def _failed_record_count(sub: EventStoreSubscription) -> int:
-    return len(list(sub.store.read_all(sub.failed_positions_stream)))
+    return len(list(sub.event_store.read_all(sub.failed_positions_stream)))
 
 
 class TestReplayExpiredCommand:
