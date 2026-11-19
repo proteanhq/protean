@@ -144,7 +144,7 @@ class BaseDatabaseModel(Element, OptionsMixin):
         Adapters with storage-specific record access override this method.
 
         Args:
-            items: The raw storage records returned by ``_filter``.
+            items: The raw storage records the adapter's ``filter`` returned.
             fields: Attribute names to read from each record. Each record is
                 keyed by these names.
 
