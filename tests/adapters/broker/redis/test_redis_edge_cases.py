@@ -231,7 +231,7 @@ class TestRedisEdgeCases:
         assert messages[1][1]["test"] == "data2"
 
     def test_read_blocking_with_pending_messages(self, test_domain):
-        """Test _read_blocking returns pending messages first."""
+        """Test read_blocking returns pending messages first."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
@@ -255,8 +255,8 @@ class TestRedisEdgeCases:
         # Ensure group is mocked
         broker._created_groups_set.add("test-stream:test-group")
 
-        messages = broker._read_blocking(
-            "test-stream", "test-group", "consumer1", timeout_ms=1000, count=2
+        messages = broker.read_blocking(
+            "test-stream", "test-group", "consumer1", timeout_ms=1000, limit=2
         )
 
         # Should return pending messages without calling for new messages
@@ -267,7 +267,7 @@ class TestRedisEdgeCases:
         assert mock_redis.xreadgroup.call_count == 1
 
     def test_read_blocking_pending_with_none_fields(self, test_domain):
-        """Test _read_blocking skips pending messages with None fields."""
+        """Test read_blocking skips pending messages with None fields."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
@@ -291,8 +291,8 @@ class TestRedisEdgeCases:
         # Ensure group is mocked
         broker._created_groups_set.add("test-stream:test-group")
 
-        messages = broker._read_blocking(
-            "test-stream", "test-group", "consumer1", timeout_ms=1000, count=4
+        messages = broker.read_blocking(
+            "test-stream", "test-group", "consumer1", timeout_ms=1000, limit=4
         )
 
         # Should return only valid messages
@@ -301,7 +301,7 @@ class TestRedisEdgeCases:
         assert messages[1][1]["test"] == "pending2"
 
     def test_read_blocking_nogroup_error(self, test_domain, caplog):
-        """Test _read_blocking handling NOGROUP error."""
+        """Test read_blocking handling NOGROUP error."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
@@ -322,13 +322,13 @@ class TestRedisEdgeCases:
         broker.redis_instance = mock_redis
 
         with caplog.at_level(logging.DEBUG):
-            messages = broker._read_blocking(
-                "test-stream", "test-group", "consumer1", timeout_ms=100, count=1
+            messages = broker.read_blocking(
+                "test-stream", "test-group", "consumer1", timeout_ms=100, limit=1
             )
 
         # Should retry after creating group
         assert messages == []
-        # _read_blocking flow:
+        # read_blocking flow:
         # 1. create_group at top of method → xgroup_create #1
         # 2. xreadgroup #1 (pending check) → raises NOGROUP
         # 3. NOGROUP handler: discard + create_group → xgroup_create #2
@@ -337,7 +337,7 @@ class TestRedisEdgeCases:
         assert mock_redis.xgroup_create.call_count == 2
 
     def test_read_blocking_other_response_error(self, test_domain, caplog):
-        """Test _read_blocking handling non-NOGROUP ResponseError."""
+        """Test read_blocking handling non-NOGROUP ResponseError."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
@@ -351,8 +351,8 @@ class TestRedisEdgeCases:
         broker._created_groups_set.add("test-stream:test-group")
 
         with caplog.at_level(logging.ERROR):
-            messages = broker._read_blocking(
-                "test-stream", "test-group", "consumer1", timeout_ms=100, count=1
+            messages = broker.read_blocking(
+                "test-stream", "test-group", "consumer1", timeout_ms=100, limit=1
             )
 
         # Should return empty and log error
@@ -360,7 +360,7 @@ class TestRedisEdgeCases:
         assert "broker.redis.read_blocking_failed" in caplog.text
 
     def test_read_blocking_unexpected_error(self, test_domain, caplog):
-        """Test _read_blocking handling unexpected exceptions."""
+        """Test read_blocking handling unexpected exceptions."""
         broker = RedisBroker("test_redis", test_domain, {"URI": f"{REDIS_URI}/0"})
 
         # Mock redis instance
@@ -372,8 +372,8 @@ class TestRedisEdgeCases:
         broker._created_groups_set.add("test-stream:test-group")
 
         with caplog.at_level(logging.ERROR):
-            messages = broker._read_blocking(
-                "test-stream", "test-group", "consumer1", timeout_ms=100, count=1
+            messages = broker.read_blocking(
+                "test-stream", "test-group", "consumer1", timeout_ms=100, limit=1
             )
 
         # Should return empty and log error
@@ -656,7 +656,7 @@ def test_read_blocking_connection_error_with_successful_retry(test_domain, caplo
                 consumer_group=consumer_group,
                 consumer_name=consumer_name,
                 timeout_ms=1000,
-                count=1,
+                limit=1,
             )
 
             # Verify the sequence of calls

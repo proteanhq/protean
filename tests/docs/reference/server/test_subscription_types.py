@@ -131,7 +131,7 @@ def test_the_internal_reads_accept_the_arguments_the_page_shows(example):
             consumer_group="OrderEventHandler",
             consumer_name="order-handler-1",
             timeout_ms=5000,
-            count=100,
+            limit=100,
         )
         == []
     )

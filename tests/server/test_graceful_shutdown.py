@@ -554,12 +554,12 @@ class TestRedisBrokerReconnectAfterClose:
         mock_client.xadd.assert_called_once()
 
     def test_read_blocking_reconnects_on_connection_error(self):
-        """_read_blocking re-establishes the connection on a dropped socket.
+        """read_blocking re-establishes the connection on a dropped socket.
 
         A "Connection closed by server" error on the blocking XREADGROUP is
-        swallowed inside _read_blocking (returns []), so the base read_blocking
-        wrapper's recovery never fires. _read_blocking must trigger the
-        reconnect itself so the next poll tick reads from a healthy socket.
+        swallowed inside read_blocking (returns []), so the Broker service's
+        retry never fires. read_blocking must trigger the reconnect itself so
+        the next poll tick reads from a healthy socket.
         """
         import redis
 
@@ -572,8 +572,8 @@ class TestRedisBrokerReconnectAfterClose:
         mock_client.ping.return_value = True
         broker.redis_instance = mock_client
 
-        result = broker._read_blocking(
-            "stream", "group", "consumer", timeout_ms=100, count=1
+        result = broker.read_blocking(
+            "stream", "group", "consumer", timeout_ms=100, limit=1
         )
 
         assert result == []
@@ -581,15 +581,15 @@ class TestRedisBrokerReconnectAfterClose:
         mock_client.ping.assert_called_once()
 
     def test_read_blocking_does_not_reconnect_on_non_connection_error(self):
-        """_read_blocking does not reconnect for unrelated errors (scope guard)."""
+        """read_blocking does not reconnect for unrelated errors (scope guard)."""
         broker = self._make_broker()
         broker._created_groups_set = {"stream:group"}
         mock_client = MagicMock()
         mock_client.xreadgroup.side_effect = ValueError("bad payload")
         broker.redis_instance = mock_client
 
-        result = broker._read_blocking(
-            "stream", "group", "consumer", timeout_ms=100, count=1
+        result = broker.read_blocking(
+            "stream", "group", "consumer", timeout_ms=100, limit=1
         )
 
         assert result == []

@@ -4,6 +4,7 @@ import os
 import secrets
 import socket
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -11,6 +12,7 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
 from protean.exceptions import ConfigurationError
 from protean.infra.broker import Broker
+from protean.port.broker import BrokerMessage
 from protean.utils import fqn
 from protean.utils.eventing import Message
 from protean.utils.telemetry import get_domain_metrics
@@ -598,7 +600,7 @@ class StreamSubscription(BaseSubscription):
         except Exception as e:  # noqa: BLE001 - best effort: a failed trim retries next time
             logger.warning(f"Error trimming stream {stream}: {e}")
 
-    async def _read_primary_nonblocking(self) -> list[tuple[str, dict[str, Any]]]:
+    async def _read_primary_nonblocking(self) -> list[BrokerMessage]:
         """Non-blocking read from primary (production) stream.
 
         Uses ``timeout_ms=0`` so the call returns immediately if no messages
@@ -618,7 +620,7 @@ class StreamSubscription(BaseSubscription):
                 consumer_group=self.consumer_group,
                 consumer_name=self.consumer_name,
                 timeout_ms=0,  # 0 = return immediately
-                count=self._current_batch_size(),
+                limit=self._current_batch_size(),
             )
         except Exception as e:  # noqa: BLE001 - read loop: log briefly and retry
             logger.error(f"Error reading primary stream {self.stream_category}: {e}")
@@ -627,7 +629,7 @@ class StreamSubscription(BaseSubscription):
 
     async def _read_lanes_blocking(
         self,
-    ) -> tuple[list[tuple[str, dict[str, Any]]], list[tuple[str, dict[str, Any]]]]:
+    ) -> tuple[list[BrokerMessage], list[BrokerMessage]]:
         """Blocking read on the primary and backfill streams in one call.
 
         Uses ``read_blocking_streams`` with a timeout capped at 1 second, so the
@@ -649,7 +651,7 @@ class StreamSubscription(BaseSubscription):
                 consumer_group=self.consumer_group,
                 consumer_name=self.consumer_name,
                 timeout_ms=min(self.blocking_timeout_ms, 1000),
-                count=self._current_batch_size(),
+                limit=self._current_batch_size(),
             )
         except Exception as e:  # noqa: BLE001 - read loop: log briefly and retry
             logger.error(
@@ -664,7 +666,7 @@ class StreamSubscription(BaseSubscription):
             result.get(self.backfill_stream) or [],
         )
 
-    async def get_next_batch_of_messages(self) -> list[tuple[str, dict[str, Any]]]:
+    async def get_next_batch_of_messages(self) -> list[BrokerMessage]:
         """
         Get the next batch of messages using blocking read.
 
@@ -687,7 +689,7 @@ class StreamSubscription(BaseSubscription):
                 consumer_group=self.consumer_group,
                 consumer_name=self.consumer_name,
                 timeout_ms=self.blocking_timeout_ms,
-                count=self._current_batch_size(),
+                limit=self._current_batch_size(),
             )
 
             return messages
@@ -698,7 +700,7 @@ class StreamSubscription(BaseSubscription):
 
     async def process_batch(
         self,
-        messages: list[tuple[str, dict[str, Any]]],
+        messages: Sequence[tuple[str, dict[str, Any]]],
         stream: str | None = None,
     ) -> int:
         """

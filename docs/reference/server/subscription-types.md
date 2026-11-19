@@ -86,7 +86,7 @@ messages = broker.read_blocking(
     consumer_group=consumer_group,
     consumer_name=consumer_name,
     timeout_ms=5000,  # Redis caps the wait at 1 second
-    count=100,        # Read up to 100 messages
+    limit=100,        # Read up to 100 messages
 )
 ```
 
