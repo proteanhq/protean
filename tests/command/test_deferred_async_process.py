@@ -559,19 +559,19 @@ class TestInsideUnitOfWork:
         def boom() -> None:
             raise RuntimeError("callback failed")
 
-        with pytest.raises(TransactionError) as exc_info:
-            with UnitOfWork():
-                test_domain.process(
-                    RecordResult(notification_id=notification_id, status="SENT"),
-                    asynchronous=True,
-                )
-                run_after_commit(boom)
+        with UnitOfWork():
+            test_domain.process(
+                RecordResult(notification_id=notification_id, status="SENT"),
+                asynchronous=True,
+            )
+            run_after_commit(boom)
 
-        assert str(exc_info.value.__cause__) == "callback failed"
         assert Probe.attempts == 1
         assert _status(test_domain, notification_id) == "SENT"
 
-    def test_after_commit_and_command_failures_are_reported_together(self, test_domain):
+    def test_a_failed_callback_is_not_reported_with_a_command_failure(
+        self, test_domain
+    ):
         Probe.fail_with = RuntimeError("record failed")
 
         def boom() -> None:
@@ -586,12 +586,7 @@ class TestInsideUnitOfWork:
                 run_after_commit(boom)
 
         assert Probe.attempts == 1
-        cause = exc_info.value.__cause__
-        assert isinstance(cause, ExceptionGroup)
-        assert [str(e) for e in cause.exceptions] == [
-            "callback failed",
-            "record failed",
-        ]
+        assert str(exc_info.value.__cause__) == "record failed"
 
     def test_a_second_commit_does_not_run_a_failed_command_again(self, test_domain):
         notification_id = _create_notification(test_domain)

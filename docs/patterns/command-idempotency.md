@@ -204,8 +204,10 @@ domain.process(command, idempotency_key="req-123")
    this is the event store position. The caller sees exactly the same
    response as the original submission.
    The store keeps the result as JSON, so a sync handler called with an
-   idempotency key must return a JSON-serializable value, such as an
-   identifier or a count, and not an aggregate.
+   idempotency key should return a JSON-serializable value, such as an
+   identifier or a count, and not an aggregate. When the result is not
+   JSON-serializable, the store logs a warning that names the key and does
+   not record the result, so a retry with the same key runs the command again.
 
 2. **Cache miss or error entry**: Proceed normally, enrich the command, append
    to event store, process (sync or async), and cache the result on success.
