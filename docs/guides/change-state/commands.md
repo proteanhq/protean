@@ -101,7 +101,10 @@ token that identifies the specific request:
 If the same idempotency key is submitted again, `domain.process()` returns the
 cached result from the first processing without invoking the handler again.
 Retries are therefore safe. A client can re-send a request due to a timeout and
-get the same response, whether or not the original succeeded.
+get the same response, whether or not the original succeeded. The store keeps
+the result as JSON. When the handler returns a value that is not
+JSON-serializable, such as a `set`, the store logs a warning and does not
+record the result, so a retry with the same key runs the handler again.
 
 The idempotency key is stored in the command's metadata headers, not in the
 command payload. As a result, the command's payload holds only domain data:
