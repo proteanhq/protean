@@ -1,5 +1,6 @@
 """The `DAO` service's public read path: `fetch`, `count` and `raw`."""
 
+from contextlib import contextmanager
 from unittest.mock import PropertyMock, patch
 
 import pytest
@@ -8,7 +9,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.queryset import Record
 from protean.core.unit_of_work import UnitOfWork
-from protean.exceptions import NotSupportedError
+from protean.exceptions import NotSupportedError, TooManyObjectsError
 from protean.fields import HasMany, Integer, String
 from protean.port.database import DatabaseCapabilities
 from protean.utils.globals import current_uow
@@ -119,6 +120,99 @@ class TestFetch:
             assert book.pages == 412
             assert book.state_.is_persisted
             assert not any(current_uow._identity_map.values())
+
+    def test_fetch_with_empty_fields_returns_entities(self, dao):
+        results = dao.fetch(Q(last_name="Roe"), fields=[])
+
+        assert len(results.items) == 1
+        assert isinstance(results.items[0], Person)
+        assert results.items[0].first_name == "Baby"
+
+
+def _record_session_and_conversion(monkeypatch, dao, converter):
+    """Record, in order, when ``dao.session_scope`` exits and when
+    ``converter`` on the model class runs."""
+    events: list[str] = []
+    scope = dao.session_scope
+
+    @contextmanager
+    def recording_scope():
+        with scope() as session:
+            yield session
+        events.append("session exited")
+
+    model_cls = dao.database_model_cls
+    convert = getattr(model_cls, converter)
+
+    def recording_convert(cls, *args, **kwargs):
+        events.append(converter)
+        return convert(*args, **kwargs)
+
+    monkeypatch.setattr(dao, "session_scope", recording_scope)
+    monkeypatch.setattr(model_cls, converter, classmethod(recording_convert))
+    return events
+
+
+class TestConversionAfterTheSession:
+    def test_fetch_converts_rows_after_the_session_scope_exits(self, monkeypatch, dao):
+        events = _record_session_and_conversion(monkeypatch, dao, "to_entity")
+
+        dao.fetch(Q(last_name="Doe"))
+
+        assert events == ["session exited", "to_entity", "to_entity"]
+
+    def test_fetch_with_fields_builds_records_after_the_session_scope_exits(
+        self, monkeypatch, dao
+    ):
+        events = _record_session_and_conversion(monkeypatch, dao, "to_records")
+
+        dao.fetch(Q(last_name="Doe"), fields=["first_name"])
+
+        assert events == ["session exited", "to_records"]
+
+    def test_raw_converts_rows_after_the_session_scope_exits(self, monkeypatch, dao):
+        if dao.provider.__class__.__name__ != "MemoryDatabase":
+            pytest.skip("The raw query below is in the memory provider's syntax")
+        events = _record_session_and_conversion(monkeypatch, dao, "to_entity")
+
+        dao.raw('{"last_name": "Roe"}')
+
+        assert events == ["session exited", "to_entity"]
+
+
+class TestLookupsLoadEveryMatch:
+    def test_find_by_tracks_every_matching_aggregate_before_it_raises(self, dao):
+        dao.create(first_name="Jim", last_name="Doe", age=40)
+        ids = [p.id for p in dao.query.filter(last_name="Doe").all().items]
+        assert len(ids) == 3
+
+        with UnitOfWork():
+            with pytest.raises(TooManyObjectsError):
+                dao.find_by(last_name="Doe")
+
+            for person_id in ids:
+                assert current_uow._tracked_instance(Person, person_id) is not None
+
+    def test_get_tracks_every_row_with_the_identifier_before_it_raises(
+        self, monkeypatch, dao
+    ):
+        # Rows never share an identity in a real store, so every row is made
+        # to answer the identity lookup.
+        ids = [p.id for p in dao.query.all().items]
+        assert len(ids) == 3
+        fetch = type(dao).fetch
+
+        def fetch_everything(self, criteria, **kwargs):
+            return fetch(self, Q(), **kwargs)
+
+        monkeypatch.setattr(type(dao), "fetch", fetch_everything)
+
+        with UnitOfWork():
+            with pytest.raises(TooManyObjectsError):
+                dao.get(ids[0])
+
+            for person_id in ids:
+                assert current_uow._tracked_instance(Person, person_id) is not None
 
 
 class TestCount:

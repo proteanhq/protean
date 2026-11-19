@@ -588,6 +588,7 @@ class TestClaimHoldBack:
         claimed = _claim_keyed(test_domain, limit=150)
 
         assert claimed == [f"k1-{n}" for n in range(150)]
+        assert rows_read
         assert sum(rows_read) <= 2 * 150
 
     def test_a_lost_claim_on_an_earlier_row_holds_the_rest_of_its_key(

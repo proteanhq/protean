@@ -702,10 +702,11 @@ class DAO:
         """Return one page of the entities that match ``criteria``, read in
         the session :meth:`session_scope` picks.
 
-        Each entity is marked retrieved. An aggregate is tracked in the Unit
-        of Work, or swapped for the instance the Unit of Work already tracks.
+        Each entity is marked retrieved. Inside a Unit of Work, each aggregate
+        is tracked in it, or swapped for the instance it already tracks.
         With ``fields`` set, ``items`` holds read-only ``Record`` objects with
-        those fields, and nothing is tracked. With ``with_total`` set to
+        those fields, and nothing is tracked. An empty ``fields`` selects
+        nothing and returns full entities. With ``with_total`` set to
         ``False``, the adapter may skip computing ``total``.
         """
         return dao_read.fetch(

@@ -2,9 +2,9 @@
 
 Each function takes the `DAO` as its first argument and reads its entity
 class's rows in the session `DAO.session_scope` picks. Rows become entities
-after the session closes: each entity is marked retrieved and, when it is an
-aggregate, tracked in the Unit of Work. A read with ``fields`` set returns
-read-only `Record` objects and tracks nothing.
+after the ``session_scope`` block exits: each entity is marked retrieved and,
+inside a Unit of Work, each aggregate is tracked in it. A read with ``fields``
+set returns read-only `Record` objects and tracks nothing.
 """
 
 from __future__ import annotations
@@ -55,10 +55,13 @@ def fetch(
     """Return one page of the entities that match ``criteria``.
 
     With ``fields`` set, ``items`` holds read-only `Record` objects with
-    those fields, and nothing is tracked in the Unit of Work. With
+    those fields, and nothing is tracked in the Unit of Work. An empty
+    ``fields`` selects nothing, as ``QuerySet.only()`` with no names does. With
     ``with_total`` set to ``False``, the adapter may skip computing
     ``total``.
     """
+    # An empty selection means full entities, as in ``QuerySet.only()``.
+    fields = fields or None
     with dao.session_scope() as session:
         results = dao._adapter.filter(
             session,

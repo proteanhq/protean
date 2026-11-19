@@ -55,7 +55,8 @@ once.
 The repository exposes methods named in domain terms (`add`, `get`, `query`,
 `find_by`, and custom methods). The adapter DAO exposes methods named in
 database terms (`filter`, `count`, `insert`, `update`, `delete`). The `DAO`
-service calls them from its own `fetch`, `count`, `raw` and save methods. Custom repository
+service's `fetch` calls the adapter's `filter`, its `count` calls `count`, and
+its save methods call `insert`, `update` and `delete`. Custom repository
 methods use `self.query` and `self.find_by` (which delegate to the internal
 `_dao`) to build queries.
 
@@ -100,9 +101,11 @@ children = base.filter(age__lt=18)           # QuerySet 3 (clone of 1)
 ### QuerySet → Provider → Database
 
 When a QuerySet is evaluated (via `.all()`, iteration, `len()`, etc.), it
-calls the `DAO` service's `fetch`. `fetch` opens a session, calls the
-adapter's `filter`, and closes the session. It then turns each row into an
-entity and tracks each aggregate in the Unit of Work:
+calls the `DAO` service's `fetch`. `fetch` calls the adapter's `filter` in the
+session `session_scope` picks: the Unit of Work's session inside a Unit of
+Work, or a new session it commits and closes outside one. After the
+`session_scope` block exits, `fetch` turns each row into an entity and, inside
+a Unit of Work, tracks each aggregate in it:
 
 ```python
 # fragment
@@ -137,8 +140,8 @@ of Work tracking. Skipping that work keeps the field-selection path cheap and
 leaves the domain model uncompromised.
 
 Counting takes a lighter path that bypasses `filter` entirely. `count()` on a
-QuerySet calls the `DAO` service's `count`, which opens a session and calls
-the adapter's `count` with only the Q object tree. The
+QuerySet calls the `DAO` service's `count`, which calls the adapter's `count`
+in the session `session_scope` picks, with only the Q object tree. The
 concrete DAO issues a single `SELECT COUNT(*)` (SQLAlchemy `func.count()`,
 memory `len` over the filtered set, Elasticsearch's `_count` API) with no
 projection wrapper and no entity materialization. `offset`, `limit`, and
