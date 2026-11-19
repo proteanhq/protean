@@ -91,7 +91,8 @@ message, and within a group each message is handed out once:
     - Cannot ensure strict message sequencing
 - **Limited Error Recovery**
     - Basic retry support with configurable max retries
-    - Dead letter queue stores failed messages in memory (lost on restart)
+    - Dead letter queue stores failed messages on the `{stream}:dlq` stream, in
+      memory (lost on restart); `health()` counts them and `dlq_trim` removes them
     - DLQ messages can be listed, inspected, replayed, and purged via
       [`protean dlq`](../../cli/data/dlq.md) CLI or the
       [Observatory dashboard](../../server/observability.md)

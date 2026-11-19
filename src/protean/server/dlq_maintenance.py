@@ -69,6 +69,9 @@ def _retention_cutoff(hours: float) -> datetime:
     """Return the time ``hours`` before now, in UTC.
 
     Entries that failed before this time are past their retention window.
+    The cutoff reads the wall clock, while a stream subscription stamps
+    ``failed_at`` from ``domain.clock``, so a frozen domain clock moves the
+    entries and not the cutoff.
     """
     return datetime.now(UTC) - timedelta(hours=hours)
 

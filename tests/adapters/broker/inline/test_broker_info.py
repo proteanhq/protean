@@ -115,17 +115,17 @@ def test_adapter_health_with_various_states(broker):
     broker._adapter._failed_messages["stream1:group1"] = [("fail1", {}, 1, time.time())]
 
     # Add a DLQ message, which is also a message on a stream
-    broker._adapter._messages["stream2:dlq"] = [("dlq1", {})]
+    broker._adapter._messages["stream2:dlq"] = [("dlq1", {}), ("dlq2", {})]
 
     # Get health stats
     stats = broker._adapter.health()
 
     # Verify counts
-    assert stats.message_counts["total_messages"] == 4
+    assert stats.message_counts["total_messages"] == 5
     assert stats.message_counts["in_flight"] == 1
     assert stats.message_counts["failed"] == 1
-    assert stats.message_counts["dlq"] == 1
-    assert stats.details["memory_estimate_bytes"] == 3 * 100 + 150 + 150 + 150
+    assert stats.message_counts["dlq"] == 2
+    assert stats.details["memory_estimate_bytes"] == 3 * 100 + 150 + 150 + 2 * 150
 
     # Verify streams and consumer groups
     assert stats.details["streams"]["count"] == 3

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from protean.infra.registry import brokers
 from protean.port.broker import (
+    DLQ_SUFFIX,
     BaseBroker,
     BrokerCapabilities,
     BrokerHealth,
@@ -17,6 +18,10 @@ from protean.port.broker import (
     DeadLetterQueuePort,
     DLQEntry,
     OperationState,
+    dlq_metadata,
+    failure_time,
+    newest_failure_first,
+    parse_dlq_entry,
     require_aware_cutoff,
 )
 
@@ -38,7 +43,6 @@ MAX_BACKOFF_DELAY = 3600.0
 MESSAGE_TIMEOUT = 300.0
 ENABLE_DLQ = True
 OPERATION_STATE_TTL_MAX = 60.0
-DLQ_SUFFIX = ":dlq"
 
 
 class InlineBroker(BaseBroker, DeadLetterQueuePort):
@@ -784,18 +788,17 @@ class InlineBroker(BaseBroker, DeadLetterQueuePort):
     def dlq_list(self, dlq_streams: list[str], limit: int = 100) -> list[DLQEntry]:
         """Return up to ``limit`` entries from ``dlq_streams``, newest failure first."""
         entries = [
-            self._parse_dlq_entry(dlq_stream, identifier, message)
+            parse_dlq_entry(dlq_stream, identifier, message)
             for dlq_stream in dlq_streams
             for identifier, message in self._messages.get(dlq_stream, [])
         ]
-        entries.sort(key=lambda e: e.failed_at or "", reverse=True)
-        return entries[:limit]
+        return newest_failure_first(entries)[:limit]
 
     def dlq_get(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
         """Return the entry ``dlq_id`` in ``dlq_stream``, or ``None`` if there is none."""
         for identifier, message in self._messages.get(dlq_stream, []):
             if identifier == dlq_id:
-                return self._parse_dlq_entry(dlq_stream, identifier, message)
+                return parse_dlq_entry(dlq_stream, identifier, message)
         return None
 
     def dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
@@ -835,6 +838,7 @@ class InlineBroker(BaseBroker, DeadLetterQueuePort):
         ``older_than``.
 
         Raises:
+            TypeError: ``older_than`` is not a ``datetime``.
             ValueError: ``older_than`` has no time zone.
         """
         require_aware_cutoff(older_than)
@@ -854,48 +858,57 @@ class InlineBroker(BaseBroker, DeadLetterQueuePort):
     def _remove_dlq_entries(self, dlq_stream: str, indices: set[int]) -> int:
         """Delete the entries at ``indices`` from ``dlq_stream`` and return how many.
 
-        Lowers the read position of each consumer group on ``dlq_stream`` by
-        the number of removed entries before it, so the group's next read
-        returns the entry it would have read next.
+        For each consumer group that reads ``dlq_stream``, lowers its read
+        position by the number of removed entries before it, so the group's
+        next read returns the entry it would have read next. The group also
+        forgets the removed entries it holds in flight or waiting for retry,
+        so a later ``nack`` cannot put a removed entry back.
         """
         entries = self._messages.get(dlq_stream)
         if not entries or not indices:
             return 0
 
+        removed_ids = {entries[index][0] for index in indices}
         self._messages[dlq_stream] = [
             entry for index, entry in enumerate(entries) if index not in indices
         ]
-        for group_key, position in self._consumer_positions.items():
-            # Compare the whole stream part: a prefix match would also take
-            # the groups of ``{dlq_stream}:dlq``.
-            if group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)[0] == dlq_stream:
-                self._consumer_positions[group_key] = position - sum(
-                    1 for index in indices if index < position
-                )
+        for consumer_group in self._groups_reading(dlq_stream):
+            group_key = f"{dlq_stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
+            position = self._consumer_positions[group_key]
+            self._consumer_positions[group_key] = position - sum(
+                1 for index in indices if index < position
+            )
+            for identifier in removed_ids:
+                self._forget_message(dlq_stream, consumer_group, identifier)
         return len(indices)
 
-    def _parse_dlq_entry(
-        self, dlq_stream: str, identifier: str, message: dict[str, Any]
-    ) -> DLQEntry:
-        """Build a ``DLQEntry`` from a message and its ``_dlq_metadata`` record."""
-        dlq_meta = message.get("_dlq_metadata", {})
-        return DLQEntry(
-            dlq_id=identifier,
-            original_id=dlq_meta.get("original_id", identifier),
-            stream=dlq_meta.get("original_stream", dlq_stream.removesuffix(DLQ_SUFFIX)),
-            consumer_group=dlq_meta.get("consumer_group", ""),
-            payload=message,
-            failure_reason=dlq_meta.get("failure_reason", "unknown"),
-            failed_at=dlq_meta.get("failed_at"),
-            retry_count=int(dlq_meta.get("retry_count", 0)),
-            dlq_stream=dlq_stream,
-        )
+    def _groups_reading(self, stream: str) -> list[str]:
+        """Return the names of the consumer groups created on ``stream``."""
+        return [
+            record["group"]
+            for record in self._consumer_groups.values()
+            if record["stream"] == stream
+        ]
+
+    def _forget_message(
+        self, stream: str, consumer_group: str, identifier: str
+    ) -> None:
+        """Drop every record ``consumer_group`` keeps of ``identifier`` on ``stream``."""
+        self._remove_in_flight_message(stream, consumer_group, identifier)
+        self._remove_failed_message(stream, consumer_group, identifier)
+        self._remove_retry_count(stream, consumer_group, identifier)
+        self._cleanup_message_ownership(identifier, consumer_group)
+        self._clear_operation_state(consumer_group, identifier)
 
     def create_group(self, stream: str, consumer_group: str) -> None:
         """Create ``consumer_group`` on ``stream`` if it does not exist."""
         group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
         if group_key not in self._consumer_groups:
+            # The stream and the group are kept apart because either name can
+            # contain the separator, so the key alone cannot be split back.
             self._consumer_groups[group_key] = {
+                "stream": stream,
+                "group": consumer_group,
                 "consumers": set(),
                 "created_at": time.time(),
             }
@@ -1136,19 +1149,10 @@ def _without_dlq_metadata(message: dict[str, Any]) -> dict[str, Any]:
 def _failed_before(message: dict[str, Any], older_than: datetime) -> bool:
     """Return ``True`` when the message's ``failed_at`` is earlier than ``older_than``.
 
-    Returns ``False`` when ``failed_at`` is missing, cannot be parsed, or has
-    no time zone.
+    Returns ``False`` when the message has no usable ``failed_at``.
     """
-    failed_at = message.get("_dlq_metadata", {}).get("failed_at")
-    if not isinstance(failed_at, str):
-        return False
-    try:
-        failed_time = datetime.fromisoformat(failed_at)
-    except ValueError:
-        return False
-    if failed_time.utcoffset() is None:
-        return False
-    return failed_time < older_than
+    failed_time = failure_time(dlq_metadata(message).get("failed_at"))
+    return failed_time is not None and failed_time < older_than
 
 
 # Self-registration function for entry point

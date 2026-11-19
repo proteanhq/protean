@@ -29,6 +29,8 @@ from protean.port.broker import (
     LeaseLostError,
     PartitioningPort,
     StreamRetentionPort,
+    newest_failure_first,
+    parse_dlq_entry,
     require_aware_cutoff,
 )
 
@@ -798,9 +800,7 @@ class RedisBroker(
                 if entry:
                     entries.append(entry)
 
-        # Sort by failed_at descending (newest first)
-        entries.sort(key=lambda e: e.failed_at or "", reverse=True)
-        return entries[:limit]
+        return newest_failure_first(entries)[:limit]
 
     def dlq_get(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
         """Return the entry ``dlq_id`` in ``dlq_stream``, or ``None`` if there is none."""
@@ -868,20 +868,7 @@ class RedisBroker(
         if not message:
             return None
 
-        dlq_meta = message.get("_dlq_metadata", {})
-        redis_id_str = self._decode_if_bytes(redis_id)
-
-        return DLQEntry(
-            dlq_id=redis_id_str,
-            original_id=dlq_meta.get("original_id", redis_id_str),
-            stream=dlq_meta.get("original_stream", dlq_stream.removesuffix(":dlq")),
-            consumer_group=dlq_meta.get("consumer_group", ""),
-            payload=message,
-            failure_reason=dlq_meta.get("failure_reason", "unknown"),
-            failed_at=dlq_meta.get("failed_at"),
-            retry_count=int(dlq_meta.get("retry_count", 0)),
-            dlq_stream=dlq_stream,
-        )
+        return parse_dlq_entry(dlq_stream, self._decode_if_bytes(redis_id), message)
 
     def dlq_trim(self, dlq_stream: str, older_than: datetime) -> int:
         """Remove the entries in ``dlq_stream`` added before ``older_than``.
@@ -892,6 +879,7 @@ class RedisBroker(
         ``older_than`` is kept. Returns ``0`` when Redis rejects the trim.
 
         Raises:
+            TypeError: ``older_than`` is not a ``datetime``.
             ValueError: ``older_than`` has no time zone.
         """
         require_aware_cutoff(older_than)

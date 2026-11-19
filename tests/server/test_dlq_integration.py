@@ -9,6 +9,7 @@ Verifies end-to-end error handling flows:
 
 import logging
 import time
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -21,7 +22,10 @@ from protean.core.event_handler import BaseEventHandler
 from protean.core.subscriber import BaseSubscriber
 from protean.fields import String
 from protean.server.engine import Engine
+from protean.server.subscription.broker_subscription import BrokerSubscription
+from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils.dlq import collect_dlq_streams, discover_subscriptions
+from tests.shared import FrozenClock
 
 
 def _dead_lettered_ids(broker, stream, group):
@@ -114,10 +118,6 @@ class TestBrokerSubscriptionDLQIntegration:
         engine = Engine(test_domain, test_mode=True)
         broker = test_domain.brokers["default"]
 
-        from protean.server.subscription.broker_subscription import (
-            BrokerSubscription,
-        )
-
         sub = BrokerSubscription(
             engine=engine,
             broker=broker,
@@ -200,10 +200,6 @@ class TestBrokerSubscriptionDLQIntegration:
         # no retry delay so the unbounded rounds run fast.
         monkeypatch.setattr(broker._adapter, "_max_retries", 1)
         monkeypatch.setattr(broker._adapter, "_retry_delay", 0)
-
-        from protean.server.subscription.broker_subscription import (
-            BrokerSubscription,
-        )
 
         sub = BrokerSubscription(
             engine=engine,
@@ -465,8 +461,6 @@ class TestStreamSubscriptionDLQReconciliation:
         This is the same guarantee as BrokerSubscription, on the default
         subscription type named in the issue.
         """
-        from protean.server.subscription.stream_subscription import StreamSubscription
-
         engine = Engine(test_domain, test_mode=True)
         sub = StreamSubscription(
             engine=engine,
@@ -803,6 +797,91 @@ class TestInlineBrokerDLQOperations:
         }
 
         assert len(broker.dlq_list(["stream_a:dlq", "stream_b:dlq"], limit=3)) == 3
+
+
+# ── Tests: InlineBroker depth and trim over engine-written entries ──────
+
+
+FAILED_AT = datetime(2026, 11, 19, 12, 0, tzinfo=UTC)
+
+
+class TestInlineDepthAndTrimOverEngineEntries:
+    """``dlq_depth`` and ``dlq_trim`` on entries a real subscription wrote."""
+
+    @pytest.fixture(autouse=True)
+    def register_elements(self, test_domain):
+        test_domain.register(FailingSubscriber, stream="engine_dlq_stream")
+        test_domain.register(DLQTestAggregate)
+        test_domain.register(DLQTestEvent, part_of=DLQTestAggregate)
+        test_domain.register(AlwaysFailHandler, part_of=DLQTestAggregate)
+        test_domain.init(traverse=False)
+        test_domain.clock = FrozenClock(FAILED_AT)
+
+    @pytest.mark.asyncio
+    async def test_a_broker_subscription_entry_is_counted_and_trimmed(
+        self, test_domain
+    ):
+        engine = Engine(test_domain, test_mode=True)
+        broker = test_domain.brokers["default"]
+        sub = BrokerSubscription(
+            engine=engine,
+            broker=broker,
+            stream_name="engine_dlq_stream",
+            handler=FailingSubscriber,
+            max_retries=1,
+            retry_delay_seconds=0,
+        )
+        await sub.initialize()
+        # The adapter's publish only appends. The service's publish would also
+        # call the subscriber in this process, which raises.
+        broker._adapter.publish("engine_dlq_stream", {"data": "x"})
+
+        for _ in range(3):
+            messages = await sub.get_next_batch_of_messages()
+            if messages:
+                await sub.process_batch(messages)
+
+        dlq_stream = "engine_dlq_stream:dlq"
+        [entry] = broker.dlq_list([dlq_stream])
+        assert entry.failed_at == FAILED_AT.isoformat()
+        assert broker.dlq_depth(dlq_stream) == 1
+
+        assert broker.dlq_trim(dlq_stream, FAILED_AT - timedelta(seconds=1)) == 0
+        assert broker.dlq_depth(dlq_stream) == 1
+
+        assert broker.dlq_trim(dlq_stream, FAILED_AT + timedelta(seconds=1)) == 1
+        assert broker.dlq_depth(dlq_stream) == 0
+
+    @pytest.mark.asyncio
+    async def test_an_old_event_that_fails_now_is_kept_by_the_retention_trim(
+        self, test_domain
+    ):
+        """A stream subscription stamps the failure time, not the event's
+        raise time, so retention counts from the failure."""
+        engine = Engine(test_domain, test_mode=True)
+        sub = StreamSubscription(
+            engine=engine,
+            stream_category="engine_dlq_events",
+            handler=AlwaysFailHandler,
+            max_retries=1,
+            retry_delay_seconds=0,
+        )
+        await sub.initialize()
+        broker = test_domain.brokers["default"]
+        raised_at = FAILED_AT - timedelta(days=10)
+        payload = {
+            "data": {"name": "old"},
+            "metadata": {"headers": {"time": raised_at.isoformat()}},
+        }
+
+        await sub.handle_failed_message("old-event-1", payload)
+
+        assert broker.dlq_depth(sub.dlq_stream) == 1
+        [entry] = broker.dlq_list([sub.dlq_stream])
+        assert entry.failed_at == FAILED_AT.isoformat()
+
+        assert broker.dlq_trim(sub.dlq_stream, FAILED_AT - timedelta(days=7)) == 0
+        assert broker.dlq_depth(sub.dlq_stream) == 1
 
 
 # ── Tests: Engine Error Resilience ──────────────────────────────────────

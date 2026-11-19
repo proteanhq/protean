@@ -5,7 +5,7 @@ The broker keeps a dead-lettered message as an ordinary message on
 writes, so every ``DeadLetterQueuePort`` member reads and changes that stream.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -159,6 +159,54 @@ class TestEngineWrittenEntries:
         assert entry.retry_count == 3
 
 
+class TestEntriesWithAMalformedRecord:
+    @pytest.mark.parametrize(
+        "metadata", [None, "broken", ["a"]], ids=["none", "string", "list"]
+    )
+    def test_a_record_that_is_not_a_dict_takes_the_defaults(self, broker, metadata):
+        dlq_id = broker.publish(DLQ_STREAM, {"k": "v", "_dlq_metadata": metadata})
+
+        [entry] = broker.dlq_list([DLQ_STREAM])
+
+        assert entry.dlq_id == dlq_id
+        assert entry.original_id == dlq_id
+        assert entry.stream == STREAM
+        assert entry.consumer_group == ""
+        assert entry.failure_reason == "unknown"
+        assert entry.failed_at is None
+        assert entry.retry_count == 0
+        assert broker.dlq_trim(DLQ_STREAM, START) == 0
+        assert broker.dlq_depth(DLQ_STREAM) == 1
+
+    def test_a_retry_count_that_is_not_a_number_reads_as_zero(self, broker):
+        broker.publish(
+            DLQ_STREAM, _engine_entry("orig-1", START.isoformat(), retry_count="abc")
+        )
+
+        [entry] = broker.dlq_list([DLQ_STREAM])
+
+        assert entry.retry_count == 0
+
+    def test_a_failed_at_that_is_not_a_string_sorts_last(self, broker):
+        broker.publish(DLQ_STREAM, _engine_entry("orig-int", 12345))
+        broker.publish(DLQ_STREAM, _engine_entry("orig-str", START.isoformat()))
+
+        entries = broker.dlq_list([DLQ_STREAM])
+
+        assert [e.original_id for e in entries] == ["orig-str", "orig-int"]
+        assert entries[1].failed_at is None
+
+    def test_failure_times_in_different_offsets_sort_by_the_instant(self, broker):
+        earlier = START.astimezone(timezone(timedelta(hours=5)))
+        later = (START + timedelta(hours=1)).astimezone(timezone(timedelta(hours=-5)))
+        broker.publish(DLQ_STREAM, _engine_entry("orig-later", later.isoformat()))
+        broker.publish(DLQ_STREAM, _engine_entry("orig-earlier", earlier.isoformat()))
+
+        entries = broker.dlq_list([DLQ_STREAM])
+
+        assert [e.original_id for e in entries] == ["orig-later", "orig-earlier"]
+
+
 class TestTrim:
     def _two_entries(self, broker, clock):
         """Dead-letter one message at ``START`` and one an hour later."""
@@ -199,9 +247,7 @@ class TestTrim:
 
     def test_a_cutoff_in_another_time_zone_compares_the_instant(self, broker, clock):
         _dead_letter(broker, {"n": 1})
-        later = (START + timedelta(minutes=1)).astimezone(
-            datetime.now().astimezone().tzinfo
-        )
+        later = (START + timedelta(minutes=1)).astimezone(timezone(timedelta(hours=-5)))
 
         assert broker.dlq_trim(DLQ_STREAM, later) == 1
 
@@ -226,6 +272,10 @@ class TestTrim:
     def test_a_naive_cutoff_is_rejected(self, broker):
         with pytest.raises(ValueError, match="timezone-aware"):
             broker.dlq_trim(DLQ_STREAM, datetime(2026, 1, 1))
+
+    def test_a_stream_id_cutoff_is_rejected(self, broker):
+        with pytest.raises(TypeError, match="older_than must be a timezone-aware"):
+            broker._adapter.dlq_trim(DLQ_STREAM, "1767225600000-0")
 
     def test_trimming_an_unknown_stream_removes_nothing(self, broker):
         assert broker.dlq_trim("missing:dlq", START) == 0
@@ -339,3 +389,41 @@ class TestAGroupReadingTheDLQStream:
         broker.dlq_purge(DLQ_STREAM)
 
         assert broker._adapter._consumer_positions[position_key] == before
+
+    def test_a_replayed_entry_in_flight_cannot_be_nacked_back(self, broker, clock):
+        for n in range(2):
+            _dead_letter(broker, {"n": n})
+        first = broker.get_next(DLQ_STREAM, self.READER)
+        assert broker.get_next(DLQ_STREAM, self.READER) is not None
+
+        assert broker.dlq_replay(DLQ_STREAM, first[0], "target") is True
+
+        assert broker.nack(DLQ_STREAM, first[0], self.READER) is False
+        assert broker.get_next(DLQ_STREAM, self.READER) is None
+        assert [e.payload["n"] for e in broker.dlq_list([DLQ_STREAM])] == [1]
+
+    def test_a_purged_entry_waiting_for_retry_is_not_redelivered(self, broker, clock):
+        _dead_letter(broker, {"n": 0})
+        broker._adapter._max_retries = 3
+        broker._adapter._retry_delay = 0
+        retrieved = broker.get_next(DLQ_STREAM, self.READER)
+        assert broker.nack(DLQ_STREAM, retrieved[0], self.READER) is True
+
+        assert broker.dlq_purge(DLQ_STREAM) == 1
+
+        assert broker.get_next(DLQ_STREAM, self.READER) is None
+        assert broker.dlq_depth(DLQ_STREAM) == 0
+
+    def test_a_group_name_with_a_colon_keeps_its_position(self, broker, clock):
+        reader = "app:reader"
+        for n in range(3):
+            _dead_letter(broker, {"n": n})
+        first = broker.get_next(DLQ_STREAM, reader)
+        broker.ack(DLQ_STREAM, first[0], reader)
+
+        broker.dlq_purge(DLQ_STREAM)
+        _dead_letter(broker, {"n": 3})
+
+        retrieved = broker.get_next(DLQ_STREAM, reader)
+        assert retrieved is not None
+        assert retrieved[1]["n"] == 3

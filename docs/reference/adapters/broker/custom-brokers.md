@@ -368,16 +368,17 @@ class MyBroker(BaseBroker, BlockingReadPort):
 A broker that declares `DEAD_LETTER_QUEUE` subclasses `DeadLetterQueuePort`
 from `protean.port.broker` and implements its seven methods. If the broker
 declares the capability and does not subclass `DeadLetterQueuePort`,
-`domain.init()` raises `ConfigurationError`. The message names the methods the
-broker does not implement. The `Broker` service reads the capability flag, not
-the methods. On a broker without the flag, `dlq_list` returns `[]`, `dlq_get`
-returns `None`, `dlq_replay` returns `False`, and the counting methods return
-0.
+`domain.init()` raises `ConfigurationError`. When the broker also lacks some
+of the seven methods, the message names them. The `Broker` service reads the
+capability flag to decide whether to call the broker. On a broker without the
+flag, `dlq_list` returns `[]`, `dlq_get` returns `None`, `dlq_replay` returns
+`False`, and the counting methods return 0.
 
 A dead letter queue lives on its own stream, named after the source stream
 with a `:dlq` suffix. `dlq_trim` removes the entries that failed before
-`older_than`, which must be a timezone-aware `datetime`. Both the `Broker`
-service and the inline and Redis brokers raise `ValueError` for a naive one.
+`older_than`, which must be a timezone-aware `datetime`. The `Broker` service,
+the inline broker and the Redis broker each raise `ValueError` for a naive one
+and `TypeError` for a value that is not a `datetime`.
 
 ```python
 # fragment

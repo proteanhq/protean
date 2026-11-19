@@ -38,6 +38,10 @@ class LeaseLostError(ProteanException):
     """
 
 
+DLQ_SUFFIX = ":dlq"
+"""The suffix of a dead-letter queue stream's name: ``{stream}:dlq``."""
+
+
 @dataclass
 class DLQEntry:
     """A broker-agnostic view of one dead letter queue message.
@@ -565,15 +569,98 @@ class StreamRetentionPort(BrokerPort, Protocol):
 
 
 def require_aware_cutoff(older_than: datetime) -> None:
-    """Raise ``ValueError`` when the trim cutoff ``older_than`` has no time zone.
+    """Raise when the trim cutoff ``older_than`` is not a timezone-aware ``datetime``.
 
     A naive time cannot be compared with the aware failure times the engine
     records.
+
+    Raises:
+        TypeError: ``older_than`` is not a ``datetime``, such as a stream ID
+            string passed where ``dlq_trim`` once took ``min_id``.
+        ValueError: ``older_than`` has no time zone.
     """
+    if not isinstance(older_than, datetime):
+        raise TypeError(
+            "older_than must be a timezone-aware datetime, "
+            f"got {type(older_than).__name__} {older_than!r}"
+        )
     if older_than.utcoffset() is None:
         raise ValueError(
             f"older_than must be timezone-aware, got naive datetime {older_than!r}"
         )
+
+
+def dlq_metadata(message: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return the ``_dlq_metadata`` record of a DLQ message.
+
+    Returns an empty mapping when the record is missing or is not a mapping.
+    """
+    metadata = message.get("_dlq_metadata")
+    return metadata if isinstance(metadata, Mapping) else {}
+
+
+def failure_time(failed_at: object) -> datetime | None:
+    """Return a ``_dlq_metadata`` record's ``failed_at`` value as an aware time.
+
+    Returns ``None`` when ``failed_at`` is not a string, cannot be parsed, or
+    has no time zone.
+    """
+    if not isinstance(failed_at, str):
+        return None
+    try:
+        failed_time = datetime.fromisoformat(failed_at)
+    except ValueError:
+        return None
+    return failed_time if failed_time.utcoffset() is not None else None
+
+
+def parse_dlq_entry(dlq_stream: str, dlq_id: str, message: dict[str, Any]) -> DLQEntry:
+    """Build a ``DLQEntry`` from a message on ``dlq_stream`` and its metadata.
+
+    A field the record lacks, or holds in a form that does not fit, takes a
+    default: the DLQ stream's source stream, ``dlq_id`` as ``original_id``,
+    ``""`` as the group, ``"unknown"`` as the reason, ``None`` as
+    ``failed_at`` and ``0`` retries.
+    """
+    metadata = dlq_metadata(message)
+    failed_at = metadata.get("failed_at")
+    retry_count = metadata.get("retry_count", 0)
+    try:
+        retries = int(retry_count)
+    except (TypeError, ValueError):
+        retries = 0
+    return DLQEntry(
+        dlq_id=dlq_id,
+        original_id=str(metadata.get("original_id", dlq_id)),
+        stream=str(
+            metadata.get("original_stream", dlq_stream.removesuffix(DLQ_SUFFIX))
+        ),
+        consumer_group=str(metadata.get("consumer_group", "")),
+        payload=message,
+        failure_reason=str(metadata.get("failure_reason", "unknown")),
+        failed_at=failed_at if isinstance(failed_at, str) else None,
+        retry_count=retries,
+        dlq_stream=dlq_stream,
+    )
+
+
+def newest_failure_first(entries: list[DLQEntry]) -> list[DLQEntry]:
+    """Return ``entries`` sorted by failure time, newest first.
+
+    Compares the instants, so times in different UTC offsets sort correctly.
+    Entries without a usable failure time (see ``failure_time``) come last,
+    in their original order.
+    """
+    timed: list[tuple[datetime, DLQEntry]] = []
+    untimed: list[DLQEntry] = []
+    for entry in entries:
+        failed_time = failure_time(entry.failed_at)
+        if failed_time is None:
+            untimed.append(entry)
+        else:
+            timed.append((failed_time, entry))
+    timed.sort(key=lambda pair: pair[0], reverse=True)
+    return [entry for _, entry in timed] + untimed
 
 
 class DeadLetterQueuePort(BrokerPort, Protocol):
@@ -593,7 +680,8 @@ class DeadLetterQueuePort(BrokerPort, Protocol):
     def dlq_list(self, dlq_streams: list[str], limit: int = 100) -> list[DLQEntry]:
         """Return up to ``limit`` entries from ``dlq_streams``, newest failure first.
 
-        A stream that does not exist adds no entries.
+        An entry without a usable ``failed_at`` comes after every entry that
+        has one. A stream that does not exist adds no entries.
         """
 
     @abstractmethod
@@ -630,6 +718,7 @@ class DeadLetterQueuePort(BrokerPort, Protocol):
         """Remove the entries in ``dlq_stream`` that failed before ``older_than``.
 
         Raises:
+            TypeError: ``older_than`` is not a ``datetime``.
             ValueError: ``older_than`` has no time zone.
 
         Returns:

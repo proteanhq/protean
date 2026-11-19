@@ -266,6 +266,25 @@ class TestRedisDLQManagement:
         with pytest.raises(ValueError, match="timezone-aware"):
             broker.dlq_trim("orders:dlq", datetime(2026, 1, 1))
 
+    def test_dlq_trim_rejects_a_stream_id_cutoff(self, test_domain):
+        broker = _broker(test_domain)
+
+        with pytest.raises(TypeError, match="older_than must be a timezone-aware"):
+            broker.dlq_trim("orders:dlq", "1767225600000-0")
+
+    def test_dlq_list_reads_an_entry_whose_metadata_is_not_a_dict(self, test_domain):
+        broker = _broker(test_domain)
+        dlq_id = broker.publish("orders:dlq", {"k": "v", "_dlq_metadata": "broken"})
+        _seed(
+            broker, "orders:dlq", {"i": 0}, original_stream="orders", original_id="o0"
+        )
+
+        entries = broker.dlq_list(["orders:dlq"])
+
+        assert [e.original_id for e in entries] == ["o0", dlq_id]
+        assert entries[1].stream == "orders"
+        assert entries[1].failed_at is None
+
     def test_dlq_get_finds_an_entry_by_its_millisecond_id(self, test_domain):
         broker = _broker(test_domain)
         dlq_id = _seed(

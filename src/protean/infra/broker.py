@@ -486,6 +486,7 @@ class Broker:
         ``DEAD_LETTER_QUEUE``.
 
         Raises:
+            TypeError: ``older_than`` is not a ``datetime``.
             ValueError: ``older_than`` has no time zone.
         """
         require_aware_cutoff(older_than)

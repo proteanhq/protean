@@ -154,6 +154,20 @@ class TestWithoutTheFlag:
         assert broker.dlq_depth("orders:dlq") == 0
         assert adapter.calls == []
 
+    @pytest.mark.redis
+    def test_the_redis_pubsub_broker_gets_the_empty_answers(self, test_domain):
+        broker = Broker(
+            RedisPubSubBroker("pubsub", test_domain, {"URI": f"{REDIS_URI}/0"})
+        )
+
+        assert broker.dlq_list(["orders:dlq"]) == []
+        assert broker.dlq_get("orders:dlq", "1-0") is None
+        assert broker.dlq_replay("orders:dlq", "1-0", "orders") is False
+        assert broker.dlq_replay_all("orders:dlq", "orders") == 0
+        assert broker.dlq_purge("orders:dlq") == 0
+        assert broker.dlq_trim("orders:dlq", CUTOFF) == 0
+        assert broker.dlq_depth("orders:dlq") == 0
+
     def test_a_naive_cutoff_is_rejected_without_the_flag(self, adapter):
         with pytest.raises(ValueError, match="timezone-aware"):
             Broker(adapter).dlq_trim("orders:dlq", NAIVE_CUTOFF)
@@ -187,6 +201,12 @@ class TestWithTheFlag:
     def test_a_naive_cutoff_is_rejected_before_the_adapter_is_called(self, adapter):
         with pytest.raises(ValueError, match="timezone-aware"):
             Broker(adapter).dlq_trim("orders:dlq", NAIVE_CUTOFF)
+
+        assert adapter.calls == []
+
+    def test_a_stream_id_cutoff_is_rejected_before_the_adapter_is_called(self, adapter):
+        with pytest.raises(TypeError, match="older_than must be a timezone-aware"):
+            Broker(adapter).dlq_trim("orders:dlq", "1767225600000-0")
 
         assert adapter.calls == []
 

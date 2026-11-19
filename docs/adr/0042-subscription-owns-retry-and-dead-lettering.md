@@ -49,4 +49,4 @@ The decision renames, removes and re-types no existing method. It adds one hook,
 
 ## Amendment (November 2026): the inline DLQ is a stream
 
-The InlineBroker now stores its native DLQ entries as messages on the `{stream}:dlq` stream, as the Redis broker does, and its DLQ operations are the public `DeadLetterQueuePort` methods. The decision above is unchanged.
+The InlineBroker now stores its native DLQ entries as messages on the `{stream}:dlq` stream, as the Redis broker does, and its DLQ operations are the public `DeadLetterQueuePort` methods. The decision above is unchanged. The Consequences and Compatibility sections describe the broker before this change: the native DLQ they name is now the same `{stream}:dlq` stream, and `_dlq_list` is now `dlq_list`.
