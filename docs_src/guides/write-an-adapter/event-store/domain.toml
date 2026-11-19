@@ -1,0 +1,2 @@
+[event_store]
+provider = "delegating_memory"

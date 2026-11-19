@@ -74,6 +74,15 @@ with DDD and evolve later.
 
     [:material-arrow-right-box: Testing](./testing/index.md)
 
+-   **:material-power-plug-outline: Write an Adapter**
+
+    ---
+
+    Add an adapter for a new event store to Protean itself.
+
+    [:material-arrow-right-box: Write an Adapter](./write-an-adapter/index.md)
+    [:material-arrow-right-box: Event-Store Adapter](./write-an-adapter/event-store.md)
+
 </div>
 
 ## Reference Application
