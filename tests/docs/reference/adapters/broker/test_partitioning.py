@@ -4,7 +4,7 @@ import pytest
 
 from protean.adapters.broker.inline import InlineBroker
 from protean.exceptions import ProteanException
-from protean.port.broker import BrokerCapabilities
+from protean.port.broker import BrokerCapabilities, PartitioningPort
 from tests.docs.support import load_example
 
 pytestmark = pytest.mark.no_test_domain
@@ -20,6 +20,10 @@ def test_broker_advertises_stream_partitioning(example):
 
     assert BrokerCapabilities.STREAM_PARTITIONING in capabilities
     assert BrokerCapabilities.ORDERED_MESSAGING in capabilities
+
+
+def test_broker_subclasses_partitioning_port(example):
+    assert PartitioningPort in example.MyBroker.__mro__
 
 
 def test_inline_broker_does_not_advertise_stream_partitioning():

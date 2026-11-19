@@ -14,13 +14,18 @@ Custom brokers allow you to:
 
 A broker adapter subclasses `BaseBroker` and `BrokerPort`, in that order.
 `BrokerPort` holds the operations Protean calls on every broker. `BaseBroker`
-holds partitions and trimming, and declares the dead letter queue hooks as
-abstract methods. A broker that advertises `BLOCKING_READ` subclasses
-`BaseBroker` and `BlockingReadPort` instead, since `BlockingReadPort` extends
-`BrokerPort` (see [Blocking reads](#blocking-reads)). The partition methods
-raise `NotSupportedError` unless the broker advertises `STREAM_PARTITIONING`.
-`trim` does nothing and returns 0 until the adapter overrides it. The adapter
-implements these members:
+declares the dead letter queue hooks as abstract methods. Three capabilities
+have their own Port, and each Port extends `BrokerPort`. A broker that
+advertises one of them subclasses `BaseBroker` and that Port in place of
+`BrokerPort`:
+
+| Capability | Port | Methods |
+|------------|------|---------|
+| `BLOCKING_READ` | `BlockingReadPort` | The blocking reads (see [Blocking reads](#blocking-reads)) |
+| `STREAM_PARTITIONING` | `PartitioningPort` | The partition-per-key operations (see [Partitioning](partitioning.md)) |
+| `STREAM_RETENTION` | `StreamRetentionPort` | `trim` (see [Stream retention](partitioning.md#stream-retention)) |
+
+The adapter implements these members:
 
 - Capabilities: the `capabilities` property
 - Publishing and reading: `publish`, `read`
@@ -52,7 +57,8 @@ before `read`, `get_next`, `ack`, `nack`, `read_blocking` and
 broker runs synchronously. End the adapter module with
 `_PORT_CHECK: type[BrokerPort] = YourBroker` so mypy reports a missing or
 mistyped method. A broker that subclasses `BlockingReadPort` adds
-`_BLOCKING_READ_CHECK: type[BlockingReadPort] = YourBroker`.
+`_BLOCKING_READ_CHECK: type[BlockingReadPort] = YourBroker`, and the same
+for each other Port it subclasses.
 
 The broker below implements every method by handing it to an in-memory
 `InlineBroker`. Replace those calls with calls to your messaging client:
@@ -311,8 +317,9 @@ def capabilities(self) -> BrokerCapabilities:
     return BrokerCapabilities.ENTERPRISE_STREAMING
 ```
 
-`ENTERPRISE_STREAMING` includes `BLOCKING_READ`, so a broker that declares it
-subclasses `BlockingReadPort` (see [Blocking reads](#blocking-reads)).
+`ENTERPRISE_STREAMING` includes `BLOCKING_READ`, `STREAM_PARTITIONING` and
+`STREAM_RETENTION`, so a broker that declares it subclasses `BlockingReadPort`,
+`PartitioningPort` and `StreamRetentionPort`.
 
 ### Blocking reads
 

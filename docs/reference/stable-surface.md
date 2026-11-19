@@ -99,12 +99,17 @@ disappears.
 - **`Field`** as the base class for custom field types.
 - **`FieldBase`**, the common ancestor of the field hierarchy.
 - **`ResolvedField`**, the field-reflection API adapter authors read.
-- **The broker partitioning contract** in `protean.port.broker`: the partition
-  discovery, fenced-lease and `trim` methods an adapter implements to support
-  `sequential_by`, plus the `LeaseLostError` they raise. Enumerated in
-  [Broker partitioning](adapters/broker/partitioning.md). The broker
-  partitioning contract is not in the three modules the export index covers.
-  The index test therefore does not check it.
+- **The broker partitioning contract** in `protean.port.broker`: the
+  `PartitioningPort` partition discovery and fenced-lease methods an adapter
+  implements to support `sequential_by`, plus the `LeaseLostError` they
+  raise. Enumerated in [Broker partitioning](adapters/broker/partitioning.md).
+  The broker partitioning contract is not in the three modules the export
+  index covers. The index test therefore does not check it.
+- **The broker stream retention contract** in `protean.port.broker`: the
+  `StreamRetentionPort` with its `trim` method, which a broker that declares
+  `STREAM_RETENTION` implements. Documented in
+  [Broker partitioning](adapters/broker/partitioning.md#stream-retention). It
+  is outside the export index for the same reason.
 - **Observatory HTTP and JSON endpoints**: Useful for tooling, but the
   dashboard's payloads are shaped for the dashboard.
 - **`protean.server` internals reached by operations tooling**, such as the

@@ -564,7 +564,7 @@ class OutboxProcessor(BaseSubscription):
                 # never discover). No per-process cache: the consumer reaps cold
                 # keys from the index, so a cached "already recorded" belief could
                 # skip re-adding a reaped-then-republished key and strand it.
-                self.broker.record_partition(stream_category, message.partition_key)
+                self.broker._record_partition(stream_category, message.partition_key)
                 stream_category = f"{stream_category}:{message.partition_key}"
 
             # Priority lanes only apply to internal processors.

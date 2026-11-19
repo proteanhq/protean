@@ -1,8 +1,8 @@
 # --8<-- [start:declare]
-from protean.port.broker import BaseBroker, BrokerCapabilities, BrokerPort
+from protean.port.broker import BaseBroker, BrokerCapabilities, PartitioningPort
 
 
-class MyBroker(BaseBroker, BrokerPort):
+class MyBroker(BaseBroker, PartitioningPort):
     @property
     def capabilities(self) -> BrokerCapabilities:
         return (

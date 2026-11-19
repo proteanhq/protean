@@ -3,10 +3,13 @@
 Message broker interface. Every broker adapter (Inline, Redis Stream,
 Redis PubSub, or your own) subclasses `BaseBroker` and `BrokerPort`, in that
 order. `BrokerPort` lists the operations Protean calls on every broker.
-`BaseBroker` holds partitions and trimming, and declares the dead letter
-queue hooks that every adapter implements. A broker that declares
-`BLOCKING_READ` subclasses `BaseBroker` and `BlockingReadPort` instead.
-`BlockingReadPort` extends `BrokerPort` with the blocking reads.
+`BaseBroker` declares the dead letter queue hooks that every adapter
+implements. A broker that declares a capability with its own Port subclasses
+that Port in place of `BrokerPort`. Each of these Ports extends `BrokerPort`:
+
+- `BLOCKING_READ`: `BlockingReadPort`, the blocking reads.
+- `STREAM_PARTITIONING`: `PartitioningPort`, the partition-per-key operations.
+- `STREAM_RETENTION`: `StreamRetentionPort`, stream trimming.
 
 `domain.brokers[name]` returns a `Broker` service that wraps the adapter.
 Application code calls the service, not the adapter.
@@ -23,6 +26,18 @@ writing an adapter.
 ## BlockingReadPort
 
 ::: protean.port.broker.BlockingReadPort
+    options:
+      show_root_heading: false
+
+## PartitioningPort
+
+::: protean.port.broker.PartitioningPort
+    options:
+      show_root_heading: false
+
+## StreamRetentionPort
+
+::: protean.port.broker.StreamRetentionPort
     options:
       show_root_heading: false
 

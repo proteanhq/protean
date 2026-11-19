@@ -21,6 +21,8 @@ from protean.port.broker import (
     BrokerPort,
     ConsumerGroupInfo,
     DLQEntry,
+    PartitioningPort,
+    StreamRetentionPort,
 )
 from protean.utils import Processing
 from protean.utils.consume_idempotency import dispatch_to_subscriber
@@ -460,87 +462,117 @@ class Broker:
     def dlq_depth(self, dlq_stream: str) -> int:
         return self._base_broker("dlq_depth").dlq_depth(dlq_stream)
 
-    def trim(self, stream: str, maxlen: int) -> int:
-        return self._base_broker("trim").trim(stream, maxlen)
+    # Stream retention, for the stream subscription.
 
-    def record_partition(self, category: str, key: str) -> None:
-        self._base_broker("record_partition").record_partition(category, key)
+    def _trim(self, stream: str, maxlen: int) -> int:
+        """Trim ``stream`` toward ``maxlen`` entries by the adapter's rule.
 
-    def partition_keys(self, category: str) -> set[str]:
-        return self._base_broker("partition_keys").partition_keys(category)
+        Returns the number of entries removed, or ``0`` without calling the adapter when the broker lacks
+        ``STREAM_RETENTION``.
+        """
+        if BrokerCapabilities.STREAM_RETENTION not in self.capabilities:
+            return 0
+        return cast(StreamRetentionPort, self._adapter).trim(stream, maxlen)
 
-    def reap_partition(
+    # Partition-per-key operations (ADR-0028), for the outbox processor, the
+    # partitioned stream subscription and the status collector. They skip
+    # ``_retry_once``: a fenced read or ack must fail when the lease is lost
+    # and not run again, and the partitioned consumer's poll loop already
+    # backs off on a broker error.
+
+    def _partitioning(self, operation: str) -> PartitioningPort:
+        """Return the adapter as a ``PartitioningPort``.
+
+        Raises:
+            NotSupportedError: The broker lacks ``STREAM_PARTITIONING``.
+        """
+        if BrokerCapabilities.STREAM_PARTITIONING not in self.capabilities:
+            raise NotSupportedError(
+                f"Broker {self.name} does not advertise STREAM_PARTITIONING, "
+                f"required for `{operation}` (ADR-0028)."
+            )
+        return cast(PartitioningPort, self._adapter)
+
+    def _record_partition(self, category: str, key: str) -> None:
+        self._partitioning("record_partition").record_partition(category, key)
+
+    def _partition_keys(self, category: str) -> set[str]:
+        return self._partitioning("partition_keys").partition_keys(category)
+
+    def _reap_partition(
         self,
         category: str,
         key: str,
         min_idle_ms: int,
         backfill_suffix: str | None = None,
     ) -> bool:
-        return self._base_broker("reap_partition").reap_partition(
+        return self._partitioning("reap_partition").reap_partition(
             category, key, min_idle_ms, backfill_suffix
         )
 
-    def acquire_partition_lease(
+    def _acquire_partition_lease(
         self, lease_key: str, generation_key: str, owner_id: str, ttl_ms: int
     ) -> int | None:
-        return self._base_broker("acquire_partition_lease").acquire_partition_lease(
+        return self._partitioning("acquire_partition_lease").acquire_partition_lease(
             lease_key, generation_key, owner_id, ttl_ms
         )
 
-    def renew_partition_lease(
+    def _renew_partition_lease(
         self, lease_key: str, fence_token: str, ttl_ms: int
     ) -> bool:
-        return self._base_broker("renew_partition_lease").renew_partition_lease(
+        return self._partitioning("renew_partition_lease").renew_partition_lease(
             lease_key, fence_token, ttl_ms
         )
 
-    def release_partition_lease(self, lease_key: str, fence_token: str) -> bool:
-        return self._base_broker("release_partition_lease").release_partition_lease(
+    def _release_partition_lease(self, lease_key: str, fence_token: str) -> bool:
+        return self._partitioning("release_partition_lease").release_partition_lease(
             lease_key, fence_token
         )
 
-    def read_partition_fenced(
+    def _read_partition_fenced(
         self,
         stream: str,
         consumer_group: str,
         consumer_name: str,
         lease_key: str,
         fence_token: str,
-        count: int = 1,
+        limit: int = 1,
         new_messages: bool = True,
-    ) -> list[tuple[str, dict[str, Any]]]:
-        return self._base_broker("read_partition_fenced").read_partition_fenced(
+    ) -> list[BrokerMessage]:
+        return self._partitioning("read_partition_fenced").read_partition_fenced(
             stream,
             consumer_group,
             consumer_name,
             lease_key,
             fence_token,
-            count,
+            limit,
             new_messages,
         )
 
-    def ack_partition_fenced(
+    def _ack_partition_fenced(
         self,
         stream: str,
-        identifier: str,
+        message_id: str,
         consumer_group: str,
         lease_key: str,
         fence_token: str,
     ) -> bool:
-        return self._base_broker("ack_partition_fenced").ack_partition_fenced(
-            stream, identifier, consumer_group, lease_key, fence_token
+        return self._partitioning("ack_partition_fenced").ack_partition_fenced(
+            stream, message_id, consumer_group, lease_key, fence_token
         )
 
-    def reclaim_partition_pending(
+    def _reclaim_partition_pending(
         self,
         stream: str,
         consumer_group: str,
         consumer_name: str,
         min_idle_ms: int = 0,
-        count: int = 100,
-    ) -> list[tuple[str, dict[str, Any]]]:
-        return self._base_broker("reclaim_partition_pending").reclaim_partition_pending(
-            stream, consumer_group, consumer_name, min_idle_ms, count
+        limit: int = 100,
+    ) -> list[BrokerMessage]:
+        return self._partitioning(
+            "reclaim_partition_pending"
+        ).reclaim_partition_pending(
+            stream, consumer_group, consumer_name, min_idle_ms, limit
         )
 
 

@@ -44,7 +44,7 @@ class RecordingBroker:
         self.published.append((stream, message))
         return "broker-msg-id"
 
-    def record_partition(self, category: str, key: str) -> None:
+    def _record_partition(self, category: str, key: str) -> None:
         if getattr(self, "raise_on_record", False):
             raise RuntimeError("index write boom")
         self.recorded_partitions.append((category, key))

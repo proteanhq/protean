@@ -298,7 +298,7 @@ class PartitionedStreamSubscription(StreamSubscription):
         units: dict[str, list[tuple[str, str]]] = {}
         for category in self._categories:
             try:
-                keys = self.broker.partition_keys(category)
+                keys = self.broker._partition_keys(category)
             except Exception:  # one unreadable category must not stop discovery; logged
                 logger.exception(
                     "partition.discovery_read_failed",
@@ -314,7 +314,7 @@ class PartitionedStreamSubscription(StreamSubscription):
         assert self.broker is not None, "Broker not initialized"
         for partition_id, owned in list(self._owned.items()):
             renewed = await asyncio.to_thread(
-                self.broker.renew_partition_lease,
+                self.broker._renew_partition_lease,
                 owned.lease_key,
                 owned.fence_token,
                 self.lease_ttl_ms,
@@ -349,7 +349,7 @@ class PartitionedStreamSubscription(StreamSubscription):
             lease_key = self._lease_key(partition_id)
             generation_key = self._generation_key(partition_id)
             generation = await asyncio.to_thread(
-                self.broker.acquire_partition_lease,
+                self.broker._acquire_partition_lease,
                 lease_key,
                 generation_key,
                 self.owner_id,
@@ -431,7 +431,7 @@ class PartitionedStreamSubscription(StreamSubscription):
         assert self.broker is not None, "Broker not initialized"
         try:
             await asyncio.to_thread(
-                self.broker.release_partition_lease,
+                self.broker._release_partition_lease,
                 owned.lease_key,
                 owned.fence_token,
             )
@@ -520,7 +520,7 @@ class PartitionedStreamSubscription(StreamSubscription):
                 lanes.append(self._backfill_stream(stream))
             for lane in lanes:
                 await asyncio.to_thread(
-                    self.broker.reclaim_partition_pending,
+                    self.broker._reclaim_partition_pending,
                     lane,
                     self.consumer_group,
                     owned.consumer_name,
@@ -587,13 +587,13 @@ class PartitionedStreamSubscription(StreamSubscription):
                 # trigger.
                 return None
             messages = await asyncio.to_thread(
-                self.broker.read_partition_fenced,
+                self.broker._read_partition_fenced,
                 stream,
                 self.consumer_group,
                 owned.consumer_name,
                 owned.lease_key,
                 owned.fence_token,
-                count=1,
+                limit=1,
                 new_messages=new_messages,
             )
             if messages:
@@ -650,7 +650,7 @@ class PartitionedStreamSubscription(StreamSubscription):
         # Fenced ack: raises LeaseLostError (propagated to stop the worker) if we
         # no longer hold the lease, so a fenced stale owner cannot ack.
         acked = await asyncio.to_thread(
-            self.broker.ack_partition_fenced,
+            self.broker._ack_partition_fenced,
             stream,
             identifier,
             self.consumer_group,
@@ -727,7 +727,7 @@ class PartitionedStreamSubscription(StreamSubscription):
         for category, _stream in owned.streams:
             try:
                 reaped = await asyncio.to_thread(
-                    self.broker.reap_partition,
+                    self.broker._reap_partition,
                     category,
                     owned.partition_id,
                     self.reap_idle_ms,

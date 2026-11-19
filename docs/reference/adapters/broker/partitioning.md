@@ -26,22 +26,33 @@ exist, and a way to **own** one safely while other workers are running.
 
 ## Declaring support
 
-A broker opts in by advertising the capability:
+A broker opts in by advertising the capability and subclassing
+`PartitioningPort` from `protean.port.broker`:
 
 ```python
 --8<-- "adapters/broker/partitioning/001.py:declare"
 ```
 
-Without `STREAM_PARTITIONING`, `sequential_by` is a **no-op**: the publisher does
-not split streams and consumers stay on the base stream with a regular
+On the inline broker, `sequential_by` is a **no-op**: the publisher does not
+split streams and consumers stay on the base stream with a regular
 subscription. That is deliberate, so a domain declaring `sequential_by` still
-runs on the inline broker in tests, without ordering guarantees.
+runs on the inline broker in tests. The inline broker processes messages one
+at a time in submission order. Any other broker that does not declare
+`STREAM_PARTITIONING` is rejected at `domain.init()` with `IncorrectUsageError`
+when the domain declares `sequential_by`.
 
-The public methods below each call `_require_partitioning(...)` first, so a
-call to an adapter that has not declared the capability raises
-`NotSupportedError` before any work starts. Implement the underscore-prefixed
-variants (`_record_partition`, `_partition_keys`, and so on). Protean's base
-broker class provides the public wrappers.
+`PartitioningPort` extends `BrokerPort` with the nine methods in the Discovery
+and Ownership tables below, and the adapter implements all of them. If a broker declares
+`STREAM_PARTITIONING` and does not subclass `PartitioningPort`, `domain.init()`
+raises `ConfigurationError`. The message names the methods the broker does not
+implement, if any. End the adapter module with
+`_PARTITIONING_CHECK: type[PartitioningPort] = YourBroker` so mypy reports a
+missing or mistyped method.
+
+The `Broker` service calls these methods. On a broker without the capability,
+the service raises `NotSupportedError` before any work starts. The service
+does not retry a partition call after a connection error, because a fenced
+read or ack must fail when the lease is lost.
 
 ## Discovery
 
@@ -49,15 +60,17 @@ broker class provides the public wrappers.
 |--------|----------|
 | `record_partition(category, key)` | Add `key` to the index for `category`. Called on every publish to a partition stream, so it **must be idempotent** and cheap. |
 | `partition_keys(category)` | Return the live partition keys for `category`. Consumers call this each cycle to find new partitions, so it must not scan the keyspace. |
-| `reap_partition(category, key, min_idle_ms, backfill_suffix=None)` | Remove a cold partition and its streams. Return `True` if reaped. |
+| `reap_partition(category, key, min_idle_ms, backfill_suffix)` | Remove a cold partition and its streams. Return `True` if reaped. |
 
 An index rather than a keyspace scan is the point: partition keys are unbounded
 (one per order, per customer), so discovery has to be O(partitions), not
 O(keys in the broker).
 
-**`reap_partition` must be atomic and conservative.** Reap only when no consumer
-group on any of the partition's streams has pending entries *and* all have been
-idle for at least `min_idle_ms`. When priority lanes are on, the caller passes
+**`reap_partition` must be atomic and conservative.** An empty stream can always
+be reaped. A stream that holds entries can be reaped only when it has at least
+one consumer group, every group has read and acknowledged every entry, and its
+newest entry is at least `min_idle_ms` old. Reap the partition only when each
+of its streams passes this check. When priority lanes are on, the caller passes
 `backfill_suffix`. The adapter then checks and deletes the key's backfill lane
 together with the main stream. An adapter that skips the backfill lane leaves
 unconsumed work in it. Keep the partition's lease generation counter after a
@@ -79,11 +92,11 @@ generation, so a resumed stale owner cannot act.
 | Method | Contract |
 |--------|----------|
 | `acquire_partition_lease(lease_key, generation_key, owner_id, ttl_ms)` | Take the lease. Return the new generation, or `None` if held by someone else. Must be atomic against concurrent callers. |
-| `renew_partition_lease(...)` | Extend the TTL. Return `False` if the lease was lost, which the caller treats as "stop immediately". |
+| `renew_partition_lease(lease_key, fence_token, ttl_ms)` | Set the lease to expire `ttl_ms` milliseconds from now. Return `False` if the lease was lost, which the caller treats as "stop immediately". |
 | `release_partition_lease(lease_key, fence_token)` | Release on graceful shutdown. Return `False` if not held. |
-| `read_partition_fenced(...)` | Read, rejecting a stale fence token. |
-| `ack_partition_fenced(...)` | Ack, rejecting a stale fence token. |
-| `reclaim_partition_pending(...)` | Take over entries left pending by a dead owner. |
+| `read_partition_fenced(stream, consumer_group, consumer_name, lease_key, fence_token, limit, new_messages)` | Read up to `limit` messages, rejecting a stale fence token. Return a list of `BrokerMessage`. |
+| `ack_partition_fenced(stream, message_id, consumer_group, lease_key, fence_token)` | Ack, rejecting a stale fence token. |
+| `reclaim_partition_pending(stream, consumer_group, consumer_name, min_idle_ms, limit)` | Take over the entries left pending by a dead owner, `limit` per page. Return a list of `BrokerMessage`. |
 
 An operation refused for a stale token raises
 [`LeaseLostError`](#leaselosterror). Treat it as final: stop processing the
@@ -102,15 +115,27 @@ handles it by dropping the partition.
 
 ## Stream retention
 
+Trimming has its own capability, `STREAM_RETENTION`. A broker that trims
+declares it and subclasses `StreamRetentionPort` from `protean.port.broker`,
+which adds one method. The same `ConfigurationError` applies when the broker
+declares the flag and does not subclass the Port. On a broker without the
+flag, the `Broker` service skips trimming and reports 0 entries removed.
+End the adapter module with
+`_STREAM_RETENTION_CHECK: type[StreamRetentionPort] = YourBroker`.
+
 | Method | Contract |
 |--------|----------|
-| `trim(stream, maxlen)` | Trim `stream`, returning the number of entries removed. |
+| `trim(stream, maxlen)` | Trim `stream` toward `maxlen` entries, returning the number of entries removed. |
 
-`trim` must not delete anything a consumer group still needs. The Redis
-adapter's rule is worth copying. With **two or more** consumer groups, trim to
-the minimum `last-delivered-id` across them and **ignore `maxlen`**, because
-consumer progress bounds the stream. With **zero or one**, cap at `maxlen`.
-Refuse a non-positive `maxlen` rather than emptying the stream. See
+The Redis adapter's rule is worth copying. With **two or more** consumer groups,
+it trims to the minimum `last-delivered-id` across them and **ignores
+`maxlen`**, because consumer progress bounds the stream. That removes only
+entries every group has had delivered, including entries delivered and not yet
+acknowledged. With **zero or one** group, it caps the stream at about `maxlen`
+entries. A single group more than `maxlen` entries behind then loses its oldest
+unread entries, so document that limit for operators. Both trims are
+approximate, so the stream can stay a little above the target. Refuse a
+non-positive `maxlen` rather than emptying the stream. See
 [Tuning subscriptions](../../../guides/server/tuning-subscriptions.md#stop-a-stream-from-growing-forever)
 for the operator-facing consequences.
 

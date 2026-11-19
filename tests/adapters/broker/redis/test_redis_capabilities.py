@@ -10,14 +10,17 @@ class TestRedisBrokerCapabilities:
     """Test capability methods specifically with Redis broker."""
 
     def test_capabilities(self, broker):
-        """RedisBroker has ordered messaging, blocking reads, DLQ, and
-        partition-per-key streams (STREAM_PARTITIONING, added in ADR-0028)."""
+        """RedisBroker has ordered messaging, blocking reads, DLQ,
+        partition-per-key streams (STREAM_PARTITIONING, added in ADR-0028) and
+        stream trimming (STREAM_RETENTION)."""
         expected_caps = (
             BrokerCapabilities.ORDERED_MESSAGING
             | BrokerCapabilities.BLOCKING_READ
             | BrokerCapabilities.DEAD_LETTER_QUEUE
             | BrokerCapabilities.STREAM_PARTITIONING
+            | BrokerCapabilities.STREAM_RETENTION
         )
+        assert broker.capabilities == expected_caps
 
         # Test has_all_capabilities
         assert broker.has_all_capabilities(BrokerCapabilities.PUBLISH)
@@ -29,6 +32,7 @@ class TestRedisBrokerCapabilities:
         assert broker.has_all_capabilities(BrokerCapabilities.BLOCKING_READ)
         assert broker.has_all_capabilities(BrokerCapabilities.DEAD_LETTER_QUEUE)
         assert broker.has_all_capabilities(BrokerCapabilities.STREAM_PARTITIONING)
+        assert broker.has_all_capabilities(BrokerCapabilities.STREAM_RETENTION)
         assert broker.has_all_capabilities(expected_caps)
 
         # Should not have some advanced capabilities it does not implement.

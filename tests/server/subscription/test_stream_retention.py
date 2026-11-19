@@ -2,7 +2,7 @@
 
 Covers how a StreamSubscription threads ``retention_maxlen`` from config into
 the ``_maybe_trim`` helper it calls after each batch: retention off means the
-broker's ``trim`` is never called, retention on trims the exact stream the batch
+broker service's ``_trim`` is never called, retention on trims the exact stream the batch
 came from, and a trim error is logged and swallowed rather than propagated.
 """
 
@@ -52,13 +52,13 @@ def engine(test_domain):
 
 
 class _TrimRecorder:
-    """A broker stand-in that records trim() calls (and can raise on demand)."""
+    """A broker stand-in that records _trim() calls (and can raise on demand)."""
 
     def __init__(self, *, raise_error: bool = False) -> None:
         self.calls: list[tuple[str, int]] = []
         self.raise_error = raise_error
 
-    def trim(self, stream: str, maxlen: int) -> int:
+    def _trim(self, stream: str, maxlen: int) -> int:
         self.calls.append((stream, maxlen))
         if self.raise_error:
             raise RuntimeError("simulated trim failure")
@@ -127,7 +127,7 @@ class TestMaybeTrim:
 
         validate() rejects 0, but the constructor accepts retention_maxlen
         unchecked, so a direct StreamSubscription(..., retention_maxlen=0) would
-        otherwise reach trim(stream, 0) and, on a 0/1-group Redis stream, empty
+        otherwise reach _trim(stream, 0) and, on a 0/1-group Redis stream, empty
         it. The guard treats a non-positive cap as "retention off".
         """
         with test_domain.domain_context():
@@ -162,7 +162,7 @@ class TestMaybeTrim:
 
 
 class _FakeBroker:
-    """Broker stand-in for poll() tests: yields a batch, records trim() calls.
+    """Broker stand-in for poll() tests: yields a batch, records _trim() calls.
 
     ``read_blocking`` and ``read_blocking_streams`` return whatever the
     constructor was given for each stream being read (empty for any other), so
@@ -180,7 +180,7 @@ class _FakeBroker:
     def read_blocking_streams(self, *, streams, **kwargs):
         return {stream: self._messages_by_stream.get(stream, []) for stream in streams}
 
-    def trim(self, stream: str, maxlen: int) -> int:
+    def _trim(self, stream: str, maxlen: int) -> int:
         self.trim_calls.append((stream, maxlen))
         return 0
 

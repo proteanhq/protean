@@ -111,7 +111,9 @@ single-group behavior and their caveats. Each profile carries a default cap:
 The framework-wide default (when no profile applies) is `none`, which leaves
 trimming off. Set `retention_maxlen` on a profile, a per-handler config, or a
 custom profile to enable it. This is size-based retention only. There is no
-time-based TTL.
+time-based TTL. Trimming needs a broker that declares `STREAM_RETENTION`, such
+as Redis Streams. On any other broker the cap, including a profile default, is
+skipped without a log line.
 
 ### Custom Profiles
 

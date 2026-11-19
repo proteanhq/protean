@@ -25,6 +25,8 @@ from protean.port.broker import (
     ConsumerInfo,
     DLQEntry,
     LeaseLostError,
+    PartitioningPort,
+    StreamRetentionPort,
 )
 
 if TYPE_CHECKING:
@@ -203,7 +205,7 @@ return 1
 """
 
 
-class RedisBroker(BaseBroker, BlockingReadPort):
+class RedisBroker(BaseBroker, BlockingReadPort, PartitioningPort, StreamRetentionPort):
     """Redis Streams as the Message Broker.
 
     This broker leverages Redis Streams' native consumer group functionality
@@ -288,13 +290,14 @@ class RedisBroker(BaseBroker, BlockingReadPort):
     @property
     def capabilities(self) -> BrokerCapabilities:
         """Redis Streams provide ordered messaging with native consumer groups,
-        blocking reads, dead-letter queues, and partition-per-key streams
-        (ADR-0028)."""
+        blocking reads, dead-letter queues, partition-per-key streams
+        (ADR-0028) and stream trimming."""
         return (
             BrokerCapabilities.ORDERED_MESSAGING
             | BrokerCapabilities.BLOCKING_READ
             | BrokerCapabilities.DEAD_LETTER_QUEUE
             | BrokerCapabilities.STREAM_PARTITIONING
+            | BrokerCapabilities.STREAM_RETENTION
         )
 
     @property
@@ -1522,19 +1525,19 @@ class RedisBroker(BaseBroker, BlockingReadPort):
         """Return the Redis Set key holding *category*'s live partition keys."""
         return f"{category}{CONSUMER_GROUP_SEPARATOR}{PARTITIONS_INDEX_SUFFIX}"
 
-    def _record_partition(self, category: str, key: str) -> None:
+    def record_partition(self, category: str, key: str) -> None:
         """Record *key* in ``{category}:__partitions__`` (idempotent SADD)."""
         self._client.sadd(self._partition_index_key(category), key)
 
-    def _partition_keys(self, category: str) -> set[str]:
+    def partition_keys(self, category: str) -> set[str]:
         """Return the live partition keys recorded for *category*."""
         members = self._client.smembers(self._partition_index_key(category))
         return {self._decode_if_bytes(m) for m in members}
 
-    def _reap_partition(
+    def reap_partition(
         self, category: str, key: str, min_idle_ms: int, backfill_suffix: str | None
     ) -> bool:
-        """Atomically reap a cold partition; see :meth:`BaseBroker.reap_partition`."""
+        """Atomically reap a cold partition; see `PartitioningPort.reap_partition`."""
         index_key = self._partition_index_key(category)
         main_stream = f"{category}{CONSUMER_GROUP_SEPARATOR}{key}"
         # When priority lanes are on, the key also has a backfill lane; reap only
@@ -1567,7 +1570,7 @@ class RedisBroker(BaseBroker, BlockingReadPort):
         }
         self._created_groups_set -= stale
 
-    def _acquire_partition_lease(
+    def acquire_partition_lease(
         self, lease_key: str, generation_key: str, owner_id: str, ttl_ms: int
     ) -> int | None:
         """Acquire an unheld lease at a fresh generation, or return ``None``."""
@@ -1578,7 +1581,7 @@ class RedisBroker(BaseBroker, BlockingReadPort):
         )
         return int(result) if result is not None else None
 
-    def _renew_partition_lease(
+    def renew_partition_lease(
         self, lease_key: str, fence_token: str, ttl_ms: int
     ) -> bool:
         """Renew a held lease; ``False`` if the fence token no longer matches."""
@@ -1587,30 +1590,30 @@ class RedisBroker(BaseBroker, BlockingReadPort):
         )
         return bool(result)
 
-    def _release_partition_lease(self, lease_key: str, fence_token: str) -> bool:
+    def release_partition_lease(self, lease_key: str, fence_token: str) -> bool:
         """Release a held lease; ``False`` if we no longer hold it."""
         result = self._lua_release_lease(
             keys=[lease_key], args=[fence_token], client=self._client
         )
         return bool(result)
 
-    def _read_partition_fenced(
+    def read_partition_fenced(
         self,
         stream: str,
         consumer_group: str,
         consumer_name: str,
         lease_key: str,
         fence_token: str,
-        count: int,
+        limit: int,
         new_messages: bool,
-    ) -> list[tuple[str, dict[str, Any]]]:
+    ) -> list[BrokerMessage]:
         """Fenced XREADGROUP; raises :class:`LeaseLostError` when the lease is lost."""
         self.create_group(stream, consumer_group)
         start_id = NEW_MESSAGES_MARK if new_messages else PENDING_MESSAGES_MARK
         try:
             result = self._lua_read_fenced(
                 keys=[lease_key, stream],
-                args=[fence_token, consumer_group, consumer_name, count, start_id],
+                args=[fence_token, consumer_group, consumer_name, limit, start_id],
                 client=self._client,
             )
         except redis.ResponseError as e:
@@ -1629,17 +1632,17 @@ class RedisBroker(BaseBroker, BlockingReadPort):
                 self.create_group(stream, consumer_group)
                 result = self._lua_read_fenced(
                     keys=[lease_key, stream],
-                    args=[fence_token, consumer_group, consumer_name, count, start_id],
+                    args=[fence_token, consumer_group, consumer_name, limit, start_id],
                     client=self._client,
                 )
                 return self._parse_fenced_read(result)
             raise
         return self._parse_fenced_read(result)
 
-    def _ack_partition_fenced(
+    def ack_partition_fenced(
         self,
         stream: str,
-        identifier: str,
+        message_id: str,
         consumer_group: str,
         lease_key: str,
         fence_token: str,
@@ -1647,7 +1650,7 @@ class RedisBroker(BaseBroker, BlockingReadPort):
         """Fenced XACK; raises :class:`LeaseLostError` when the lease is lost."""
         result = self._lua_ack_fenced(
             keys=[lease_key, stream],
-            args=[fence_token, consumer_group, identifier],
+            args=[fence_token, consumer_group, message_id],
             client=self._client,
         )
         acked = int(result)
@@ -1655,14 +1658,14 @@ class RedisBroker(BaseBroker, BlockingReadPort):
             raise LeaseLostError(f"Lease {lease_key} lost while acking {stream}")
         return acked > 0
 
-    def _reclaim_partition_pending(
+    def reclaim_partition_pending(
         self,
         stream: str,
         consumer_group: str,
         consumer_name: str,
         min_idle_ms: int,
-        count: int,
-    ) -> list[tuple[str, dict[str, Any]]]:
+        limit: int,
+    ) -> list[BrokerMessage]:
         """Reclaim a dead owner's pending entries into *consumer_name* via XAUTOCLAIM.
 
         A broker error is left to propagate rather than swallowed: reclaim is a
@@ -1672,7 +1675,7 @@ class RedisBroker(BaseBroker, BlockingReadPort):
         "nothing to reclaim".
         """
         self.create_group(stream, consumer_group)
-        messages: list[tuple[str, dict[str, Any]]] = []
+        messages: list[BrokerMessage] = []
         cursor = STREAM_ID_START + "-0"
         while True:
             try:
@@ -1683,7 +1686,7 @@ class RedisBroker(BaseBroker, BlockingReadPort):
                     consumer_name,
                     min_idle_time=min_idle_ms,
                     start_id=cursor,
-                    count=count,
+                    count=limit,
                 )
             except redis.ResponseError as e:
                 # A missing group (e.g. stream reaped and re-created elsewhere)
@@ -1700,21 +1703,21 @@ class RedisBroker(BaseBroker, BlockingReadPort):
                 if fields:
                     redis_id_str = self._decode_if_bytes(message_id)
                     message = self._deserialize_message(fields)
-                    messages.append((redis_id_str, message))
+                    messages.append(BrokerMessage(redis_id_str, message))
             cursor = self._decode_if_bytes(next_cursor)
             # A "0-0" cursor means the scan wrapped around — no more pending.
             if cursor == STREAM_ID_START + "-0" or not claimed:
                 break
         return messages
 
-    def _parse_fenced_read(self, result: Any) -> list[tuple[str, dict[str, Any]]]:
+    def _parse_fenced_read(self, result: Any) -> list[BrokerMessage]:
         """Parse the raw XREADGROUP reply returned by the fenced-read Lua script.
 
         A Lua reply is nested arrays with flat ``[field, value, ...]`` lists
         (not the ``{field: value}`` dicts redis-py builds for a native call), so
         the fields are zipped back into a dict before deserialization.
         """
-        messages: list[tuple[str, dict[str, Any]]] = []
+        messages: list[BrokerMessage] = []
         if not result:
             return messages
         for stream_entry in result:
@@ -1731,7 +1734,7 @@ class RedisBroker(BaseBroker, BlockingReadPort):
                 }
                 redis_id_str = self._decode_if_bytes(entry_id)
                 message = self._deserialize_message(fields)
-                messages.append((redis_id_str, message))
+                messages.append(BrokerMessage(redis_id_str, message))
         return messages
 
     def clear(self) -> None:
@@ -1987,3 +1990,5 @@ def register() -> None:
 
 _PORT_CHECK: type[BrokerPort] = RedisBroker
 _BLOCKING_READ_CHECK: type[BlockingReadPort] = RedisBroker
+_PARTITIONING_CHECK: type[PartitioningPort] = RedisBroker
+_STREAM_RETENTION_CHECK: type[StreamRetentionPort] = RedisBroker
