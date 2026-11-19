@@ -68,34 +68,6 @@
     ]
   },
   {
-    "path": "src/protean/core/repository.py",
-    "file_name": "repository.py",
-    "functions": [
-      {
-        "name": "BaseRepository::_has_changed_child",
-        "complexity": 17
-      },
-      {
-        "name": "BaseRepository::_do_add",
-        "complexity": 19
-      },
-      {
-        "name": "BaseRepository::_sync_children",
-        "complexity": 62
-      }
-    ]
-  },
-  {
-    "path": "src/protean/core/unit_of_work.py",
-    "file_name": "unit_of_work.py",
-    "functions": [
-      {
-        "name": "UnitOfWork::_do_commit",
-        "complexity": 57
-      }
-    ]
-  },
-  {
     "path": "src/protean/core/value_object.py",
     "file_name": "value_object.py",
     "functions": [
