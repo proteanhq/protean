@@ -250,7 +250,7 @@ class TestLeftoverRowsOnASkippedProvider:
                 raise RuntimeError("database unavailable")
 
             secondary_dao = domain._get_outbox_repo("secondary")._dao
-            monkeypatch.setattr(secondary_dao, "_count", database_unavailable)
+            monkeypatch.setattr(secondary_dao, "count", database_unavailable)
 
             with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
                 engine = Engine(domain, test_mode=True)

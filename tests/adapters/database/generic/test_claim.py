@@ -575,7 +575,7 @@ class TestClaimHoldBack:
         # Patched on the class: each repository_for call builds a new DAO.
         dao_cls = type(test_domain.repository_for(KeyedJob)._dao)
         _keyed(test_domain, *_key_rows("k1", range(150)))
-        filter_rows = dao_cls._filter
+        filter_rows = dao_cls.fetch
         rows_read: list[int] = []
 
         def counting_filter(self, *args, **kwargs):
@@ -583,7 +583,7 @@ class TestClaimHoldBack:
             rows_read.append(len(result.items))
             return result
 
-        monkeypatch.setattr(dao_cls, "_filter", counting_filter)
+        monkeypatch.setattr(dao_cls, "fetch", counting_filter)
 
         claimed = _claim_keyed(test_domain, limit=150)
 
