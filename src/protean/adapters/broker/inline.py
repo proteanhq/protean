@@ -470,10 +470,9 @@ class InlineBroker(BaseBroker, DeadLetterQueuePort):
                 consumer_group, identifier, OperationState.FAILED
             )
 
-            # Remove from in-flight
-            self._remove_in_flight_message(stream, consumer_group, identifier)
-
-            # Max retries exceeded - move to DLQ or discard
+            # Max retries exceeded - move to DLQ or discard. The message
+            # leaves in-flight only after the DLQ write, so a write that
+            # raises leaves it in flight for the timeout path to expire again.
             if self._enable_dlq:
                 self._store_dlq_message(
                     stream,
@@ -490,6 +489,8 @@ class InlineBroker(BaseBroker, DeadLetterQueuePort):
                 logger.warning(
                     f"Message '{identifier}' discarded after {self._max_retries} retries"
                 )
+
+            self._remove_in_flight_message(stream, consumer_group, identifier)
 
             # Clean up tracking
             self._remove_retry_count(stream, consumer_group, identifier)
@@ -1095,9 +1096,6 @@ def _cleanup_stale_group(
         broker._in_flight[group_key].items()
     ):
         if timestamp < cutoff_time:
-            # Remove from in-flight
-            del broker._in_flight[group_key][identifier]
-
             if owned:
                 _hold_stale_message(
                     broker,
@@ -1112,6 +1110,10 @@ def _cleanup_stale_group(
                 _expire_stale_message(
                     broker, stream, consumer_group, identifier, message
                 )
+
+            # Removed after the DLQ write, so a write that raises leaves the
+            # message in flight for the next cleanup to expire again.
+            del broker._in_flight[group_key][identifier]
 
 
 def _hold_stale_message(

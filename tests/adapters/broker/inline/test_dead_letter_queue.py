@@ -115,6 +115,34 @@ class TestTheRetryCeilingDeadLetters:
         assert broker.dlq_depth(DLQ_STREAM) == 0
         assert DLQ_STREAM not in broker._adapter._messages
 
+    def test_a_failed_dlq_write_keeps_the_message_in_flight(
+        self, broker, clock, monkeypatch
+    ):
+        broker._adapter._max_retries = 0
+        identifier = broker.publish(STREAM, {"foo": "bar"})
+        assert broker.get_next(STREAM, GROUP) is not None
+        _fail_dlq_writes(broker, monkeypatch)
+
+        assert broker.nack(STREAM, identifier, GROUP) is False
+
+        assert identifier in broker._adapter._in_flight[f"{STREAM}:{GROUP}"]
+        monkeypatch.undo()
+        broker._adapter._cleanup_stale_messages(GROUP, -1.0)
+        [entry] = broker.dlq_list([DLQ_STREAM])
+        assert entry.original_id == identifier
+
+
+def _fail_dlq_writes(broker, monkeypatch):
+    """Make every publication to a DLQ stream raise."""
+    real_publish = broker._adapter.publish
+
+    def publish(stream, message):
+        if stream.endswith(":dlq"):
+            raise RuntimeError("publish failed")
+        return real_publish(stream, message)
+
+    monkeypatch.setattr(broker._adapter, "publish", publish)
+
 
 class TestTheTimeoutDeadLetters:
     def test_a_stale_message_is_dead_lettered_as_timeout(self, broker, clock):
@@ -128,6 +156,22 @@ class TestTheTimeoutDeadLetters:
         assert entry.original_id == identifier
         assert entry.failure_reason == "timeout"
         assert entry.failed_at == START.isoformat()
+
+    def test_a_failed_dlq_write_keeps_the_stale_message_in_flight(
+        self, broker, clock, monkeypatch
+    ):
+        identifier = broker.publish(STREAM, {"foo": "bar"})
+        assert broker.get_next(STREAM, GROUP) is not None
+        _fail_dlq_writes(broker, monkeypatch)
+
+        with pytest.raises(RuntimeError, match="publish failed"):
+            broker._adapter._cleanup_stale_messages(GROUP, -1.0)
+
+        assert identifier in broker._adapter._in_flight[f"{STREAM}:{GROUP}"]
+        monkeypatch.undo()
+        broker._adapter._cleanup_stale_messages(GROUP, -1.0)
+        [entry] = broker.dlq_list([DLQ_STREAM])
+        assert entry.failure_reason == "timeout"
 
 
 class TestDepth:
@@ -437,10 +481,12 @@ class TestAGroupReadingTheDLQStream:
             _dead_letter(broker, {"n": n})
         broker._adapter._max_retries = 3
         broker._adapter._retry_delay = 0
-        for _ in range(2):
-            retrieved = broker.get_next(DLQ_STREAM, self.READER)
-            assert broker.nack(DLQ_STREAM, retrieved[0], self.READER) is True
+        retrieved = [broker.get_next(DLQ_STREAM, self.READER) for _ in range(2)]
+        for identifier, _message in retrieved:
+            assert broker.nack(DLQ_STREAM, identifier, self.READER) is True
         assert broker.get_next(DLQ_STREAM, self.READER) is not None
+        group_key = f"{DLQ_STREAM}:{self.READER}"
+        assert len(broker._adapter._redeliveries[group_key]) == 1
 
         assert broker.dlq_purge(DLQ_STREAM) == 2
 
