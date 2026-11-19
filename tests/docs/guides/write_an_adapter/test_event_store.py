@@ -77,6 +77,8 @@ def _run_conformance_suite() -> subprocess.CompletedProcess[str]:
             "delegating_memory",
             "-p",
             "no:cacheprovider",
+            "-p",
+            "no:randomly",
             "-q",
         ],
         cwd=REPO_ROOT,
