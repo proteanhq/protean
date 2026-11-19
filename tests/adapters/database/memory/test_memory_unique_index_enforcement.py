@@ -243,9 +243,9 @@ def test_raw_index_is_skipped(test_domain):
 
 
 def test_update_all_bypasses_unique_index_enforcement(test_domain):
-    """Documents the scope boundary: bulk `_update_all` is not guarded.
+    """Documents the scope boundary: bulk `update_all` is not guarded.
 
-    Row-at-a-time `_create`/`_update` (behind `repository.add`/`save`) enforce
+    Row-at-a-time `insert`/`update` (behind `repository.add`/`save`) enforce
     unique indexes; the low-level bulk escape hatch deliberately does not.
     """
 
@@ -260,6 +260,6 @@ def test_update_all_bypasses_unique_index_enforcement(test_domain):
     dao.save(Account(email="b@example.com"))
 
     # Bulk update onto a colliding value is accepted (no enforcement here).
-    updated = dao._update_all(Q(("email", "b@example.com")), email="a@example.com")
+    updated = dao.update_all(Q(("email", "b@example.com")), {"email": "a@example.com"})
     assert updated == 1
     assert dao.query.filter(email="a@example.com").all().total == 2

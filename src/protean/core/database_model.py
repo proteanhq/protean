@@ -104,7 +104,7 @@ class BaseDatabaseModel(Element, OptionsMixin):
         """Extract a single value from a storage record by key.
 
         ``to_entity()``, ``to_records()`` and the unique-key check in
-        ``BaseDAO.save_if_absent()`` read each value through it.
+        ``DAO.save_if_absent()`` read each value through it.
         Override in adapter subclasses for storage-specific access patterns.
         The default uses ``getattr()``, which works for object-based records
         (e.g. SQLAlchemy ORM instances).

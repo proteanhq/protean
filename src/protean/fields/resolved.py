@@ -191,7 +191,7 @@ class ResolvedField:
         """Raise a ValidationError with a formatted message.
 
         Matches the ``Field.fail()`` interface used by
-        ``BaseDAO._validate_unique()``.
+        ``DAO._validate_unique()``.
         """
         msg = _ERROR_MESSAGES.get(key, f"Validation failed: {key}")
         msg = msg.format(**kwargs)

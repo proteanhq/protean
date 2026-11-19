@@ -34,7 +34,7 @@ def test_update_all_returns_count_outside_uow(test_domain):
     dao = test_domain.repository_for(UpdateTestEntity)._dao
 
     # Update all entities in category A
-    update_count = dao._update_all(Q(category="A"), value=999)
+    update_count = dao.update_all(Q(category="A"), {"value": 999})
 
     # Should return count of 2
     assert update_count == 2
@@ -58,7 +58,7 @@ def test_update_all_with_empty_criteria_updates_nothing(test_domain):
     dao = test_domain.repository_for(UpdateTestEntity)._dao
 
     # Update entities with non-existent category
-    update_count = dao._update_all(Q(category="NonExistent"), value=999)
+    update_count = dao.update_all(Q(category="NonExistent"), {"value": 999})
 
     # Should return count of 0
     assert update_count == 0
@@ -70,7 +70,7 @@ def test_update_all_with_empty_criteria_updates_nothing(test_domain):
 
 
 def test_update_all_with_multiple_field_updates(test_domain):
-    """Test update_all with multiple field updates using *args and **kwargs"""
+    """Test update_all with several fields in one values mapping"""
     # Create test entities
     entity1 = UpdateTestEntity(name="Test1", category="A", value=10)
     entity2 = UpdateTestEntity(name="Test2", category="A", value=20)
@@ -80,13 +80,8 @@ def test_update_all_with_multiple_field_updates(test_domain):
 
     dao = test_domain.repository_for(UpdateTestEntity)._dao
 
-    # Update using both *args and **kwargs
-    update_dict = {"category": "Updated"}
-    update_count = dao._update_all(
-        Q(category="A"),
-        update_dict,  # *args
-        value=999,  # **kwargs
-        name="NewName",
+    update_count = dao.update_all(
+        Q(category="A"), {"category": "Updated", "value": 999, "name": "NewName"}
     )
 
     # Should return count of 2
@@ -114,7 +109,7 @@ def test_update_all_within_uow_does_not_commit(test_domain):
         dao = test_domain.repository_for(UpdateTestEntity)._dao
 
         # Update within UoW
-        update_count = dao._update_all(Q(category="A"), value=999)
+        update_count = dao.update_all(Q(category="A"), {"value": 999})
 
         # Should still return correct count
         assert update_count == 2
@@ -138,7 +133,9 @@ def test_update_all_updates_items_in_correct_order(test_domain):
     dao = test_domain.repository_for(UpdateTestEntity)._dao
 
     # Update all entities in the batch
-    update_count = dao._update_all(Q(category="batch"), value=100, name="Updated")
+    update_count = dao.update_all(
+        Q(category="batch"), {"value": 100, "name": "Updated"}
+    )
 
     # Should return count of 5
     assert update_count == 5
@@ -168,7 +165,7 @@ def test_update_all_handles_complex_criteria(test_domain):
 
     # Update entities in category A with value >= 30
     complex_criteria = Q(category="A") & Q(value__gte=30)
-    update_count = dao._update_all(complex_criteria, category="Updated")
+    update_count = dao.update_all(complex_criteria, {"category": "Updated"})
 
     # Should update 2 entities (Test2 and Test4)
     assert update_count == 2

@@ -225,22 +225,6 @@ class UnitOfWork:
         if saved:
             self._saved.add((provider_name, *key))
 
-    def _is_saved(self, aggregate: Any) -> bool:
-        """Whether this transaction has saved ``aggregate``."""
-        key = self._identity_key(aggregate)
-        return (aggregate.meta_.database, *key) in self._saved
-
-    def _discard_from_identity_map(
-        self, aggregate: Any, *, keep_tracked: bool = False
-    ) -> None:
-        """Stop counting ``aggregate`` as saved, for a save the store
-        rejected. Unless ``keep_tracked`` is set, also stop tracking it."""
-        provider_name = aggregate.meta_.database
-        key = self._identity_key(aggregate)
-        if not keep_tracked:
-            self._identity_map[provider_name].pop(key, None)
-        self._saved.discard((provider_name, *key))
-
     def _items_to_commit(self) -> list[tuple[str, Any]]:
         """The instances whose events this transaction commits, each with the
         name of its provider.

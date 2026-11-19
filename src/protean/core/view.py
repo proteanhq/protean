@@ -107,7 +107,7 @@ class ReadView(Generic[_ProjectionT]):
                 )
             return cast(_ProjectionT, result)
         else:
-            # ``BaseDAO.get`` is typed to return ``BaseEntity``; for a
+            # ``DAO.get`` is typed to return ``BaseEntity``; for a
             # projection-backed repository it returns the projection instance.
             return cast(_ProjectionT, self._repo()._dao.get(identifier))
 
@@ -125,7 +125,7 @@ class ReadView(Generic[_ProjectionT]):
                 f"projection `{self._projection_cls.__name__}`. "
                 f"Use get() for key-based lookups."
             )
-        # ``BaseDAO.find_by`` is typed to return ``BaseEntity``; for a
+        # ``DAO.find_by`` is typed to return ``BaseEntity``; for a
         # projection-backed repository it returns the projection instance.
         return cast(_ProjectionT, self._repo()._dao.find_by(**kwargs))
 

@@ -1,10 +1,13 @@
-"""How ``BaseDAO`` picks between an adapter's own claim or bounded-delete
-operation and the portable one.
+"""How the ``DAO`` service picks between an adapter's own operation and the
+portable one.
 
-A provider flag (``NATIVE_CLAIM``, ``FILTERED_CLAIM_CANDIDATES``,
-``BOUNDED_DELETE``) selects the adapter's operation. A DAO class that does not
-subclass the matching port raises ``ConfigurationError`` instead of falling
-back. The portable operations run inside ``claim_lock()``.
+A provider flag (``RAW_QUERIES``, ``NATIVE_CLAIM``,
+``FILTERED_CLAIM_CANDIDATES``, ``BOUNDED_DELETE``, ``INSERT_IF_ABSENT``)
+selects the adapter's operation. Building the service for an adapter class that
+does not subclass the matching port raises ``ConfigurationError``. The portable
+claim and the portable bounded delete run inside ``claim_lock()``. The portable
+``save_if_absent`` checks the key and saves with no lock; only the adapter's
+``INSERT_IF_ABSENT`` write runs inside ``claim_lock()``.
 """
 
 import threading
@@ -13,11 +16,20 @@ from types import SimpleNamespace
 
 import pytest
 
-from protean.adapters.database.memory import DictDAO, MemorySession
+from protean.adapters.database.elasticsearch import ElasticsearchDAO, ESDatabase
+from protean.adapters.database.memory import DictDAO, MemoryDatabase, MemorySession
+from protean.adapters.database.sqlalchemy import (
+    SADAO,
+    MssqlDatabase,
+    MysqlDatabase,
+    PostgresqlDatabase,
+    SqliteDatabase,
+)
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ConfigurationError
 from protean.fields import Integer, String
-from protean.port.dao import BaseDAO, HoldBack, NativeClaimPort, portable_claim
+from protean.infra.dao import DAO, portable_claim
+from protean.port.dao import DAOPort, HoldBack, NativeClaimPort
 from protean.port.database import DatabaseCapabilities
 from protean.utils.query import Q
 
@@ -34,36 +46,48 @@ def setup(test_domain):
     test_domain.init(traverse=False)
 
 
-class BareDAO(BaseDAO):
-    """A DAO that subclasses none of the ports. Its storage methods are never
-    reached: dispatch fails first."""
+class BareDAO(DAOPort):
+    """An adapter DAO that subclasses none of the optional ports. Its storage
+    methods are never reached."""
+
+    def __init__(self, provider, entity_cls, database_model_cls):
+        self.provider = provider
+        self.entity_cls = entity_cls
+        self.database_model_cls = database_model_cls
+        self.schema_name = entity_cls.meta_.schema_name
 
 
 # ABCMeta sets the abstract set when it builds the class, so clear it after.
 BareDAO.__abstractmethods__ = frozenset()
 
 
-def _bare_dao(test_domain, flags: DatabaseCapabilities) -> BareDAO:
-    provider = SimpleNamespace(name="stub", capabilities=flags)
-    return BareDAO(test_domain, provider, Task, None)
-
-
 class NativeOnlyDAO(BareDAO, NativeClaimPort):
-    """A DAO that subclasses only :class:`NativeClaimPort` and records each
-    ``claim`` call."""
+    """An adapter DAO that subclasses only :class:`NativeClaimPort` and records
+    each ``claim`` call."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.claims: list[tuple] = []
 
-    def claim(self, criteria, claim_fields, limit, order_by=(), hold_back=None):
-        self.claims.append((criteria, claim_fields, limit, order_by, hold_back))
+    def claim(
+        self, session, criteria, claim_fields, limit, order_by=(), hold_back=None
+    ):
+        self.claims.append(
+            (session, criteria, claim_fields, limit, order_by, hold_back)
+        )
         return []
 
 
-def _native_only_dao(test_domain, flags: DatabaseCapabilities) -> NativeOnlyDAO:
-    provider = SimpleNamespace(name="stub", capabilities=flags)
-    return NativeOnlyDAO(test_domain, provider, Task, None)
+NativeOnlyDAO.__abstractmethods__ = frozenset()
+
+
+def _stub_provider(flags: DatabaseCapabilities) -> SimpleNamespace:
+    return SimpleNamespace(name="stub", capabilities=flags)
+
+
+def _service(test_domain, adapter_cls, flags: DatabaseCapabilities) -> DAO:
+    provider = _stub_provider(flags)
+    return DAO(test_domain, provider, adapter_cls(provider, Task, None))
 
 
 HOLD_BY_KEY = HoldBack(
@@ -76,75 +100,109 @@ HOLD_BY_KEY = HoldBack(
 
 
 class TestMissingPortRaises:
-    def test_native_claim_without_the_port(self, test_domain):
-        dao = _bare_dao(test_domain, DatabaseCapabilities.NATIVE_CLAIM)
+    @pytest.mark.parametrize(
+        ("flag", "port_name"),
+        [
+            (DatabaseCapabilities.RAW_QUERIES, "RawQueryDAOPort"),
+            (DatabaseCapabilities.NATIVE_CLAIM, "NativeClaimPort"),
+            (DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES, "ClaimCandidatesPort"),
+            (DatabaseCapabilities.BOUNDED_DELETE, "BoundedDeletePort"),
+            (DatabaseCapabilities.INSERT_IF_ABSENT, "InsertIfAbsentPort"),
+        ],
+    )
+    def test_a_flag_without_its_port(self, test_domain, flag, port_name):
+        with pytest.raises(ConfigurationError) as exc:
+            _service(test_domain, BareDAO, flag)
+
+        assert str(exc.value) == (
+            f"Provider `stub` declares `{flag.name}`, but DAO class `BareDAO` "
+            f"does not subclass `{port_name}`"
+        )
+
+    def test_the_first_repository_use_raises(self, test_domain):
+        repo = test_domain.repository_for(Task)
+        provider = repo._provider
+        flags = DatabaseCapabilities.NATIVE_CLAIM
+        adapter = BareDAO(provider, Task, repo._database_model)
+        stub_provider = SimpleNamespace(
+            name=provider.name,
+            capabilities=flags,
+            dao_for=lambda entity_cls, model_cls: adapter,
+        )
+        repo._provider = stub_provider
 
         with pytest.raises(ConfigurationError) as exc:
-            dao._claim(Q(status="ready"), {"status": "claimed"}, limit=1)
+            repo._dao
 
         assert "NATIVE_CLAIM" in str(exc.value)
         assert "BareDAO" in str(exc.value)
-        assert "NativeClaimPort" in str(exc.value)
 
-    def test_filtered_claim_candidates_without_the_port(self, test_domain):
-        dao = _bare_dao(test_domain, DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES)
-
+    def test_one_missing_port_among_declared_flags(self, test_domain):
         with pytest.raises(ConfigurationError) as exc:
-            dao._claim(
-                Q(status="ready"),
-                {"status": "claimed"},
-                limit=1,
-                hold_back=HOLD_BY_KEY,
+            _service(
+                test_domain,
+                NativeOnlyDAO,
+                DatabaseCapabilities.NATIVE_CLAIM
+                | DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES,
             )
-
-        assert "FILTERED_CLAIM_CANDIDATES" in str(exc.value)
-        assert "BareDAO" in str(exc.value)
-        assert "ClaimCandidatesPort" in str(exc.value)
-
-    def test_filtered_claim_candidates_without_the_port_on_a_plain_claim(
-        self, test_domain
-    ):
-        dao = _bare_dao(test_domain, DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES)
-
-        with pytest.raises(ConfigurationError) as exc:
-            dao._claim(Q(status="ready"), {"status": "claimed"}, limit=1)
-
-        assert "FILTERED_CLAIM_CANDIDATES" in str(exc.value)
-        assert "ClaimCandidatesPort" in str(exc.value)
-
-    def test_native_claim_dao_without_the_claim_candidates_port(self, test_domain):
-        dao = _native_only_dao(
-            test_domain,
-            DatabaseCapabilities.NATIVE_CLAIM
-            | DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES,
-        )
-
-        with pytest.raises(ConfigurationError) as exc:
-            dao._claim(Q(status="ready"), {"status": "claimed"}, limit=1)
 
         assert "FILTERED_CLAIM_CANDIDATES" in str(exc.value)
         assert "NativeOnlyDAO" in str(exc.value)
         assert "ClaimCandidatesPort" in str(exc.value)
-        assert dao.claims == []
 
-    def test_bounded_delete_without_the_port(self, test_domain):
-        dao = _bare_dao(test_domain, DatabaseCapabilities.BOUNDED_DELETE)
+    def test_no_flags_builds_without_any_port(self, test_domain):
+        dao = _service(test_domain, BareDAO, DatabaseCapabilities(0))
 
-        with pytest.raises(ConfigurationError) as exc:
-            dao._delete_top(Q(), limit=1)
+        assert isinstance(dao._adapter, BareDAO)
 
-        assert "BOUNDED_DELETE" in str(exc.value)
-        assert "BareDAO" in str(exc.value)
-        assert "BoundedDeletePort" in str(exc.value)
+    def test_a_port_without_its_flag_builds(self, test_domain):
+        dao = _service(test_domain, NativeOnlyDAO, DatabaseCapabilities(0))
+
+        assert isinstance(dao._adapter, NativeOnlyDAO)
+
+    @pytest.mark.parametrize(
+        ("provider_cls", "adapter_cls"),
+        [
+            (MemoryDatabase, DictDAO),
+            (PostgresqlDatabase, SADAO),
+            (SqliteDatabase, SADAO),
+            (MssqlDatabase, SADAO),
+            (MysqlDatabase, SADAO),
+            (ESDatabase, ElasticsearchDAO),
+        ],
+    )
+    def test_each_built_in_adapter_has_the_ports_of_its_flags(
+        self, test_domain, provider_cls, adapter_cls
+    ):
+        # ``capabilities`` reads no instance state, so an uninitialized
+        # provider and adapter are enough, and no database is reached.
+        provider = object.__new__(provider_cls)
+        provider.name = provider_cls.__name__
+        adapter = object.__new__(adapter_cls)
+        adapter.entity_cls = Task
+        adapter.database_model_cls = None
+        adapter.schema_name = Task.meta_.schema_name
+
+        dao = DAO(test_domain, provider, adapter)
+
+        assert dao._adapter is adapter
 
     def test_a_non_positive_limit_returns_before_dispatch(self, test_domain):
-        dao = _bare_dao(
-            test_domain,
-            DatabaseCapabilities.NATIVE_CLAIM | DatabaseCapabilities.BOUNDED_DELETE,
-        )
+        dao = _service(test_domain, NativeOnlyDAO, DatabaseCapabilities.NATIVE_CLAIM)
 
-        assert dao._claim(Q(), {"status": "claimed"}, limit=0) == []
-        assert dao._delete_top(Q(), limit=0) == 0
+        assert dao.claim(Q(), {"status": "claimed"}, limit=0) == []
+        assert dao._adapter.claims == []
+
+    def test_a_native_claim_reaches_the_adapter(self, test_domain):
+        dao = _service(test_domain, NativeOnlyDAO, DatabaseCapabilities.NATIVE_CLAIM)
+        session = SimpleNamespace(close=lambda: None)
+        dao.provider.new_session = lambda: session
+        dao.provider.commit = lambda session: None
+
+        assert dao.claim(Q(status="ready"), {"status": "claimed"}, limit=2) == []
+        assert dao._adapter.claims == [
+            (session, Q(status="ready"), {"status": "claimed"}, 2, (), None)
+        ]
 
 
 class TestPortableClaimOrder:
@@ -161,18 +219,18 @@ class TestPortableClaimOrder:
 
 
 class TestClaimLock:
-    def test_base_dao_claim_lock_is_a_null_context(self, test_domain):
-        dao = _bare_dao(test_domain, DatabaseCapabilities(0))
+    def test_the_port_default_claim_lock_is_a_null_context(self, test_domain):
+        adapter = BareDAO(_stub_provider(DatabaseCapabilities(0)), Task, None)
 
-        assert isinstance(dao.claim_lock(), nullcontext)
+        assert isinstance(adapter.claim_lock(), nullcontext)
 
     def test_memory_claim_lock_is_the_session_lock(self, test_domain):
-        dao = test_domain.repository_for(Task)._dao
-        assert isinstance(dao, DictDAO)
-        provider = dao.provider
+        adapter = test_domain.repository_for(Task)._dao._adapter
+        assert isinstance(adapter, DictDAO)
+        provider = adapter.provider
 
-        assert dao.claim_lock() is provider._locks[provider.name]
-        assert dao.claim_lock() is dao._get_session()._db["lock"]
+        assert adapter.claim_lock() is provider._locks[provider.name]
+        assert adapter.claim_lock() is provider.new_session()._db["lock"]
 
     def test_memory_claims_do_not_overlap(self, test_domain, monkeypatch):
         """Two threads claim the same row. Each waits briefly for the other
@@ -196,7 +254,7 @@ class TestClaimLock:
             with test_domain.domain_context():
                 dao = test_domain.repository_for(Task)._dao
                 start.wait()
-                rows = dao._claim(Q(status="ready"), {"status": "claimed"}, limit=1)
+                rows = dao.claim(Q(status="ready"), {"status": "claimed"}, limit=1)
                 claimed[idx] = [row.id for row in rows]
 
         threads = [threading.Thread(target=worker, args=(i,)) for i in range(2)]

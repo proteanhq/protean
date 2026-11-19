@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from protean.core.projection import BaseProjection
     from protean.core.queryset import Record
     from protean.domain import Domain
-    from protean.port.dao import LookupPort
+    from protean.port.dao import DAOPort, LookupPort
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,9 @@ class DatabaseCapabilities(Flag):
     NATIVE_CLAIM = auto()  # Claims rows in one statement
     BOUNDED_DELETE = auto()  # Deletes up to ``limit`` rows in one operation, without a separate read of their ids
     FILTERED_CLAIM_CANDIDATES = auto()  # Leaves held rows out of a claim's candidates
+    INSERT_IF_ABSENT = (
+        auto()
+    )  # Writes a row only when no other row holds its unique key, in one atomic step
 
     # Convenience Capability Sets
     BASIC_STORAGE = CRUD | FILTER | BULK_OPERATIONS | ORDERING
@@ -99,7 +102,8 @@ class SessionProtocol(Protocol):
     ``begin()`` only when ``is_active`` is ``False``.
     """
 
-    is_active: bool
+    @property
+    def is_active(self) -> bool: ...
 
     def commit(self) -> None: ...
     def rollback(self) -> None: ...
@@ -230,6 +234,40 @@ class DatabasePort(Protocol):
         """
 
     @abstractmethod
+    def new_session(self) -> SessionProtocol:
+        """A new session, independent of any session a Unit of Work holds.
+
+        The `DAO` service runs a standalone operation in it, and ends it with
+        `commit` or `rollback` and then `close`.
+        """
+
+    @abstractmethod
+    def commit(self, session: SessionProtocol) -> None:
+        """Commit `session`.
+
+        Raises:
+            ExpectedVersionError: A version-checked write in the session found
+                a newer stored version.
+        """
+
+    @abstractmethod
+    def rollback(self, session: SessionProtocol) -> None:
+        """Roll back `session`."""
+
+    def flush(self, session: SessionProtocol) -> None:
+        """Run `session`'s pending writes inside its transaction, without
+        committing. Does nothing by default, for a session that writes at
+        commit.
+
+        Raises:
+            ExpectedVersionError: A version-checked write in the session found
+                a newer stored version.
+        """
+        # mypy treats a Protocol member whose body is only a docstring as
+        # abstract; a provider whose session writes at commit inherits this no-op.
+        return None  # noqa: RET501
+
+    @abstractmethod
     def get_connection(self) -> object:
         """The adapter's native handle, such as a SQLAlchemy session or an
         Elasticsearch client."""
@@ -272,8 +310,9 @@ class DatabasePort(Protocol):
         self,
         entity_cls: "type[BaseEntity | BaseProjection]",
         model_cls: "type[DatabaseModelPort]",
-    ) -> Any:
-        """A DAO for `entity_cls` that stores it through `model_cls`."""
+    ) -> "DAOPort":
+        """The adapter DAO for `entity_cls` that stores it through
+        `model_cls`."""
 
     @abstractmethod
     def model_for(

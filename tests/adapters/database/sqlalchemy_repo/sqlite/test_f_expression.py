@@ -43,7 +43,7 @@ def _seed(domain):
 class TestSqliteFExpression:
     def test_emitted_sql_references_the_column_not_a_bind_param(self, f_domain):
         dao = f_domain.repository_for(FJob)._dao
-        expression = dao._build_filters(Q(retry_count__lt=F("max_retries")))
+        expression = dao._adapter._build_filters(Q(retry_count__lt=F("max_retries")))
         sql = str(expression.compile(dialect=dao.provider._engine.dialect))
 
         # Both columns appear; the right-hand side is the column, not a bound

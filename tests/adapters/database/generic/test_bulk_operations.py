@@ -1,6 +1,6 @@
 """Generic bulk operation tests that run against all database providers.
 
-Covers _update_all(), _delete_all(), _delete_top() bounded delete, and filtered
+Covers update_all(), delete_all(), delete_top() bounded delete, and filtered
 bulk operations on the DAO layer.
 """
 
@@ -11,7 +11,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ObjectNotFoundError
 from protean.fields import DateTime, Integer, String
-from protean.port import dao as dao_module
+from protean.infra import dao as dao_module
 from protean.port.database import DatabaseCapabilities
 from protean.utils.query import Q
 
@@ -90,9 +90,7 @@ class TestBulkDeleteOperations:
         )
 
         # Perform delete
-        deleted_count = test_domain.repository_for(Person)._dao._delete_all(
-            Q(age__gt=3)
-        )
+        deleted_count = test_domain.repository_for(Person)._dao.delete_all(Q(age__gt=3))
 
         # Query and check if only the relevant records have been deleted
         assert deleted_count == 2
@@ -193,42 +191,8 @@ class TestBulkUpdateOperations:
         )
 
         # Perform update
-        updated_count = test_domain.repository_for(Person)._dao._update_all(
+        updated_count = test_domain.repository_for(Person)._dao.update_all(
             Q(age__gt=3), {"last_name": "Fraud"}
-        )
-
-        # Query and check if only the relevant records have been updated
-        assert updated_count == 2
-
-        u_person1 = test_domain.repository_for(Person)._dao.get("1")
-        u_person2 = test_domain.repository_for(Person)._dao.get("2")
-        u_person3 = test_domain.repository_for(Person)._dao.get("3")
-        u_person4 = test_domain.repository_for(Person)._dao.get("4")
-        assert u_person1.last_name == "Musketeer"
-        assert u_person2.last_name == "Musketeer"
-        assert u_person3.last_name == "Fraud"
-        assert u_person4.last_name == "Fraud"
-
-    def test_updating_multiple_records_through_filter_with_kwarg_value(
-        self, test_domain
-    ):
-        """Try updating all records satisfying filter in one step"""
-        test_domain.repository_for(Person)._dao.create(
-            id="1", first_name="Athos", last_name="Musketeer", age=2
-        )
-        test_domain.repository_for(Person)._dao.create(
-            id="2", first_name="Porthos", last_name="Musketeer", age=3
-        )
-        test_domain.repository_for(Person)._dao.create(
-            id="3", first_name="Aramis", last_name="Musketeer", age=4
-        )
-        test_domain.repository_for(Person)._dao.create(
-            id="4", first_name="dArtagnan", last_name="Musketeer", age=5
-        )
-
-        # Perform update
-        updated_count = test_domain.repository_for(Person)._dao._update_all(
-            Q(age__gt=3), last_name="Fraud"
         )
 
         # Query and check if only the relevant records have been updated
@@ -253,7 +217,7 @@ class DeleteTopTicket(BaseAggregate):
 
 @pytest.mark.basic_storage
 class TestDeleteTop:
-    """``_delete_top`` deletes up to ``limit`` matching rows and returns the
+    """``delete_top`` deletes up to ``limit`` matching rows and returns the
     count, on every provider (SQL single-statement path, Elasticsearch
     ``delete_by_query``, in-memory serialized delete)."""
 
@@ -274,7 +238,7 @@ class TestDeleteTop:
         return repo._dao
 
     def test_bounded_delete_returns_count(self, seeded_dao):
-        deleted = seeded_dao._delete_top(Q(), limit=3)
+        deleted = seeded_dao.delete_top(Q(), limit=3)
 
         assert deleted == 3
         assert seeded_dao.query.count() == 4
@@ -282,7 +246,7 @@ class TestDeleteTop:
     def test_drains_table_in_batches(self, seeded_dao):
         total = 0
         while True:
-            deleted = seeded_dao._delete_top(Q(), limit=2)
+            deleted = seeded_dao.delete_top(Q(), limit=2)
             total += deleted
             if deleted < 2:
                 break
@@ -297,20 +261,20 @@ class TestDeleteTop:
         for i in range(4):
             repo.add(DeleteTopTicket(status="closed", rank=i))
 
-        deleted = repo._dao._delete_top(Q(status="closed"), limit=10)
+        deleted = repo._dao.delete_top(Q(status="closed"), limit=10)
 
         assert deleted == 4
         assert repo._dao.query.count() == 3
 
     def test_order_by_controls_which_rows_go_first(self, seeded_dao):
-        seeded_dao._delete_top(Q(), limit=2, order_by="-rank")
+        seeded_dao.delete_top(Q(), limit=2, order_by="-rank")
 
         remaining = sorted(t.rank for t in seeded_dao.query.all().items)
         assert remaining == [0, 1, 2, 3, 4]
 
     def test_limit_zero_or_negative_deletes_nothing(self, seeded_dao):
-        assert seeded_dao._delete_top(Q(), limit=0) == 0
-        assert seeded_dao._delete_top(Q(), limit=-1) == 0
+        assert seeded_dao.delete_top(Q(), limit=0) == 0
+        assert seeded_dao.delete_top(Q(), limit=-1) == 0
         assert seeded_dao.query.count() == 7
 
     def test_a_bounded_delete_provider_runs_the_dao_delete_top(
@@ -324,15 +288,15 @@ class TestDeleteTop:
 
         monkeypatch.setattr(dao_module, "portable_delete_top", fail)
         calls: list[tuple] = []
-        delete_top = seeded_dao.delete_top
+        delete_top = seeded_dao._adapter.delete_top
 
-        def recording_delete_top(criteria, limit, order_by=None):
+        def recording_delete_top(session, criteria, limit, order_by=None):
             calls.append((limit, order_by))
-            return delete_top(criteria, limit, order_by)
+            return delete_top(session, criteria, limit, order_by)
 
-        monkeypatch.setattr(seeded_dao, "delete_top", recording_delete_top)
+        monkeypatch.setattr(seeded_dao._adapter, "delete_top", recording_delete_top)
 
-        assert seeded_dao._delete_top(Q(), limit=2, order_by="rank") == 2
+        assert seeded_dao.delete_top(Q(), limit=2, order_by="rank") == 2
         remaining = sorted(t.rank for t in seeded_dao.query.all().items)
         assert remaining == [2, 3, 4, 5, 6]
         assert calls == [(2, "rank")]
@@ -351,8 +315,8 @@ class TestDeleteTop:
         def fail(*args, **kwargs):
             raise AssertionError("delete_top must not run without BOUNDED_DELETE")
 
-        if hasattr(seeded_dao, "delete_top"):
-            monkeypatch.setattr(seeded_dao, "delete_top", fail)
+        if hasattr(seeded_dao._adapter, "delete_top"):
+            monkeypatch.setattr(seeded_dao._adapter, "delete_top", fail)
         calls: list[tuple] = []
         portable = dao_module.portable_delete_top
 
@@ -362,7 +326,7 @@ class TestDeleteTop:
 
         monkeypatch.setattr(dao_module, "portable_delete_top", recording_portable)
 
-        assert seeded_dao._delete_top(Q(), limit=2, order_by="rank") == 2
+        assert seeded_dao.delete_top(Q(), limit=2, order_by="rank") == 2
         remaining = sorted(t.rank for t in seeded_dao.query.all().items)
         assert remaining == [2, 3, 4, 5, 6]
         assert calls == [(2, "rank")]

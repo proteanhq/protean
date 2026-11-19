@@ -88,8 +88,8 @@ class TestFilterPaths:
         assert dao._count(Q(first_name="Athos") | Q(age=50)) == 2
 
     def test_update_all_with_an_or_updates_only_matching_documents(self, dao):
-        updated = dao._update_all(
-            Q(first_name="Athos") | Q(age=50), last_name="Updated"
+        updated = dao.update_all(
+            Q(first_name="Athos") | Q(age=50), {"last_name": "Updated"}
         )
 
         assert updated == 2
@@ -100,7 +100,7 @@ class TestFilterPaths:
         ]
 
     def test_delete_all_with_an_or_deletes_only_matching_documents(self, dao):
-        deleted = dao._delete_all(Q(first_name="Athos") | Q(age=50))
+        deleted = dao.delete_all(Q(first_name="Athos") | Q(age=50))
 
         assert deleted == 2
         remaining = dao._filter(Q())

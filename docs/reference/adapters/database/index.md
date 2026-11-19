@@ -161,7 +161,7 @@ flags:
 | `NATIVE_JSON` | Native JSON column support (e.g. PostgreSQL `JSONB`) |
 | `NATIVE_ARRAY` | Native array column support (e.g. PostgreSQL `ARRAY`) |
 
-**Claim and delete**
+**Claim, delete and insert-if-absent**
 
 No convenience set includes these flags. Each provider declares them on its own.
 
@@ -170,6 +170,7 @@ No convenience set includes these flags. Each provider declares them on its own.
 | `NATIVE_CLAIM` | Claims rows in one statement |
 | `BOUNDED_DELETE` | Deletes up to `limit` rows in one operation, without a separate read of their ids |
 | `FILTERED_CLAIM_CANDIDATES` | Leaves held rows out of a claim's candidates |
+| `INSERT_IF_ABSENT` | Writes a row only when no other row holds its unique key, in one atomic step |
 
 ### Convenience Sets
 
@@ -222,6 +223,7 @@ On the memory provider, `results` holds one record, Ada's.
 | NATIVE_CLAIM |  |  | :white_check_mark: |  |  |  |
 | BOUNDED_DELETE | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  | :white_check_mark: |
 | FILTERED_CLAIM_CANDIDATES |  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
+| INSERT_IF_ABSENT | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
 
 ## Provider Registry
 

@@ -1,6 +1,6 @@
 """Save-path tests for lifecycle/audit support.
 
-Covers the two mechanisms that fire in ``BaseDAO.save``:
+Covers the two mechanisms that fire in ``DAO.save``:
 
 - **Part A** — ``auto_now`` / ``auto_now_add`` timestamp stamping.
 - **Part B** — registered aggregate pre-persist enrichers that stamp

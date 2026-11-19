@@ -1,4 +1,4 @@
-"""Tests for BaseDAO._sync_event_position and _track_in_uow.
+"""Tests for DAO._sync_event_position and _track_in_uow.
 
 These methods are post-retrieval hooks called by QuerySet.all() and
 QuerySet.raw() after converting database models to domain entities.
@@ -70,7 +70,7 @@ def register_elements(test_domain):
 
 
 class TestSyncEventPosition:
-    """Tests for BaseDAO._sync_event_position."""
+    """Tests for DAO._sync_event_position."""
 
     def test_no_op_for_non_aggregate(self, test_domain):
         """_sync_event_position is a no-op for non-aggregate entities."""
@@ -152,7 +152,7 @@ class TestSyncEventPosition:
 
 
 class TestTrackInUoW:
-    """Tests for BaseDAO._track_in_uow."""
+    """Tests for DAO._track_in_uow."""
 
     def test_no_op_without_uow(self, test_domain):
         """_track_in_uow is a no-op when there is no active UoW."""

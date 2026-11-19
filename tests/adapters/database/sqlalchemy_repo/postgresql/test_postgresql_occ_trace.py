@@ -1,6 +1,6 @@
 """The SQLAlchemy OCC commit path emits the trace the spec checks (:issue:`#1382`).
 
-The version-guarded ``_update`` observes the same compare-and-set ``specs/OCC.tla``
+The version-guarded ``update`` observes the same compare-and-set ``specs/OCC.tla``
 models: a standalone update flushes ``UPDATE ... SET _version = base + 1 WHERE
 _version = base`` and, if the row's live version already moved past the base, the
 version check rejects it as an ``ExpectedVersionError``. With the recorder active,
@@ -14,8 +14,8 @@ observations.
 
 The updates go through the DAO directly rather than ``repository.add`` because
 ``add`` wraps its own Unit of Work, which defers the version-guarded flush to the
-UoW commit; the standalone DAO path flushes inside ``_update``, where the outcome
-is observable.
+UoW commit; the standalone DAO path commits through ``SADatabase.commit``, where
+the outcome is observable.
 """
 
 import pytest
@@ -95,7 +95,7 @@ def test_update_emits_committed_then_conflicted(trace_domain):
 
 def test_update_through_a_unit_of_work_records_nothing(trace_domain):
     """Under a UnitOfWork the version-guarded flush is deferred to the UoW commit,
-    so ``_update`` cannot observe the compare-and-set outcome. Both SQL emits are
+    so the standalone commit path never sees the compare-and-set outcome. Both SQL emits are
     gated on the standalone path for that reason, so a UoW update records nothing
     rather than a half-observed event (:issue:`#1382`)."""
     repo = trace_domain.repository_for(OCCTraceCounter)
@@ -117,9 +117,10 @@ def test_update_through_a_unit_of_work_records_nothing(trace_domain):
 def _provoke_standalone_flush_conflict(domain, monkeypatch):
     """Return a ``save()`` that hits a standalone flush-time version conflict.
 
-    A standalone ``_update`` reads and flushes back to back, so there is no window
+    A standalone ``update`` reads and commits back to back, so there is no window
     to race it single-threaded. This injects an out-of-band version bump *between*
-    the read and the flush by wrapping ``_commit_if_standalone``, making the flush's
+    the read and the flush by wrapping ``SADatabase.commit`` for the session that
+    holds the pending update, making the flush's
     ``WHERE _version = 0`` match zero rows deterministically (the same trick as
     ``test_flush_time_version_conflict_raises_expected_version_error``, adapted to
     the standalone path)."""
@@ -133,10 +134,12 @@ def _provoke_standalone_flush_conflict(domain, monkeypatch):
     entity.value = 7
 
     provider = provider_adapter(domain, "default")
-    dao_cls = type(repo._dao)
-    real_commit = dao_cls._commit_if_standalone
+    provider_cls = type(provider)
+    real_commit = provider_cls.commit
 
-    def bump_then_commit(self, conn):
+    def bump_then_commit(self, session):
+        if not session.dirty:
+            return real_commit(self, session)
         with provider._engine.connect() as other:
             other.execute(
                 text(
@@ -145,9 +148,9 @@ def _provoke_standalone_flush_conflict(domain, monkeypatch):
                 {"id": str(counter_id)},
             )
             other.commit()
-        return real_commit(self, conn)
+        return real_commit(self, session)
 
-    monkeypatch.setattr(dao_cls, "_commit_if_standalone", bump_then_commit)
+    monkeypatch.setattr(provider_cls, "commit", bump_then_commit)
     return counter_id, lambda: repo._dao.save(entity)
 
 
@@ -177,3 +180,104 @@ def test_standalone_flush_conflict_is_recorded_as_a_conflict(trace_domain, monke
     assert recorded[0]["stream"] == f"occ_trace_counter:{counter_id}"
     assert recorded[0]["base"] == 0
     assert recorded[0]["version_after"] is None
+
+
+def test_a_stale_update_through_a_unit_of_work_records_nothing(trace_domain):
+    """The Unit of Work commits its session without ``SADatabase.commit``, so the
+    trace could not record that commit. A refused update inside it records no
+    ``conflicted`` either, which keeps the trace free of a conflict whose
+    winning commit it never saw."""
+    repo = trace_domain.repository_for(OCCTraceCounter)
+    with UnitOfWork():
+        seed = OCCTraceCounter(value=0)
+        repo.add(seed)
+    stale = repo.get(seed.id)
+    with UnitOfWork():
+        fresh = repo.get(seed.id)
+        fresh.value = 1
+        repo.add(fresh)
+
+    with occ_trace.capture() as events:
+        with pytest.raises(ExpectedVersionError):
+            with UnitOfWork():
+                stale.value = 2
+                repo.add(stale)
+        recorded = list(events)
+
+    assert recorded == [], recorded
+
+
+def _seed_counters(domain, count):
+    repo = domain.repository_for(OCCTraceCounter)
+    with UnitOfWork():
+        counters = [OCCTraceCounter(value=0) for _ in range(count)]
+        for counter in counters:
+            repo.add(counter)
+    return [counter.id for counter in counters]
+
+
+def _stage_updates(domain, session, counter_ids):
+    """Version-check and stage an update of each counter from base 0, with no
+    statement sent before the caller flushes or commits ``session``."""
+    repo = domain.repository_for(OCCTraceCounter)
+    adapter = repo._dao._adapter
+    with session.no_autoflush:
+        for counter_id in counter_ids:
+            entity = repo.get(counter_id)
+            entity._version = entity._next_version
+            entity.value = 5
+            model = adapter.database_model_cls.from_entity(entity)
+            adapter.update(session, model, expected_version=0)
+
+
+def _bump_version(domain, counter_id):
+    provider = provider_adapter(domain, "default")
+    with provider._engine.connect() as other:
+        other.execute(
+            text("UPDATE occ_trace_counter SET _version = _version + 1 WHERE id = :id"),
+            {"id": str(counter_id)},
+        )
+        other.commit()
+
+
+def test_a_commit_that_checked_two_rows_records_no_conflict(trace_domain):
+    """SQLAlchemy does not say which row lost the race, so ``SADatabase.commit``
+    records nothing when the session version-checked two rows."""
+    provider = provider_adapter(trace_domain, "default")
+    first_id, second_id = _seed_counters(trace_domain, 2)
+
+    with occ_trace.capture() as events:
+        session = provider.new_session()
+        try:
+            _stage_updates(trace_domain, session, [first_id, second_id])
+            _bump_version(trace_domain, first_id)
+            with pytest.raises(ExpectedVersionError):
+                provider.commit(session)
+        finally:
+            provider.rollback(session)
+            session.close()
+        recorded = list(events)
+
+    assert recorded == [], recorded
+
+
+@pytest.mark.parametrize("end", ["commit", "flush"])
+def test_a_stale_session_that_checked_one_row_records_its_conflict(trace_domain, end):
+    provider = provider_adapter(trace_domain, "default")
+    (counter_id,) = _seed_counters(trace_domain, 1)
+
+    with occ_trace.capture() as events:
+        session = provider.new_session()
+        try:
+            _stage_updates(trace_domain, session, [counter_id])
+            _bump_version(trace_domain, counter_id)
+            with pytest.raises(ExpectedVersionError):
+                getattr(provider, end)(session)
+        finally:
+            provider.rollback(session)
+            session.close()
+        recorded = list(events)
+
+    assert [
+        (e["stream"], e["base"], e["outcome"], e["version_after"]) for e in recorded
+    ] == [(f"occ_trace_counter:{counter_id}", 0, "conflicted", None)]

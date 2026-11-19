@@ -1,10 +1,10 @@
 """Generic find-and-claim conformance tests across database providers.
 
-``_claim`` correctness (single worker) runs on every transactional adapter
+``claim`` correctness (single worker) runs on every transactional adapter
 (in-memory + SQL). No-double-claim under concurrency requires real
 database-level atomicity, so it runs on SQL only (``atomic_transactions``).
 
-Elasticsearch is exempt from ``_claim`` conformance: it has neither the
+Elasticsearch is exempt from ``claim`` conformance: it has neither the
 ``transactional`` nor the ``atomic_transactions`` capability, and its
 document-versioning surfaces a lost race as a version conflict rather than a
 graceful skip, so it is not a supported concurrent claim store. See ADR-0013
@@ -20,7 +20,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Integer, String
-from protean.port import dao as dao_module
+from protean.infra import dao as dao_module
 from protean.port.dao import HoldBack
 from protean.port.database import DatabaseCapabilities
 from protean.utils.query import Q
@@ -58,13 +58,13 @@ def _seed(test_domain, count, status="ready"):
 
 @pytest.mark.transactional
 class TestClaimConformance:
-    """``_claim`` correctness for any transactional adapter (in-memory + SQL)."""
+    """``claim`` correctness for any transactional adapter (in-memory + SQL)."""
 
     def test_claimed_rows_return_in_post_claim_state(self, test_domain):
         _seed(test_domain, 5)
         dao = test_domain.repository_for(ClaimJob)._dao
 
-        claimed = dao._claim(
+        claimed = dao.claim(
             Q(status="ready"),
             {"status": "claimed", "locked_by": "w1"},
             limit=10,
@@ -78,15 +78,15 @@ class TestClaimConformance:
         repo = test_domain.repository_for(ClaimJob)
         dao = repo._dao
 
-        claimed = dao._claim(Q(status="ready"), {"status": "claimed"}, limit=10)
+        claimed = dao.claim(Q(status="ready"), {"status": "claimed"}, limit=10)
         assert len(claimed) == 3
 
-        # The claim is committed the moment ``_claim`` returns.
+        # The claim is committed the moment ``claim`` returns.
         for job in claimed:
             assert repo.get(job.id).status == "claimed"
 
         # No eligible rows remain, so a second worker claims nothing.
-        assert dao._claim(Q(status="ready"), {"status": "claimed"}, limit=10) == []
+        assert dao.claim(Q(status="ready"), {"status": "claimed"}, limit=10) == []
 
     def test_criteria_restricts_eligible_rows(self, test_domain):
         # Seed a mix: only the "ready" rows satisfy the claim criteria.
@@ -94,7 +94,7 @@ class TestClaimConformance:
         _seed(test_domain, 2, status="done")
         dao = test_domain.repository_for(ClaimJob)._dao
 
-        claimed = dao._claim(Q(status="ready"), {"status": "claimed"}, limit=10)
+        claimed = dao.claim(Q(status="ready"), {"status": "claimed"}, limit=10)
 
         assert len(claimed) == 3
         assert all(j.status == "claimed" for j in claimed)
@@ -105,7 +105,7 @@ class TestClaimConformance:
         _seed(test_domain, 6)
         dao = test_domain.repository_for(ClaimJob)._dao
 
-        claimed = dao._claim(
+        claimed = dao.claim(
             Q(status="ready"),
             {"status": "claimed"},
             limit=3,
@@ -122,7 +122,7 @@ class TestClaimConformance:
             repo.add(ClaimJob(priority=priority, seq=seq))
         dao = repo._dao
 
-        claimed = dao._claim(
+        claimed = dao.claim(
             Q(status="ready"),
             {"status": "claimed"},
             limit=10,
@@ -144,7 +144,7 @@ class TestClaimConformance:
             repo.add(ClaimJob(priority=priority, seq=seq))
         dao = repo._dao
 
-        claimed = dao._claim(
+        claimed = dao.claim(
             Q(status="ready"),
             {"status": "claimed"},
             limit=4,
@@ -170,7 +170,7 @@ class TestClaimConformance:
             dao.query.filter(status="ready").order_by(["-seq", "priority"]).all().items
         )
 
-        claimed = dao._claim(
+        claimed = dao.claim(
             Q(status="ready"),
             {"status": "claimed"},
             limit=10,
@@ -190,7 +190,7 @@ class TestClaimConformance:
             dao.query.filter(status="ready").order_by(["seq", "priority"]).all().items
         )
 
-        claimed = dao._claim(
+        claimed = dao.claim(
             Q(status="ready"),
             {"status": "claimed"},
             limit=3,
@@ -204,8 +204,8 @@ class TestClaimConformance:
         _seed(test_domain, 3)
         dao = test_domain.repository_for(ClaimJob)._dao
 
-        assert dao._claim(Q(status="ready"), {"status": "claimed"}, 0) == []
-        assert dao._claim(Q(status="ready"), {"status": "claimed"}, -1) == []
+        assert dao.claim(Q(status="ready"), {"status": "claimed"}, 0) == []
+        assert dao.claim(Q(status="ready"), {"status": "claimed"}, -1) == []
         # A non-positive limit is a no-op: no row was mutated.
         assert dao.query.filter(status="ready").count() == 3
 
@@ -236,7 +236,7 @@ def _drain_claims(
         dao = test_domain.repository_for(ClaimJob)._dao
         start.wait()
         while True:
-            claimed = dao._claim(
+            claimed = dao.claim(
                 Q(status="ready"),
                 {"status": "claimed", "locked_by": f"w{idx}"},
                 limit=3,
@@ -342,7 +342,7 @@ def _skip_if_postgresql(test_domain) -> None:
 
 def _claim_keyed(test_domain, hold_back=HOLD_BY_KEY, limit=10):
     dao = test_domain.repository_for(KeyedJob)._dao
-    claimed = dao._claim(
+    claimed = dao.claim(
         Q(status="ready"),
         {"status": "claimed"},
         limit=limit,
@@ -520,7 +520,7 @@ HOLD_BACK_CASES = [
 
 @pytest.mark.transactional
 class TestClaimHoldBack:
-    """``_claim`` with ``hold_back`` on any transactional adapter."""
+    """``claim`` with ``hold_back`` on any transactional adapter."""
 
     @pytest.mark.parametrize(
         ("rows", "hold_back", "limit", "expected"), HOLD_BACK_CASES
@@ -596,7 +596,7 @@ class TestClaimHoldBack:
         _skip_if_postgresql(test_domain)
         _keyed(test_domain, _row("a", 0, "k1"), _row("b", 1, "k1"), _row("c", 2, "k2"))
         dao = test_domain.repository_for(KeyedJob)._dao
-        update_all = dao._update_all
+        update_all = dao.update_all
 
         def another_worker_takes_a(criteria, values):
             # Another worker claims "a" between this call's read and its
@@ -605,9 +605,9 @@ class TestClaimHoldBack:
                 return 0
             return update_all(criteria, values)
 
-        monkeypatch.setattr(dao, "_update_all", another_worker_takes_a)
+        monkeypatch.setattr(dao, "update_all", another_worker_takes_a)
 
-        claimed = dao._claim(
+        claimed = dao.claim(
             Q(status="ready"),
             {"status": "claimed"},
             limit=10,
@@ -624,7 +624,10 @@ class TestClaimHoldBack:
         _keyed(test_domain, *_key_rows("k1", range(1, 6)))
         _keyed(test_domain, _row("k2-0", 10, "k2"))
 
-        page = dao.claim_candidates(Q(status="ready"), 3, 0, ["seq"], HOLD_BY_KEY)
+        with dao.session_scope() as session:
+            page = dao._adapter.claim_candidates(
+                session, Q(status="ready"), 3, 0, ["seq"], HOLD_BY_KEY
+            )
 
         assert [job.id for job in page] == ["k2-0"]
 
@@ -632,8 +635,8 @@ class TestClaimHoldBack:
         self, test_domain, monkeypatch
     ):
         """A provider that declares ``FILTERED_CLAIM_CANDIDATES`` but not
-        ``NATIVE_CLAIM`` reads each page of a held-back claim through the DAO's
-        ``claim_candidates``, so a held key's backlog never fills a page."""
+        ``NATIVE_CLAIM`` reads each page of a held-back claim through the
+        adapter's ``claim_candidates``, so a held key's backlog never fills a page."""
         dao = test_domain.repository_for(KeyedJob)._dao
         _skip_unless_declared(dao, DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES)
         if DatabaseCapabilities.NATIVE_CLAIM in dao.provider.capabilities:
@@ -643,16 +646,16 @@ class TestClaimHoldBack:
         _keyed(test_domain, _row("k2-0", 10, "k2"))
 
         pages: list[list[str]] = []
-        read_page = dao.claim_candidates
+        read_page = dao._adapter.claim_candidates
 
         def recording_read(*args, **kwargs):
             page = read_page(*args, **kwargs)
             pages.append([job.id for job in page])
             return page
 
-        monkeypatch.setattr(dao, "claim_candidates", recording_read)
+        monkeypatch.setattr(dao._adapter, "claim_candidates", recording_read)
 
-        claimed = dao._claim(
+        claimed = dao.claim(
             Q(status="ready"),
             {"status": "claimed"},
             limit=3,
@@ -668,7 +671,7 @@ class TestClaimHoldBack:
 
 @pytest.mark.transactional
 class TestClaimDispatch:
-    """``_claim`` runs the DAO's own ``claim`` when the provider declares
+    """``DAO.claim`` runs the adapter's own ``claim`` when the provider declares
     ``NATIVE_CLAIM``, and the portable claim otherwise."""
 
     def test_a_native_claim_provider_runs_the_dao_claim(self, test_domain, monkeypatch):
@@ -681,15 +684,19 @@ class TestClaimDispatch:
 
         monkeypatch.setattr(dao_module, "portable_claim", fail)
         calls: list[tuple] = []
-        native_claim = dao.claim
+        native_claim = dao._adapter.claim
 
-        def recording_claim(criteria, claim_fields, limit, order_by, hold_back):
+        def recording_claim(
+            session, criteria, claim_fields, limit, order_by, hold_back
+        ):
             calls.append((limit, order_by, hold_back))
-            return native_claim(criteria, claim_fields, limit, order_by, hold_back)
+            return native_claim(
+                session, criteria, claim_fields, limit, order_by, hold_back
+            )
 
-        monkeypatch.setattr(dao, "claim", recording_claim)
+        monkeypatch.setattr(dao._adapter, "claim", recording_claim)
 
-        claimed = dao._claim(
+        claimed = dao.claim(
             Q(status="ready"), {"status": "claimed"}, limit=2, order_by="-priority"
         )
 
@@ -713,7 +720,7 @@ class TestClaimDispatch:
 
         monkeypatch.setattr(dao_module, "portable_claim", recording_portable)
 
-        claimed = dao._claim(
+        claimed = dao.claim(
             Q(status="ready"), {"status": "claimed"}, limit=2, order_by="-priority"
         )
 
@@ -745,7 +752,7 @@ def _claim_in_key_order(test_domain, run: _KeyOrderRun) -> None:
         run.start.wait()
         idle = 0
         while idle < 50:
-            claimed = dao._claim(
+            claimed = dao.claim(
                 Q(status="ready"),
                 {"status": "claimed"},
                 limit=2,

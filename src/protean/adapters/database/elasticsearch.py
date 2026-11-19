@@ -47,7 +47,6 @@ from protean.exceptions import (
     ConfigurationError,
     DatabaseError,
     ExpectedVersionError,
-    NotSupportedError,
     ObjectNotFoundError,
 )
 from protean.fields.association import _ReferenceField
@@ -55,13 +54,14 @@ from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import _ShadowField
 from protean.fields.resolved import ResolvedField
 from protean.infra.registry import databases
-from protean.port.dao import BaseDAO, BoundedDeletePort, LookupPort
+from protean.port.dao import BoundedDeletePort, DAOPort, LookupPort
 from protean.port.database import (
     BaseDatabase,
     DatabaseCapabilities,
     DatabaseHealth,
     DatabaseModelPort,
     DatabasePort,
+    SessionProtocol,
 )
 from protean.utils import _fully_qualified_name
 from protean.utils.container import Options
@@ -457,7 +457,13 @@ def _custom_model_mapping(entity_cls: _Any, custom_attrs: dict[str, _Any]) -> Ma
     return m
 
 
-class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
+class ElasticsearchDAO(DAOPort, BoundedDeletePort):
+    """DAO implementation for Elasticsearch.
+
+    Elasticsearch has no transactions, so each member takes the session the
+    port requires, ignores it, and writes through the provider's client.
+    """
+
     # Narrow the base ``type[DatabaseModelPort]`` to the concrete ES model class.
     # ``ElasticsearchModel`` subclasses ``elasticsearch_dsl.Document``, which
     # provides ``_index``, ``meta``, ``get`` and (dynamically) ``_keyword_fields``.
@@ -465,6 +471,17 @@ class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
     # ``ESDatabase.get_connection()`` returns a live ``Elasticsearch`` client;
     # narrow from ``BaseDatabase`` so connection call sites resolve precisely.
     provider: "ESDatabase"
+
+    def __init__(
+        self,
+        provider: "ESDatabase",
+        entity_cls: type[_Any],
+        database_model_cls: type["ElasticsearchModel"],
+    ) -> None:
+        self.provider = provider
+        self.entity_cls = entity_cls
+        self.database_model_cls = database_model_cls
+        self.schema_name = entity_cls.meta_.schema_name
 
     def __repr__(self) -> str:
         return f"ElasticsearchDAO <{self.entity_cls.__name__}>"
@@ -485,9 +502,11 @@ class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
         combine = operator.and_ if criteria.connector == criteria.AND else operator.or_
         return functools.reduce(combine, parts)
 
-    def _filter(
+    def filter(
         self,
+        session: SessionProtocol,
         criteria: Q,
+        *,
         offset: int = 0,
         limit: int = 10,
         order_by: Sequence[str] = (),
@@ -548,12 +567,12 @@ class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
 
         return result
 
-    def _create(self, model_obj: _Any) -> _Any:
+    def insert(self, session: SessionProtocol, model: _Any) -> _Any:
         """Create a new database model object from the entity"""
         conn = self.provider.get_connection()
 
         try:
-            model_obj.save(
+            model.save(
                 refresh=True,
                 index=self.database_model_cls._index._name,
                 using=conn,
@@ -565,9 +584,15 @@ class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
                 f"Database error during creation: {exc!s}", original_exception=exc
             ) from exc
 
-        return model_obj
+        return model
 
-    def _update(self, model_obj: _Any, expected_version: int | None = None) -> _Any:
+    def update(
+        self,
+        session: SessionProtocol,
+        model: _Any,
+        *,
+        expected_version: int | None = None,
+    ) -> _Any:
         """Update a database model object in the data store and return it.
 
         When ``expected_version`` is set, uses ES native ``if_seq_no`` /
@@ -575,7 +600,7 @@ class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
         """
         conn = self.provider.get_connection()
 
-        identifier = model_obj.meta.id
+        identifier = model.meta.id
 
         # Fetch the record to verify existence and capture seq_no/primary_term
         try:
@@ -624,7 +649,7 @@ class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
                 save_kwargs["if_seq_no"] = existing.meta.seq_no
                 save_kwargs["if_primary_term"] = existing.meta.primary_term
 
-            model_obj.save(**save_kwargs)
+            model.save(**save_kwargs)
         except ConflictError as exc:
             # ES rejected the write because seq_no/primary_term changed
             raise ExpectedVersionError(
@@ -637,9 +662,11 @@ class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
                 f"Database error during update: {exc!s}", original_exception=exc
             ) from exc
 
-        return model_obj
+        return model
 
-    def _update_all(self, criteria: Q, *args: _Any, **kwargs: _Any) -> _Any:
+    def update_all(
+        self, session: SessionProtocol, criteria: Q, values: TypingMapping[str, _Any]
+    ) -> int:
         """Updates object directly in the data store and returns update count"""
         conn = self.provider.get_connection()
 
@@ -647,12 +674,6 @@ class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
         q = elasticsearch_dsl.Q()
         if criteria and criteria.children:
             q = self._build_filters(criteria)
-
-        # Prepare update values
-        values = {}
-        if args:
-            values = args[0]  # `args[0]` is required because `*args` is sent as a tuple
-        values.update(kwargs)
 
         if not values:
             return 0
@@ -678,19 +699,20 @@ class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
                 refresh=True,
             )
 
-            return response.get("updated", 0)
+            updated: int = response.get("updated", 0)
+            return updated
         except Exception as exc:  # any client error becomes DatabaseError; logged
             logger.exception("repository.elasticsearch.update_all_failed")
             raise DatabaseError(
                 f"Database error during update_all: {exc!s}", original_exception=exc
             ) from exc
 
-    def _delete(self, model_obj: _Any) -> _Any:
+    def delete(self, session: SessionProtocol, model: _Any) -> _Any:
         """Delete a Record from the Repository"""
         conn = self.provider.get_connection()
 
         try:
-            model_obj.delete(
+            model.delete(
                 index=self.database_model_cls._index._name,
                 using=conn,
                 refresh=True,
@@ -700,7 +722,7 @@ class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
             id_field_obj = id_field(self.entity_cls)
             assert id_field_obj is not None
             assert id_field_obj.attribute_name is not None
-            identifier = getattr(model_obj, id_field_obj.attribute_name)
+            identifier = getattr(model, id_field_obj.attribute_name)
             raise ObjectNotFoundError(
                 f"`{self.entity_cls.__name__}` object with identifier {identifier} "
                 f"does not exist."
@@ -711,13 +733,13 @@ class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
                 f"Database error during deletion: {exc!s}", original_exception=exc
             ) from exc
 
-        return model_obj
+        return model
 
-    def _count(self, criteria: Q) -> int:
+    def count(self, session: SessionProtocol, criteria: Q) -> int:
         """Count documents matching ``criteria`` via the ``_count`` API.
 
         Errors propagate as-is, consistent with the SQLAlchemy and Memory
-        ``_count`` implementations (which do not wrap them).
+        ``count`` implementations (which do not wrap them).
         """
         conn = self.provider.get_connection()
 
@@ -731,6 +753,7 @@ class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
 
     def delete_top(
         self,
+        session: SessionProtocol,
         criteria: Q,
         limit: int,
         order_by: str | None = None,
@@ -764,7 +787,7 @@ class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
         deleted: int = response.deleted
         return deleted
 
-    def _delete_all(self, criteria: Q | None = None) -> _Any:
+    def delete_all(self, session: SessionProtocol, criteria: Q | None = None) -> int:
         """Delete all records matching criteria from the Repository"""
         conn = self.provider.get_connection()
 
@@ -788,19 +811,8 @@ class ElasticsearchDAO(BaseDAO, BoundedDeletePort):
                 f"Database error during delete_all: {exc!s}", original_exception=exc
             ) from exc
 
-        return response.deleted
-
-    def _raw(self, query: _Any, data: _Any = None) -> ResultSet:
-        """Not supported — Elasticsearch does not support raw queries.
-
-        This method is never reached because ``QuerySet.raw()`` gates access
-        via provider capability checks. It exists only to satisfy the abstract
-        method contract.
-        """
-        raise NotSupportedError(
-            f"Provider '{self.provider.name}' ({self.provider.__class__.__name__}) "
-            "does not support raw queries"
-        )
+        deleted: int = response.deleted
+        return deleted
 
     def has_table(self) -> bool:
         """Check if the index exists in Elasticsearch.
@@ -960,6 +972,16 @@ class ESDatabase(BaseDatabase, DatabasePort):
         """
         return ESSession(self)
 
+    def new_session(self) -> "ESSession":
+        """A new pass-through session. Elasticsearch has no transactions."""
+        return ESSession(self)
+
+    def commit(self, session: SessionProtocol) -> None:
+        """Do nothing: every Elasticsearch write is final when it returns."""
+
+    def rollback(self, session: SessionProtocol) -> None:
+        """Do nothing: Elasticsearch cannot undo a write."""
+
     def get_connection(self) -> Elasticsearch:
         """Get the connection object for the repository"""
         return self._client
@@ -974,7 +996,7 @@ class ESDatabase(BaseDatabase, DatabasePort):
 
     def dao_for(self, entity_cls: _Any, model_cls: _Any) -> "ElasticsearchDAO":
         """Return a DAO object configured with a live connection"""
-        return ElasticsearchDAO(self.domain, self, entity_cls, model_cls)
+        return ElasticsearchDAO(self, entity_cls, model_cls)
 
     def model_for(
         self,
@@ -1518,3 +1540,4 @@ def register() -> None:
 
 _PORT_CHECK: type[DatabasePort] = ESDatabase
 _MODEL_PORT_CHECK: type[DatabaseModelPort] = ElasticsearchModel
+_DAO_PORT_CHECK: type[DAOPort] = ElasticsearchDAO

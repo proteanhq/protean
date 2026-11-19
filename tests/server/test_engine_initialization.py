@@ -96,6 +96,31 @@ class TestEngineOutboxValidation:
                 finally:
                     type(outbox_repo)._dao = original_dao
 
+    @pytest.mark.no_test_domain
+    def test_engine_reraises_a_capability_flag_mismatch_as_it_is(self):
+        domain = Domain(name="Test")
+        domain.config["server"]["default_subscription_type"] = "stream"
+        domain.init(traverse=False)
+        mismatch = ConfigurationError(
+            "Provider `default` declares `NATIVE_CLAIM`, but DAO class "
+            "`DictDAO` does not subclass `NativeClaimPort`"
+        )
+
+        with domain.domain_context():
+            for outbox_repo in domain._outbox_repos.values():
+                original_dao = type(outbox_repo)._dao
+                type(outbox_repo)._dao = property(
+                    lambda self: (_ for _ in ()).throw(mismatch)
+                )
+
+                try:
+                    with pytest.raises(ConfigurationError) as exc:
+                        Engine(domain, test_mode=True)
+                finally:
+                    type(outbox_repo)._dao = original_dao
+
+                assert exc.value is mismatch
+
 
 # ---------------------------------------------------------------------------
 # Engine outbox processors skip unmanaged providers

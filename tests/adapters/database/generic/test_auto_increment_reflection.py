@@ -4,7 +4,7 @@
 *same* instance the caller passed in — not just onto a re-fetched copy — under
 both a standalone add and an add nested in an outer ``UnitOfWork``.
 
-For the in-memory provider the value is assigned during ``_create`` and reflected
+For the in-memory provider the value is assigned during ``insert`` and reflected
 directly. For relational adapters (SQLAlchemy → Postgres/SQLite/MSSQL) the value
 is a DB-assigned autoincrement primary key that only materializes on flush; under
 an outer UoW that flush is otherwise deferred to commit, after ``add()`` returns.
@@ -14,7 +14,7 @@ run on every provider with (real or simulated) transaction support, so they guar
 the behaviour across both worlds.
 
 The relational fail-without-fix teeth are on SQLite/Postgres/MSSQL; on the memory
-leg the value is assigned during ``_create`` regardless, so the memory run is a
+leg the value is assigned during ``insert`` regardless, so the memory run is a
 no-regression guard rather than a falsification of the fix.
 """
 

@@ -13,7 +13,7 @@ from protean.exceptions import (
 )
 from protean.fields import HasMany, HasOne
 from protean.fields.tempdata import HasManyChanges, HasOneChanges
-from protean.port.dao import BaseDAO
+from protean.infra.dao import DAO
 from protean.port.database import BaseDatabase, DatabaseModelPort
 from protean.utils import (
     DomainObjects,
@@ -85,7 +85,7 @@ class BaseRepository(Element, OptionsMixin):
 
     @property
     @lru_cache
-    def _dao(self) -> BaseDAO:
+    def _dao(self) -> DAO:
         """Return the Data Access Object for this repository's aggregate.
 
         Internal. Application code should use ``query``, ``find_by()``,
@@ -93,20 +93,20 @@ class BaseRepository(Element, OptionsMixin):
         as hard deletion and test teardown.
         """
         # Fixate on Model class at the domain level because an explicit model may have been registered
-        dao: BaseDAO = self._provider.dao_for(self.meta_.part_of, self._database_model)
-        return dao
+        adapter = self._provider.dao_for(self.meta_.part_of, self._database_model)
+        return DAO(self._domain, self._provider, adapter)
 
     def _delete_in_batches(self, criteria: Q, batch_size: int) -> int:
         """Delete all rows matching ``criteria`` in bounded batches of ``batch_size``.
 
-        Loops `BaseDAO._delete_top` until a batch deletes fewer than
+        Loops `DAO.delete_top` until a batch deletes fewer than
         ``batch_size`` rows (the matched set is drained), returning the total
         deleted. When called outside a Unit of Work each batch commits before
         the next begins, so a large backlog is cleared without one long-held
         lock or an oversized transaction. Shared by the outbox and consume-side
         idempotency cleanup paths.
         """
-        # Guard the loop invariant: ``_delete_top(limit<=0)`` returns 0, and
+        # Guard the loop invariant: ``delete_top(limit<=0)`` returns 0, and
         # ``0 < batch_size`` is False for a non-positive batch_size, so the loop
         # would never terminate. A user-facing ``--batch-size`` reaches here.
         if batch_size < 1:
@@ -114,7 +114,7 @@ class BaseRepository(Element, OptionsMixin):
 
         total = 0
         while True:
-            deleted = self._dao._delete_top(criteria, limit=batch_size)
+            deleted = self._dao.delete_top(criteria, limit=batch_size)
             total += deleted
             if deleted < batch_size:
                 break
@@ -457,8 +457,8 @@ class BaseRepository(Element, OptionsMixin):
 
         Returns the fetched object.
 
-        All other data filtering capabilities can be implemented by using the underlying DAO's
-        ``BaseDAO.filter`` method.
+        All other data filtering capabilities can be implemented by using the
+        ``query`` of the underlying ``DAO`` service.
 
         Filter methods are typically implemented as domain-contextual queries, like `find_adults()`,
         `find_residents_of_area(zipcode)`, etc. It is also possible to make use of more complicated,

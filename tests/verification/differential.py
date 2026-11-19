@@ -154,10 +154,14 @@ class _LastWriteWinsDAO(DictDAO):
     channel.
     """
 
-    def _update(
-        self, model_obj: typing.Any, expected_version: int | None = None
+    def update(
+        self,
+        session: typing.Any,
+        model: typing.Any,
+        *,
+        expected_version: int | None = None,
     ) -> typing.Any:
-        return super()._update(model_obj, expected_version=None)
+        return super().update(session, model, expected_version=None)
 
 
 class _DroppedBalanceDAO(DictDAO):
@@ -169,15 +173,19 @@ class _DroppedBalanceDAO(DictDAO):
     adapter. It proves those observation channels are non-vacuous.
     """
 
-    def _create(self, model_obj: typing.Any) -> typing.Any:
-        model_obj["balance"] = 0
-        return super()._create(model_obj)
+    def insert(self, session: typing.Any, model: typing.Any) -> typing.Any:
+        model["balance"] = 0
+        return super().insert(session, model)
 
-    def _update(
-        self, model_obj: typing.Any, expected_version: int | None = None
+    def update(
+        self,
+        session: typing.Any,
+        model: typing.Any,
+        *,
+        expected_version: int | None = None,
     ) -> typing.Any:
-        model_obj["balance"] = 0
-        return super()._update(model_obj, expected_version=expected_version)
+        model["balance"] = 0
+        return super().update(session, model, expected_version=expected_version)
 
 
 _MEMORY_BUGS: dict[str, type[DictDAO]] = {
@@ -197,7 +205,7 @@ def _install_memory_bug(provider: MemoryDatabase, bug: str) -> None:
     def dao_for(
         entity_cls: type[typing.Any], database_model_cls: type[typing.Any]
     ) -> DictDAO:
-        return dao_cls(provider.domain, provider, entity_cls, database_model_cls)
+        return dao_cls(provider, entity_cls, database_model_cls)
 
     provider.dao_for = dao_for  # type: ignore[method-assign]
 

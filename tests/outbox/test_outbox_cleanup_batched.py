@@ -1,7 +1,7 @@
 """Tests for batched outbox cleanup.
 
 ``cleanup_old_published`` / ``cleanup_old_abandoned`` delete in bounded batches
-via ``BaseDAO._delete_top`` instead of one unbounded ``DELETE``. The batch size
+via ``DAO.delete_top`` instead of one unbounded ``DELETE``. The batch size
 comes from the ``batch_size`` argument, falling back to ``[outbox.cleanup]``
 config (default 5000).
 """
@@ -72,16 +72,16 @@ def make_messages(outbox_repo, sample_metadata):
 
 @pytest.fixture
 def batch_spy(outbox_repo):
-    """Wrap ``_delete_top`` to record the size of every batch it deletes."""
+    """Wrap ``delete_top`` to record the size of every batch it deletes."""
     calls = []
-    original = outbox_repo._dao._delete_top
+    original = outbox_repo._dao.delete_top
 
     def spy(criteria, limit, order_by=None):
         deleted = original(criteria, limit, order_by)
         calls.append(deleted)
         return deleted
 
-    outbox_repo._dao._delete_top = spy
+    outbox_repo._dao.delete_top = spy
     return calls
 
 

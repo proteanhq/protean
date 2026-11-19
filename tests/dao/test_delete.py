@@ -1,5 +1,4 @@
 import logging
-from unittest.mock import patch
 
 import pytest
 
@@ -28,11 +27,17 @@ class TestDAODeleteFunctionality:
         with pytest.raises(ObjectNotFoundError):
             test_domain.repository_for(Person)._dao.get(3)
 
-    def test_delete_all_logs_and_reraises_a_store_error(self, test_domain, caplog):
+    def test_delete_all_logs_and_reraises_a_store_error(
+        self, test_domain, caplog, monkeypatch
+    ):
         dao = test_domain.repository_for(Person)._dao
+
+        def store_down(session, criteria=None):
+            raise RuntimeError("store down")
+
+        monkeypatch.setattr(dao._adapter, "delete_all", store_down)
         with (
-            patch.object(dao, "_delete_all", side_effect=RuntimeError("store down")),
-            caplog.at_level(logging.ERROR, logger="protean.port.dao"),
+            caplog.at_level(logging.ERROR, logger="protean.infra.dao"),
             pytest.raises(RuntimeError, match="store down"),
         ):
             dao.delete_all()
@@ -112,9 +117,7 @@ class TestDAODeleteFunctionality:
         )
 
         # Perform delete
-        deleted_count = test_domain.repository_for(Person)._dao._delete_all(
-            Q(age__gt=3)
-        )
+        deleted_count = test_domain.repository_for(Person)._dao.delete_all(Q(age__gt=3))
 
         # Query and check if only the relevant records have been deleted
         assert deleted_count == 2

@@ -76,7 +76,7 @@ implement the Port's members for your database technology.
 
 ### Data Access Object (DAO)
 
-**Base Class**: `protean.port.dao.BaseDAO`
+**Port**: `protean.port.dao.DAOPort`
 
 The Data Access Object (DAO) is responsible for encapsulating the details of
 the database interactions. It provides an abstract interface to the database,
@@ -91,8 +91,11 @@ By using DAOs, the application code remains clean and decoupled from the
 database logic. DAOs and [lookups](#lookups) together provide a query API that
 works across various adapters.
 
-To add a new DAO for your provider, subclass from the DAO Base class and
-implement methods for your database technology.
+To add a new DAO for your provider, subclass `DAOPort` and implement its
+methods for your database technology. Each method takes the session to run in
+as its first argument and leaves the session open. Protean wraps the adapter
+DAO in its own `DAO` service, which opens, commits and closes sessions outside
+a Unit of Work.
 
 ### Session
 

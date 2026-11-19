@@ -1,4 +1,4 @@
-"""SQLite coverage for ``BaseDAO._delete_top`` dispatch: a provider that
+"""SQLite coverage for ``DAO.delete_top`` dispatch: a provider that
 declares ``BOUNDED_DELETE`` runs the single-statement ``SADAO.delete_top``,
 and one that does not falls back to the portable ``portable_delete_top``."""
 
@@ -6,7 +6,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Integer, String
-from protean.port import dao as dao_module
+from protean.infra import dao as dao_module
 from protean.port.database import DatabaseCapabilities
 from protean.utils.query import Q
 from tests.shared import provider_adapter
@@ -25,7 +25,7 @@ def prune_domain(test_domain):
     provider = provider_adapter(test_domain, "default")
     provider._metadata.create_all(provider._engine)
     # Start from a clean slate; the table is shared across tests in this module.
-    dao._delete_all()
+    dao.delete_all()
     yield test_domain
 
 
@@ -60,7 +60,7 @@ class TestSqliteDeleteTopDispatch:
 
         portable_calls = _spy_on_portable_default(monkeypatch)
 
-        deleted = dao._delete_top(Q(), limit=2, order_by="rank")
+        deleted = dao.delete_top(Q(), limit=2, order_by="rank")
 
         assert deleted == 2
         assert sorted(p.rank for p in dao.query.all().items) == [2, 3, 4]
@@ -84,9 +84,9 @@ class TestSqliteDeleteTopDispatch:
         def fail(*args, **kwargs):
             raise AssertionError("delete_top must not run without BOUNDED_DELETE")
 
-        monkeypatch.setattr(dao, "delete_top", fail)
+        monkeypatch.setattr(dao._adapter, "delete_top", fail)
 
-        deleted = dao._delete_top(Q(), limit=2, order_by="rank")
+        deleted = dao.delete_top(Q(), limit=2, order_by="rank")
 
         assert deleted == 2
         assert sorted(p.rank for p in dao.query.all().items) == [2, 3, 4]

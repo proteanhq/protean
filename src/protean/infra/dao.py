@@ -1,0 +1,1484 @@
+"""The `DAO` service.
+
+A database adapter implements `DAOPort`: it reads and writes one entity
+class's rows in the session it is given. `DAO` wraps one adapter for one
+entity class and builds the entity-level operations on top of it: getting,
+finding, creating, saving, updating and deleting entities, checking unique
+fields and versions, running pre-persist hooks, tracking aggregates in the
+Unit of Work, claiming rows and deleting them in batches.
+
+`DAO.session_scope` picks the session for each operation. Inside a Unit of
+Work it is the Unit of Work's session for the provider, and the Unit of Work
+ends it. Outside one, or after `outside_uow()`, it is a new session from the
+provider, which the service commits, rolls back on an error, and closes.
+"""
+
+from __future__ import annotations
+
+import datetime
+import logging
+import operator
+from collections import Counter
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from functools import partial, reduce
+from typing import TYPE_CHECKING, Any, cast, get_args
+
+from protean._deprecation import deprecated_from_registry
+from protean.core.aggregate import BaseAggregate, _pre_persist_change
+from protean.core.entity import BaseEntity
+from protean.core.index import Index
+from protean.core.queryset import QuerySet, ResultSet
+from protean.exceptions import (
+    ConfigurationError,
+    ObjectNotFoundError,
+    TooManyObjectsError,
+    ValidationError,
+)
+from protean.port.dao import (
+    _FLAG_PORTS,
+    BoundedDeletePort,
+    ClaimCandidatesPort,
+    DAOPort,
+    HoldBack,
+    InsertIfAbsentPort,
+    NativeClaimPort,
+    RawQueryDAOPort,
+)
+from protean.port.database import DatabaseCapabilities, DatabaseModelPort
+from protean.utils import DomainObjects, _callable_qualname
+from protean.utils.globals import _domain_now, current_domain, current_uow
+from protean.utils.query import Q
+from protean.utils.reflection import declared_fields, fields, id_field, unique_fields
+
+if TYPE_CHECKING:
+    from protean.domain import Domain
+    from protean.fields.base import Field
+    from protean.port.database import SessionProtocol
+
+logger = logging.getLogger(__name__)
+
+# Max identifiers per ``IN (...)`` clause in :func:`portable_delete_top`. Kept under SQLite's default ``SQLITE_MAX_VARIABLE_NUMBER`` of 999 so
+# the fallback path is safe on every backend regardless of batch size.
+_DELETE_IN_CHUNK_SIZE = 900
+
+
+def _uses_adapter_operation(dao: DAO, flag: DatabaseCapabilities) -> bool:
+    """Whether ``dao``'s provider declares ``flag``, so the adapter's own
+    operation runs instead of the portable one.
+
+    Building the service already checked that the adapter subclasses the port
+    that goes with each declared flag.
+    """
+    return flag in dao.provider.capabilities
+
+
+def _check_flag_ports(provider: Any, adapter: DAOPort) -> None:
+    """Check that ``adapter``'s class subclasses the port of each flag in
+    ``_FLAG_PORTS`` that ``provider`` declares.
+
+    The check runs one way: an adapter may implement a port whose flag its
+    provider does not declare.
+
+    Raises:
+        ConfigurationError: The provider declares a flag and the DAO class
+            does not subclass the port that goes with it.
+    """
+    capabilities = provider.capabilities
+    for flag, port in _FLAG_PORTS.items():
+        # The ports are not ``runtime_checkable``, so check the MRO.
+        if flag in capabilities and port not in type(adapter).__mro__:
+            raise ConfigurationError(
+                f"Provider `{provider.name}` declares `{flag.name}`, but DAO "
+                f"class `{type(adapter).__name__}` does not subclass "
+                f"`{port.__name__}`"
+            )
+
+
+def _order_keys(order_by: str | Sequence[str] | None) -> tuple[str, ...]:
+    """Normalize an ``order_by`` argument to a tuple of keys.
+
+    A bare string is one key, not a sequence of one-character keys.
+    """
+    if not order_by:
+        return ()
+    if isinstance(order_by, str):
+        return (order_by,)
+    return tuple(order_by)
+
+
+def _lookup(key: str, value: Any) -> Q:
+    """``Q`` for one lookup whose key is only known at run time."""
+    kwargs: dict[str, Any] = {key: value}
+    return Q(**kwargs)
+
+
+def _earlier_than(entity: Any, order: Sequence[str]) -> Q:
+    """``Q`` matching rows that sort before ``entity`` on the ascending
+    ``order`` keys, with NULL last.
+
+    Built from ``entity``'s values so that every adapter can run it. A NULL
+    never matches ``<``, so a row with NULL in a key is never "before" a row
+    with a value there, which is what NULL-last means.
+    """
+    earlier = Q()
+    equal_so_far = Q()
+    for key in order:
+        value = getattr(entity, key)
+        if value is None:
+            before = _lookup(f"{key}__isnull", False)
+            same = _lookup(f"{key}__isnull", True)
+        else:
+            before = _lookup(f"{key}__lt", value)
+            same = _lookup(key, value)
+        earlier = earlier | (equal_so_far & before)
+        equal_so_far = equal_so_far & same
+    return earlier
+
+
+def _lifecycle_timestamp_fields(
+    entity_obj: Any, *, is_create: bool
+) -> dict[str, Field]:
+    """Return the ``auto_now`` / ``auto_now_add`` fields this save stamps.
+
+    Django-parity semantics: ``auto_now`` fields are stamped on every save;
+    ``auto_now_add`` fields only on the initial (create) save.
+    """
+    return {
+        name: field_obj
+        for name, field_obj in fields(entity_obj).items()
+        if getattr(field_obj, "auto_now", False)
+        or (is_create and getattr(field_obj, "auto_now_add", False))
+    }
+
+
+def _stamp_lifecycle_timestamps(entity_obj: Any, to_stamp: dict[str, Field]) -> None:
+    """Set each DateTime/Date field in ``to_stamp`` to the current time.
+
+    A single ``now``, read from the domain's injectable clock (so frozen-clock
+    tests apply), is shared across all stamped fields on this entity.
+    """
+    now = _domain_now()
+    for name, field_obj in to_stamp.items():
+        # ``_python_type`` may be Optional-wrapped (auto_now fields are not
+        # required); unwrap to the underlying date/datetime to pick the value.
+        base_type: Any = getattr(field_obj, "_python_type", None)
+        base_type = next(
+            (a for a in get_args(base_type) if a is not type(None)), base_type
+        )
+        value: datetime.date | datetime.datetime = (
+            now.date() if base_type is datetime.date else now
+        )
+        setattr(entity_obj, name, value)
+
+
+@contextmanager
+def _pre_persist_hook(
+    entity_obj: Any, location: str, *, writes_only_to_self: bool = False
+) -> Iterator[None]:
+    """Run one pre-persist hook's writes on ``entity_obj``.
+
+    When the object belongs to an aggregate, the writes run in a
+    ``_pre_persist_change`` block on the aggregate root. A projection, or an
+    entity saved on its own, has no aggregate to check, so its writes run as
+    they are. Inside a caller's own ``atomic_change`` block the aggregate may
+    be mid-change, so the block only undoes a raising hook's writes and leaves
+    the checks to the caller's block. That block checks the final state on its
+    exit and undoes the in-memory changes if it fails, but a save made inside
+    it has already written its row.
+    """
+    root = getattr(entity_obj, "_root", None) or entity_obj
+    if not isinstance(root, BaseAggregate):
+        yield
+        return
+
+    writes_only = entity_obj if writes_only_to_self else None
+    with _pre_persist_change(
+        root,
+        location,
+        writes_only=writes_only,
+        defer_checks=root._disable_invariant_checks,
+    ):
+        yield
+
+
+def _try_claim(
+    dao: DAO,
+    id_name: str,
+    criteria: Q,
+    claim_fields: dict[str, Any],
+    entity: Any,
+) -> bool:
+    """Claim one candidate row, and on success apply ``claim_fields`` to it."""
+    # Re-assert the eligibility criteria in the update so a row claimed
+    # by another worker between the read and this write is skipped.
+    guard = Q(**{id_name: getattr(entity, id_name)}) & criteria
+    if dao.update_all(guard, claim_fields) > 0:
+        for attr, value in claim_fields.items():
+            setattr(entity, attr, value)
+        return True
+    return False
+
+
+def _claim_held_back(
+    dao: DAO,
+    criteria: Q,
+    limit: int,
+    order_by: Sequence[str],
+    hold_back: HoldBack,
+    try_claim: Callable[[Any], bool],
+    read_page: Callable[[Q, int, int, Sequence[str]], list[Any]],
+) -> list[BaseEntity]:
+    """Claim up to ``limit`` rows page by page, keeping back each grouped row
+    whose group has an earlier holding row this call did not claim."""
+    claimed: list[BaseEntity] = []
+    # A row is claimed only after every earlier holding row of its group
+    # is, so the rows a group has claimed here all sort before any of its
+    # rows still to be checked.
+    claimed_in_group: Counter[tuple[Any, ...]] = Counter()
+    lanes: tuple[Q, ...] = hold_back.lanes or (Q(),)
+    rows_read = 0
+    # Read a page of ``limit`` candidates at a time until ``limit`` rows are
+    # claimed or none remain, so held rows never use up the batch. Claimed
+    # rows stop matching ``criteria``, which shifts the next page's offset
+    # back by the rows claimed. Pages are not capped: a cap would let a held
+    # group fill every batch and starve the other groups. The portable
+    # page read returns held rows too, so a large held backlog costs one page
+    # read per ``limit`` held rows on every call.
+    while len(claimed) < limit:
+        page = read_page(criteria, limit, rows_read - len(claimed), order_by)
+        if not page:
+            break
+        rows_read += len(page)
+
+        for entity in page:
+            if len(claimed) >= limit:
+                break
+            if _try_claim_in_group(
+                dao, entity, hold_back, lanes, claimed_in_group, try_claim
+            ):
+                claimed.append(entity)
+
+    return claimed
+
+
+def _try_claim_in_group(
+    dao: DAO,
+    entity: Any,
+    hold_back: HoldBack,
+    lanes: tuple[Q, ...],
+    claimed_in_group: Counter[tuple[Any, ...]],
+    try_claim: Callable[[Any], bool],
+) -> bool:
+    """Claim ``entity`` unless an earlier holding row of its group is unclaimed.
+
+    A successful claim of a grouped row adds one to its group's count in
+    ``claimed_in_group``.
+    """
+    lane_index = hold_back.lane_of(entity)
+    if lane_index is None:
+        return try_claim(entity)
+
+    same_group: dict[str, Any] = {
+        column: getattr(entity, column) for column in hold_back.group_by
+    }
+    group = (*same_group.values(), lane_index)
+    earlier = (
+        Q(**same_group)
+        & hold_back.applies
+        & lanes[lane_index]
+        & hold_back.holds
+        & _earlier_than(entity, hold_back.order)
+    )
+    # The rows this call claimed in the group are all earlier than
+    # this row and still hold, so a larger count means an earlier
+    # row this call did not claim. One count per row binds the same
+    # parameters however large the batch is.
+    held = dao._count(earlier) > claimed_in_group[group]
+    if held or not try_claim(entity):
+        return False
+
+    claimed_in_group[group] += 1
+    return True
+
+
+def _read_claim_candidates(
+    dao: DAO, criteria: Q, limit: int, offset: int, order_by: Sequence[str]
+) -> list[Any]:
+    """Read one page of claim candidates: up to ``limit`` entities matching
+    ``criteria`` in ``order_by`` order, skipping the first ``offset``."""
+    # The entity-level query API returns entities; the low-level ``_filter``
+    # returns raw model objects.
+    candidate_qs = dao.query.filter(criteria)
+    if order_by:
+        candidate_qs = candidate_qs.order_by(list(order_by))
+    return list(candidate_qs.offset(offset).limit(limit).all(with_total=False).items)
+
+
+def _claim_page_reader(
+    dao: DAO, hold_back: HoldBack
+) -> Callable[[Q, int, int, Sequence[str]], list[Any]]:
+    """The page read for a claim with ``hold_back``: the adapter's
+    ``claim_candidates`` when the provider declares
+    ``FILTERED_CLAIM_CANDIDATES``, else the portable read."""
+    if _uses_adapter_operation(dao, DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES):
+        return partial(_read_filtered_claim_candidates, dao, hold_back)
+    return partial(_read_claim_candidates, dao)
+
+
+def _read_filtered_claim_candidates(
+    dao: DAO,
+    hold_back: HoldBack,
+    criteria: Q,
+    limit: int,
+    offset: int,
+    order_by: Sequence[str],
+) -> list[Any]:
+    """Read one page of claim candidates through the adapter's
+    ``claim_candidates``, which leaves out the rows ``hold_back`` holds."""
+    adapter = cast(ClaimCandidatesPort, dao._adapter)
+    with dao.session_scope() as session:
+        return adapter.claim_candidates(
+            session, criteria, limit, offset, order_by, hold_back
+        )
+
+
+def _entity_id_name(dao: DAO) -> str:
+    """The attribute name of the identifier of ``dao``'s entity class."""
+    entity_id_field = id_field(dao.entity_cls)
+    assert entity_id_field is not None, (
+        f"`{dao.entity_cls.__name__}` does not have an identity field"
+    )
+    assert entity_id_field.field_name is not None
+    return entity_id_field.field_name
+
+
+def portable_claim(
+    dao: DAO,
+    criteria: Q,
+    claim_fields: Mapping[str, Any],
+    limit: int,
+    order_by: Sequence[str] = (),
+    hold_back: HoldBack | None = None,
+) -> list[BaseEntity]:
+    """Claim rows on any adapter, with the promises :meth:`DAO.claim`
+    states.
+
+    It reads candidates, then claims each one with a guarded update that
+    re-checks ``criteria``. An ungrouped claim costs ``1 + N`` round trips.
+    A claim with ``hold_back`` also counts earlier rows for each grouped
+    candidate and may read more than one page of candidates. It runs inside
+    the adapter's ``claim_lock()``.
+    """
+    if limit <= 0:
+        return []
+
+    order_by = _order_keys(order_by)
+    id_name = _entity_id_name(dao)
+    try_claim = partial(_try_claim, dao, id_name, criteria, dict(claim_fields))
+
+    with dao._adapter.claim_lock():
+        if hold_back is None:
+            candidates = _read_claim_candidates(dao, criteria, limit, 0, order_by)
+            return [entity for entity in candidates if try_claim(entity)]
+
+        read_page = _claim_page_reader(dao, hold_back)
+        return _claim_held_back(
+            dao, criteria, limit, order_by, hold_back, try_claim, read_page
+        )
+
+
+def portable_delete_top(
+    dao: DAO, criteria: Q, limit: int, order_by: str | None = None
+) -> int:
+    """Delete rows on any adapter, with the promises
+    :meth:`DAO.delete_top` states.
+
+    It reads up to ``limit`` identifiers, then deletes by identifier. It runs
+    inside the adapter's ``claim_lock()``.
+    """
+    if limit <= 0:
+        return 0
+
+    id_name = _entity_id_name(dao)
+
+    with dao._adapter.claim_lock():
+        # Read up to ``limit`` identifiers through the entity-level query
+        # API, projecting only the id so blob columns are left unread.
+        candidate_qs = dao.query.filter(criteria)
+        if order_by:
+            candidate_qs = candidate_qs.order_by(order_by)
+        records = candidate_qs.only(id_name).limit(limit).all(with_total=False).items
+
+        # Delete by identifier in sub-batches so the ``IN`` clause never
+        # exceeds a backend's bind-parameter ceiling (e.g. SQLite's default
+        # limit of 999). ``limit`` can be larger than that, so chunk rather
+        # than emit one oversized ``IN (...)``.
+        ids = [getattr(record, id_name) for record in records]
+        deleted = 0
+        for start in range(0, len(ids), _DELETE_IN_CHUNK_SIZE):
+            chunk = ids[start : start + _DELETE_IN_CHUNK_SIZE]
+            chunk_filter: dict[str, Any] = {f"{id_name}__in": chunk}
+            deleted += dao.delete_all(Q(**chunk_filter))
+        return deleted
+
+
+def _unique_key_indexes(entity_cls: type[BaseEntity]) -> list[Index]:
+    """``entity_cls``'s ``Index`` declarations with ``unique=True`` and no
+    ``where`` predicate. Their fields make up the entity's unique keys."""
+    return [
+        index
+        for index in getattr(entity_cls.meta_, "indexes", ()) or ()
+        if isinstance(index, Index) and index.unique and index.where is None
+    ]
+
+
+def _stored_value(
+    database_model_cls: type[DatabaseModelPort], model_obj: Any, name: str
+) -> Any:
+    """The value ``model_obj`` stores under ``name``.
+
+    Reads it through the model class's ``_get_value()`` when the model defines
+    one, and reads an attribute otherwise.
+    """
+    # ``_get_value`` is not a ``DatabaseModelPort`` member, but every
+    # ``BaseDatabaseModel`` has it and adapters override it for dict records.
+    get_value = getattr(database_model_cls, "_get_value", None)
+    if get_value is not None:
+        return get_value(model_obj, name)
+    return getattr(model_obj, name)
+
+
+def _key_values(
+    entity_cls: type[BaseEntity],
+    database_model_cls: type[DatabaseModelPort],
+    model_obj: Any,
+    index: Index,
+) -> dict[str, Any] | None:
+    """``model_obj``'s values for ``index``'s fields, keyed by the name each
+    field is stored under, or ``None`` when any value is ``None``."""
+    entity_fields = fields(entity_cls)
+    values = {}
+    for name in index.fields:
+        field_obj = entity_fields.get(name)
+        # An index names either a field or the attribute it is stored under,
+        # and a filter matches stored names.
+        stored_name = getattr(field_obj, "attribute_name", None) or name
+        values[stored_name] = _stored_value(database_model_cls, model_obj, stored_name)
+    if any(value is None for value in values.values()):
+        return None
+    return values
+
+
+def _unique_key_criteria(
+    entity_cls: type[BaseEntity],
+    database_model_cls: type[DatabaseModelPort],
+    model_obj: Any,
+) -> Q | None:
+    """Match the other rows that share a unique key with ``model_obj``.
+
+    A unique key is the values of the fields of one of
+    :func:`_unique_key_indexes`. A key with a ``None`` among its values is
+    left out, and the result is ``None`` when no key is left. The row stored
+    under ``model_obj``'s own identifier never matches.
+    """
+    groups = [
+        Q(**values)
+        for index in _unique_key_indexes(entity_cls)
+        if (values := _key_values(entity_cls, database_model_cls, model_obj, index))
+        is not None
+    ]
+    if not groups:
+        return None
+
+    criteria = reduce(operator.or_, groups)
+    id_f = id_field(entity_cls)
+    assert id_f is not None and id_f.field_name is not None
+    id_attr = id_f.attribute_name or id_f.field_name
+    identifier = _stored_value(database_model_cls, model_obj, id_attr)
+    return criteria & ~Q(**{id_attr: identifier})
+
+
+def _log_save_failure(exc: Exception) -> None:
+    location = getattr(exc, "location", None)
+    logger.error(
+        f"Failed saving entity because {exc}"
+        + (f" (at {location})" if location else "")
+    )
+
+
+class _UniqueKeyTaken(Exception):
+    """An ``InsertIfAbsentPort`` member wrote nothing, because another row
+    holds a unique key of the entity being saved."""
+
+
+class DAO:
+    """The entity-level operations on one entity class's rows, built on the
+    database adapter's `DAOPort`.
+
+    The lifecycle methods (``get``, ``save``, ``create``, ``update``,
+    ``delete``) work on entities: they convert between entities and models,
+    check versions, track the Unit of Work, and call the adapter in the
+    session :meth:`session_scope` picks.
+
+    Args:
+        domain: The domain this DAO belongs to.
+        provider: The database provider the adapter belongs to. It supplies
+            standalone sessions and ends them.
+        adapter: The adapter's DAO for the entity class.
+
+    Raises:
+        ConfigurationError: ``provider`` declares a flag in
+            ``DatabaseCapabilities`` whose port ``adapter``'s class does not
+            subclass.
+    """
+
+    def __init__(self, domain: Domain, provider: Any, adapter: DAOPort) -> None:
+        _check_flag_ports(provider, adapter)
+
+        #: The domain the DAO belongs to.
+        self.domain = domain
+
+        #: The provider that supplies sessions to the adapter.
+        self.provider = provider
+
+        #: The adapter's DAO, which reads and writes the rows.
+        self._adapter = adapter
+
+        #: The entity class the DAO stores.
+        self.entity_cls: type[BaseEntity] = adapter.entity_cls
+
+        #: The adapter's database model class for ``entity_cls``.
+        self.database_model_cls: type[DatabaseModelPort] = adapter.database_model_cls
+
+        #: The table, index or store key the entity's rows live under.
+        self.schema_name: str = adapter.schema_name
+
+        #: An empty query object that can be used to begin filtering/querying operations
+        #: on the underlying data store.
+        self.query = QuerySet(self, domain, self.entity_cls)
+
+        #: Tracks whether the DAO needs to operate outside any active Unit of Work transactions.
+        self._outside_uow = False
+
+    def __repr__(self) -> str:
+        return f"DAO <{self.entity_cls.__name__}> over {self._adapter!r}"
+
+    @property
+    def _is_standalone(self) -> bool:
+        """Check if this DAO is operating outside a Unit of Work.
+
+        Returns True when the DAO must commit, roll back and close its own
+        session: when no Unit of Work is active, or when the DAO was told to
+        work outside it with ``outside_uow()``.
+        """
+        return not current_uow or self._outside_uow
+
+    @contextmanager
+    def session_scope(self) -> Iterator[SessionProtocol]:
+        """Yield the session an operation runs in, and end it when standalone.
+
+        Inside a Unit of Work, unless :meth:`outside_uow` was called, it yields
+        the Unit of Work's session for the provider and ends nothing: the Unit
+        of Work commits or rolls it back.
+
+        Otherwise it yields ``provider.new_session()``. When the block exits
+        normally, it commits the session through ``provider.commit``. When the
+        block or the commit raises an ``Exception``, it rolls the session back
+        through ``provider.rollback`` and re-raises. It always closes the
+        session.
+        """
+        if not self._is_standalone:
+            yield current_uow.get_session(self.provider.name)
+            return
+
+        session = self.provider.new_session()
+        try:
+            yield session
+            self.provider.commit(session)
+        except Exception:  # any failure rolls back, then re-raises
+            self.provider.rollback(session)
+            raise
+        finally:
+            session.close()
+
+    def _flush(self) -> None:
+        """Run the session's pending writes inside its transaction, without
+        committing.
+
+        Callers flush to write a parent row before the child rows that
+        reference it, or to have the database assign an
+        ``Auto(increment=True)`` key before it is copied back onto the
+        aggregate. It calls ``provider.flush``, which does nothing on a
+        provider whose sessions write at commit.
+
+        Raises:
+            ExpectedVersionError: The flush hit an optimistic-concurrency
+                conflict.
+        """
+        with self.session_scope() as session:
+            self.provider.flush(session)
+
+    def _sync_event_position(self, entity: BaseEntity) -> None:
+        """Sync the aggregate's event position from the event store.
+
+        When an aggregate is loaded from the persistence store, its
+        ``_event_position`` must reflect the last written event so that
+        optimistic concurrency control (expected-version checks) works
+        correctly on subsequent ``raise_()`` calls.
+
+        This is a no-op for non-aggregate entities.
+        """
+        if entity.element_type != DomainObjects.AGGREGATE:
+            return
+
+        id_f = id_field(entity)
+        assert id_f is not None and id_f.field_name is not None
+        identifier = getattr(entity, id_f.field_name)
+        store = current_domain.event_store.store
+        assert store is not None
+        last_message = store.read_last_message(
+            f"{entity.meta_.stream_category}-{identifier}"
+        )
+        if last_message:
+            assert last_message.metadata is not None
+            assert last_message.metadata.event_store is not None
+            entity._event_position = last_message.metadata.event_store.position
+
+    def _track_in_uow(self, entity: BaseEntity) -> BaseEntity:
+        """Return the instance to hand back for an aggregate just loaded.
+
+        Inside a Unit of Work, an aggregate already tracked there is returned
+        in place of the loaded copy. Two copies of one aggregate in one
+        transaction would each count versions and event positions from the
+        store, which has not seen the other copy's pending changes.
+
+        Otherwise the loaded aggregate's event position is synced from the
+        event store and, inside a Unit of Work, the aggregate is registered so
+        that later reads return this instance. The events it raises are
+        persisted on commit only once ``add()`` saves it. Non-aggregate
+        entities are returned unchanged.
+        """
+        if not isinstance(entity, BaseAggregate):
+            return entity
+
+        tracked = self._tracked_in_uow(entity)
+        if tracked is not None:
+            return tracked
+
+        self._sync_event_position(entity)
+        if not self._is_standalone:
+            current_uow._add_to_identity_map(entity)
+        return entity
+
+    def _tracked_in_uow(self, entity: BaseEntity) -> BaseAggregate | None:
+        """The instance of ``entity``'s aggregate that the active Unit of
+        Work tracks, if this DAO works inside one and it tracks one."""
+        if self._is_standalone or not isinstance(entity, BaseAggregate):
+            return None
+        id_f = id_field(entity)
+        assert id_f is not None and id_f.field_name is not None
+        return current_uow._tracked_instance(
+            type(entity), getattr(entity, id_f.field_name)
+        )
+
+    def outside_uow(self) -> DAO:
+        """When called, the DAO is instructed to work outside active transactions."""
+        self._outside_uow = True
+
+        # Return the DAO object to support method chaining
+        return self
+
+    ##############################
+    # Operations on many records #
+    ##############################
+
+    def _filter(
+        self,
+        criteria: Q,
+        offset: int = 0,
+        limit: int = 10,
+        order_by: Sequence[str] = (),
+        with_total: bool = True,
+        fields: list[str] | None = None,
+    ) -> ResultSet:
+        """Return one page of the rows that match ``criteria``, read through
+        the adapter's ``filter`` in the session :meth:`session_scope` picks.
+
+        ``QuerySet`` calls this. The ``ResultSet``'s ``items`` are raw storage
+        records.
+        """
+        with self.session_scope() as session:
+            return self._adapter.filter(
+                session,
+                criteria,
+                offset=offset,
+                limit=limit,
+                order_by=order_by,
+                with_total=with_total,
+                fields=fields,
+            )
+
+    def _count(self, criteria: Q) -> int:
+        """The number of rows that match ``criteria``, counted through the
+        adapter's ``count``."""
+        with self.session_scope() as session:
+            return self._adapter.count(session, criteria)
+
+    def _raw(self, query: Any, data: Any = None) -> ResultSet:
+        """Run ``query`` through the adapter's ``raw``.
+
+        ``QuerySet.raw()`` calls this after it checks that the provider
+        declares ``RAW_QUERIES``, so the adapter subclasses
+        :class:`RawQueryDAOPort`.
+        """
+        with self.session_scope() as session:
+            return cast(RawQueryDAOPort, self._adapter).raw(session, query, data)
+
+    def has_table(self) -> bool:
+        """Whether the adapter's table, collection or index exists."""
+        return self._adapter.has_table()
+
+    def update_all(self, criteria: Q, values: Mapping[str, Any]) -> int:
+        """Write ``values`` to every row that matches ``criteria``.
+
+        .. warning::
+
+            This is an **internal framework method** reserved for
+            infrastructure needs (outbox, projection rebuilds). It bypasses
+            domain validation, invariants, and the Unit of Work's tracking.
+            Do not call it from domain-level code.
+
+        Returns:
+            The number of rows that matched ``criteria``. The Elasticsearch
+            adapter returns ``0`` when ``values`` is empty.
+        """
+        with self.session_scope() as session:
+            return self._adapter.update_all(session, criteria, values)
+
+    def delete_all(self, criteria: Q | None = None) -> int:
+        """Delete every row that matches ``criteria``, or every row when
+        ``criteria`` is ``None``.
+
+        .. warning::
+
+            This is an **internal framework method** reserved for
+            infrastructure needs (outbox, projection rebuilds, table cleanup).
+            It bypasses domain validation, invariants, and the Unit of Work's
+            tracking. Do not call it from domain-level code.
+
+        Returns:
+            The number of rows that matched ``criteria``.
+
+        Raises:
+            Exception: The adapter's error, logged and re-raised.
+        """
+        try:
+            with self.session_scope() as session:
+                return self._adapter.delete_all(session, criteria)
+        except Exception as exc:
+            logger.error(f"Failed deletion of all records because of {exc}")
+            raise
+
+    def claim(
+        self,
+        criteria: Q,
+        claim_fields: Mapping[str, Any],
+        limit: int,
+        order_by: str | Sequence[str] | None = None,
+        hold_back: HoldBack | None = None,
+    ) -> list[BaseEntity]:
+        """Claim up to ``limit`` rows that match ``criteria`` and return them.
+
+        Each claimed row gets ``claim_fields`` written to it, and the returned
+        entities show that post-claim state. The claim is committed before the
+        method returns, so call it **outside** an active Unit of Work. Inside
+        one, the write waits for the Unit of Work to commit, and other workers
+        do not see the claim until then.
+
+        Every implementation keeps these promises:
+
+        - No two callers claim the same row. A caller that loses a race for a
+          row does not get it.
+        - With ``hold_back``, a grouped row is claimed only when every earlier
+          row of its group that matches ``hold_back.holds`` is claimed by the
+          same call. A row locked by another caller holds the rows behind it.
+
+        ``claim_fields`` must make a claimed row stop matching ``criteria``.
+        The call may wait briefly on a row another caller has locked. How a
+        lost race shows up depends on the backend; see ADR-0013.
+
+        Args:
+            criteria: Selects the rows that can be claimed.
+            claim_fields: Values to write on each claimed row.
+            limit: The most rows to claim. ``0`` or less claims none.
+            order_by: A key, or a list of keys applied in turn, such as
+                ``["-priority", "created_at"]``. A ``-`` prefix sorts that key
+                descending.
+            hold_back: Keeps a grouped row back until the earlier rows of its
+                group are claimed with it. ``None`` claims the top rows with no
+                grouping.
+
+        Returns:
+            The claimed entities, with ``claim_fields`` applied.
+
+        """
+        if limit <= 0:
+            return []
+
+        order = _order_keys(order_by)
+        if _uses_adapter_operation(self, DatabaseCapabilities.NATIVE_CLAIM):
+            adapter = cast(NativeClaimPort, self._adapter)
+            with self.session_scope() as session:
+                return adapter.claim(
+                    session, criteria, claim_fields, limit, order, hold_back
+                )
+        return portable_claim(self, criteria, claim_fields, limit, order, hold_back)
+
+    def delete_top(
+        self,
+        criteria: Q,
+        limit: int,
+        order_by: str | None = None,
+    ) -> int:
+        """Delete up to ``limit`` rows that match ``criteria``.
+
+        Large cleanups use this to delete in fixed-size batches.
+
+        .. warning::
+
+            Like :meth:`delete_all`, this is an **internal framework method**
+            reserved for infrastructure needs (outbox cleanup, table pruning).
+            It bypasses domain validation, invariants, and the Unit of Work's
+            tracking. Do not call it from domain-level code.
+
+        Args:
+            criteria: Selects the rows that can be deleted.
+            limit: The most rows to delete. ``0`` or less deletes none.
+            order_by: One sort key, such as ``"-priority"``, that decides which
+                rows go first.
+
+        Returns:
+            The number of rows deleted, at most ``limit``.
+        """
+        if limit <= 0:
+            return 0
+
+        if _uses_adapter_operation(self, DatabaseCapabilities.BOUNDED_DELETE):
+            adapter = cast(BoundedDeletePort, self._adapter)
+            with self.session_scope() as session:
+                return adapter.delete_top(session, criteria, limit, order_by)
+        return portable_delete_top(self, criteria, limit, order_by)
+
+    ######################
+    # Life-cycle methods #
+    ######################
+
+    def get(self, identifier: Any) -> BaseEntity:
+        """Retrieve a specific Record from the Repository by its `identifier`.
+
+        This method internally uses the `filter` method to fetch records.
+
+        Returns exactly one record that matches the identifier.
+
+        Throws `ObjectNotFoundError` if no record was found for the identifier.
+
+        Throws `TooManyObjectsError` if multiple records were found for the identifier.
+
+        :param identifier: id of the record to be fetched from the data store.
+        """
+        logger.debug(
+            f"Lookup `{self.entity_cls.__name__}` object with identifier {identifier}"
+        )
+
+        # Filter on the ID field of the entity
+        entity_id_field = id_field(self.entity_cls)
+        assert entity_id_field is not None, (
+            f"`{self.entity_cls.__name__}` does not have an identity field"
+        )
+        assert entity_id_field.field_name is not None
+        filters = {
+            entity_id_field.field_name: identifier,
+        }
+
+        results = self.query.filter(**filters).all()
+        if not results:
+            raise ObjectNotFoundError(
+                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
+                f"does not exist."
+            )
+
+        if len(results) > 1:
+            raise TooManyObjectsError(
+                f"More than one object of `{self.entity_cls.__name__}` exist with identifier {identifier}",
+            )
+
+        # Return the first result, because `filter` would have returned an array
+        result: BaseEntity | None = results.first
+        assert result is not None
+        return result
+
+    def find_by(self, **kwargs: Any) -> BaseEntity:
+        """Find a specific entity record that matches one or more criteria.
+
+        This method internally uses the `filter` method to fetch records.
+
+        Returns exactly one record that matches the identifier.
+
+        Throws `ObjectNotFoundError` if no record was found for the identifier.
+        Throws `TooManyObjectsError` if multiple records were found for the identifier.
+
+        :param kwargs: named arguments of attribute names and values to filter on.
+        """
+        logger.debug(f"Lookup `{self.entity_cls.__name__}` object with values {kwargs}")
+
+        # Filter for item in the data store
+        results = self.query.filter(**kwargs).all()
+
+        if not results:
+            raise ObjectNotFoundError(
+                f"`{self.entity_cls.__name__}` object with values {list(kwargs.items())} "
+                f"does not exist."
+            )
+
+        if len(results) > 1:
+            raise TooManyObjectsError(
+                f"More than one object of `{self.entity_cls.__name__}` exist "
+                f"with values {list(kwargs.items())}",
+            )
+
+        # Return the first result, because `filter` would have returned an array
+        result: BaseEntity | None = results.first
+        assert result is not None
+        return result
+
+    def exists(self, excludes_: dict[str, Any], **filters: Any) -> bool:
+        """Returns `True` if objects matching the provided filters were found. Else, returns False.
+
+        This method fetches records through the `filter` method.
+
+        :param filters: criteria to match records against
+        :param excludes_: criteria that records should not satisfy
+        """
+        results = self.query.filter(**filters).exclude(**excludes_)
+
+        # Invokes the __bool__ method on `ResultSet`.
+        return bool(results)
+
+    @staticmethod
+    def _is_pending_auto_field(
+        entity_obj: Any, field_name: str, field_obj: Any
+    ) -> bool:
+        """True if ``field_obj`` is an ``Auto(increment=True)`` field whose value
+        on ``entity_obj`` has not been generated yet (still ``None``).
+
+        A caller-supplied value is thus never treated as pending, so it is
+        neither flushed-for nor overwritten during reflection.
+        """
+        return getattr(field_obj, "increment", False) and (
+            getattr(entity_obj, field_name) is None
+        )
+
+    def _has_pending_auto_field(self, entity_obj: Any) -> bool:
+        """Return True if the entity has any ``Auto(increment=True)`` field still
+        awaiting a store-generated value.
+
+        Used to decide whether a pre-reflection flush is worth its cost: a
+        relational adapter assigns such a value only when the INSERT is flushed.
+        Entities identified by a client-supplied value (e.g. the common
+        UUID/string identifier) have no pending auto field and skip the flush.
+        """
+        return any(
+            self._is_pending_auto_field(entity_obj, field_name, field_obj)
+            for field_name, field_obj in declared_fields(entity_obj).items()
+        )
+
+    def _reflect_auto_fields(self, entity_obj: Any, model_obj: Any) -> None:
+        """Copy store-generated auto-increment values back onto the entity.
+
+        An ``Auto(increment=True)`` field's value is produced by the
+        persistence store during the create, not by the entity. After the
+        record is created, reflect that value back onto the in-memory instance
+        so the caller holds the same identity that was persisted. Only fields
+        still unset on the entity are updated, so a caller-supplied value is
+        never overwritten.
+        """
+        for field_name, field_obj in declared_fields(entity_obj).items():
+            if self._is_pending_auto_field(entity_obj, field_name, field_obj):
+                if isinstance(model_obj, dict):
+                    # The memory model dict is keyed by field name.
+                    field_val = model_obj[field_name]
+                else:
+                    # An object model (SQLAlchemy) exposes the generated column
+                    # under its attribute name, which differs from the field
+                    # name when ``referenced_as`` is set.
+                    attribute_name = field_obj.attribute_name
+                    assert attribute_name is not None
+                    field_val = getattr(model_obj, attribute_name)
+
+                setattr(entity_obj, field_name, field_val)
+
+    def create(self, *args: Any, **kwargs: Any) -> BaseEntity:
+        """Create a new record in the data store.
+
+        Performs validations for unique attributes before creating the entity
+
+        Returns the created entity object.
+
+        Throws `ValidationError` for validation failures on attribute values or uniqueness constraints.
+
+        :param args: Dictionary object containing the object's data.
+        :param kwargs: named attribute names and values
+        """
+        logger.debug(
+            f"Creating new `{self.entity_cls.__name__}` object using data {kwargs}"
+        )
+
+        try:
+            # Build the entity from input arguments
+            # Raises validation errors, if any, at this point
+            entity_obj = self.entity_cls(*args, **kwargs)
+
+            # Check unique fields, write the row and reflect auto-increment
+            # values. Raises validation errors if unique constraints are violated.
+            self._write_insert(entity_obj, if_absent=False)
+
+            # Set Entity status to saved to let everybody know it has been persisted
+            entity_obj.state_.mark_saved()
+
+            # Track aggregate at the UoW level, to be able to perform actions on UoW commit,
+            #   like persisting events raised by the aggregate.
+            if current_uow and entity_obj.element_type == DomainObjects.AGGREGATE:
+                current_uow._add_to_identity_map(entity_obj, saved=True)
+
+            return entity_obj
+        except ValidationError as exc:
+            logger.error(f"Failed creating entity because of {exc}")
+            raise
+
+    def _validate_and_update_version(self, entity_obj: Any) -> int | None:
+        """Compute the expected version and advance the entity's version.
+
+        Returns the expected version that the persistence store must match
+        atomically during the adapter's subsequent ``update()`` call, or ``None``
+        for new (unpersisted) entities.
+        """
+        expected_version: int | None = None
+
+        if entity_obj.state_.is_persisted:
+            expected_version = entity_obj._version
+
+        # Advance to the next version: the model built from this entity
+        # carries it for the write. ``_next_version`` moves on only once the
+        # write is committed (see ``save`` and ``UnitOfWork.commit``).
+        entity_obj._version = entity_obj._next_version
+
+        return expected_version
+
+    def _apply_pre_persist_hooks(self, entity_obj: Any) -> None:
+        """Stamp ``auto_now``/``auto_now_add`` fields, then run aggregate enrichers.
+
+        Enrichers run only on aggregates the user registered. They never run on
+        the framework's internal aggregates, such as outbox rows.
+
+        The ``@invariant.pre`` checks do not run on these writes. On an
+        aggregate, the post-invariants run once after the stamping and once
+        after each enricher, unless the save runs inside an open
+        ``atomic_change`` block (see ``_pre_persist_hook``). When a check
+        fails, or a hook raises, that hook's writes are undone and the save
+        aborts. A ``ValidationError`` carries a ``location`` that names the
+        hook; any other exception propagates as it was raised.
+
+        ``save`` calls this unless ``apply_hooks=False``. A caller that must run
+        the hooks earlier than the write (so a raising enricher fails before any
+        other store is touched) calls it directly and then saves with
+        ``apply_hooks=False``.
+        """
+        is_create = not entity_obj.state_.is_persisted
+        stamped = _lifecycle_timestamp_fields(entity_obj, is_create=is_create)
+        if stamped:
+            location = (
+                f"auto_now stamping of {', '.join(stamped)} "
+                f"on {type(entity_obj).__qualname__}"
+            )
+            with _pre_persist_hook(entity_obj, location, writes_only_to_self=True):
+                _stamp_lifecycle_timestamps(entity_obj, stamped)
+        if (
+            entity_obj.element_type == DomainObjects.AGGREGATE
+            and current_domain
+            and current_domain._aggregate_enrichers
+            and not current_domain._domain_registry.is_internal(self.entity_cls)
+        ):
+            for enricher in current_domain._aggregate_enrichers:
+                location = (
+                    f"aggregate enricher {_callable_qualname(enricher)} "
+                    f"on {type(entity_obj).__qualname__}"
+                )
+                with _pre_persist_hook(entity_obj, location):
+                    enricher(entity_obj)
+
+    def save(self, entity_obj: Any, *, apply_hooks: bool = True) -> Any:
+        """Persist a fully formed entity: create it if it was never saved, else
+        update it.
+
+        Args:
+            entity_obj: The entity to persist.
+            apply_hooks: When ``False``, skip the pre-persist hooks
+                (``auto_now``/``auto_now_add`` stamping and aggregate
+                enrichers) for a raw write, such as a bulk migration that must
+                not touch audit fields. The optimistic-concurrency version
+                check still applies.
+
+        Returns:
+            The saved entity.
+
+        Raises:
+            ValidationError: A field value or a uniqueness constraint fails
+                validation.
+        """
+        return self._save(entity_obj, apply_hooks=apply_hooks, if_absent=False)
+
+    def _save(self, entity_obj: Any, *, apply_hooks: bool, if_absent: bool) -> Any:
+        """Persist ``entity_obj`` as :meth:`save` states.
+
+        With ``if_absent``, the adapter's ``InsertIfAbsentPort`` members write
+        the row, and :class:`_UniqueKeyTaken` is raised when another row holds
+        a unique key of the entity.
+        """
+        logger.debug(f"Saving `{self.entity_cls.__name__}` object")
+
+        expected_version: int | None = None
+        if entity_obj.element_type == DomainObjects.AGGREGATE:
+            expected_version = self._validate_and_update_version(entity_obj)
+
+        try:
+            # Pre-persist hooks run while the entity is still a live object,
+            # before ``from_entity`` freezes it into a model. auto_now stamps
+            # run first, then registered enrichers (so an enricher may override
+            # a stamped timestamp). Both fire on create and update; a raised
+            # enricher aborts the save (the version advance is rolled back for an
+            # update in the ``except`` below).
+            if apply_hooks:
+                self._apply_pre_persist_hooks(entity_obj)
+
+            if entity_obj.state_.is_persisted:
+                self._write_update(entity_obj, expected_version, if_absent)
+            else:
+                self._write_insert(entity_obj, if_absent)
+
+            # Set Entity status to saved to let everybody know it has been persisted
+            entity_obj.state_.mark_saved()
+
+            # A standalone write is already committed, so match what a reload
+            # would give. Under a UoW the commit advances ``_next_version``
+            # instead: until then, events raised on this instance belong to
+            # the version this transaction writes.
+            if (
+                self._is_standalone
+                and entity_obj.element_type == DomainObjects.AGGREGATE
+            ):
+                entity_obj._next_version = entity_obj._version + 1
+
+            # Track aggregate at the UoW level, to be able to perform actions on UoW commit,
+            #   like persisting events raised by the aggregate.
+            if current_uow and entity_obj.element_type == DomainObjects.AGGREGATE:
+                # The element may have changed from the time it was loaded or may have been
+                #   updated multiple times. We retain the last copy in seen.
+                current_uow._add_to_identity_map(entity_obj, saved=True)
+
+            return entity_obj
+        except Exception as exc:
+            # Roll back the version advance so the entity stays consistent
+            # with the persistence store after a failed save.
+            if expected_version is not None:
+                entity_obj._version = expected_version
+            # ``save_if_absent`` logs a ``ValidationError`` only when it
+            # re-raises it, because a taken unique key turns it into ``None``.
+            if not isinstance(exc, _UniqueKeyTaken) and not (
+                if_absent and isinstance(exc, ValidationError)
+            ):
+                _log_save_failure(exc)
+            raise
+
+    def _write_insert(self, entity_obj: Any, if_absent: bool) -> None:
+        """Check ``entity_obj``'s unique fields, write it as a new row, and
+        copy store-generated auto-increment values back onto it.
+
+        Raises:
+            ValidationError: A unique field's value is taken.
+            _UniqueKeyTaken: With ``if_absent``, another row holds a unique
+                key of the entity.
+        """
+        # Perform unique checks. Raises validation errors if unique constraints are violated.
+        self._validate_unique(entity_obj)
+
+        model_obj = self.database_model_cls.from_entity(entity_obj)
+        with self.session_scope() as session:
+            if if_absent:
+                adapter = cast(InsertIfAbsentPort, self._adapter)
+                if not adapter.insert_if_absent(session, model_obj):
+                    raise _UniqueKeyTaken
+            else:
+                model_obj = self._adapter.insert(session, model_obj)
+
+            # A relational adapter assigns an Auto(increment=True) key only
+            # when the INSERT is flushed; under a UoW that flush is deferred
+            # to commit, after add() has returned. Force it here so the value
+            # materializes before we reflect it. A standalone session is
+            # committed (and flushed) when the scope ends, so this is UoW-only,
+            # and it is skipped entirely when no auto field is pending (the
+            # common client-supplied identifier).
+            if not self._is_standalone and self._has_pending_auto_field(entity_obj):
+                self.provider.flush(session)
+
+        # Reflect store-generated auto-increment values back onto the
+        # entity so an Auto(increment=True) field is populated after add().
+        self._reflect_auto_fields(entity_obj, model_obj)
+
+    def _write_update(
+        self, entity_obj: Any, expected_version: int | None, if_absent: bool
+    ) -> None:
+        """Write ``entity_obj``'s values to its stored row.
+
+        Raises:
+            ExpectedVersionError: The stored version differs from
+                ``expected_version``.
+            _UniqueKeyTaken: With ``if_absent``, another row holds a unique
+                key of the entity.
+        """
+        model_obj = self.database_model_cls.from_entity(entity_obj)
+        with self.session_scope() as session:
+            if not if_absent:
+                self._adapter.update(
+                    session, model_obj, expected_version=expected_version
+                )
+                return
+
+            adapter = cast(InsertIfAbsentPort, self._adapter)
+            if not adapter.update_if_absent(
+                session, model_obj, expected_version=expected_version
+            ):
+                raise _UniqueKeyTaken
+
+    def save_if_absent(self, entity_obj: Any, *, apply_hooks: bool = True) -> Any:
+        """Save ``entity_obj`` unless another row already holds its unique key.
+
+        The unique key is the values of the fields of each ``Index`` declared
+        with ``unique=True`` and no ``where`` predicate. This method does not
+        check an index with a ``None`` among those values, and leaves such a
+        row to the database's own rule for NULLs. When the entity declares no
+        such index, this is :meth:`save`.
+
+        When the provider declares ``INSERT_IF_ABSENT``, the adapter checks the
+        key and writes the row as one step, so a writer that loses a race also
+        gets ``None``. The write runs inside the adapter's ``claim_lock()``.
+        A ``ValidationError`` from the save also returns ``None`` when another
+        row holds the key, because a key field that is also declared
+        ``unique=True`` fails its check before the write. The pre-persist
+        hooks run before the adapter checks the key, so on ``None`` the entity
+        keeps its ``auto_now`` stamps and its enrichers' changes; only the
+        aggregate's version is put back.
+
+        Inside a Unit of Work the memory adapter only stages the row. When
+        another session commits a row with the same key first, the Unit of
+        Work's commit drops this row after this method has returned the
+        entity, and records it in the session's ``dropped_rows``.
+
+        Otherwise this method checks for the key, then saves. Two writers that
+        check at the same moment can both pass the check. A store with a unique
+        index on the key then rejects the second write with its own error. A
+        store with no such index, such as Elasticsearch, keeps both rows.
+
+        Args:
+            entity_obj: The entity to persist.
+            apply_hooks: Passed to :meth:`save`.
+
+        Returns:
+            The saved entity, or ``None`` when another row holds the unique key.
+            Nothing is written in that case.
+
+        Raises:
+            ValidationError: ``save`` rejected the entity, and no other row
+                holds the unique key.
+        """
+        if not _uses_adapter_operation(self, DatabaseCapabilities.INSERT_IF_ABSENT):
+            return self._save_if_key_free(entity_obj, apply_hooks=apply_hooks)
+
+        version = (
+            entity_obj._version
+            if entity_obj.element_type == DomainObjects.AGGREGATE
+            else None
+        )
+        with self._adapter.claim_lock():
+            try:
+                return self._save(entity_obj, apply_hooks=apply_hooks, if_absent=True)
+            except _UniqueKeyTaken:
+                pass
+            except ValidationError as exc:
+                if not self._unique_key_taken(entity_obj):
+                    _log_save_failure(exc)
+                    raise
+            # ``_save`` raises before it marks the entity saved or tracks it
+            # in the Unit of Work, so only the version advance is left to undo.
+            if version is not None:
+                entity_obj._version = version
+            return None
+
+    def _save_if_key_free(self, entity_obj: Any, *, apply_hooks: bool) -> Any:
+        """Check for ``entity_obj``'s unique key, then save it when no other
+        row holds the key. Returns ``None`` when one does."""
+        if self._unique_key_taken(entity_obj):
+            return None
+        return self.save(entity_obj, apply_hooks=apply_hooks)
+
+    def _unique_key_taken(self, entity_obj: Any) -> bool:
+        """Whether another stored row shares a unique key with ``entity_obj``."""
+        # The values as the store holds them: the model ``from_entity`` builds
+        # applies a ``Reference``'s identifier, a serialized ``Custom`` field,
+        # stored names and any transform a custom database model adds.
+        criteria = _unique_key_criteria(
+            self.entity_cls,
+            self.database_model_cls,
+            self.database_model_cls.from_entity(entity_obj),
+        )
+        return criteria is not None and self._count(criteria) > 0
+
+    @deprecated_from_registry("dao_update")
+    def update(
+        self,
+        entity_obj: Any,
+        *data: Any,
+        apply_hooks: bool = True,
+        **kwargs: Any,
+    ) -> BaseEntity:
+        """Apply a field patch to an existing entity and persist it.
+
+        .. deprecated:: 0.18.0
+            The patch-and-persist path is deprecated and is removed in v0.20.0.
+            Load the aggregate, invoke a behaviour method that applies the
+            change, and persist it with ``repository.add()`` instead.
+
+        Applies the values, checks uniqueness, then persists the entity the
+        way :meth:`save` does. An aggregate update advances its version, stamps
+        ``auto_now`` fields, and runs pre-persist enrichers.
+
+        Takes the values as a dictionary or as keyword arguments::
+
+            >>> dao.update(user, {'age': 10})
+            >>> dao.update(user, age=10)
+
+        ``apply_hooks`` is a reserved keyword argument. To patch a field named
+        ``apply_hooks``, use the dictionary form
+        (``dao.update(user, {'apply_hooks': ...})``).
+
+        Args:
+            entity_obj: The persisted entity to update.
+            *data: A dictionary of values to apply.
+            apply_hooks: When ``False``, skip the pre-persist hooks
+                (``auto_now`` stamping and enrichers). The optimistic-concurrency
+                version check still applies. See :meth:`save`.
+            **kwargs: Values to apply, as keyword arguments.
+
+        Returns:
+            The updated entity.
+
+        Raises:
+            ObjectNotFoundError: ``entity_obj`` was never persisted.
+            ValidationError: A field value or a uniqueness constraint fails
+                validation.
+            ExpectedVersionError: The stored aggregate has a newer version.
+        """
+        return self._apply_update(entity_obj, *data, apply_hooks=apply_hooks, **kwargs)
+
+    def _apply_update(
+        self,
+        entity_obj: Any,
+        *data: Any,
+        apply_hooks: bool = True,
+        **kwargs: Any,
+    ) -> BaseEntity:
+        """Apply a field patch to an existing entity and persist it.
+
+        The real work behind :meth:`update`, split out so ``QuerySet.update``
+        can drive a bulk patch without re-emitting the per-call deprecation
+        warning once for every matched row. Not a public API; the deprecation
+        lives on the :meth:`update` wrapper.
+        """
+        logger.debug(
+            f"Updating existing `{self.entity_cls.__name__}` object with id {entity_obj.id}"
+        )
+
+        if not entity_obj.state_.is_persisted:
+            raise ObjectNotFoundError(
+                f"`{self.entity_cls.__name__}` object with identifier {entity_obj.id} "
+                f"does not exist."
+            )
+
+        entity_obj._update_data(*data, **kwargs)
+        # ``save`` skips the uniqueness check on its update branch, so run it here
+        # before delegating the persist (version advance, timestamps, enrichers).
+        self._validate_unique(entity_obj, create=False)
+        updated: BaseEntity = self.save(entity_obj, apply_hooks=apply_hooks)
+        return updated
+
+    def _validate_unique(self, entity_obj: Any, create: bool = True) -> None:
+        """Validate the unique constraints for the entity. Raise ValidationError, if constraints were violated.
+
+        This method internally uses each field object's fail method to construct a valid error message.
+
+        :param entity_obj: Entity object to be validated
+        :param create: boolean value to indicate that the validation is part of a create operation
+        """
+        # Build the filters from the unique constraints
+        filters, excludes = {}, {}
+
+        # Construct filter criteria based on unique fields defined in Entity class
+        for field_name, field_obj in unique_fields(self.entity_cls).items():
+            lookup_value = getattr(entity_obj, field_name, None)
+
+            # Ignore empty lookup values
+            if lookup_value in (None, "", [], (), {}):
+                continue
+
+            # Ignore identifiers on updates
+            if not create and field_obj.identifier:
+                excludes[field_name] = lookup_value
+                continue
+
+            filters[field_name] = lookup_value
+
+        # Lookup the objects by filters and raise error if objects exist
+        for filter_key, lookup_value in filters.items():
+            if self.exists(excludes, **{filter_key: lookup_value}):
+                field_obj = declared_fields(self.entity_cls)[filter_key]
+                field_obj.fail(
+                    "unique",
+                    entity_name=self.entity_cls.__name__,
+                    field_name=filter_key,
+                    value=lookup_value,
+                )
+
+    def delete(self, entity_obj: Any) -> Any:
+        """Delete a record in the data store.
+
+        Performs validations before data deletion.
+
+        Returns the deleted entity object.
+
+        Throws ObjectNotFoundError if the object was not found in the data store.
+
+        :param entity_obj: Entity object to be deleted from data store
+        """
+        try:
+            if not entity_obj.state_.is_destroyed:
+                model_obj = self.database_model_cls.from_entity(entity_obj)
+                with self.session_scope() as session:
+                    self._adapter.delete(session, model_obj)
+
+                # Set Entity status to destroyed to let everybody know the object is no longer referable
+                entity_obj.state_.mark_destroyed()
+
+            return entity_obj
+        except Exception as exc:  # logs any delete failure, then re-raises
+            logger.error(f"Failed entity deletion because of {exc}")
+            raise

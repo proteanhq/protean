@@ -238,7 +238,7 @@ are found, the rebuild fails immediately with an error.
 Existing projection data is cleared:
 
 - **Database-backed projections** (the default): All rows are deleted via
-  the DAO's `_delete_all()` method. When a projector of the projection is
+  the DAO's `delete_all()` method. When a projector of the projection is
   registered with `idempotent=True`, its delivery markers are deleted in the
   same unit of work as the rows. Without this, the replay would find a marker
   for every event, skip it as a redelivery, and leave the projection empty.

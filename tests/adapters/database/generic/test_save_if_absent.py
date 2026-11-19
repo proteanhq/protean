@@ -1,4 +1,4 @@
-"""Generic conformance tests for ``BaseDAO.save_if_absent`` across providers.
+"""Generic conformance tests for ``DAO.save_if_absent`` across providers.
 
 ``save_if_absent`` writes a row unless another row holds its unique key: the
 values of the fields of each non-partial ``Index(unique=True)``. The outbox
@@ -17,7 +17,7 @@ from protean.core.entity import BaseEntity
 from protean.core.index import Index
 from protean.core.unit_of_work import UnitOfWork
 from protean.fields import HasMany, String
-from protean.port.dao import BaseDAO
+from protean.infra.dao import DAO
 from protean.utils.globals import current_uow
 from protean.utils.query import Q
 from tests.shared import provider_adapter
@@ -111,6 +111,13 @@ def _dao(test_domain, cls=KeyedRow):
     return test_domain.repository_for(cls)._dao
 
 
+def _new_dao(test_domain, cls=KeyedRow):
+    """A DAO of its own for ``cls``, not the repository's shared one."""
+    provider = provider_adapter(test_domain, "default")
+    model = test_domain.repository_for(cls)._database_model
+    return DAO(test_domain, provider, provider.dao_for(cls, model))
+
+
 def _rows_with_key(test_domain, key_a, key_b):
     return (
         test_domain.repository_for(KeyedRow)
@@ -193,7 +200,12 @@ class TestSaveIfAbsent:
         dao.save(RenamedKeyRow(email="a@example.com"))
 
         assert dao.save_if_absent(RenamedKeyRow(email="a@example.com")) is None
-        assert BaseDAO.save_if_absent(dao, RenamedKeyRow(email="a@example.com")) is None
+        assert (
+            dao._save_if_key_free(
+                RenamedKeyRow(email="a@example.com"), apply_hooks=True
+            )
+            is None
+        )
 
         # A count, because the Elasticsearch model cannot load a record whose
         # field is stored under another name.
@@ -205,7 +217,10 @@ class TestSaveIfAbsent:
 
         assert dao.save_if_absent(StoredNameKeyRow(email="a@example.com")) is None
         assert (
-            BaseDAO.save_if_absent(dao, StoredNameKeyRow(email="a@example.com")) is None
+            dao._save_if_key_free(
+                StoredNameKeyRow(email="a@example.com"), apply_hooks=True
+            )
+            is None
         )
         assert dao.query.filter(email="a@example.com").count() == 1
 
@@ -222,8 +237,7 @@ class TestSaveIfAbsent:
         assert [r.id for r in rows] == [first.id]
 
     def test_skips_an_entity_whose_key_is_taken(self, test_domain):
-        provider = provider_adapter(test_domain, "default")
-        dao = provider.dao_for(KeyedChild, provider.model_for(KeyedChild))
+        dao = _new_dao(test_domain, KeyedChild)
         first = KeyedChild(code="c1")
         dao.save(first)
 
@@ -236,8 +250,8 @@ class TestSaveIfAbsent:
 
 
 @pytest.mark.basic_storage
-class TestBaseDAODefault:
-    """The portable default that an adapter without its own override uses."""
+class TestPortableDefault:
+    """The check-then-save that a provider without ``INSERT_IF_ABSENT`` uses."""
 
     def test_default_skips_a_row_whose_key_is_taken(self, test_domain):
         dao = _dao(test_domain)
@@ -246,7 +260,7 @@ class TestBaseDAODefault:
 
         second = KeyedRow(key_a="m1", key_b="internal", note="second")
 
-        assert BaseDAO.save_if_absent(dao, second) is None
+        assert dao._save_if_key_free(second, apply_hooks=True) is None
         rows = _rows_with_key(test_domain, "m1", "internal")
         assert [r.note for r in rows] == ["first"]
 
@@ -254,7 +268,7 @@ class TestBaseDAODefault:
         dao = _dao(test_domain)
         row = KeyedRow(key_a="m1", key_b="internal")
 
-        assert BaseDAO.save_if_absent(dao, row) is row
+        assert dao._save_if_key_free(row, apply_hooks=True) is row
         assert len(_rows_with_key(test_domain, "m1", "internal")) == 1
 
     def test_default_writes_a_row_with_a_none_key_value(self, test_domain):
@@ -267,7 +281,7 @@ class TestBaseDAODefault:
 
         second = KeyedRow(key_a="m1", key_b=None)
 
-        assert BaseDAO.save_if_absent(dao, second) is second
+        assert dao._save_if_key_free(second, apply_hooks=True) is second
         stored = dao.query.filter(key_a="m1").all().items
         assert sorted(r.id for r in stored) == sorted([first.id, second.id])
 
@@ -278,7 +292,7 @@ class TestBaseDAODefault:
 
         row.note = "changed"
 
-        assert BaseDAO.save_if_absent(dao, row) is row
+        assert dao._save_if_key_free(row, apply_hooks=True) is row
         assert test_domain.repository_for(KeyedRow).get(row.id).note == "changed"
 
 
@@ -309,9 +323,7 @@ class TestSaveIfAbsentInUnitOfWork:
         repo = test_domain.repository_for(KeyedRow)
         # A DAO of its own, so the flag that takes it outside the unit of work
         # does not stick to the repository's shared DAO.
-        outside_dao = provider_adapter(test_domain, "default").dao_for(
-            KeyedRow, repo._database_model
-        )
+        outside_dao = _new_dao(test_domain)
         late = KeyedRow(key_a="m1", key_b="internal", note="committed first")
         mine = KeyedRow(key_a="m1", key_b="internal", note="mine")
 
@@ -342,11 +354,7 @@ class TestSaveIfAbsentInUnitOfWork:
 
     def test_a_skip_outside_the_unit_of_work_keeps_its_tracked_copy(self, test_domain):
         repo = test_domain.repository_for(KeyedRow)
-        outside_dao = (
-            provider_adapter(test_domain, "default")
-            .dao_for(KeyedRow, repo._database_model)
-            .outside_uow()
-        )
+        outside_dao = _new_dao(test_domain).outside_uow()
         _dao(test_domain).save(KeyedRow(key_a="m1", key_b="internal", note="first"))
         second = KeyedRow(key_a="m2", key_b="internal", note="second")
         _dao(test_domain).save(second)

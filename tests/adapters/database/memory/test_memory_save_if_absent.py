@@ -4,8 +4,10 @@ When another writer commits a row with the same unique key before the Unit of
 Work commits, the commit drops the staged row. These tests check that the
 commit compares the key the staged row holds when the commit runs, and leaves
 alone a staged row the Unit of Work deleted. One test checks that the portable
-``BaseDAO`` default compares the key as a custom database model stores it.
+check-then-save compares the key as a custom database model stores it.
 """
+
+import logging
 
 import pytest
 
@@ -13,8 +15,9 @@ from protean.adapters.database.memory import MemoryModel
 from protean.core.aggregate import BaseAggregate
 from protean.core.index import Index
 from protean.core.unit_of_work import UnitOfWork
+from protean.exceptions import ValidationError
 from protean.fields import Auto, String
-from protean.port.dao import BaseDAO
+from protean.infra.dao import DAO
 from tests.shared import provider_adapter
 
 
@@ -54,7 +57,8 @@ def _outside_dao(test_domain, cls):
     """A DAO of its own that writes outside the Unit of Work, so the flag does
     not stick to the repository's shared DAO."""
     repo = test_domain.repository_for(cls)
-    dao = provider_adapter(test_domain, "default").dao_for(cls, repo._database_model)
+    provider = provider_adapter(test_domain, "default")
+    dao = DAO(test_domain, provider, provider.dao_for(cls, repo._database_model))
     return dao.outside_uow()
 
 
@@ -99,7 +103,7 @@ def test_default_compares_the_key_the_database_model_stores(test_domain):
     dao = test_domain.repository_for(UpperKeyedRow)._dao
     dao.save(UpperKeyedRow(key="bolt"))
 
-    assert BaseDAO.save_if_absent(dao, UpperKeyedRow(key="bolt")) is None
+    assert dao._save_if_key_free(UpperKeyedRow(key="bolt"), apply_hooks=True) is None
     assert dao.query.filter(key="BOLT").count() == 1
 
 
@@ -179,3 +183,62 @@ def test_a_reused_unit_of_work_starts_with_no_dropped_rows(test_domain):
 
     assert uow._dropped_rows == set()
     assert _notes_with_key(test_domain, KeyedRow, "other") == ["mine"]
+
+
+class EmailKeyedRow(BaseAggregate):
+    key: String(max_length=50)
+    email: String(max_length=50, unique=True)
+
+
+class UniqueKeyFieldRow(BaseAggregate):
+    key: String(max_length=50, unique=True)
+
+
+@pytest.fixture
+def unique_field_rows(test_domain):
+    test_domain.register(EmailKeyedRow, indexes=[Index("key", unique=True)])
+    test_domain.register(UniqueKeyFieldRow, indexes=[Index("key", unique=True)])
+    test_domain.init(traverse=False)
+
+
+def test_a_unique_field_outside_the_free_key_raises(test_domain, unique_field_rows):
+    dao = test_domain.repository_for(EmailKeyedRow)._dao
+    dao.save(EmailKeyedRow(key="a", email="x@example.com"))
+    clash = EmailKeyedRow(key="b", email="x@example.com")
+
+    with pytest.raises(ValidationError) as exc:
+        dao.save_if_absent(clash)
+
+    assert "email" in exc.value.messages
+    assert [row.key for row in dao.query.all().items] == ["a"]
+
+
+def test_a_taken_key_on_a_unique_field_logs_no_error(
+    test_domain, unique_field_rows, caplog
+):
+    dao = test_domain.repository_for(UniqueKeyFieldRow)._dao
+    dao.save(UniqueKeyFieldRow(key="a"))
+    clash = UniqueKeyFieldRow(key="a")
+
+    with caplog.at_level(logging.ERROR, logger="protean.infra.dao"):
+        assert dao.save_if_absent(clash) is None
+
+    assert caplog.records == []
+    assert clash._version == -1
+
+
+def test_a_unique_field_failure_outside_the_key_logs_the_error(
+    test_domain, unique_field_rows, caplog
+):
+    dao = test_domain.repository_for(EmailKeyedRow)._dao
+    dao.save(EmailKeyedRow(key="a", email="x@example.com"))
+
+    with caplog.at_level(logging.ERROR, logger="protean.infra.dao"):
+        with pytest.raises(ValidationError):
+            dao.save_if_absent(EmailKeyedRow(key="b", email="x@example.com"))
+
+    message = (
+        "Failed saving entity because "
+        "{'email': [\"EmailKeyedRow with email 'x@example.com' is already present.\"]}"
+    )
+    assert [r.getMessage() for r in caplog.records] == [message]

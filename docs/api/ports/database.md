@@ -41,6 +41,54 @@ to write one.
     options:
       show_root_heading: false
 
+## DAOPort
+
+An adapter's DAO class implements `DAOPort`, and subclasses the optional DAO
+ports whose flags its database declares.
+
+::: protean.port.dao.DAOPort
+    options:
+      show_root_heading: false
+
+## RawQueryDAOPort
+
+::: protean.port.dao.RawQueryDAOPort
+    options:
+      show_root_heading: false
+
+## InsertIfAbsentPort
+
+::: protean.port.dao.InsertIfAbsentPort
+    options:
+      show_root_heading: false
+
+## NativeClaimPort
+
+::: protean.port.dao.NativeClaimPort
+    options:
+      show_root_heading: false
+
+## ClaimCandidatesPort
+
+::: protean.port.dao.ClaimCandidatesPort
+    options:
+      show_root_heading: false
+
+## BoundedDeletePort
+
+::: protean.port.dao.BoundedDeletePort
+    options:
+      show_root_heading: false
+
+## DAO
+
+Protean wraps each adapter DAO in the `DAO` service. A repository holds the
+service as `_dao`.
+
+::: protean.infra.dao.DAO
+    options:
+      show_root_heading: false
+
 ## LookupPort
 
 ::: protean.port.dao.LookupPort

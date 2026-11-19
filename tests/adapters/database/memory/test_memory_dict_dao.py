@@ -9,18 +9,19 @@ class User(BaseAggregate):
 
 def test_memory_dao_repr(test_domain):
     dao = test_domain.repository_for(User)._dao
-    assert str(dao) == "DictDAO <User>"
+    assert str(dao._adapter) == "DictDAO <User>"
+    assert str(dao) == "DAO <User> over DictDAO <User>"
 
 
 def test_delete_all_without_criteria_returns_deleted_count(test_domain):
-    """``_delete_all()`` with no criteria returns the number of records removed,
+    """``delete_all()`` with no criteria returns the number of records removed,
     matching the SQLAlchemy and Elasticsearch adapters (it used to return 0)."""
     dao = test_domain.repository_for(User)._dao
     dao.create(email="a@example.com", password="x")
     dao.create(email="b@example.com", password="y")
     dao.create(email="c@example.com", password="z")
 
-    deleted = dao._delete_all()
+    deleted = dao.delete_all()
 
     assert deleted == 3
     assert dao.query.all().total == 0

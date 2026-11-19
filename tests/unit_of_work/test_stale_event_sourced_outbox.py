@@ -302,11 +302,11 @@ class TestStaleWriteWithOutbox:
         stream_before = _stream(domain, account.account_id)
         outbox_before = _outbox_ids(domain)
 
-        def failing_create(model_obj):
+        def failing_insert(entity_obj, if_absent):
             raise ValueError("outbox insert failed")
 
         monkeypatch.setattr(
-            domain._get_outbox_repo("default")._dao, "_create", failing_create
+            domain._get_outbox_repo("default")._dao, "_write_insert", failing_insert
         )
 
         with pytest.raises(TransactionError) as exc_info:
@@ -327,14 +327,14 @@ class TestStaleWriteWithOutbox:
         account, _ = _open_and_load_twice(domain)
 
         dao = domain._get_outbox_repo("default")._dao
-        real_create = dao._create
+        real_insert = dao._write_insert
         seen_uows = []
 
-        def recording_create(model_obj):
+        def recording_insert(entity_obj, if_absent):
             seen_uows.append(current_uow._get_current_object())
-            return real_create(model_obj)
+            return real_insert(entity_obj, if_absent)
 
-        monkeypatch.setattr(dao, "_create", recording_create)
+        monkeypatch.setattr(dao, "_write_insert", recording_insert)
 
         with UnitOfWork() as uow:
             account.deposit(10)

@@ -161,7 +161,8 @@ def test_auto_field_not_overwritten_when_already_set(test_domain):
     model_dict["sequence"] = 999  # Pre-set the auto field
 
     # This should not override the existing value
-    updated_model = dao._set_auto_fields(model_dict)
+    session = dao.provider.new_session()
+    updated_model = dao._adapter._set_auto_fields(session, model_dict)
 
     # Sequence should remain as we set it
     assert updated_model["sequence"] == 999
@@ -206,7 +207,7 @@ def test_auto_field_counters_are_per_schema(test_domain):
 def test_auto_field_counter_handles_zero_start_correctly(test_domain):
     """Test the specific counter logic that handles starting from 0"""
     dao = test_domain.repository_for(AutoEntity)._dao
-    conn = dao._get_session()
+    conn = dao.provider.new_session()
 
     # The counter should start from 0
     counter_key = f"{dao.schema_name}_sequence"
@@ -228,7 +229,7 @@ def test_auto_field_counter_handles_zero_start_correctly(test_domain):
         del model_dict["sequence"]
 
     # This should trigger the counter logic
-    updated_model = dao._set_auto_fields(model_dict)
+    updated_model = dao._adapter._set_auto_fields(conn, model_dict)
 
     # Should get the next value (2, since we already called next twice)
     assert updated_model["sequence"] == 2
