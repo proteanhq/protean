@@ -1,8 +1,8 @@
 """An after-commit callback that raises inside a UnitOfWork.
 
 The callback runs once the writes are durable, so its failure is logged and the
-commit returns normally: the other callbacks, broker publishing, sync event
-dispatch and deferred commands still run. A keyed nested command whose result
+commit returns normally: the other callbacks, broker publishing and sync event
+dispatch still run. A keyed nested command whose result
 ``json.dumps`` rejects is the case that reaches this path in practice.
 """
 
@@ -141,6 +141,27 @@ class TestCommitAfterAFailingCallback:
             with UnitOfWork() as uow:
                 uow.register_message("accounts", {"data": "opened"})
 
+    def test_a_successful_callback_logs_no_failure(self, test_domain, caplog):
+        calls = []
+
+        with caplog.at_level(logging.ERROR, logger="protean.core.unit_of_work"):
+            with UnitOfWork():
+                run_after_commit(lambda: calls.append("ran"))
+
+        assert calls == ["ran"]
+        assert _failure_records(caplog) == []
+
+    def test_a_rollback_discards_the_callback_and_logs_no_failure(
+        self, test_domain, caplog
+    ):
+        with caplog.at_level(logging.ERROR, logger="protean.core.unit_of_work"):
+            uow = UnitOfWork()
+            uow.start()
+            run_after_commit(boom)
+            uow.rollback()
+
+        assert _failure_records(caplog) == []
+
     def test_a_failing_callback_with_no_unit_of_work_still_raises(self, test_domain):
         with pytest.raises(RuntimeError, match="callback failed"):
             run_after_commit(boom)
@@ -215,12 +236,15 @@ class TestRecordSuccess:
         assert "not JSON-serializable" in records[0].getMessage()
         assert records[0].exc_info is not None
 
-    def test_a_serializable_result_is_recorded(self):
+    def test_a_serializable_result_is_recorded(self, caplog):
         store = IdempotencyStore()
         redis = DictRedis()
         store._redis = redis
 
-        store.record_success("key-1", {"id": 1})
+        with caplog.at_level(logging.WARNING, logger="protean.utils.idempotency"):
+            store.record_success("key-1", {"id": 1})
+
+        assert caplog.records == []
 
         assert redis.data == {
             "idempotency:key-1": '{"status": "success", "result": {"id": 1}}'
