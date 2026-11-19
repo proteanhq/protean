@@ -304,8 +304,8 @@ full causal chain) and a `causation_id` (the `headers.id` of the immediate
 parent message). The domain's event store service (`domain.event_store`)
 provides three methods that use these links to traverse the causation graph.
 The functions behind them live in `protean.infra.causation` and read any
-adapter through its `EventStorePort` members. Each adapter still has the three
-methods, and they call the service.
+adapter through its `EventStorePort` members. The adapters do not have these
+methods.
 
 All three methods scan `$all` (the global ordered stream) and filter by
 `correlation_id` to build a working set. This is intentional: causation

@@ -1083,6 +1083,74 @@ def test_history_reads_the_whole_stream_past_one_read_page(
     assert f"{events} event(s), current version: {events - 1}" in result.output
 
 
+@pytest.mark.eventstore
+class TestEventsAgainstARealStore:
+    """The commands read through the domain's `EventStore` service."""
+
+    @pytest.fixture(autouse=True)
+    def account_events(self, test_domain):
+        test_domain.register(Account, event_sourced=True)
+        test_domain.register(AccountRenamed, part_of=Account)
+        test_domain.init(traverse=False)
+
+        account = Account(id="acc-1", name="Start")
+        for i in range(3):
+            account.rename(name=f"Name {i}")
+            test_domain.event_store.append(account._events[-1])
+        # A row in another category, so a read of the wrong scope counts it.
+        test_domain.event_store._write_message(
+            "other::thing-1", "Other.ThingHappened.v1", {"x": 1}
+        )
+
+    def _invoke(self, test_domain, *args):
+        with patch("protean.cli.events.load_domain", return_value=test_domain):
+            result = runner.invoke(app, ["events", *args])
+        assert result.exit_code == 0, result.output
+        return result.output.replace("\n", " ")
+
+    def test_read(self, test_domain):
+        stream = f"{Account.meta_.stream_category}-acc-1"
+
+        output = self._invoke(test_domain, "read", stream)
+
+        assert "Showing 3 event(s) from position 0" in output
+
+    def test_stats(self, test_domain):
+        output = self._invoke(test_domain, "stats")
+
+        assert "Total: 3 event(s) across 1 aggregate instance(s)" in output
+
+    def test_search(self, test_domain):
+        output = self._invoke(test_domain, "search", "--type", "AccountRenamed")
+
+        assert "Found 3 event(s) matching type 'AccountRenamed'" in output
+
+    def test_trace_flat(self, test_domain):
+        for stream, correlation_id in [
+            ("other::thing-2", "corr-1"),
+            ("other::thing-3", "corr-1"),
+            ("other::thing-4", "corr-2"),
+        ]:
+            test_domain.event_store._write_message(
+                stream,
+                "Other.ThingHappened.v1",
+                {"x": 1},
+                metadata={
+                    "headers": {
+                        "id": f"{stream}-msg",
+                        "type": "Other.ThingHappened.v1",
+                    },
+                    "domain": {"correlation_id": correlation_id},
+                },
+            )
+        correlation_id = "corr-1"
+        expected = 2
+
+        output = self._invoke(test_domain, "trace", correlation_id, "--flat")
+
+        assert f"Found {expected} event(s) for correlation ID" in output
+
+
 # ---------------------------------------------------------------------------
 # protean events history --trace
 # ---------------------------------------------------------------------------

@@ -1395,14 +1395,9 @@ class TestUniqueStoreDomains:
         d1 = _domain_with_store_uri(tmp_path, "d1", "postgresql://shared")
         d2 = _domain_with_store_uri(tmp_path, "broken", "postgresql://shared")
 
-        # Reading the adapter of the second domain fails, as a store whose
-        # set-up raised would.
-        class _BrokenStore:
-            @property
-            def _adapter(self):
-                raise RuntimeError("no store")
-
-        d2.event_store = _BrokenStore()
+        # The adapter of the second domain holds a config that is not a
+        # mapping, so reading its URI raises.
+        d2.event_store._adapter.config = "not a mapping"
         with caplog.at_level(
             logging.DEBUG, logger="protean.server.observatory.routes.timeline"
         ):
@@ -1427,6 +1422,23 @@ class TestUniqueStoreDomains:
 
         result = _unique_store_domains([d1, d2])
         assert len(result) == 2
+
+    def test_uri_comes_from_the_adapter_config(self, tmp_path):
+        """The key is the URI in the adapter's config, not the domain's config."""
+        d1 = _domain_with_store_uri(tmp_path, "d1", "postgresql://db-a")
+        d2 = _domain_with_store_uri(tmp_path, "d2", "postgresql://db-b")
+        d2.event_store._adapter.config = {"database_uri": "postgresql://db-a"}
+
+        assert _unique_store_domains([d1, d2]) == [d1]
+
+    def test_adapter_without_config_is_treated_as_unique(self, tmp_path):
+        """An adapter with no ``config`` attribute falls back to its id()."""
+        d1 = _domain_with_store_uri(tmp_path, "d1", "postgresql://shared")
+        d2 = _domain_with_store_uri(tmp_path, "d2", "postgresql://shared")
+        del d1.event_store._adapter.config
+        del d2.event_store._adapter.config
+
+        assert _unique_store_domains([d1, d2]) == [d1, d2]
 
     def test_store_with_empty_database_uri_falls_back_to_id(self, tmp_path):
         """Empty database_uri string falls back to id()-based key."""

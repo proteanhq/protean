@@ -65,12 +65,10 @@ def _unique_store_domains(domains: list[Domain]) -> list[Domain]:
             adapter = domain.event_store._adapter
             # Use the database URI as the identity key — object identity
             # doesn't work because each domain creates its own store instance.
-            # The adapter is built from the domain's ``event_store`` config.
-            store_key = (
-                domain.config["event_store"].get("database_uri", "")
-                if adapter is not None
-                else ""
-            )
+            # ``config`` is not an ``EventStorePort`` member, so a custom
+            # adapter may not have it.
+            config = getattr(adapter, "config", None) or {}
+            store_key = config.get("database_uri", "")
             if not store_key:
                 store_key = str(id(adapter))  # Fallback for stores without a URI
         except Exception as exc:  # noqa: BLE001 - the store is set up from user config

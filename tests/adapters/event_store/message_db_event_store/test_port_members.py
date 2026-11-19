@@ -28,6 +28,7 @@ def store(test_domain):
 
 def test_domain_builds_the_store_named_default(store, test_domain):
     assert store.name == "default"
+    assert store.domain is test_domain
     assert store.config is test_domain.config["event_store"]
 
 

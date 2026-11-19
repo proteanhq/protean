@@ -15,6 +15,7 @@ from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ObjectNotFoundError
 from protean.fields import Identifier, Integer
+from protean.port import event_store as event_store_port
 from protean.port.event_store import SNAPSHOT_TYPE
 
 pytestmark = pytest.mark.eventstore
@@ -88,6 +89,14 @@ def test_adapter_is_the_configured_provider(test_domain):
     expected = {"memory": MemoryEventStore, "message_db": MessageDBStore}
     provider = test_domain.config["event_store"]["provider"]
     assert type(service._adapter) is expected[provider]
+
+
+def test_service_has_no_store_property(test_domain):
+    assert not hasattr(test_domain.event_store, "store")
+
+
+def test_port_module_has_no_base_event_store():
+    assert not hasattr(event_store_port, "BaseEventStore")
 
 
 class TestCategoryHeadPosition:
