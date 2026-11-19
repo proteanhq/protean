@@ -814,8 +814,8 @@ class InlineBroker(BaseBroker, DeadLetterQueuePort):
             self._messages.get(dlq_stream, [])
         ):
             if identifier == dlq_id:
-                self._remove_dlq_entries(dlq_stream, {index})
                 self.publish(target_stream, _without_dlq_metadata(message))
+                self._remove_dlq_entries(dlq_stream, {index})
                 logger.info(
                     f"Replayed DLQ message '{identifier}' to stream '{target_stream}'"
                 )
@@ -824,12 +824,23 @@ class InlineBroker(BaseBroker, DeadLetterQueuePort):
 
     def dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
         """Publish every entry in ``dlq_stream`` to ``target_stream`` without its
-        ``_dlq_metadata``, and remove it."""
-        entries = list(self._messages.get(dlq_stream, []))
-        self._remove_dlq_entries(dlq_stream, set(range(len(entries))))
-        for _identifier, message in entries:
-            self.publish(target_stream, _without_dlq_metadata(message))
-        return len(entries)
+        ``_dlq_metadata``, and remove it.
+
+        When a publication raises, removes the entries published before it
+        and keeps the rest in ``dlq_stream``.
+        """
+        published: set[int] = set()
+        try:
+            # ``publish`` only appends, so the indices stay valid even when
+            # ``target_stream`` is ``dlq_stream``.
+            for index, (_identifier, message) in enumerate(
+                list(self._messages.get(dlq_stream, []))
+            ):
+                self.publish(target_stream, _without_dlq_metadata(message))
+                published.add(index)
+        finally:
+            self._remove_dlq_entries(dlq_stream, published)
+        return len(published)
 
     def dlq_purge(self, dlq_stream: str) -> int:
         """Remove every entry in ``dlq_stream``."""
