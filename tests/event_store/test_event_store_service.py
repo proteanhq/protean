@@ -1,8 +1,7 @@
 """The domain's ``EventStore`` service against the configured store.
 
 The service holds the adapter, answers ``category_head_position`` and loads
-aggregates. The reading, writing, loading and snapshot methods that ``.store``
-still exposes hand their call to the service.
+aggregates.
 """
 
 from uuid import uuid4
@@ -82,11 +81,10 @@ def _metadata(stream_name):
     }
 
 
-def test_store_is_the_adapter(test_domain):
+def test_adapter_is_the_configured_provider(test_domain):
     service = test_domain.event_store
 
     assert service._adapter is not None
-    assert service.store is service._adapter
     expected = {"memory": MemoryEventStore, "message_db": MessageDBStore}
     provider = test_domain.config["event_store"]["provider"]
     assert type(service._adapter) is expected[provider]
@@ -129,87 +127,15 @@ class TestCategoryHeadPosition:
             service.category_head_position("counter-1")
             == (newest_in_one["global_position"])
         )
-        # This assertion checks the adapter's delegate, which is removed
-        # together with the adapter base class. No other test may call the
-        # delegate, so the call goes through a local name that the search skips.
-        head_position = service._adapter.stream_head_position
-        assert head_position("counter-1") == newest_in_one["global_position"]
 
 
-class TestStoreDelegates:
-    def test_load_aggregate_reaches_the_service(self, test_domain, monkeypatch):
-        calls = []
-
-        def record(part_of, identifier, *, at_version=None, as_of=None):
-            calls.append((part_of, identifier, at_version, as_of))
-            return "loaded"
-
-        monkeypatch.setattr(test_domain.event_store, "load_aggregate", record)
-
-        result = test_domain.event_store._adapter.load_aggregate(
-            Counter, "1", at_version=2
-        )
-
-        assert result == "loaded"
-        assert calls == [(Counter, "1", 2, None)]
-
-    def test_stream_head_position_reaches_category_head_position(
-        self, test_domain, monkeypatch
-    ):
-        calls = []
-
-        def record(category):
-            calls.append(category)
-            return 11
-
-        monkeypatch.setattr(test_domain.event_store, "category_head_position", record)
-
-        # This test checks the adapter's delegate, which is removed together
-        # with the adapter base class. No other test may call the delegate, so
-        # the call goes through a local name that the search for it skips.
-        head_position = test_domain.event_store._adapter.stream_head_position
-        assert head_position("counter") == 11
-        assert calls == ["counter"]
-
-    @pytest.mark.parametrize(
-        ("member", "call", "expected_args"),
-        [
-            ("trace_causation", lambda s: s.trace_causation("m-1"), (("m-1",), {})),
-            (
-                "trace_effects",
-                lambda s: s.trace_effects("m-1", recursive=False),
-                (("m-1",), {"recursive": False}),
-            ),
-            (
-                "build_causation_tree",
-                lambda s: s.build_causation_tree("c-1"),
-                (("c-1",), {}),
-            ),
-            ("verify", lambda s: s.verify(), ((), {})),
-        ],
-    )
-    def test_tracing_and_verify_reach_the_service(
-        self, test_domain, monkeypatch, member, call, expected_args
-    ):
-        calls = []
-
-        def record(*args, **kwargs):
-            calls.append((args, kwargs))
-            return "from-service"
-
-        monkeypatch.setattr(test_domain.event_store, member, record)
-
-        assert call(test_domain.event_store._adapter) == "from-service"
-        assert calls == [expected_args]
-
+class TestReadKeywords:
     @pytest.mark.parametrize("keyword", ["no_of" + "_messages", "sql"])
     def test_read_rejects_removed_keywords(self, test_domain, keyword):
         # The old row-count name is built from parts so a search of the
         # repository for it finds no call that still uses it.
         with pytest.raises(TypeError, match=keyword):
             test_domain.event_store.read("counter", **{keyword: 5})
-        with pytest.raises(TypeError, match=keyword):
-            test_domain.event_store._adapter.read("counter", **{keyword: 5})
 
 
 class TestLoadAggregateAtVersion:

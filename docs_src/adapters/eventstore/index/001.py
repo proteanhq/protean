@@ -74,7 +74,7 @@ with domain.domain_context():
 stream = f"{Account.meta_.stream_category}-{account.id}"
 
 with domain.domain_context():
-    store = domain.event_store.store
+    store = domain.event_store
 
     # Read from the beginning of a stream
     messages = store.read(stream)
@@ -89,10 +89,10 @@ with domain.domain_context():
 # --8<-- [start:temporal]
 with domain.domain_context():
     # Versions count from 0: version 0 is the state after the first event
-    opened = domain.event_store.store.load_aggregate(Account, account.id, at_version=0)
+    opened = domain.event_store.load_aggregate(Account, account.id, at_version=0)
 
     # Load as of a point in time
-    current = domain.event_store.store.load_aggregate(
+    current = domain.event_store.load_aggregate(
         Account, account.id, as_of=datetime.now(UTC)
     )
 # --8<-- [end:temporal]
@@ -100,26 +100,24 @@ with domain.domain_context():
 # --8<-- [start:snapshots]
 with domain.domain_context():
     # Create a snapshot for one aggregate
-    created = domain.event_store.store.create_snapshot(Account, account.id)
+    created = domain.event_store.create_snapshot(Account, account.id)
 
     # Create snapshots for all instances of an aggregate type
-    count = domain.event_store.store.create_snapshots(Account)
+    count = domain.event_store.create_snapshots(Account)
 # --8<-- [end:snapshots]
 
 # --8<-- [start:causation]
 with domain.domain_context():
     domain.process(Deposit(account_id=account.id, amount=25.0), asynchronous=False)
-    event = domain.event_store.store.read_last_message(stream)
+    event = domain.event_store.read_last_message(stream)
 
     # Walk up from an event to the command that caused it
-    chain = domain.event_store.store.trace_causation(event.metadata.headers.id)
+    chain = domain.event_store.trace_causation(event.metadata.headers.id)
 
     # Find everything the command caused
-    effects = domain.event_store.store.trace_effects(chain[0].metadata.headers.id)
+    effects = domain.event_store.trace_effects(chain[0].metadata.headers.id)
 
     # Build the full tree for the event's correlation id
-    tree = domain.event_store.store.build_causation_tree(
-        event.metadata.domain.correlation_id
-    )
+    tree = domain.event_store.build_causation_tree(event.metadata.domain.correlation_id)
 # --8<-- [end:causation]
 # --8<-- [end:full]

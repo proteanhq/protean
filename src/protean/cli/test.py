@@ -1863,7 +1863,7 @@ def _port_adapter(domain: "Domain", port: str) -> Any:
             # The cache container holds a ``Cache`` service around the adapter.
             return domain.caches["default"]._adapter
         case _:
-            return domain.event_store.store
+            return domain.event_store._adapter
 
 
 def _load_port_capabilities(suite: PortSuite) -> tuple[Flag, str]:

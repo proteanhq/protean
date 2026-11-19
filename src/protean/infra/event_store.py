@@ -14,7 +14,7 @@ import logging
 from collections import deque
 from collections.abc import Iterator, Mapping
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from protean.exceptions import (
     ConfigurationError,
@@ -43,7 +43,6 @@ if TYPE_CHECKING:
     from protean.domain import Domain
     from protean.infra.causation import CausationNode
     from protean.infra.integrity import IntegrityReport
-    from protean.port.event_store import BaseEventStore
 
 logger = logging.getLogger(__name__)
 
@@ -224,21 +223,14 @@ class EventStore:
     Raises:
         ConfigurationError: From every feature method and forwarder that reaches
             the adapter, when `domain.init()` has not built it yet. The error
-            carries the code `CONFIG_EVENT_STORE_NOT_INITIALIZED`. `store`,
-            `close` and the static `category` need no adapter and do not
-            raise `ConfigurationError`.
+            carries the code `CONFIG_EVENT_STORE_NOT_INITIALIZED`. `close` and
+            the static `category` need no adapter and do not raise
+            `ConfigurationError`.
     """
 
     def __init__(self, domain: Domain) -> None:
         self.domain: Domain = domain
         self._adapter: EventStorePort | None = None
-
-    @property
-    def store(self) -> BaseEventStore | None:
-        """The adapter, or `None` before `domain.init()`. The same object as `_adapter`."""
-        # Every adapter the registry builds subclasses `BaseEventStore`, and
-        # callers of `store` still use its delegating feature methods.
-        return cast("BaseEventStore | None", self._adapter)
 
     def close(self) -> None:
         """Close the event store and release all connections.

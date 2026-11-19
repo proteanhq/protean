@@ -67,8 +67,8 @@ def check_brokers(domain: Domain) -> tuple[dict[str, str], bool]:
 def check_event_store(domain: Domain) -> tuple[str, bool]:
     """Check event store reachability with the store's ``ping()``."""
     try:
-        store = domain.event_store.store
-        if store is None or not store.ping():
+        store = domain.event_store
+        if store._adapter is None or not store.ping():
             return STATUS_UNAVAILABLE, False
         return STATUS_OK, True
     except Exception:  # a health check reports unavailable instead of raising; logged

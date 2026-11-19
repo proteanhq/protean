@@ -8,7 +8,7 @@ Data sources:
    stream categories, event-sourced flag.
 2. **Event store stats** (degrades gracefully) — instance counts and
    head positions via ``stream_ids()`` and
-   ``stream_head_position()``.
+   ``category_head_position()``.
 3. **Outbox status** (degrades gracefully) — pending/processing counts
    via ``count_by_status()``.
 
@@ -90,8 +90,8 @@ def enrich_with_event_store_stats(
         domain = agg["_domain"]
         try:
             with domain.domain_context():
-                store = domain.event_store.store
-                identifiers = store.stream_ids(stream_category)
+                store = domain.event_store
+                identifiers = store._stream_ids(stream_category)
                 agg["instance_count"] = len(identifiers)
         except Exception:  # a missing count must not fail the listing; logged
             logger.debug(
@@ -102,8 +102,8 @@ def enrich_with_event_store_stats(
 
         try:
             with domain.domain_context():
-                store = domain.event_store.store
-                head = store.stream_head_position(stream_category)
+                store = domain.event_store
+                head = store.category_head_position(stream_category)
                 agg["head_position"] = head if head >= 0 else None
         except Exception:  # a missing head position must not fail the listing
             logger.debug(

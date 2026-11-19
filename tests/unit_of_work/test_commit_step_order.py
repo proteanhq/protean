@@ -10,7 +10,7 @@ from protean.core.event import BaseEvent
 from protean.core.unit_of_work import UnitOfWork, run_after_commit
 from protean.fields import String
 from protean.infra.dao import DAO
-from protean.port.event_store import BaseEventStore
+from protean.infra.event_store import EventStore
 from protean.utils.globals import _uow_context_stack
 
 
@@ -51,7 +51,7 @@ def steps(monkeypatch) -> list[tuple[str, bool]]:
 
     orig_flush = MemorySession.flush
     orig_commit = MemorySession.commit
-    orig_append = BaseEventStore.append
+    orig_append = EventStore.append
     orig_save_if_absent = DAO.save_if_absent
 
     def traced_flush(self):
@@ -72,7 +72,7 @@ def steps(monkeypatch) -> list[tuple[str, bool]]:
 
     monkeypatch.setattr(MemorySession, "flush", traced_flush)
     monkeypatch.setattr(MemorySession, "commit", traced_commit)
-    monkeypatch.setattr(BaseEventStore, "append", traced_append)
+    monkeypatch.setattr(EventStore, "append", traced_append)
     monkeypatch.setattr(DAO, "save_if_absent", traced_save_if_absent)
     return recorded
 

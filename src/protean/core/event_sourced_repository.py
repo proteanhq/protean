@@ -66,7 +66,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
             span.set_attribute("protean.repository.kind", "event_sourced")
             span.set_attribute(
                 "protean.provider",
-                self._domain.event_store.store.__class__.__name__,
+                self._domain.event_store._adapter.__class__.__name__,
             )
 
             try:
@@ -160,7 +160,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
             span.set_attribute("protean.repository.kind", "event_sourced")
             span.set_attribute(
                 "protean.provider",
-                self._domain.event_store.store.__class__.__name__,
+                self._domain.event_store._adapter.__class__.__name__,
             )
 
             try:
@@ -210,7 +210,7 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
             span.set_attribute("protean.repository.kind", "event_sourced")
             span.set_attribute(
                 "protean.provider",
-                self._domain.event_store.store.__class__.__name__,
+                self._domain.event_store._adapter.__class__.__name__,
             )
 
             try:
@@ -243,8 +243,8 @@ class BaseEventSourcedRepository(Element, OptionsMixin):
             if tracked is not None:
                 return tracked
 
-        store = self._domain.event_store.store
-        if store is None:
+        store = self._domain.event_store
+        if store._adapter is None:
             raise IncorrectUsageError("Event store is not configured")
 
         aggregate = store.load_aggregate(

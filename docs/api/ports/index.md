@@ -28,8 +28,8 @@ For concrete adapter documentation, see
 
     ---
 
-    Event store interface for event-sourced persistence, with the
-    `BaseEventStore` class that event store adapters extend.
+    Event store interface for event-sourced persistence, which event store
+    adapters implement.
 
     [:material-arrow-right-box: EventStorePort](event-store.md)
 

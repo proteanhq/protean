@@ -99,7 +99,7 @@ if TYPE_CHECKING:
     from protean.core.event import BaseEvent
     from protean.domain import Domain
     from protean.infra.causation import CausationNode
-    from protean.port.event_store import BaseEventStore
+    from protean.infra.event_store import EventStore
 from protean.infra.causation import load_correlation_group
 from protean.utils import Processing, fqn
 from protean.utils.eventing import (
@@ -135,18 +135,13 @@ __all__ = [
 ]
 
 
-def _event_store_of(domain: Domain) -> BaseEventStore:
-    """Return the domain's initialised event store, narrowing away ``None``.
+def _event_store_of(domain: Domain) -> EventStore:
+    """Return the domain's `EventStore` service once its adapter is built.
 
-    The testing DSL always runs against a live, fully-initialised domain, so
-    ``domain.event_store.store`` is never ``None`` here. This helper makes that
-    invariant explicit for the type checker (and fails loudly if it is ever
-    violated).
+    Raises:
+        ConfigurationError: Before ``domain.init()`` builds the adapter.
     """
-    store = domain.event_store.store
-    if store is None:  # pragma: no cover - defensive; store is always set here
-        raise RuntimeError("Event store is not initialised on the domain")
-    return store
+    return domain._require_event_store()
 
 
 def _flatten_messages(
@@ -643,8 +638,9 @@ def _events_for_correlation(domain: Domain, correlation_id: str) -> list[Any]:
     ``EVENT`` messages (commands excluded) as reconstituted domain
     objects, ordered by ``global_position``.
     """
-    store = _event_store_of(domain)
-    group = load_correlation_group(store, correlation_id)
+    group = load_correlation_group(
+        _event_store_of(domain)._require_adapter(), correlation_id
+    )
     group.sort(key=lambda raw: raw.get("global_position", 0))
 
     events: list[Any] = []

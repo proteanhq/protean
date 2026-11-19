@@ -1,22 +1,19 @@
-# BaseEventStore
+# EventStorePort
 
-Event store interface for event-sourced persistence. All event store adapters
-(Memory, MessageDB, etc.) implement this contract.
+Event store interface for event-sourced persistence. Every event store adapter
+(Memory, MessageDB, etc.) implements `EventStorePort`, and `domain.event_store`
+is the `EventStore` service that calls it.
 
 See [Event Store Adapters](../../reference/adapters/eventstore/index.md) for
 concrete adapter configuration.
-
-::: protean.port.event_store.BaseEventStore
-    options:
-      show_root_heading: false
 
 ---
 
 ## EventStorePort
 
-The `typing.Protocol` every event store implements. `BaseEventStore`
-subclasses it, and the `EventStore` service builds the event store's reads,
-writes, aggregate loading and snapshots on these members.
+The `typing.Protocol` every event store adapter implements. The `EventStore`
+service builds the event store's reads, writes, aggregate loading and
+snapshots on these members.
 
 ::: protean.port.event_store.EventStorePort
     options:
@@ -24,13 +21,11 @@ writes, aggregate loading and snapshots on these members.
 
 ---
 
-## EventStore
+## EventStoreCapabilities
 
-The service that `domain.event_store` returns. It holds the domain's adapter
-and provides reads, writes, aggregate loading, snapshots, causation tracing and
-the integrity check.
+The guarantees an event store declares on its `capabilities` property.
 
-::: protean.infra.event_store.EventStore
+::: protean.port.event_store.EventStoreCapabilities
     options:
       show_root_heading: false
 
@@ -57,11 +52,13 @@ counts when the store has a pool.
 
 ---
 
-## EventStoreCapabilities
+## EventStore
 
-The guarantees an event store declares on its `capabilities` property.
+The service that `domain.event_store` returns. It holds the domain's adapter
+and provides reads, writes, aggregate loading, snapshots, causation tracing and
+the integrity check.
 
-::: protean.port.event_store.EventStoreCapabilities
+::: protean.infra.event_store.EventStore
     options:
       show_root_heading: false
 

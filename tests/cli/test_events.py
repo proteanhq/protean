@@ -59,14 +59,16 @@ def _mock_domain_with_store(
     """Create a MagicMock domain with an event store configured."""
     mock_domain = MagicMock()
     mock_store = MagicMock()
-    # The CLI reads the adapter through the service's ``store``; tests reach it
-    # through ``_adapter``. Both name the same object, as on a real service.
-    # The adapter's readers forward to the service's, so both share one mock.
+    # The service's private readers forward to the adapter's, so each pair
+    # shares one mock and a test can assert on either name.
     mock_domain.event_store = MagicMock(
-        store=mock_store,
         _adapter=mock_store,
         _read_raw=mock_store._read_raw,
         _read_stream_fully=mock_store._read_stream_fully,
+        _get_category_messages=mock_store.get_category_messages,
+        _get_all_messages=mock_store.get_all_messages,
+        _get_last_stream_message=mock_store.get_last_stream_message,
+        _stream_ids=mock_store.stream_ids,
     )
 
     mock_store._read_raw.return_value = read_return or []

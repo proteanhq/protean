@@ -330,10 +330,10 @@ def get_pm_instance_count(domain: Domain, pm_cls: type) -> int | None:
 
     try:
         with domain.domain_context():
-            store = domain.event_store.store
-            if store is None:
+            store = domain.event_store
+            if store._adapter is None:
                 return None
-            identifiers = store.stream_ids(stream_category)
+            identifiers = store._stream_ids(stream_category)
             return len(identifiers)
     except Exception:  # the count is optional on the dashboard; logged
         logger.debug(
@@ -360,10 +360,10 @@ def get_pm_instances(
 
     try:
         with domain.domain_context():
-            store = domain.event_store.store
-            if store is None:
+            store = domain.event_store
+            if store._adapter is None:
                 return []
-            identifiers = store.stream_ids(stream_category)
+            identifiers = store._stream_ids(stream_category)
     except Exception:  # a failed store read lists no instances; logged
         logger.debug(
             "Failed to enumerate instances for %s",

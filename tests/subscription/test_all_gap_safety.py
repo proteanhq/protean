@@ -429,7 +429,7 @@ async def test_get_next_batch_applies_gap_safety_for_all(all_subscription, monke
         assert stream_name == "$all"
         return [_msg(1), _msg(3)], []  # 2 is missing
 
-    monkeypatch.setattr(sub.store, "_read_with_snapshot_positions", fake_read)
+    monkeypatch.setattr(sub.event_store, "_read_with_snapshot_positions", fake_read)
 
     batch = await sub.get_next_batch_of_messages()
 
@@ -452,7 +452,7 @@ async def test_get_next_batch_does_not_gate_a_single_category(
     sub.current_position = 0
 
     monkeypatch.setattr(
-        sub.store,
+        sub.event_store,
         "read",
         lambda stream_name, position, limit: [_msg(1), _msg(3)],
     )
@@ -500,7 +500,7 @@ async def test_tick_holds_at_gap_then_resumes_in_order(
 
     # Tick 1: position 2 has not committed yet — read returns [1, 3].
     monkeypatch.setattr(
-        sub.store,
+        sub.event_store,
         "_read_with_snapshot_positions",
         lambda *a, **k: ([events[0], events[2]], []),
     )
@@ -511,7 +511,7 @@ async def test_tick_holds_at_gap_then_resumes_in_order(
 
     # Tick 2: position 2 has now committed — read returns [2, 3].
     monkeypatch.setattr(
-        sub.store,
+        sub.event_store,
         "_read_with_snapshot_positions",
         lambda *a, **k: ([events[1], events[2]], []),
     )
@@ -538,7 +538,7 @@ async def test_durable_position_is_not_written_past_a_gap(
 
     # Position 2 is missing — the subscription processes 1 and holds.
     monkeypatch.setattr(
-        sub.store,
+        sub.event_store,
         "_read_with_snapshot_positions",
         lambda *a, **k: ([events[0], events[2]], []),
     )
@@ -561,7 +561,9 @@ async def test_tick_steps_over_an_abandoned_gap_with_no_message(
     sub._gap_first_seen = {2: time.monotonic() - 10}  # hole 2 timed out
     # Read exposes only position 4: hole 2 (timed out) and hole 3 (still held).
     monkeypatch.setattr(
-        sub.store, "_read_with_snapshot_positions", lambda *a, **k: ([_msg(4)], [])
+        sub.event_store,
+        "_read_with_snapshot_positions",
+        lambda *a, **k: ([_msg(4)], []),
     )
 
     await sub.tick()
@@ -586,7 +588,9 @@ async def test_tick_does_not_advance_past_unprocessed_messages_on_interruption(
     events = test_domain.event_store.read("$all")  # positions 1, 2, 3
 
     monkeypatch.setattr(
-        sub.store, "_read_with_snapshot_positions", lambda *a, **k: (list(events), [])
+        sub.event_store,
+        "_read_with_snapshot_positions",
+        lambda *a, **k: (list(events), []),
     )
 
     # Fail the second position update, simulating a transient write/Redis error
@@ -692,7 +696,9 @@ async def test_tick_held_at_a_gap_counts_as_idle(all_subscription, monkeypatch):
     sub = all_subscription
     sub.current_position = 0
     monkeypatch.setattr(
-        sub.store, "_read_with_snapshot_positions", lambda *a, **k: ([_msg(2)], [3])
+        sub.event_store,
+        "_read_with_snapshot_positions",
+        lambda *a, **k: ([_msg(2)], [3]),
     )
 
     had_work = await sub.tick()

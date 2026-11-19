@@ -8,7 +8,7 @@ Instance            Entry-point group         Port type
 ==================  ========================  ==========================
 ``databases``       ``protean.databases``     ``BaseDatabase``
 ``brokers``         ``protean.brokers``       ``BrokerPort``
-``event_stores``    ``protean.event_stores``  ``BaseEventStore``
+``event_stores``    ``protean.event_stores``  ``EventStorePort``
 ``caches``          ``protean.caches``        ``CachePort``
 ==================  ========================  ==========================
 """
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from protean.port.broker import BrokerPort
     from protean.port.cache import CachePort
     from protean.port.database import BaseDatabase
-    from protean.port.event_store import BaseEventStore
+    from protean.port.event_store import EventStorePort
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +209,7 @@ databases: AdapterRegistry["BaseDatabase"] = AdapterRegistry(
     renamed_from="protean.providers",
 )
 brokers: AdapterRegistry["BrokerPort"] = AdapterRegistry("protean.brokers", "broker")
-event_stores: AdapterRegistry["BaseEventStore"] = AdapterRegistry(
+event_stores: AdapterRegistry["EventStorePort"] = AdapterRegistry(
     "protean.event_stores", "event store"
 )
 caches: AdapterRegistry["CachePort"] = AdapterRegistry("protean.caches", "cache")

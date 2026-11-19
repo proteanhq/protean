@@ -37,7 +37,7 @@ def test_latest_record_per_position_wins(test_domain):
     _record(store, 4, FailedPositionStatus.EXHAUSTED)
     _record(store, 4, FailedPositionStatus.PURGED)
 
-    records = exhausted_records(store, FAILED_STREAM)
+    records = exhausted_records(test_domain.event_store, FAILED_STREAM)
 
     assert sorted(records) == [1, 2]
     assert records[1].data["marker"] == "one"
@@ -53,13 +53,13 @@ def test_records_without_position_or_type_are_skipped(test_domain):
     # No header type: its status is unknown, so it does not override position 1.
     _write(store, {"position": 1}, None)
 
-    records = exhausted_records(store, FAILED_STREAM)
+    records = exhausted_records(test_domain.event_store, FAILED_STREAM)
 
     assert list(records) == [1]
 
 
 def test_missing_stream_is_empty(test_domain):
-    assert exhausted_records(test_domain.event_store._adapter, FAILED_STREAM) == {}
+    assert exhausted_records(test_domain.event_store, FAILED_STREAM) == {}
 
 
 def test_records_past_the_first_read_page_are_folded(test_domain):
@@ -73,6 +73,6 @@ def test_records_past_the_first_read_page_are_folded(test_domain):
     _record(store, 1, FailedPositionStatus.RESOLVED)
     _record(store, 5000, FailedPositionStatus.EXHAUSTED)
 
-    records = exhausted_records(store, FAILED_STREAM)
+    records = exhausted_records(test_domain.event_store, FAILED_STREAM)
 
     assert list(records) == [5000]

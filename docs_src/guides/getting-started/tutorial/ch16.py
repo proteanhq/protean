@@ -24,7 +24,7 @@ from protean.utils.globals import current_domain
 
 def print_trace(correlation_id: str) -> CausationNode | None:
     # The tree starts at the first command that carried the correlation ID
-    store = current_domain.event_store.store
+    store = current_domain.event_store
     tree = store.build_causation_tree(correlation_id)
 
     def show(node: CausationNode, depth: int = 0) -> None:

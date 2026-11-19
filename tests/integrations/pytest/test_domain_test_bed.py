@@ -116,9 +116,7 @@ class TestDomainContext:
 
         mock_provider = mock.MagicMock()
         mock_broker = mock.MagicMock()
-        adapter = mock.MagicMock()
-        # ``Domain._require_event_store`` reads the adapter through ``store``.
-        mock_event_store = mock.MagicMock(store=adapter, _adapter=adapter)
+        mock_event_store = mock.MagicMock()
         domain.databases = {"default": mock_provider}
         domain.brokers = {"default": mock_broker}
         domain.event_store = mock_event_store
@@ -126,7 +124,7 @@ class TestDomainContext:
         with bed.domain_context():
             pass
 
-        mock_event_store._adapter.clear.assert_called_once()
+        mock_event_store.clear.assert_called_once()
 
     def test_cleanup_on_exception(self, domain):
         """Data stores are reset even when the test raises an exception."""
@@ -134,9 +132,7 @@ class TestDomainContext:
 
         mock_provider = mock.MagicMock()
         mock_broker = mock.MagicMock()
-        adapter = mock.MagicMock()
-        # ``Domain._require_event_store`` reads the adapter through ``store``.
-        mock_event_store = mock.MagicMock(store=adapter, _adapter=adapter)
+        mock_event_store = mock.MagicMock()
         domain.databases = {"default": mock_provider}
         domain.brokers = {"default": mock_broker}
         domain.event_store = mock_event_store
@@ -147,7 +143,7 @@ class TestDomainContext:
         # Cleanup still happens
         mock_provider.clear.assert_called_once()
         mock_broker.clear.assert_called_once()
-        mock_event_store._adapter.clear.assert_called_once()
+        mock_event_store.clear.assert_called_once()
 
     def test_activates_domain_context(self, domain):
         """current_domain resolves to the correct domain inside the context."""
@@ -170,14 +166,11 @@ def _mock_stores(domain):
     """Replace the domain's stores with mocks and return them."""
     domain.databases = {"default": mock.MagicMock()}
     domain.brokers = {"default": mock.MagicMock()}
-    store = mock.MagicMock()
-    # ``Domain._require_event_store`` reads the adapter through the service's
-    # ``store``; ``_adapter`` names the same object, as on a real service.
-    domain.event_store = mock.MagicMock(store=store, _adapter=store)
+    domain.event_store = mock.MagicMock()
     return (
         domain.databases["default"],
         domain.brokers["default"],
-        store,
+        domain.event_store,
     )
 
 

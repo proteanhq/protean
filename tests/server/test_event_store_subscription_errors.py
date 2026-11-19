@@ -965,7 +965,7 @@ class TestRecoveryCheckpoint:
         # Overwrite the checkpoint with a watermark well past that tail (0): a
         # restore captured the checkpoint after the failed stream it references.
         write_recovery_checkpoint_record(
-            test_domain.event_store._adapter,
+            test_domain.event_store,
             sub.recovery_checkpoint_stream,
             sub.stream_category,
             "2026-01-01T00:00:00+00:00",
@@ -1434,7 +1434,7 @@ class TestPollAndCleanup:
 
 
 class _FaultyWrite:
-    """Wrap ``store.write_message`` to raise on writes to one stream while ``armed``.
+    """Wrap ``event_store._write_message`` to raise on writes to one stream while ``armed``.
 
     Used to inject a store-write failure (a proxy for a crash) at a precise
     seam so the failed-record-before-cursor ordering can be tested. Construct it
@@ -1442,8 +1442,8 @@ class _FaultyWrite:
     stop failing and let the store recover.
     """
 
-    def __init__(self, store, target_stream: str) -> None:
-        self._real = store.write_message
+    def __init__(self, event_store, target_stream: str) -> None:
+        self._real = event_store._write_message
         self._target = target_stream
         self.armed: bool = True
 
@@ -1472,8 +1472,8 @@ class TestFailureRecordOrdering:
 
         # Fail the recovery-stream write on the first tick. Recording the failure
         # happens before the cursor advances, so this raises before any cursor move.
-        faulty = _FaultyWrite(sub.store, sub.failed_positions_stream)
-        monkeypatch.setattr(sub.store, "write_message", faulty)
+        faulty = _FaultyWrite(sub.event_store, sub.failed_positions_stream)
+        monkeypatch.setattr(sub.event_store, "_write_message", faulty)
 
         with pytest.raises(RuntimeError, match="simulated store failure"):
             await sub.tick()
@@ -1515,8 +1515,8 @@ class TestFailureRecordOrdering:
 
         # Fail the cursor write (to the subscriber stream). It is issued only after
         # the recovery record, so the record is already written when this raises.
-        faulty = _FaultyWrite(sub.store, sub.subscriber_stream_name)
-        monkeypatch.setattr(sub.store, "write_message", faulty)
+        faulty = _FaultyWrite(sub.event_store, sub.subscriber_stream_name)
+        monkeypatch.setattr(sub.event_store, "_write_message", faulty)
 
         with pytest.raises(RuntimeError, match="simulated store failure"):
             await sub.process_batch([msg])
@@ -1546,8 +1546,8 @@ class TestFailureRecordOrdering:
         msg1 = _create_message(global_position=1)
         msg2 = _create_message(global_position=2)
 
-        faulty = _FaultyWrite(sub.store, sub.subscriber_stream_name)
-        monkeypatch.setattr(sub.store, "write_message", faulty)
+        faulty = _FaultyWrite(sub.event_store, sub.subscriber_stream_name)
+        monkeypatch.setattr(sub.event_store, "_write_message", faulty)
 
         with pytest.raises(RuntimeError, match="simulated store failure"):
             await sub.process_batch([msg1, msg2])

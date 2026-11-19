@@ -1880,7 +1880,7 @@ class TestReconstructUnresolved:
                 },
             )
             unresolved, watermark, _read = reconstruct_unresolved(
-                store,
+                test_domain.event_store,
                 "recovery-checkpoint-Handler-order",
                 "failed-Handler-order",
             )
@@ -1914,7 +1914,7 @@ class TestReconstructUnresolved:
             _seed_failed_record(store, "failed-Handler-order", "Resolved", 8)
 
             unresolved, watermark, _read = reconstruct_unresolved(
-                store,
+                test_domain.event_store,
                 "recovery-checkpoint-Handler-order",
                 "failed-Handler-order",
             )
@@ -1929,7 +1929,7 @@ class TestReconstructUnresolved:
         with test_domain.domain_context():
             _seed_failed_record(store, "failed-Handler-order", "Failed", 4)
             unresolved, watermark, _read = reconstruct_unresolved(
-                store,
+                test_domain.event_store,
                 "recovery-checkpoint-Handler-order",
                 "failed-Handler-order",
             )
@@ -1947,7 +1947,7 @@ class TestReconstructUnresolved:
                 _seed_failed_record(store, "failed-Handler-order", "Failed", pos)
             # A tiny page size forces several pages; every record must still merge.
             unresolved, watermark, records_read = reconstruct_unresolved(
-                store,
+                test_domain.event_store,
                 "recovery-checkpoint-Handler-order",
                 "failed-Handler-order",
                 page_size=2,
@@ -1989,7 +1989,7 @@ class TestReconstructUnresolved:
                 },
             )
             unresolved, watermark, records_read = reconstruct_unresolved(
-                store,
+                test_domain.event_store,
                 "recovery-checkpoint-Handler-order",
                 "failed-Handler-order",
             )
@@ -2024,7 +2024,7 @@ class TestReconstructUnresolved:
                 },
             )
             unresolved, watermark, records_read = reconstruct_unresolved(
-                store,
+                test_domain.event_store,
                 "recovery-checkpoint-Handler-order",
                 "failed-Handler-order",
             )
@@ -2052,7 +2052,7 @@ class TestReconstructUnresolved:
                 unresolved={},
             )
             unresolved, watermark, records_read = reconstruct_unresolved(
-                store,
+                test_domain.event_store,
                 "recovery-checkpoint-Handler-order",
                 "failed-Handler-order",
             )
@@ -2077,7 +2077,7 @@ class TestReconstructUnresolved:
                 unresolved={},
             )
             unresolved, watermark, records_read = reconstruct_unresolved(
-                store,
+                test_domain.event_store,
                 "recovery-checkpoint-Handler-order",
                 "failed-Handler-order",
             )
@@ -2092,8 +2092,10 @@ class TestCheckpointAheadOfFailedStream:
     """The shared inconsistency check both the runtime rebuild and the CLI use."""
 
     def test_no_checkpoint_is_not_ahead(self, test_domain):
-        store = test_domain.event_store._adapter
-        assert checkpoint_ahead_of_failed_stream(store, "rec", "failed") is False
+        assert (
+            checkpoint_ahead_of_failed_stream(test_domain.event_store, "rec", "failed")
+            is False
+        )
 
     def test_non_integer_watermark_is_not_ahead(self, test_domain):
         """A corrupt checkpoint whose watermark is not an int is left for the
@@ -2101,7 +2103,10 @@ class TestCheckpointAheadOfFailedStream:
         a string to an int and raise)."""
         store = test_domain.event_store._adapter
         store.write_message("rec", "Checkpoint", {"watermark": "oops"})
-        assert checkpoint_ahead_of_failed_stream(store, "rec", "failed") is False
+        assert (
+            checkpoint_ahead_of_failed_stream(test_domain.event_store, "rec", "failed")
+            is False
+        )
 
 
 class TestCollectRecoveryCheckpointStatuses:

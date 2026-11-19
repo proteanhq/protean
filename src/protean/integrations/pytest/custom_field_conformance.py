@@ -207,8 +207,7 @@ def _assert_round_trip(
         "as_dict of the reloaded value",
     )
 
-    store = domain.event_store.store
-    assert store is not None, "the domain has no configured event store"
+    store = domain.event_store
     fact_stream = f"{subject.meta_.stream_category}-fact-{instance.id}"
     messages = list(store.read_all(fact_stream))
     assert len(messages) > 0, (

@@ -62,14 +62,17 @@ def _unique_store_domains(domains: list[Domain]) -> list[Domain]:
     unique: list[Domain] = []
     for domain in domains:
         try:
-            store = domain.event_store.store
+            adapter = domain.event_store._adapter
             # Use the database URI as the identity key — object identity
             # doesn't work because each domain creates its own store instance.
+            # The adapter is built from the domain's ``event_store`` config.
             store_key = (
-                store.config.get("database_uri", "") if store is not None else ""
+                domain.config["event_store"].get("database_uri", "")
+                if adapter is not None
+                else ""
             )
             if not store_key:
-                store_key = str(id(store))  # Fallback for stores without a URI
+                store_key = str(id(adapter))  # Fallback for stores without a URI
         except Exception as exc:  # noqa: BLE001 - the store is set up from user config
             logger.debug(
                 "Cannot read the event store of domain %s: %r", domain.name, exc
@@ -277,10 +280,10 @@ def _read_timeline_messages(
     for domain in _unique_store_domains(domains):
         try:
             with domain.domain_context():
-                store = domain.event_store.store
-                if store is None:
+                store = domain.event_store
+                if store._adapter is None:
                     continue
-                raw_messages = store.get_all_messages(limit=1_000_000)
+                raw_messages = store._get_all_messages(limit=1_000_000)
                 all_events.extend(_timeline_messages(raw_messages, domain.name))
         except Exception:  # one unreadable store must not empty the timeline; logged
             logger.debug("Failed to read events from %s", domain.name, exc_info=True)
@@ -347,10 +350,10 @@ def find_event_by_id(domains: list[Domain], message_id: str) -> dict[str, Any] |
     for domain in _unique_store_domains(domains):
         try:
             with domain.domain_context():
-                store = domain.event_store.store
-                if store is None:
+                store = domain.event_store
+                if store._adapter is None:
                     continue
-                raw_messages = store.get_all_messages(limit=1_000_000)
+                raw_messages = store._get_all_messages(limit=1_000_000)
 
                 for msg in raw_messages:
                     if _extract_message_id(msg) == message_id:
@@ -373,10 +376,10 @@ def collect_timeline_stats(domains: list[Domain]) -> dict[str, Any]:
     for domain in _unique_store_domains(domains):
         try:
             with domain.domain_context():
-                store = domain.event_store.store
-                if store is None:
+                store = domain.event_store
+                if store._adapter is None:
                     continue
-                raw_messages = store.get_all_messages(limit=1_000_000)
+                raw_messages = store._get_all_messages(limit=1_000_000)
 
                 for msg in raw_messages:
                     _record_stats_message(stats, msg)
@@ -615,10 +618,10 @@ def build_correlation_response(
     for domain in _unique_store_domains(domains):
         try:
             with domain.domain_context():
-                store = domain.event_store.store
-                if store is None:
+                store = domain.event_store
+                if store._adapter is None:
                     continue
-                group = load_correlation_group(store, correlation_id)
+                group = load_correlation_group(store._adapter, correlation_id)
                 if not group:
                     continue
 
@@ -688,10 +691,10 @@ def collect_aggregate_history(
     for domain in _unique_store_domains(domains):
         try:
             with domain.domain_context():
-                store = domain.event_store.store
-                if store is None:
+                store = domain.event_store
+                if store._adapter is None:
                     continue
-                raw_messages = store.get_stream_messages(stream_name, limit=1_000_000)
+                raw_messages = store._get_stream_messages(stream_name, limit=1_000_000)
                 if not raw_messages:
                     continue
 
@@ -750,10 +753,10 @@ def _group_by_correlation(
     for domain in _unique_store_domains(domains):
         try:
             with domain.domain_context():
-                store = domain.event_store.store
-                if store is None:
+                store = domain.event_store
+                if store._adapter is None:
                     continue
-                raw_messages = store.get_all_messages(limit=1_000_000)
+                raw_messages = store._get_all_messages(limit=1_000_000)
 
                 for cid, msg, msg_domain in _correlated_messages(
                     raw_messages, domain.name

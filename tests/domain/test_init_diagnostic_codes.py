@@ -24,6 +24,7 @@ from protean.exceptions import (
     NotSupportedError,
 )
 from protean.fields import Identifier, String
+from protean.infra.event_store import EventStore
 from protean.utils import DomainObjects
 
 pytestmark = pytest.mark.no_test_domain
@@ -153,8 +154,11 @@ class TestConfigEventStoreNotInitialized:
         assert exc.value.code == "CONFIG_EVENT_STORE_NOT_INITIALIZED"
         assert exc.value.location == "Domain._require_event_store"
 
-    def test_after_init_it_returns_the_store(self, domain):
-        assert domain._require_event_store() is not None
+    def test_after_init_it_returns_the_service(self, domain):
+        event_store = domain._require_event_store()
+
+        assert isinstance(event_store, EventStore)
+        assert event_store is domain.event_store
 
 
 # ---------------------------------------------------------------------------

@@ -1605,7 +1605,7 @@ def reconcile_outbox(
 def _reconcile_outbox(domain: Any, provider_name: str, limit: int) -> int:
     from protean.core.unit_of_work import UnitOfWork  # noqa: PLC0415 - circular
 
-    store = domain.event_store.store
+    store = domain.event_store
     last = store.read_last_message("$all")
     if last is None:
         return 0
@@ -1709,7 +1709,7 @@ def _messages_missing_internal_row(
     event in the window passes the cutoff, or when every one that does has its
     internal row.
     """
-    store = domain.event_store.store
+    store = domain.event_store
     tail = last.metadata.event_store.global_position
     start = max(0, tail - limit + 1)
     messages = store.read("$all", position=start, limit=limit)

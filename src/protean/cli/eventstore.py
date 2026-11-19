@@ -61,7 +61,7 @@ from protean.utils.dlq import collect_failed_streams, exhausted_records
 
 if TYPE_CHECKING:
     from protean.domain import Domain
-    from protean.port.event_store import BaseEventStore
+    from protean.infra.event_store import EventStore
     from protean.server.engine import Engine
     from protean.server.subscription.event_store_subscription import (
         EventStoreSubscription,
@@ -179,7 +179,7 @@ def _select_failed_streams(
 
 
 def _read_failing_event(
-    store: BaseEventStore, record: Message, position: int
+    event_store: EventStore, record: Message, position: int
 ) -> Message | None:
     """Re-read the event behind an exhausted ``record`` from the event store.
 
@@ -201,14 +201,14 @@ def _read_failing_event(
 
     if stream_name and stream_position is not None:
         # A specific stream is read by its own per-stream position.
-        messages = store.read(stream_name, position=stream_position, limit=1)
+        messages = event_store.read(stream_name, position=stream_position, limit=1)
     else:
         domain_meta = record.metadata.domain if record.metadata else None
         origin_stream = domain_meta.origin_stream if domain_meta else None
         if not origin_stream:
             return None
         # A category read spans streams, so it is keyed by global position.
-        messages = store.read(origin_stream, position=position, limit=1)
+        messages = event_store.read(origin_stream, position=position, limit=1)
 
     if not messages:
         return None
@@ -219,7 +219,7 @@ def _read_failing_event(
 
 
 def _exhausted_owners(
-    store: BaseEventStore,
+    event_store: EventStore,
     pairs: list[tuple[SubscriptionInfo, str]],
     position: int,
 ) -> list[tuple[SubscriptionInfo, str, Message]]:
@@ -236,14 +236,14 @@ def _exhausted_owners(
     """
     owners: list[tuple[SubscriptionInfo, str, Message]] = []
     for info, failed_stream in pairs:
-        record = exhausted_records(store, failed_stream).get(position)
+        record = exhausted_records(event_store, failed_stream).get(position)
         if record is not None:
             owners.append((info, failed_stream, record))
     return owners
 
 
 def _resolve_exhausted_owner(
-    store: BaseEventStore,
+    event_store: EventStore,
     domain: Domain,
     subscription: str | None,
     handler: str | None,
@@ -274,7 +274,7 @@ def _resolve_exhausted_owner(
                 message=f"No event-store subscription found for handler '{handler}'.",
             )
 
-    owners = _exhausted_owners(store, pairs, position)
+    owners = _exhausted_owners(event_store, pairs, position)
     if not owners:
         emit_usage_error(
             as_json=False, message=f"No exhausted position {position} found."
@@ -292,7 +292,7 @@ def _resolve_exhausted_owner(
 
 
 def _still_exhausted_or_abort(
-    store: BaseEventStore, failed_stream: str, position: int
+    event_store: EventStore, failed_stream: str, position: int
 ) -> None:
     """Re-read ``failed_stream`` and abort unless ``position`` is still Exhausted.
 
@@ -305,7 +305,7 @@ def _still_exhausted_or_abort(
     rather than closing it; closing it needs a conditional append the failed
     streams do not have.
     """
-    if position not in exhausted_records(store, failed_stream):
+    if position not in exhausted_records(event_store, failed_stream):
         emit_usage_error(
             as_json=False,
             message=(
@@ -457,8 +457,7 @@ def list_dlq(
     derived_domain = load_domain(domain, as_json=output_json)
 
     with derived_domain.domain_context():
-        store = derived_domain.event_store.store
-        assert store is not None  # guaranteed by load_domain -> init()
+        event_store = derived_domain.event_store
 
         pairs = _select_failed_streams(derived_domain, subscription)
         if subscription and not pairs:
@@ -469,7 +468,7 @@ def list_dlq(
 
         subscriptions: list[dict[str, Any]] = []
         for info, failed_stream in pairs:
-            exhausted = sorted(exhausted_records(store, failed_stream))
+            exhausted = sorted(exhausted_records(event_store, failed_stream))
             if not exhausted:
                 continue
             subscriptions.append(
@@ -542,8 +541,7 @@ def inspect(
     derived_domain = load_domain(domain, as_json=output_json)
 
     with derived_domain.domain_context():
-        store = derived_domain.event_store.store
-        assert store is not None  # guaranteed by load_domain -> init()
+        event_store = derived_domain.event_store
 
         pairs = _select_failed_streams(derived_domain, subscription)
         if subscription and not pairs:
@@ -554,7 +552,7 @@ def inspect(
 
         # Every owner's record names the same global position, so the first
         # one re-reads the same event.
-        owners = _exhausted_owners(store, pairs, position)
+        owners = _exhausted_owners(event_store, pairs, position)
         if not owners:
             emit_usage_error(
                 as_json=output_json,
@@ -562,7 +560,7 @@ def inspect(
             )
         record = owners[0][2]
 
-        event = _read_failing_event(store, record, position)
+        event = _read_failing_event(event_store, record, position)
         if event is None:
             emit_usage_error(
                 as_json=output_json,
@@ -679,14 +677,13 @@ def replay(
     derived_domain = load_domain(domain)
 
     with derived_domain.domain_context():
-        store = derived_domain.event_store.store
-        assert store is not None  # guaranteed by load_domain -> init()
+        event_store = derived_domain.event_store
 
         info, failed_stream, record = _resolve_exhausted_owner(
-            store, derived_domain, subscription, handler, position
+            event_store, derived_domain, subscription, handler, position
         )
 
-        event = _read_failing_event(store, record, position)
+        event = _read_failing_event(event_store, record, position)
         if event is None:
             emit_usage_error(
                 as_json=False,
@@ -714,7 +711,7 @@ def replay(
                 )
             _routable_or_abort(owner_sub, event, position)
             _unexpired_or_abort(event, position)
-            _still_exhausted_or_abort(store, failed_stream, position)
+            _still_exhausted_or_abort(event_store, failed_stream, position)
             outcome = asyncio.run(
                 owner_sub.replay_exhausted(
                     event,
@@ -778,11 +775,10 @@ def purge(
     derived_domain = load_domain(domain)
 
     with derived_domain.domain_context():
-        store = derived_domain.event_store.store
-        assert store is not None  # guaranteed by load_domain -> init()
+        event_store = derived_domain.event_store
 
         info, failed_stream, record = _resolve_exhausted_owner(
-            store, derived_domain, subscription, handler, position
+            event_store, derived_domain, subscription, handler, position
         )
 
         if not yes:
@@ -792,9 +788,9 @@ def purge(
                 abort=True,
             )
 
-        _still_exhausted_or_abort(store, failed_stream, position)
+        _still_exhausted_or_abort(event_store, failed_stream, position)
         write_recovery_status_record(
-            store,
+            event_store,
             failed_stream,
             info.stream_category,
             derived_domain.clock.now().isoformat(),

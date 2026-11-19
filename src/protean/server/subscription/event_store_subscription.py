@@ -14,7 +14,7 @@ from uuid import uuid4
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
 from protean.exceptions import ConfigurationError
-from protean.port.event_store import BaseEventStore, row_data
+from protean.port.event_store import row_data
 from protean.utils import checkpoint_trace, fqn, recovery_trace
 from protean.utils.backoff import AdaptiveBackoff
 from protean.utils.dlq import failed_positions_stream, recovery_checkpoint_stream
@@ -23,6 +23,7 @@ from protean.utils.eventing import Message, MessageType, Metadata
 from . import BaseSubscription
 
 if TYPE_CHECKING:
+    from protean.infra.event_store import EventStore
     from protean.server.engine import Engine
 
     from .profiles import SubscriptionConfig
@@ -65,7 +66,7 @@ class ReplayOutcome(StrEnum):
 
 
 def reconstruct_unresolved(
-    store: BaseEventStore,
+    event_store: "EventStore",
     recovery_checkpoint_stream: str,
     failed_positions_stream: str,
     *,
@@ -91,7 +92,9 @@ def reconstruct_unresolved(
         ValueError: If a full page ends in a record with no per-stream position, or
             the per-stream position does not move forward between pages.
     """
-    watermark, unresolved = _load_recovery_checkpoint(store, recovery_checkpoint_stream)
+    watermark, unresolved = _load_recovery_checkpoint(
+        event_store, recovery_checkpoint_stream
+    )
 
     cursor = watermark
     records_read = 0
@@ -99,7 +102,9 @@ def reconstruct_unresolved(
     # records. Memory stays bounded by the number of distinct unresolved
     # positions, since each record only adds or removes one key.
     while True:
-        page = store.read(failed_positions_stream, position=cursor, limit=page_size)
+        page = event_store.read(
+            failed_positions_stream, position=cursor, limit=page_size
+        )
         if not page:
             break
         for msg in page:
@@ -121,14 +126,14 @@ def reconstruct_unresolved(
 
 
 def _load_recovery_checkpoint(
-    store: BaseEventStore, recovery_checkpoint_stream: str
+    event_store: "EventStore", recovery_checkpoint_stream: str
 ) -> tuple[int, dict[int, dict[str, Any]]]:
     """Return the recovery checkpoint's watermark and ``unresolved`` snapshot.
 
     Returns ``(0, {})`` when the stream holds no checkpoint, and a watermark of
     0 when the stored one is not an integer.
     """
-    checkpoint = store.get_last_stream_message(recovery_checkpoint_stream)
+    checkpoint = event_store._get_last_stream_message(recovery_checkpoint_stream)
     if not checkpoint:
         return 0, {}
 
@@ -224,7 +229,7 @@ def _next_failed_page_cursor(
 
 
 def write_recovery_checkpoint_record(
-    store: BaseEventStore,
+    event_store: "EventStore",
     recovery_checkpoint_stream: str,
     stream_category: str,
     time_iso: str,
@@ -239,7 +244,7 @@ def write_recovery_checkpoint_record(
     function, so the record shape stays a single definition.
     """
     snapshot = {str(pos): info for pos, info in unresolved.items()}
-    store.write_message(
+    event_store._write_message(
         recovery_checkpoint_stream,
         "Checkpoint",
         {
@@ -262,7 +267,7 @@ def write_recovery_checkpoint_record(
 
 
 def write_recovery_status_record(
-    store: BaseEventStore,
+    event_store: "EventStore",
     failed_positions_stream: str,
     stream_category: str,
     time_iso: str,
@@ -286,7 +291,7 @@ def write_recovery_status_record(
     marker through this same function without an engine, so the two paths produce
     the identical record shape.
     """
-    store.write_message(
+    event_store._write_message(
         failed_positions_stream,
         status.value,
         {
@@ -313,7 +318,7 @@ def write_recovery_status_record(
 
 
 def read_recovery_message(
-    store: BaseEventStore,
+    event_store: "EventStore",
     stream_category: str,
     global_position: int,
     info: dict[str, Any],
@@ -333,12 +338,12 @@ def read_recovery_message(
     stream_name = info.get("stream_name")
     stream_position = info.get("stream_position")
     if stream_name and stream_position is not None:
-        return store.read(stream_name, position=stream_position, limit=1)
-    return store.read(stream_category, position=global_position, limit=1)
+        return event_store.read(stream_name, position=stream_position, limit=1)
+    return event_store.read(stream_category, position=global_position, limit=1)
 
 
 def checkpoint_ahead_of_failed_stream(
-    store: BaseEventStore,
+    event_store: "EventStore",
     recovery_checkpoint_stream: str,
     failed_positions_stream: str,
 ) -> bool:
@@ -352,13 +357,13 @@ def checkpoint_ahead_of_failed_stream(
     Returns False when the watermark is at or below ``tail + 1``, when there is no
     checkpoint, and when the stored watermark is not an integer.
     """
-    checkpoint = store.get_last_stream_message(recovery_checkpoint_stream)
+    checkpoint = event_store._get_last_stream_message(recovery_checkpoint_stream)
     if not checkpoint:
         return False
     stored_watermark = row_data(checkpoint).get("watermark", 0)
     if not isinstance(stored_watermark, int):
         return False
-    last_failed = store.get_last_stream_message(failed_positions_stream)
+    last_failed = event_store._get_last_stream_message(failed_positions_stream)
     tail = last_failed.get("position") if last_failed else None
     if not isinstance(tail, int):
         tail = -1
@@ -491,19 +496,18 @@ class EventStoreSubscription(BaseSubscription):
             f"{self.subscriber_class_name}-{hostname}-{pid}-{random_hex}"
         )
 
-        # Event store specific attributes. The store is Optional on the domain
-        # wrapper (None until initialized), but a subscription is only ever
+        # Event store specific attributes. A subscription is only ever
         # constructed after the engine has initialized its event store, so
-        # narrow to the non-None type here and fail loudly otherwise.
-        store = engine.domain.event_store.store
+        # fail loudly when the adapter is missing.
+        event_store = engine.domain.event_store
         if (
-            store is None
+            event_store._adapter is None
         ):  # pragma: no cover — defensive; store is initialized by engine startup
             raise ConfigurationError(
                 "Event store is not initialized. Cannot create an "
                 "EventStoreSubscription before the domain's event store is set up."
             )
-        self.store: BaseEventStore = store
+        self.event_store: EventStore = event_store
         self.stream_category = stream_category
         self.position_update_interval = position_update_interval
         self.origin_stream = origin_stream
@@ -666,7 +670,7 @@ class EventStoreSubscription(BaseSubscription):
             int: The last read position from the store.
         """
         message = await asyncio.to_thread(
-            self.store.get_last_stream_message, self.subscriber_stream_name
+            self.event_store._get_last_stream_message, self.subscriber_stream_name
         )
         if message:
             position: int = row_data(message)["position"]
@@ -727,7 +731,7 @@ class EventStoreSubscription(BaseSubscription):
         self.messages_since_last_position_write = 0  # Reset counter
 
         result = await asyncio.to_thread(
-            self.store.write_message,
+            self.event_store._write_message,
             self.subscriber_stream_name,
             "Read",
             {"position": position},
@@ -767,7 +771,9 @@ class EventStoreSubscription(BaseSubscription):
             origin_stream = (
                 message.metadata
                 and message.metadata.domain
-                and self.store.category(message.metadata.domain.origin_stream or "")
+                and self.event_store.category(
+                    message.metadata.domain.origin_stream or ""
+                )
             )
 
             if self.origin_stream == origin_stream:
@@ -901,7 +907,7 @@ class EventStoreSubscription(BaseSubscription):
             # each one holds a ``global_position``, so the gap walk must count
             # those positions as present or it would wait at every snapshot.
             messages, snapshot_positions = await asyncio.to_thread(
-                self.store._read_with_snapshot_positions,
+                self.event_store._read_with_snapshot_positions,
                 self.stream_category,
                 position=self.current_position + 1,
                 limit=self.messages_per_tick,
@@ -911,7 +917,7 @@ class EventStoreSubscription(BaseSubscription):
             )
         else:
             messages = await asyncio.to_thread(
-                self.store.read,
+                self.event_store.read,
                 self.stream_category,
                 position=self.current_position + 1,
                 limit=self.messages_per_tick,
@@ -1090,7 +1096,7 @@ class EventStoreSubscription(BaseSubscription):
         )
 
         await asyncio.to_thread(
-            self.store.write_message,
+            self.event_store._write_message,
             self.failed_positions_stream,
             FailedPositionStatus.FAILED.value,
             {
@@ -1155,7 +1161,7 @@ class EventStoreSubscription(BaseSubscription):
         """
         await asyncio.to_thread(
             write_recovery_status_record,
-            self.store,
+            self.event_store,
             self.failed_positions_stream,
             self.stream_category,
             self.engine.domain.clock.now().isoformat(),
@@ -1193,7 +1199,7 @@ class EventStoreSubscription(BaseSubscription):
             records_read,
         ) = await asyncio.to_thread(
             reconstruct_unresolved,
-            self.store,
+            self.event_store,
             self.recovery_checkpoint_stream,
             self.failed_positions_stream,
         )
@@ -1209,7 +1215,7 @@ class EventStoreSubscription(BaseSubscription):
         # its reset refuses an unknown finding.
         if await asyncio.to_thread(
             checkpoint_ahead_of_failed_stream,
-            self.store,
+            self.event_store,
             self.recovery_checkpoint_stream,
             self.failed_positions_stream,
         ):
@@ -1245,7 +1251,7 @@ class EventStoreSubscription(BaseSubscription):
         """
         await asyncio.to_thread(
             write_recovery_checkpoint_record,
-            self.store,
+            self.event_store,
             self.recovery_checkpoint_stream,
             self.stream_category,
             self.engine.domain.clock.now().isoformat(),
@@ -1678,7 +1684,7 @@ async def _recover_position(
     # flags exactly the positions this re-read cannot find.
     messages = await asyncio.to_thread(
         read_recovery_message,
-        subscription.store,
+        subscription.event_store,
         subscription.stream_category,
         position,
         info,

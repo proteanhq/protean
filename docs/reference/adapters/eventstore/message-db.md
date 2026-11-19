@@ -84,7 +84,7 @@ postgresql://postgres:postgres@localhost:5433/message_store
 
 ## Operations
 
-Message DB supports all `BaseEventStore` operations:
+Message DB supports every operation of the `EventStore` service:
 
 | Operation | Supported | Notes |
 |-----------|:---------:|-------|

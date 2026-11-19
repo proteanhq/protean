@@ -137,7 +137,7 @@ async def test_message_filtering_for_event_handlers_with_defined_origin_stream(
     # Mock `read` method and have it return the 3 messages
     mock_store_read = mock.Mock()
     mock_store_read.return_value = messages
-    email_event_handler_subscription.store.read = mock_store_read
+    email_event_handler_subscription.event_store.read = mock_store_read
 
     filtered_messages = (
         await email_event_handler_subscription.get_next_batch_of_messages()

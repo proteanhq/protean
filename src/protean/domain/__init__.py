@@ -74,7 +74,6 @@ if TYPE_CHECKING:
     from types import FrameType
 
     from protean.infra.cache import Cache
-    from protean.port.event_store import BaseEventStore
     from protean.utils.outbox import OutboxRepository
     from protean.utils.projection_rebuilder import RebuildResult
     from protean.utils.upcasting import UpcasterChain
@@ -2529,20 +2528,20 @@ class Domain:
     # Snapshot Functionality #
     ##########################
 
-    def _require_event_store(self) -> "BaseEventStore":
-        """Return the initialized event store, or raise a clear error.
+    def _require_event_store(self) -> EventStore:
+        """Return the `EventStore` service once its adapter is built.
 
-        The wrapper's ``store`` is ``None`` until ``domain.init()`` runs; these
-        event-store operations are only valid afterwards.
+        Raises:
+            ConfigurationError: Before ``domain.init()`` builds the adapter,
+                with the code ``CONFIG_EVENT_STORE_NOT_INITIALIZED``.
         """
-        store = self.event_store.store
-        if store is None:
+        if self.event_store._adapter is None:
             raise ConfigurationError(
                 "Event store is not initialized. Call `domain.init()` first.",
                 code=DiagnosticCode.CONFIG_EVENT_STORE_NOT_INITIALIZED,
                 location="Domain._require_event_store",
             )
-        return store
+        return self.event_store
 
     def create_snapshot(self, aggregate_cls: type, identifier: str) -> bool:
         """Create a snapshot for a specific event-sourced aggregate instance.

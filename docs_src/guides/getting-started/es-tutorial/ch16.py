@@ -202,7 +202,7 @@ def make_large_deposit(account_id: str) -> None:
 def trace(
     message_id: str,
 ) -> tuple[list[Message], list[Message], CausationNode | None]:
-    event_store = domain.event_store.store
+    event_store = domain.event_store
 
     # Walk UP from a message to the root command
     chain = event_store.trace_causation(message_id)
@@ -236,7 +236,7 @@ if __name__ == "__main__":
         print("Deposit of $15,000.00 made")
 
         # Build the causation tree for the correlation ID
-        tree = domain.event_store.store.build_causation_tree("audit-trail-dep-9921")
+        tree = domain.event_store.build_causation_tree("audit-trail-dep-9921")
 
         if tree:
             print("\n=== Causation Tree ===")

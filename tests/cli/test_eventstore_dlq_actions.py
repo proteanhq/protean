@@ -402,7 +402,7 @@ def _resolve_concurrently(test_domain, position: int = 1) -> None:
     """
     info, stream = _toggle_failed_stream(test_domain)
     write_recovery_status_record(
-        test_domain.event_store._adapter,
+        test_domain.event_store,
         stream,
         info.stream_category,
         test_domain.clock.now().isoformat(),

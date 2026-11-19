@@ -134,7 +134,7 @@ def place_order(
 
 # --8<-- [start:causation_api]
 def explain(event_message, command_message, correlation_id: str):
-    store = domain.event_store.store
+    store = domain.event_store
 
     # Walk UP from a message to the root command
     chain = store.trace_causation(event_message)

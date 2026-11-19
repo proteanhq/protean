@@ -20,14 +20,14 @@ from protean.utils.globals import current_domain
 
 def investigate_account_state(account_id: str, target_version: int):
     """Quick-and-dirty reconstruction for an incident investigation."""
-    store = current_domain.event_store.store
-    raw_events = store.get_stream_messages(f"account-{account_id}")
+    store = current_domain.event_store
+    messages = store.read(f"account-{account_id}")
 
     state = {}
-    for i, raw_event in enumerate(raw_events):
+    for i, message in enumerate(messages):
         if i > target_version:
             break
-        state.update(raw_event["data"])
+        state.update(message.data)
 
     return state
 ```
@@ -200,14 +200,14 @@ Temporal queries **bypass** this cache:
 # fragment
 # Anti-pattern: hand-rolled event replay
 def get_account_at_version(account_id: str, version: int) -> dict:
-    store = current_domain.event_store.store
-    events = store.get_stream_messages(f"account-{account_id}")
+    store = current_domain.event_store
+    messages = store.read(f"account-{account_id}")
 
     state = {}
-    for i, event in enumerate(events):
+    for i, message in enumerate(messages):
         if i > version:
             break
-        state.update(event["data"])
+        state.update(message.data)
 
     return state
 ```
@@ -227,14 +227,14 @@ account = repo.get(account_id, at_version=version)
 # fragment
 # Anti-pattern: reading raw events and filtering by timestamp
 def get_account_as_of(account_id: str, cutoff: datetime) -> dict:
-    store = current_domain.event_store.store
-    events = store.get_stream_messages(f"account-{account_id}")
+    store = current_domain.event_store
+    messages = store.read(f"account-{account_id}")
 
     state = {}
-    for event in events:
-        if event["time"] > cutoff:
+    for message in messages:
+        if message.metadata.headers.time > cutoff:
             break
-        state.update(event["data"])
+        state.update(message.data)
 
     return state
 ```
