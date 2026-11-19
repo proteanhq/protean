@@ -75,8 +75,8 @@ def domain(request):
     domain.init(traverse=False)
     with domain.domain_context():
         yield domain
-        domain.event_store.store.clear()
-        domain.event_store.store.close()
+        domain.event_store._adapter.clear()
+        domain.event_store._adapter.close()
 
 
 def _subscription(
@@ -98,7 +98,7 @@ def _write_event(domain):
     user_id = str(uuid4())
     user = User(id=user_id, email="john@example.com")
     user.raise_(Registered(id=user_id, email="john@example.com"))
-    domain.event_store.store.append(user._events[-1])
+    domain.event_store.append(user._events[-1])
 
 
 async def _idle_waits(sub, count):

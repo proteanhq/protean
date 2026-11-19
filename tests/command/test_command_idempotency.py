@@ -57,7 +57,7 @@ class TestIdempotencyKeyInHeaders:
 
         test_domain.process(command, idempotency_key="key-1")
 
-        messages = test_domain.event_store.store.read("test::user:command")
+        messages = test_domain.event_store.read("test::user:command")
         assert len(messages) == 1
         assert messages[0].metadata.headers.idempotency_key == "key-1"
 
@@ -68,7 +68,7 @@ class TestIdempotencyKeyInHeaders:
 
         test_domain.process(command)
 
-        messages = test_domain.event_store.store.read("test::user:command")
+        messages = test_domain.event_store.read("test::user:command")
         assert len(messages) == 1
         assert messages[0].metadata.headers.idempotency_key is None
 
@@ -81,7 +81,7 @@ class TestIdempotencyKeyInHeaders:
         test_domain.process(command, idempotency_key="round-trip-key")
 
         # Read back from event store as Message
-        message = test_domain.event_store.store.read_last_message(
+        message = test_domain.event_store.read_last_message(
             f"test::user:command-{identifier}"
         )
         assert message is not None
@@ -106,7 +106,7 @@ class TestIdempotencyKeyInHeaders:
         test_domain.process(command, idempotency_key="deser-key")
 
         # Read back and convert to domain object
-        message = test_domain.event_store.store.read_last_message(
+        message = test_domain.event_store.read_last_message(
             f"test::user:command-{identifier}"
         )
         domain_object = message.to_domain_object()

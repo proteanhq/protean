@@ -26,8 +26,7 @@ def transitions(module, order_id):
     pm = module.OrderFulfillmentPM
     stream = f"{pm.meta_.stream_category}-{order_id}"
     return [
-        message.to_domain_object()
-        for message in module.domain.event_store.store.read(stream)
+        message.to_domain_object() for message in module.domain.event_store.read(stream)
     ]
 
 
@@ -35,7 +34,7 @@ def issued_commands(module, order_id):
     """The commands for ``order_id``, in the order the process manager issued them."""
     commands = [
         message.to_domain_object()
-        for message in module.domain.event_store.store.read("$all")
+        for message in module.domain.event_store.read("$all")
         if ":command-" in message.metadata.headers.stream
     ]
     return [type(c).__name__ for c in commands if c.order_id == order_id]

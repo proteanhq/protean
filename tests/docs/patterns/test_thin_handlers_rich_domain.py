@@ -647,7 +647,7 @@ def test_transfer_debits_the_source_through_the_aggregate(transfers):
     stored = transfers.domain.repository_for(transfers.Account).get(source.account_id)
     assert stored.balance == 700.0
     stream = f"{transfers.Account.meta_.stream_category}-{source.account_id}"
-    assert [m.data for m in transfers.domain.event_store.store.read(stream)] == [
+    assert [m.data for m in transfers.domain.event_store.read(stream)] == [
         {
             "account_id": source.account_id,
             "amount": 300.0,

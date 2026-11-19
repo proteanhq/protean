@@ -31,7 +31,7 @@ def register_elements(test_domain):
 def test_appended_event_is_read_back_after_the_unit_of_work_rolls_back(
     test_domain,
 ):
-    store = test_domain.event_store.store
+    store = test_domain.event_store
     identifier = str(uuid4())
     user = User(id=identifier, name="Jane")
     user.raise_(Registered(id=identifier, name="Jane"))

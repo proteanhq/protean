@@ -145,7 +145,7 @@ class TestDegradedState:
         def _raise(*args, **kwargs):
             raise ConnectionError("unreachable")
 
-        domain.event_store.store.ping = _raise
+        domain.event_store._adapter.ping = _raise
 
         response = client.get("/readyz")
         assert response.status_code == 503

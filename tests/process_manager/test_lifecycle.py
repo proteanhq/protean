@@ -46,7 +46,7 @@ class TestMarkAsComplete:
         OrderFulfillmentPM._handle(ShipmentDelivered(order_id=order_id))
 
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
 
         final_transition = messages[-1].to_domain_object()
         assert final_transition.is_complete is True
@@ -68,7 +68,7 @@ class TestEndParameter:
         )
 
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
 
         assert len(messages) == 2
         final_transition = messages[-1].to_domain_object()
@@ -96,7 +96,7 @@ class TestCompletedPMSkipsEvents:
         )
 
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
 
         # Should still be only 3 transitions (the 4th was skipped)
         assert len(messages) == 3
@@ -116,7 +116,7 @@ class TestCompletedPMSkipsEvents:
         OrderFulfillmentPM._handle(ShipmentDelivered(order_id=order_id))
 
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
 
         assert len(messages) == 2
 
@@ -141,7 +141,7 @@ class TestCompletedPMSkipsEvents:
         )
 
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
 
         assert len(messages) == 2
         assert messages[-1].to_domain_object().is_complete is True
@@ -170,8 +170,8 @@ class TestMultipleInstances:
         stream_1 = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id_1}"
         stream_2 = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id_2}"
 
-        messages_1 = test_domain.event_store.store.read(stream_1)
-        messages_2 = test_domain.event_store.store.read(stream_2)
+        messages_1 = test_domain.event_store.read(stream_1)
+        messages_2 = test_domain.event_store.read(stream_2)
 
         assert len(messages_1) == 2  # OrderPlaced + PaymentConfirmed
         assert len(messages_2) == 1  # Only OrderPlaced

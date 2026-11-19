@@ -18,9 +18,7 @@ def _context(example):
 
 
 def _event_types(example, stream):
-    return [
-        m.metadata.headers.type for m in example.domain.event_store.store.read(stream)
-    ]
+    return [m.metadata.headers.type for m in example.domain.event_store.read(stream)]
 
 
 def _fields(cls):
@@ -92,7 +90,7 @@ def test_saving_a_fact_event_aggregate_writes_its_whole_state():
         )
         domain.repository_for(example.Order).add(order)
 
-        messages = domain.event_store.store.read("facteventorders::order-fact-o1")
+        messages = domain.event_store.read("facteventorders::order-fact-o1")
         assert len(messages) == 1
         fact = messages[0]
         assert fact.metadata.headers.type == "FactEventOrders.OrderFactEvent.v1"
@@ -122,7 +120,7 @@ def test_placing_raises_the_delta_event_and_saving_adds_the_fact_event():
         order.place()
         domain.repository_for(example.Order).add(order)
 
-        placed = domain.event_store.store.read("deltaandfactevents::order-o1")
+        placed = domain.event_store.read("deltaandfactevents::order-o1")
         assert len(placed) == 1
         assert placed[0].metadata.headers.type == "DeltaAndFactEvents.OrderPlaced.v1"
         assert placed[0].data["customer_email"] == "ada@example.com"
@@ -132,7 +130,7 @@ def test_placing_raises_the_delta_event_and_saving_adds_the_fact_event():
         assert _event_types(example, "deltaandfactevents::order-fact-o1") == [
             "DeltaAndFactEvents.OrderFactEvent.v1"
         ]
-        fact = domain.event_store.store.read("deltaandfactevents::order-fact-o1")[0]
+        fact = domain.event_store.read("deltaandfactevents::order-fact-o1")[0]
         assert fact.data["status"] == "placed"
 
 
@@ -207,7 +205,7 @@ def test_command_data_reaches_the_event_without_loading_the_customer():
         assert domain.repository_for(example.Order).get("o1").status == "placed"
         placed = [
             m
-            for m in domain.event_store.store.read("crossaggregateeventdata::order-o1")
+            for m in domain.event_store.read("crossaggregateeventdata::order-o1")
             if m.metadata.headers.type == "CrossAggregateEventData.OrderPlaced.v1"
         ]
         assert len(placed) == 1

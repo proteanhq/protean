@@ -20,7 +20,7 @@ pytestmark = pytest.mark.no_test_domain
 def example():
     module = load_example("guides/change-state/temporal-queries/001.py")
     yield module
-    module.domain.event_store.store.clear()
+    module.domain.event_store._adapter.clear()
 
 
 @pytest.fixture

@@ -599,7 +599,7 @@ def _seed_lagging(test_domain, seconds_behind: int = 120) -> None:
     ``lag`` and a positive ``lag_seconds``.
     """
     with test_domain.domain_context():
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         category = LagProjector.meta_.stream_categories[0]
         for i in range(3):
             store.write_message(f"{category}-{i}", "Registered", {"user_id": str(i)})
@@ -696,7 +696,7 @@ class TestSubscriptionLagSecondsGauge:
         by a real message count, but has no timestamp to measure seconds from.
         """
         with test_domain.domain_context():
-            store = test_domain.event_store.store
+            store = test_domain.event_store._adapter
             category = LagProjector.meta_.stream_categories[0]
             for i in range(3):
                 store.write_message(

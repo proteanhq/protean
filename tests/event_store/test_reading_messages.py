@@ -55,7 +55,7 @@ def registered_user(test_domain):
     identifier = str(uuid4())
     user = User(id=identifier, email="john.doe@example.com")
     user.raise_(Registered(id=identifier, email="john.doe@example.com"))
-    test_domain.event_store.store.append(user._events[-1])
+    test_domain.event_store.append(user._events[-1])
 
     return user
 
@@ -63,7 +63,7 @@ def registered_user(test_domain):
 @pytest.fixture
 def activated_user(test_domain, registered_user):
     registered_user.raise_(Activated(id=registered_user.id))
-    test_domain.event_store.store.append(registered_user._events[-1])
+    test_domain.event_store.append(registered_user._events[-1])
 
     return registered_user
 
@@ -72,14 +72,14 @@ def activated_user(test_domain, registered_user):
 def renamed_user(test_domain, activated_user):
     for i in range(10):
         activated_user.raise_(Renamed(id=activated_user.id, name=f"John Doe {i}"))
-        test_domain.event_store.store.append(activated_user._events[-1])
+        test_domain.event_store.append(activated_user._events[-1])
 
     return activated_user
 
 
 @pytest.mark.eventstore
 def test_reading_a_message(test_domain, registered_user):
-    messages = test_domain.event_store.store.read("test::user")
+    messages = test_domain.event_store.read("test::user")
 
     assert len(messages) == 1
 
@@ -105,7 +105,7 @@ def test_reading_a_message(test_domain, registered_user):
 
 @pytest.mark.eventstore
 def test_reading_many_messages(test_domain, activated_user):
-    messages = test_domain.event_store.store.read(f"test::user-{activated_user.id}")
+    messages = test_domain.event_store.read(f"test::user-{activated_user.id}")
 
     assert len(messages) == 2
 
@@ -144,20 +144,16 @@ def test_reading_many_messages(test_domain, activated_user):
 
 @pytest.mark.eventstore
 def test_limiting_the_number_of_messages(test_domain, renamed_user):
-    messages = test_domain.event_store.store.read(f"test::user-{renamed_user.id}")
+    messages = test_domain.event_store.read(f"test::user-{renamed_user.id}")
     assert len(messages) == 12
 
-    messages = test_domain.event_store.store.read(
-        f"test::user-{renamed_user.id}", limit=5
-    )
+    messages = test_domain.event_store.read(f"test::user-{renamed_user.id}", limit=5)
     assert len(messages) == 5
 
 
 @pytest.mark.eventstore
 def test_reading_messages_from_position(test_domain, renamed_user):
-    messages = test_domain.event_store.store.read(
-        f"test::user-{renamed_user.id}", position=5
-    )
+    messages = test_domain.event_store.read(f"test::user-{renamed_user.id}", position=5)
 
     assert len(messages) == 7  # Read until end, 1000 messages by default
     assert messages[0].data["name"] == "John Doe 3"
@@ -165,7 +161,7 @@ def test_reading_messages_from_position(test_domain, renamed_user):
 
 @pytest.mark.eventstore
 def test_reading_messages_from_position_with_limit(test_domain, renamed_user):
-    messages = test_domain.event_store.store.read(
+    messages = test_domain.event_store.read(
         f"test::user-{renamed_user.id}", position=5, limit=2
     )
 
@@ -175,7 +171,7 @@ def test_reading_messages_from_position_with_limit(test_domain, renamed_user):
 
 @pytest.mark.eventstore
 def test_reading_messages_by_category(test_domain, activated_user):
-    messages = test_domain.event_store.store.read("test::user")
+    messages = test_domain.event_store.read("test::user")
 
     assert len(messages) == 2
 
@@ -215,8 +211,6 @@ def test_reading_messages_by_category(test_domain, activated_user):
 @pytest.mark.eventstore
 def test_reading_last_message(test_domain, renamed_user):
     # Reading by stream
-    message = test_domain.event_store.store.read_last_message(
-        f"test::user-{renamed_user.id}"
-    )
+    message = test_domain.event_store.read_last_message(f"test::user-{renamed_user.id}")
     assert message.metadata.headers.type == Renamed.__type__
     assert message.data["name"] == "John Doe 9"

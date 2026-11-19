@@ -51,7 +51,7 @@ def test_snapshots_are_created(example):
     snapshot_stream = f"banking::account:snapshot-{example.account.id}"
     with example.domain.domain_context():
         # Snapshots are raw records, not domain messages, so read them raw
-        snapshots = example.domain.event_store.store.get_stream_messages(
+        snapshots = example.domain.event_store._adapter.get_stream_messages(
             snapshot_stream
         )
 
@@ -82,7 +82,7 @@ def test_message_db_configuration_connects(tmp_path, monkeypatch):
 
     stream = f"doc_check-{uuid4()}"
     with domain.domain_context():
-        store = domain.event_store.store
+        store = domain.event_store._adapter
         store.write_message(stream, "Checked", {"n": 1})
 
         assert isinstance(store, MessageDBStore)
@@ -122,7 +122,7 @@ def test_memory_configuration_shown_builds_a_memory_event_store(tmp_path):
     domain.init(traverse=False)
 
     with domain.domain_context():
-        assert type(domain.event_store.store) is MemoryEventStore
+        assert type(domain.event_store._adapter) is MemoryEventStore
 
 
 def test_changed_memory_provider_is_read(tmp_path):
@@ -138,4 +138,4 @@ def test_changed_memory_provider_is_read(tmp_path):
     with pytest.raises(ConfigurationError, match="Unknown event store 'nosuch'"):
         domain.init(traverse=False)
         with domain.domain_context():
-            domain.event_store.store
+            domain.event_store._adapter

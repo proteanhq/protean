@@ -147,12 +147,12 @@ def task_id() -> str:
 # ---------------------------------------------------------------------------
 def _read_events(test_domain, task_id: str) -> list[Message]:
     stream = f"{Task.meta_.stream_category}-{task_id}"
-    return test_domain.event_store.store.read(stream)
+    return test_domain.event_store.read(stream)
 
 
 def _read_commands(test_domain, task_id: str) -> list[Message]:
     stream = f"{Task.meta_.stream_category}:command-{task_id}"
-    return test_domain.event_store.store.read(stream)
+    return test_domain.event_store.read(stream)
 
 
 # ---------------------------------------------------------------------------

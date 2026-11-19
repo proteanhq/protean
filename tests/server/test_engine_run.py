@@ -53,7 +53,7 @@ def test_processing_messages_from_beginning_the_first_time(test_domain):
     user.raise_(UserLoggedIn(user_id=identifier))
     test_domain.repository_for(User).add(user)
 
-    messages = test_domain.event_store.store.read("test::authentication")
+    messages = test_domain.event_store.read("test::authentication")
     assert len(messages) == 1
 
     engine = Engine(domain=test_domain, test_mode=True)
@@ -61,7 +61,7 @@ def test_processing_messages_from_beginning_the_first_time(test_domain):
 
     assert counter == 1
     # The handler's read position is written after the event
-    messages = test_domain.event_store.store.read("$all")
+    messages = test_domain.event_store.read("$all")
     assert len(messages) == 2
 
     # Create and set a new loop
@@ -72,7 +72,7 @@ def test_processing_messages_from_beginning_the_first_time(test_domain):
     engine.run()
 
     # The second engine resumes from the stored position and reprocesses nothing
-    messages = test_domain.event_store.store.read("$all")
+    messages = test_domain.event_store.read("$all")
     assert len(messages) == 2
     assert counter == 1
 

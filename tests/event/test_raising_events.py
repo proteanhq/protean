@@ -35,7 +35,7 @@ def test_raising_event(test_domain):
 
     test_domain.repository_for(User).add(user)
 
-    messages = test_domain.event_store.store.read("test::authentication")
+    messages = test_domain.event_store.read("test::authentication")
 
     assert len(messages) == 1
     assert messages[0].metadata.headers.stream == f"test::authentication-{identifier}"

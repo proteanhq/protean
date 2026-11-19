@@ -262,7 +262,7 @@ def _commands_for(example, aggregate_cls):
     stream = f"{aggregate_cls.meta_.stream_category}:command"
     return [
         (m.metadata.headers.type.split(".")[-2], m.data)
-        for m in example.domain.event_store.store.read(stream)
+        for m in example.domain.event_store.read(stream)
     ]
 
 

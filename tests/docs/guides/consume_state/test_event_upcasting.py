@@ -222,7 +222,7 @@ class TestMultiStepChain:
 
     def test_an_event_sourced_order_replays_a_v1_event(self, chain):
         stream = f"{chain.Order.meta_.stream_category}-1"
-        chain.domain.event_store.store.write_message(
+        chain.domain.event_store._adapter.write_message(
             stream,
             "Ordering.OrderPlaced.v1",
             {"order_id": "1", "amount": 100},

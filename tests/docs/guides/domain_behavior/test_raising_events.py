@@ -53,7 +53,7 @@ def test_persisting_the_aggregate_writes_the_event_and_clears_the_list(banking):
     banking.banking.repository_for(banking.Account).add(account)
 
     assert account._events == []
-    stored = banking.banking.event_store.store.read(
+    stored = banking.banking.event_store.read(
         f"{banking.Account.meta_.stream_category}-{account.id}"
     )
     assert [message.data["amount"] for message in stored] == [500.0]

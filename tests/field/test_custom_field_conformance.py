@@ -541,7 +541,7 @@ class TestCustomFieldProjectsToValueObject:
             assert reloaded.stop.at == Point(3, 4)
 
             fact_stream = f"{Route.meta_.stream_category}-fact-{route.id}"
-            messages = test_domain.event_store.store.read(fact_stream)
+            messages = test_domain.event_store.read(fact_stream)
             assert len(messages) > 0
             replayed = messages[-1].to_domain_object()
             assert replayed.stop.at == Point(3, 4)
@@ -690,7 +690,7 @@ class TestWorkedExampleConformance:
             assert reloaded.brand == Color("#3366FF")
 
             fact_stream = f"{Palette.meta_.stream_category}-fact-{palette.id}"
-            messages = example_domain.event_store.store.read(fact_stream)
+            messages = example_domain.event_store.read(fact_stream)
             assert len(messages) > 0
             replayed = messages[-1].to_domain_object()
             assert replayed.brand == Color("#3366FF")

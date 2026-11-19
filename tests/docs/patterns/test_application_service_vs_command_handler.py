@@ -15,7 +15,7 @@ def _messages(domain, stream):
     """Return ``(type name, data)`` for each message stored in ``stream``."""
     return [
         (m.metadata.headers.type.split(".")[-2], m.data)
-        for m in domain.event_store.store.read(stream)
+        for m in domain.event_store.read(stream)
     ]
 
 

@@ -55,7 +55,7 @@ def test_an_event_is_stored_in_its_aggregate_instance_stream():
     with _init(example):
         order = _place_order(example)
 
-        (message,) = example.domain.event_store.store.read("$all")
+        (message,) = example.domain.event_store.read("$all")
         assert message.metadata.headers.stream == f"ecommerce::order-{order.id}"
 
 
@@ -64,7 +64,7 @@ def test_a_command_goes_to_its_aggregate_command_stream():
     with _init(example):
         example.domain.process(example.PlaceOrder(order_id="123"))
 
-        (message,) = example.domain.event_store.store.read("$all")
+        (message,) = example.domain.event_store.read("$all")
         assert message.metadata.headers.stream.startswith("ecommerce::order:command-")
 
 
@@ -207,7 +207,7 @@ def test_fact_events_go_to_the_fact_stream():
 
         streams = [
             message.metadata.headers.stream
-            for message in example.domain.event_store.store.read("$all")
+            for message in example.domain.event_store.read("$all")
         ]
         assert streams == [f"ecommerce::user-fact-{user.id}"]
 

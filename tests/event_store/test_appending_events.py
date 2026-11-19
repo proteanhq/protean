@@ -32,7 +32,7 @@ def test_appending_raw_events(test_domain):
     event = user._events[0]  # Remember event for later comparison
     test_domain.repository_for(User).add(user)
 
-    messages = test_domain.event_store.store.read("test::authentication")
+    messages = test_domain.event_store.read("test::authentication")
 
     assert len(messages) == 1
 

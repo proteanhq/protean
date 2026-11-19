@@ -67,7 +67,7 @@ def test_command_associated_with_aggregate(test_domain):
         )
     )
 
-    messages = test_domain.event_store.store.read("test::user:command")
+    messages = test_domain.event_store.read("test::user:command")
 
     assert len(messages) == 1
     assert messages[0].metadata.headers.stream == f"test::user:command-{identifier}"
@@ -88,7 +88,7 @@ def test_command_associated_with_aggregate_with_custom_stream_name(test_domain):
         )
     )
 
-    messages = test_domain.event_store.store.read("test::foo:command")
+    messages = test_domain.event_store.read("test::foo:command")
 
     assert len(messages) == 1
     assert messages[0].metadata.headers.stream == f"test::foo:command-{identifier}"

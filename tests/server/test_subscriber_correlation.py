@@ -50,12 +50,12 @@ def _register_and_init(test_domain, subscriber_cls, stream: str = "external_orde
 
 def _read_commands(test_domain, order_id: str) -> list[Message]:
     stream = f"{Order.meta_.stream_category}:command-{order_id}"
-    return test_domain.event_store.store.read(stream)
+    return test_domain.event_store.read(stream)
 
 
 def _read_events(test_domain, order_id: str) -> list[Message]:
     stream = f"{Order.meta_.stream_category}-{order_id}"
-    return test_domain.event_store.store.read(stream)
+    return test_domain.event_store.read(stream)
 
 
 def _external_message_with_correlation(

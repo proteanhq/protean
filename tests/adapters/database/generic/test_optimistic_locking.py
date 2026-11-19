@@ -706,7 +706,7 @@ def _undoes_writes_on_rollback(test_domain):
 
 
 def _stored_sequence_ids(test_domain, counter):
-    messages = test_domain.event_store.store.read(f"test::counter-{counter.id}")
+    messages = test_domain.event_store.read(f"test::counter-{counter.id}")
     return [
         message.to_domain_object()._metadata.domain.sequence_id for message in messages
     ]

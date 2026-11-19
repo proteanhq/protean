@@ -109,7 +109,7 @@ def test_position_is_stored_as_a_read_message_on_the_position_stream(example, en
 
     handler_name = f"{example.EventStoreHandler.__module__}.OrderEventHandler"
     stream_category = STREAM
-    records = example.domain.event_store.store.get_stream_messages(
+    records = example.domain.event_store._adapter.get_stream_messages(
         f"position-{handler_name}-{stream_category}"
     )
 
@@ -136,7 +136,7 @@ def test_the_internal_reads_accept_the_arguments_the_page_shows(example):
         == []
     )
 
-    messages = example.domain.event_store.store.read(STREAM, position=0, limit=10)
+    messages = example.domain.event_store.read(STREAM, position=0, limit=10)
     assert [m.metadata.headers.type for m in messages] == ["Shop.OrderPlaced.v1"]
 
 

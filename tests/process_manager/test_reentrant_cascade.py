@@ -160,7 +160,7 @@ def _register_saga(test_domain, saga_cls):
 
 def _pm_transitions(test_domain, pm_cls, order_id):
     stream = f"{pm_cls.meta_.stream_category}-{order_id}"
-    return test_domain.event_store.store.read(stream)
+    return test_domain.event_store.read(stream)
 
 
 class TestReentrantCascade:

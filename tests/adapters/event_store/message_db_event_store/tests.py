@@ -20,8 +20,8 @@ class TestMessageDBEventStore:
 
     def test_retrieving_message_store_from_domain(self, test_domain):
         assert test_domain.event_store is not None
-        assert test_domain.event_store.store is not None
-        assert isinstance(test_domain.event_store.store, MessageDBStore)
+        assert test_domain.event_store._adapter is not None
+        assert isinstance(test_domain.event_store._adapter, MessageDBStore)
 
     def test_error_on_message_db_initialization(self):
         domain = Domain()
@@ -32,7 +32,7 @@ class TestMessageDBEventStore:
         domain.init(traverse=False)
 
         with pytest.raises(ConfigurationError) as exc:
-            domain.event_store.store.write_message(
+            domain.event_store._adapter.write_message(
                 "testStream-123",
                 "Event1",
                 {"foo": "bar"},
@@ -45,11 +45,11 @@ class TestMessageDBEventStore:
         """The recovery reconstruction, re-read, and reset run end to end against a
         real MessageDB store, not only the in-memory adapter, so an adapter-level
         cursor or tail-read mismatch in the shared paths would surface here."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         event_meta = {"domain": {"kind": "EVENT"}}
         store.write_message("order-1", "Placed", {"n": 1}, event_meta)
         store.write_message("order-1", "Placed", {"n": 2}, event_meta)
-        head = store.stream_head_position("order")
+        head = test_domain.event_store.category_head_position("order")
 
         rec_stream = "recovery-checkpoint-Handler-order"
         checkpoint_meta = {
@@ -113,7 +113,7 @@ class TestMessageDBEventStore:
         stream is reported ``unknown``, exercised against a live MessageDB store so
         the adapter's tail-read of both streams (the ahead-of check) is covered,
         not only the in-memory one."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         failed_stream = "failed-Handler-order"
         rec_stream = "recovery-checkpoint-Handler-order"
         record_meta = {

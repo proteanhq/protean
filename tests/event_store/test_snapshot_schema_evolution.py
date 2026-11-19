@@ -122,7 +122,7 @@ def _register_and_snapshot(test_domain, identifier, *, extra_events=0):
             repo.add(user)
 
     test_domain.create_snapshot(User, identifier)
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     snapshot = store.get_last_stream_message(_snapshot_stream(identifier))
     assert snapshot is not None, "Precondition: a valid snapshot must exist"
     return store, snapshot["data"]
@@ -163,7 +163,7 @@ class TestStaleSnapshotRecovers:
         _write_stale_snapshot(store, identifier, {**data, "obsolete_field": "x"})
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            user = store.load_aggregate(User, identifier)
+            user = test_domain.event_store.load_aggregate(User, identifier)
 
         assert user is not None
         assert user.name == "John Doe"
@@ -182,7 +182,7 @@ class TestStaleSnapshotRecovers:
         _write_stale_snapshot(store, identifier, renamed)
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            user = store.load_aggregate(User, identifier)
+            user = test_domain.event_store.load_aggregate(User, identifier)
 
         assert user is not None
         assert user.name == "John Doe"
@@ -198,7 +198,7 @@ class TestStaleSnapshotRecovers:
         _write_stale_snapshot(store, identifier, missing)
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            user = store.load_aggregate(User, identifier)
+            user = test_domain.event_store.load_aggregate(User, identifier)
 
         assert user is not None
         assert user.email == "john@example.com"
@@ -213,7 +213,7 @@ class TestStaleSnapshotRecovers:
         _write_stale_snapshot(store, identifier, {**data, "obsolete_field": "x"})
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            store.load_aggregate(User, identifier)
+            test_domain.event_store.load_aggregate(User, identifier)
 
         records = _discard_records(caplog, identifier)
         assert len(records) == 1
@@ -234,7 +234,9 @@ class TestStaleSnapshotRecovers:
         _write_stale_snapshot(store, identifier, {**data, "obsolete_field": "x"})
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            user = store.load_aggregate(User, identifier, at_version=snapshot_version)
+            user = test_domain.event_store.load_aggregate(
+                User, identifier, at_version=snapshot_version
+            )
 
         assert user is not None
         assert user._version == snapshot_version
@@ -257,7 +259,7 @@ class TestStaleSnapshotRecovers:
         _write_stale_snapshot(store, identifier, {**data, "obsolete_field": "x"})
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            loaded = store.load_aggregate(User, identifier)
+            loaded = test_domain.event_store.load_aggregate(User, identifier)
 
         assert loaded is not None
         assert loaded.name == "Jane Smith"  # post-snapshot event applied
@@ -280,7 +282,7 @@ class TestStaleSnapshotRecovers:
         # Snapshot at this version, then add later events so the snapshot is
         # intermediate rather than at the stream head.
         test_domain.create_snapshot(User, identifier)
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         valid = store.get_last_stream_message(_snapshot_stream(identifier))["data"]
         snapshot_version = valid["_version"]
         for i in range(3):
@@ -293,7 +295,9 @@ class TestStaleSnapshotRecovers:
         target = snapshot_version + 2  # a version strictly after the snapshot
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            user = store.load_aggregate(User, identifier, at_version=target)
+            user = test_domain.event_store.load_aggregate(
+                User, identifier, at_version=target
+            )
 
         assert user is not None
         assert user._version == target
@@ -304,7 +308,7 @@ class TestStaleSnapshotRecovers:
         """A stale snapshot for an identifier with no event stream is discarded
         and the load returns None, the same as a missing aggregate."""
         identifier = str(uuid4())
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         _write_stale_snapshot(
             store,
             identifier,
@@ -312,7 +316,7 @@ class TestStaleSnapshotRecovers:
         )
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            result = store.load_aggregate(User, identifier)
+            result = test_domain.event_store.load_aggregate(User, identifier)
 
         assert result is None
         assert len(_discard_records(caplog, identifier)) == 1
@@ -329,7 +333,7 @@ class TestValidSnapshotKeepsFastPath:
         """A snapshot matching the current schema emits no discard warning."""
         identifier = str(uuid4())
         _register_and_snapshot(test_domain, identifier, extra_events=3)
-        store = test_domain.event_store.store
+        store = test_domain.event_store
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
             user = store.load_aggregate(User, identifier)
@@ -343,7 +347,7 @@ class TestValidSnapshotKeepsFastPath:
         not from position 0."""
         identifier = str(uuid4())
         _, data = _register_and_snapshot(test_domain, identifier, extra_events=3)
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         snapshot_version = data["_version"]
 
         service = test_domain.event_store
@@ -377,12 +381,12 @@ class TestStaleSnapshotSelfHeals:
         _write_stale_snapshot(store, identifier, {**data, "obsolete_field": "x"})
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            store.load_aggregate(User, identifier)
+            test_domain.event_store.load_aggregate(User, identifier)
         assert len(_discard_records(caplog, identifier)) == 1
 
         caplog.clear()
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            user = store.load_aggregate(User, identifier)
+            user = test_domain.event_store.load_aggregate(User, identifier)
 
         assert user is not None
         assert _discard_records(caplog, identifier) == []
@@ -399,8 +403,8 @@ class TestStaleSnapshotSelfHeals:
         _write_stale_snapshot(store, identifier, {**data, "obsolete_field": "x"})
 
         with caplog.at_level(logging.WARNING, logger="protean.snapshot"):
-            store.load_aggregate(User, identifier)
-            store.load_aggregate(User, identifier)
+            test_domain.event_store.load_aggregate(User, identifier)
+            test_domain.event_store.load_aggregate(User, identifier)
 
         assert len(_discard_records(caplog, identifier)) == 2
         current = store.get_last_stream_message(_snapshot_stream(identifier))
@@ -421,7 +425,7 @@ class TestFullReplayPaging:
     def test_read_stream_fully_pages_past_the_page_size(self, test_domain):
         """A stream larger than one read page is read to the end, and each page
         resumes one position past the last row of the previous one."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         page1 = [{"position": i} for i in range(1000)]
         page2 = [{"position": i} for i in range(1000, 1500)]
 
@@ -438,7 +442,7 @@ class TestFullReplayPaging:
     def test_read_stream_fully_stops_on_empty_page(self, test_domain):
         """A stream that is an exact multiple of the page size terminates on the
         next, empty read rather than looping."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         page1 = [{"position": i} for i in range(1000)]
 
         with patch.object(
@@ -453,7 +457,7 @@ class TestFullReplayPaging:
     def test_read_stream_fully_bounds_to_max_rows(self, test_domain):
         """``max_rows`` stops the read at a prefix (the temporal-query case) and
         shrinks the last request so it never reads past the bound."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
 
         def fake_read(stream, position=0, limit=1000):
             # An adapter that honors ``limit`` over an endless stream.
@@ -471,7 +475,7 @@ class TestFullReplayPaging:
     def test_read_stream_fully_starts_at_given_position(self, test_domain):
         """``start_position`` begins the read past a snapshot version, and a
         continuation shorter than one page costs a single read."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store
         page = [{"position": i} for i in range(50, 300)]  # 250 rows, under one page
 
         with patch.object(

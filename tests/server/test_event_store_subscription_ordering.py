@@ -122,7 +122,7 @@ def _message(
 
 
 def _write_event(test_domain, msg: Message) -> None:
-    test_domain.event_store.store.write_message(
+    test_domain.event_store._adapter.write_message(
         msg.metadata.headers.stream,
         msg.metadata.headers.type,
         msg.data,

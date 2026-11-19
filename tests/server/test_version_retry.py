@@ -585,7 +585,7 @@ class TestCommitFailureRetry:
         command = RenameUser(user_id=str(uuid4()), name="Jane")
         enriched = test_domain._enrich_command(command, True)
         with patch.object(
-            test_domain.event_store.store, "append", side_effect=ValueError("boom")
+            test_domain.event_store, "append", side_effect=ValueError("boom")
         ):
             with pytest.raises(TransactionError) as exc_info:
                 RegisteringHandler._handle(enriched)
@@ -666,7 +666,7 @@ class TestSyncEventHandlerConflict:
 
     @staticmethod
     def _stored_types(test_domain, user_id: str) -> list[str]:
-        messages = test_domain.event_store.store.read(f"test::user-{user_id}")
+        messages = test_domain.event_store.read(f"test::user-{user_id}")
         return [m.metadata.headers.type for m in messages]
 
     @patch("protean.utils.mixins.time.sleep")

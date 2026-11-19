@@ -11,7 +11,7 @@ def test_memory_event_store_registers_no_domain_element():
 
     domain.init(traverse=False)
 
-    assert isinstance(domain.event_store.store, MemoryEventStore)
+    assert isinstance(domain.event_store._adapter, MemoryEventStore)
     # Read the raw records: the public views hide internal elements.
     records = [
         record

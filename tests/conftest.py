@@ -11,7 +11,6 @@ import pytest
 import structlog
 
 from protean.infra.event_store import EventStore
-from protean.port.event_store import BaseEventStore
 from tests.logging_isolation import LoggingSnapshot
 from tests.shared import (
     ELASTICSEARCH_URI,
@@ -365,22 +364,22 @@ def small_read_page(monkeypatch, test_domain):
 
     Lowers the page-size default of the ``EventStore`` service readers
     (``read``, ``read_all``, ``_read_raw``, ``_read_all_raw``,
-    ``_read_stream_fully`` and ``_read_with_snapshot_positions``), the matching
-    ``BaseEventStore`` delegates, and the configured store's stream, category
-    and all readers, so a test can write a stream longer than one page in a few
-    rows. The delegates pass their own default on to the service, so both sets
-    are lowered. Writing 1,000 rows to the memory
-    store takes minutes. A caller that passes its own page size, such as
-    ``limit=1_000_000``, keeps it.
+    ``_read_stream_fully`` and ``_read_with_snapshot_positions``), the same
+    delegating readers on the configured adapter's class, and that class's
+    stream, category and all readers, so a test can write a stream longer than
+    one page in a few rows. The adapter's delegating readers pass their own
+    default on to the service, so both sets are lowered. Writing 1,000 rows to
+    the memory store takes minutes. A caller that passes its own page size,
+    such as ``limit=1_000_000``, keeps it.
     """
-    store_cls = type(test_domain.event_store.store)
+    store_cls = type(test_domain.event_store._adapter)
     for func in (
         EventStore.read,
         EventStore._read_raw,
         EventStore._read_with_snapshot_positions,
-        BaseEventStore.read,
-        BaseEventStore._read_raw,
-        BaseEventStore._read_with_snapshot_positions,
+        store_cls.read,
+        store_cls._read_raw,
+        store_cls._read_with_snapshot_positions,
         store_cls.get_stream_messages,
         store_cls.get_category_messages,
         store_cls.get_all_messages,
@@ -393,9 +392,9 @@ def small_read_page(monkeypatch, test_domain):
         EventStore.read_all,
         EventStore._read_all_raw,
         EventStore._read_stream_fully,
-        BaseEventStore.read_all,
-        BaseEventStore._read_all_raw,
-        BaseEventStore._read_stream_fully,
+        store_cls.read_all,
+        store_cls._read_all_raw,
+        store_cls._read_stream_fully,
     ):
         kwdefaults = func.__kwdefaults__
         assert kwdefaults is not None and kwdefaults["page_size"] == 1000
@@ -452,18 +451,18 @@ def run_around_tests(test_domain, request):
             cache = test_domain.caches[cache_name]
             cache.clear()
 
-        if test_domain.event_store.store:
+        if test_domain.event_store._adapter:
             try:
                 # ``_isolate_message_db`` already truncates the shared Message-DB
                 # store before each ``message_db`` test, so skip the redundant
                 # teardown truncate for those and only release the pool. Other
                 # stores (memory) still reset here.
                 if "message_db" not in request.keywords:
-                    test_domain.event_store.store.clear()
+                    test_domain.event_store._adapter.clear()
             finally:
                 # Always close event store connections to prevent pool exhaustion,
                 # even if clear() fails
-                test_domain.event_store.store.close()
+                test_domain.event_store._adapter.close()
 
 
 @pytest.fixture(autouse=True)

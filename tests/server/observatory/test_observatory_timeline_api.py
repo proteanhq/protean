@@ -94,7 +94,7 @@ def _store_unavailable(domain: Domain, method: str = "get_all_messages"):
     forced to raise as an unreachable database would.
     """
     return patch.object(
-        domain.event_store.store,
+        domain.event_store._adapter,
         method,
         side_effect=RuntimeError("Store unavailable"),
     )
@@ -106,14 +106,14 @@ def _write_at(domain: Domain, when: dt, stream: str, message_type: str) -> None:
     domain.clock = FrozenClock(when)
     try:
         with domain.domain_context():
-            domain.event_store.store.write_message(stream, message_type, {})
+            domain.event_store._adapter.write_message(stream, message_type, {})
     finally:
         domain.clock = original_clock
 
 
 def _add_raw_message(domain: Domain, **fields) -> None:
     """Store a message row as given, bypassing the defaults ``_write`` fills in."""
-    rows = domain.event_store.store.get_connection()
+    rows = domain.event_store._adapter.get_connection()
     rows.append(
         {
             "id": str(uuid.uuid4()),
@@ -177,12 +177,12 @@ def domain_with_events(event_domain):
     user1 = User.register(user1_id, "Alice")
     user2 = User.register(user2_id, "Bob")
 
-    event_domain.event_store.store.append(user1._events[0])
-    event_domain.event_store.store.append(user2._events[0])
+    event_domain.event_store.append(user1._events[0])
+    event_domain.event_store.append(user2._events[0])
 
     # Add a rename event for user1
     user1.rename("Alice Smith")
-    event_domain.event_store.store.append(user1._events[-1])
+    event_domain.event_store.append(user1._events[-1])
 
     return event_domain, user1_id, user2_id
 
@@ -507,7 +507,7 @@ class TestCollectAllEvents:
     def test_excludes_snapshots(self, domain_with_events):
         domain, user1_id, _ = domain_with_events
         # Write a snapshot to the event store
-        domain.event_store.store.write_message(
+        domain.event_store._adapter.write_message(
             f"{User.meta_.stream_category}:snapshot-{user1_id}",
             "SNAPSHOT",
             {"user_id": user1_id, "name": "Alice Smith"},
@@ -738,7 +738,7 @@ class TestCollectTimelineStatsMessageTimes:
         domain, user1_id, _ = domain_with_events
 
         # Write a snapshot message
-        domain.event_store.store.write_message(
+        domain.event_store._adapter.write_message(
             f"{User.meta_.stream_category}:snapshot-{user1_id}",
             "SNAPSHOT",
             {"user_id": user1_id, "name": "Alice Smith"},
@@ -774,7 +774,7 @@ class TestCollectTimelineStatsMessageTimes:
             },
         ]
         with patch.object(
-            event_domain.event_store.store,
+            event_domain.event_store._adapter,
             "get_all_messages",
             return_value=fake_messages,
         ):
@@ -797,7 +797,7 @@ class TestCollectTimelineStatsMessageTimes:
         ]
         with (
             patch.object(
-                event_domain.event_store.store,
+                event_domain.event_store._adapter,
                 "get_all_messages",
                 return_value=fake_messages,
             ),
@@ -829,7 +829,7 @@ class TestCollectTimelineStatsMessageTimes:
             },
         ]
         with patch.object(
-            event_domain.event_store.store,
+            event_domain.event_store._adapter,
             "get_all_messages",
             return_value=fake_messages,
         ):
@@ -937,7 +937,7 @@ class TestCollectAllEventsWithoutGlobalPosition:
             },
         ]
         with patch.object(
-            event_domain.event_store.store,
+            event_domain.event_store._adapter,
             "get_all_messages",
             return_value=fake_messages,
         ):
@@ -968,7 +968,7 @@ def correlated_domain(tmp_path):
         stream = f"{User.meta_.stream_category}-{user_id}"
 
         # Root command (no causation_id)
-        domain.event_store.store.write_message(
+        domain.event_store._adapter.write_message(
             stream,
             "Test.RegisterUser.v1",
             {"user_id": user_id, "name": "Alice"},
@@ -987,7 +987,7 @@ def correlated_domain(tmp_path):
         )
 
         # Event caused by the command
-        domain.event_store.store.write_message(
+        domain.event_store._adapter.write_message(
             stream,
             "Test.UserRegistered.v1",
             {"user_id": user_id, "name": "Alice"},
@@ -1006,7 +1006,7 @@ def correlated_domain(tmp_path):
         )
 
         # Another event caused by the first event
-        domain.event_store.store.write_message(
+        domain.event_store._adapter.write_message(
             stream,
             "Test.UserRenamed.v1",
             {"user_id": user_id, "name": "Alice Smith"},
@@ -1046,7 +1046,7 @@ class TestBuildCausationTreeFromGroup:
 
     def test_builds_tree_from_group(self, correlated_domain):
         domain, corr_id, _, _ = correlated_domain
-        store = domain.event_store.store
+        store = domain.event_store._adapter
         group = load_correlation_group(store, corr_id)
         tree = build_tree_from_group(group)
 
@@ -1268,7 +1268,7 @@ class TestCorrelationEndpoint:
     def test_causation_cycle_lists_each_message_once(self, timeline_domain):
         """Two messages that each name the other as their cause still give
         a tree that holds each message once."""
-        store = timeline_domain.event_store.store
+        store = timeline_domain.event_store._adapter
         for msg_id, cause_id in (("msg-a", "msg-b"), ("msg-b", "msg-a")):
             store.write_message(
                 "test::cycle-1",
@@ -1403,7 +1403,7 @@ class TestUniqueStoreDomains:
                 EventStore,
                 "store",
                 new_callable=PropertyMock,
-                side_effect=[d1.event_store.store, RuntimeError("no store")],
+                side_effect=[d1.event_store._adapter, RuntimeError("no store")],
             ),
             caplog.at_level(
                 logging.DEBUG, logger="protean.server.observatory.routes.timeline"
@@ -1541,11 +1541,11 @@ class TestMultiDomainDeduplication:
 
         with domain_a.domain_context():
             u1 = User.register(str(uuid.uuid4()), "Alice")
-            domain_a.event_store.store.append(u1._events[0])
+            domain_a.event_store.append(u1._events[0])
 
         with domain_b.domain_context():
             u2 = User.register(str(uuid.uuid4()), "Bob")
-            domain_b.event_store.store.append(u2._events[0])
+            domain_b.event_store.append(u2._events[0])
 
         with domain_a.domain_context(), domain_b.domain_context():
             events, _ = collect_all_events([domain_a, domain_b])
@@ -1597,16 +1597,16 @@ class TestCausationTreeTimestampFormatting:
 
 
 class TestCollectorsSkipDomainsWithoutStore:
-    """A freshly constructed ``Domain`` (never ``init()``-ed) exposes
-    ``event_store.store is None``.  Each collector must skip such a domain
-    and return its empty result rather than raise."""
+    """A freshly constructed ``Domain`` (never ``init()``-ed) has no event
+    store adapter: ``event_store._adapter is None``. Each collector must skip
+    such a domain and return its empty result rather than raise."""
 
     @staticmethod
     def _domain_without_store() -> Domain:
         domain = Domain(name="NoStore")
         # Sanity check: the guard we exercise only fires while the event
         # store has not been initialized.
-        assert domain.event_store.store is None
+        assert domain.event_store._adapter is None
         return domain
 
     def test_collect_all_events_skips_storeless_domain(self):

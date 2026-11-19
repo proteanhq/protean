@@ -47,7 +47,7 @@ def _shipments(example):
 def _commands(example):
     return [
         message.metadata.headers.type
-        for message in example.domain.event_store.store.read("$all")
+        for message in example.domain.event_store.read("$all")
         if message.metadata.domain.kind == "COMMAND"
     ]
 
@@ -143,7 +143,7 @@ def test_stock_depleted_raises_product_became_unavailable(run):
         setup=add_product,
     )
 
-    messages = example.domain.event_store.store.read("catalogue::product-sku-1")
+    messages = example.domain.event_store.read("catalogue::product-sku-1")
     assert [m.metadata.headers.type for m in messages] == [
         "Catalogue.ProductBecameUnavailable.v1"
     ]
@@ -163,7 +163,7 @@ def test_other_inventory_events_raise_nothing(run):
         setup=add_product,
     )
 
-    assert example.domain.event_store.store.read("catalogue::product-sku-1") == []
+    assert example.domain.event_store.read("catalogue::product-sku-1") == []
 
 
 def test_the_filter_keeps_only_physical_items(run):

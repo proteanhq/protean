@@ -81,7 +81,7 @@ def _correlated_domain(tmp_path, config=None):
         stream = f"{User.meta_.stream_category}-{user_id}"
 
         # Root command
-        domain.event_store.store.write_message(
+        domain.event_store._adapter.write_message(
             stream,
             "Test.RegisterUser.v1",
             {"user_id": user_id, "name": "Alice"},
@@ -100,7 +100,7 @@ def _correlated_domain(tmp_path, config=None):
         )
 
         # Event caused by command
-        domain.event_store.store.write_message(
+        domain.event_store._adapter.write_message(
             stream,
             "Test.UserRegistered.v1",
             {"user_id": user_id, "name": "Alice"},
@@ -119,7 +119,7 @@ def _correlated_domain(tmp_path, config=None):
         )
 
         # Second event caused by first event
-        domain.event_store.store.write_message(
+        domain.event_store._adapter.write_message(
             stream,
             "Test.UserRenamed.v1",
             {"user_id": user_id, "name": "Alice Smith"},
@@ -434,7 +434,7 @@ class TestTreeBuilderTraceEnrichment:
     def test_graceful_fallback_without_trace_data(self, correlated_domain, decorate):
         """Without trace data, the handler and duration_ms fields are None."""
         domain, corr_id, _, _ = correlated_domain
-        store = domain.event_store.store
+        store = domain.event_store._adapter
         group = load_correlation_group(store, corr_id)
 
         tree = _decorated_tree(group) if decorate else build_tree_from_group(group)
@@ -454,7 +454,7 @@ class TestTreeBuilderTraceEnrichment:
 
 
 def _write(domain, stream, message_id, kind, causation_id, correlation_id):
-    domain.event_store.store.write_message(
+    domain.event_store._adapter.write_message(
         stream,
         f"Test.{message_id}.v1",
         {},

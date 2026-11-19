@@ -277,7 +277,7 @@ def test_a_redelivered_money_debited_credits_the_target_once(transfers):
     stream = f"{transfers.Account.meta_.stream_category}-src"
     messages = [
         m
-        for m in transfers.domain.event_store.store.read(stream)
+        for m in transfers.domain.event_store.read(stream)
         if m.metadata.headers.type.endswith(".MoneyDebited.v1")
     ]
     assert len(messages) == 1
@@ -297,7 +297,7 @@ def test_a_repeated_transfer_debits_the_source_once(transfers):
     stream = f"{transfers.Account.meta_.stream_category}-src"
     debited = [
         m
-        for m in transfers.domain.event_store.store.read(stream)
+        for m in transfers.domain.event_store.read(stream)
         if m.metadata.headers.type.endswith(".MoneyDebited.v1")
     ]
     assert len(debited) == 1

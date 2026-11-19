@@ -62,7 +62,7 @@ def test_command_enrichers_add_the_request_context(enrichers):
             enrichers.RegisterUser(user_id="x1", email="jane@example.com"),
             asynchronous=False,
         )
-        stored = enrichers.domain.event_store.store.read_last_message(
+        stored = enrichers.domain.event_store.read_last_message(
             f"{enrichers.User.meta_.stream_category}:command-x1"
         )
 

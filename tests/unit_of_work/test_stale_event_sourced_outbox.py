@@ -147,7 +147,7 @@ def make_domain(request, tmp_path):
             provider = provider_adapter(domain, "default")
             provider._metadata.drop_all(provider._engine)
             provider._engine.dispose()
-            domain.event_store.store.close()
+            domain.event_store._adapter.close()
         ctx.pop()
 
 
@@ -173,7 +173,7 @@ def _outbox_ids(domain):
 
 def _stream(domain, account_id):
     stream = f"{Account.meta_.stream_category}-{account_id}"
-    return domain.event_store.store.read(stream)
+    return domain.event_store.read(stream)
 
 
 def _open_and_load_twice(domain):
@@ -371,7 +371,7 @@ class TestStaleWriteWithOutbox:
                 thread.start()
                 thread.join()
 
-        assert domain.event_store.store.read(stream) == []
+        assert domain.event_store.read(stream) == []
         assert _outbox_ids(domain) == outbox_before
         assert repo.get(wallet.id).name == "winner"
 

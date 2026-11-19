@@ -298,7 +298,7 @@ def test_events_continue_processing_after_exceptions(robust_test_domain):
     assert error_counter >= 2  # Counted the error and processed by error handler
 
     # Verify position was updated by checking messages in the event store
-    messages = robust_test_domain.event_store.store.read("$all")
+    messages = robust_test_domain.event_store.read("$all")
     # We should have at least 3 messages:
     # 1. The Registered event
     # 2. The EmailSent event
@@ -576,7 +576,7 @@ async def test_subscription_with_messages_of_varying_flags(robust_test_domain):
     new_sync_event = EmailSent(
         id=sync_event.id, email=sync_event.email, _metadata=new_metadata
     )
-    robust_test_domain.event_store.store.append(new_sync_event)
+    robust_test_domain.event_store.append(new_sync_event)
 
     # Create an asynchronous message (should be processed)
     async_event = EmailSent(id=str(uuid4()), email="async@example.com")
@@ -595,9 +595,9 @@ async def test_subscription_with_messages_of_varying_flags(robust_test_domain):
     new_async_event = EmailSent(
         id=async_event.id, email=async_event.email, _metadata=new_metadata
     )
-    robust_test_domain.event_store.store.append(new_async_event)
+    robust_test_domain.event_store.append(new_async_event)
 
-    messages = robust_test_domain.event_store.store.read("test_stream")
+    messages = robust_test_domain.event_store.read("test_stream")
 
     # Process the batch directly
     await subscription.process_batch(messages)

@@ -62,7 +62,7 @@ class TestTransitionPersistence:
         )
 
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         assert len(messages) == 1
 
     def test_transition_captures_state_snapshot(self, test_domain):
@@ -72,7 +72,7 @@ class TestTransitionPersistence:
         )
 
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         transition = messages[0].to_domain_object()
 
         assert "state" in transition.payload
@@ -86,7 +86,7 @@ class TestTransitionPersistence:
         )
 
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         transition = messages[0].to_domain_object()
 
         assert transition.handler_name == "on_order_placed"
@@ -102,7 +102,7 @@ class TestTransitionPersistence:
         )
 
         stream_name = f"{OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         assert len(messages) == 2
 
 

@@ -145,7 +145,7 @@ def test_fact_events_carry_the_whole_customer():
         sales.repository_for(example.Customer).add(customer)
 
         stream = f"{example.Customer.meta_.stream_category}-fact-{customer.customer_id}"
-        [message] = sales.event_store.store.read(stream)
+        [message] = sales.event_store.read(stream)
         fact = message.to_domain_object()
         assert type(fact).__name__ == "CustomerFactEvent"
         assert (fact.customer_id, fact.name, fact.email, fact.segment) == (

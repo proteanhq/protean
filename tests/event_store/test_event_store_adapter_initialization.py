@@ -1,11 +1,11 @@
 from unittest import mock
 
-from protean.port.event_store import BaseEventStore
+from protean.port.event_store import EventStorePort
 
 
 def test_domain_event_store_attribute(test_domain):
     assert test_domain.event_store is not None
-    assert isinstance(test_domain.event_store.store, BaseEventStore)
+    assert EventStorePort in type(test_domain.event_store._adapter).__mro__
 
 
 @mock.patch("protean.infra.event_store.EventStore._initialize")

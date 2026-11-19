@@ -150,7 +150,7 @@ def test_engine_after_a_rebuild_replays_into_v2_without_failing(blue_green):
         fqn(blue_green.OrderSummaryV2Projector),
         blue_green.Order.meta_.stream_category,
     )
-    assert blue_green.domain.event_store.store.read(failed) == []
+    assert blue_green.domain.event_store.read(failed) == []
     v2 = _rows(blue_green, blue_green.OrderSummaryV2)
     assert [(r["customer_name"], r["status"], r["total"]) for r in v2] == [
         ("Ada", "shipped", 108.0),

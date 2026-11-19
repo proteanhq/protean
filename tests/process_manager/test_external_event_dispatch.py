@@ -208,7 +208,7 @@ class TestSyncDispatchWithExternalEvents:
             current_domain.repository_for(Order).add(order)
 
         stream_name = f"{CrossDomainPM.meta_.stream_category}-{order.id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         assert len(messages) == 1
 
         transition = messages[0].to_domain_object()
@@ -276,7 +276,7 @@ class TestMessageDispatchWithExternalEvents:
 
         # Verify PM advanced
         pm_stream = f"{CrossDomainPM.meta_.stream_category}-{order_id}"
-        transitions = test_domain.event_store.store.read(pm_stream)
+        transitions = test_domain.event_store.read(pm_stream)
         assert len(transitions) == 2
 
         final = transitions[-1].to_domain_object()
@@ -327,7 +327,7 @@ class TestMessageDispatchWithExternalEvents:
 
         # Verify full lifecycle
         pm_stream = f"{CrossDomainPM.meta_.stream_category}-{order_id}"
-        transitions = test_domain.event_store.store.read(pm_stream)
+        transitions = test_domain.event_store.read(pm_stream)
         assert len(transitions) == 3
 
         final = transitions[-1].to_domain_object()
@@ -359,7 +359,7 @@ class TestMessageDispatchWithExternalEvents:
 
         # Verify PM has both transitions
         pm_stream = f"{CrossDomainPM.meta_.stream_category}-{order.id}"
-        transitions = test_domain.event_store.store.read(pm_stream)
+        transitions = test_domain.event_store.read(pm_stream)
         assert len(transitions) == 2
 
         final = transitions[-1].to_domain_object()
@@ -406,7 +406,7 @@ class TestMessageDispatchWithExternalEvents:
 
         # PM should be complete now with 3 transitions
         pm_stream = f"{CrossDomainPM.meta_.stream_category}-{order_id}"
-        transitions = test_domain.event_store.store.read(pm_stream)
+        transitions = test_domain.event_store.read(pm_stream)
         assert len(transitions) == 3
 
         # Send another external event — should be skipped
@@ -423,7 +423,7 @@ class TestMessageDispatchWithExternalEvents:
         CrossDomainPM._handle(msg4)
 
         # Still only 3 transitions — the 4th was skipped
-        transitions = test_domain.event_store.store.read(pm_stream)
+        transitions = test_domain.event_store.read(pm_stream)
         assert len(transitions) == 3
 
     def test_external_event_message_deserialization_round_trip(self, test_domain):

@@ -428,7 +428,7 @@ class TestEventStoreStatus:
         self.category = _register_order(test_domain)
         test_domain.register(OrderNotifier, part_of=Order)
         test_domain.init(traverse=False)
-        self.store = test_domain.event_store.store
+        self.store = test_domain.event_store._adapter
         self.position_stream = f"position-{fqn(OrderNotifier)}-{self.category}"
 
     def test_lag_is_head_minus_checkpoint(self, test_domain):
@@ -1555,13 +1555,13 @@ class TestResetCheckpointToHead:
         readable back from the checkpoint stream, in the same ``Read`` record shape
         the runtime writes. It uses that recorded head, not a fresh store read, so
         the live store head deliberately differs here to pin which one is used."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             # Live store head for `order` is 2; the status carries head 7 from
             # verification. The reset must write 7, not the live 2.
             store.write_message("order-1", "Placed", {"n": 1})
             store.write_message("order-1", "Placed", {"n": 2})
-            assert store.stream_head_position("order") == 2
+            assert test_domain.event_store.category_head_position("order") == 2
             # A stale checkpoint sitting well past the head.
             _seed_checkpoint(store, "position-Handler-order", 99)
 
@@ -1584,10 +1584,10 @@ class TestResetCheckpointToHead:
     def test_reset_then_verify_reads_consistent(self, test_domain):
         """Round-trip: after a reset, the subscription verifies as
         consistent against the same head."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             store.write_message("order-1", "Placed", {"n": 1})
-            head = store.stream_head_position("order")
+            head = test_domain.event_store.category_head_position("order")
             _seed_checkpoint(store, "position-RT-order", head + 5)
 
         stale = _es_status(
@@ -1615,9 +1615,9 @@ class TestResetCheckpointToHead:
     def test_empty_stream_resets_to_minus_one(self, test_domain):
         """A restored stream with no events has head ``-1``; the reset writes that,
         which sends the subscription back to the start of the stream."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
-            head = store.stream_head_position("empty")
+            head = test_domain.event_store.category_head_position("empty")
         assert head == -1
 
         status = _es_status(
@@ -1670,12 +1670,12 @@ class TestPerformResetsScope:
     alone."""
 
     def test_only_beyond_head_checkpoint_is_modified(self, test_domain):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             store.write_message("order-1", "Placed", {"n": 1})
             store.write_message("payment-1", "Paid", {"n": 1})
-            order_head = store.stream_head_position("order")
-            payment_head = store.stream_head_position("payment")
+            order_head = test_domain.event_store.category_head_position("order")
+            payment_head = test_domain.event_store.category_head_position("payment")
 
             # A healthy checkpoint sitting exactly at head, an unknown one, and a
             # stale one pointing past head.
@@ -1865,7 +1865,7 @@ class TestReconstructUnresolved:
     watermark."""
 
     def test_snapshot_only(self, test_domain):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             _seed_recovery_checkpoint(
                 store,
@@ -1889,7 +1889,7 @@ class TestReconstructUnresolved:
         assert watermark == 0
 
     def test_failed_stream_after_watermark_is_merged(self, test_domain):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             # Snapshot at watermark 0 with one position; the failed stream adds a
             # second and a terminal record retires a third.
@@ -1925,7 +1925,7 @@ class TestReconstructUnresolved:
         assert watermark == 2
 
     def test_no_checkpoint_reads_failed_stream_from_zero(self, test_domain):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             _seed_failed_record(store, "failed-Handler-order", "Failed", 4)
             unresolved, watermark, _read = reconstruct_unresolved(
@@ -1941,7 +1941,7 @@ class TestReconstructUnresolved:
         """The failed stream is paged in full, not capped: a record past the first
         page is still merged, so a long failure history is not silently truncated.
         """
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             for pos in (4, 5, 6, 7, 8):
                 _seed_failed_record(store, "failed-Handler-order", "Failed", pos)
@@ -1969,7 +1969,7 @@ class TestReconstructUnresolved:
         resolved position. Here a resolved position (5, whose Resolved was rolled
         back) stays out of the set and the snapshot is returned unchanged."""
 
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             # A surviving old Failed(5) row at per-stream position 0. Its Resolved
             # row was rolled back by the restore, so it is not in the stream.
@@ -2003,7 +2003,7 @@ class TestReconstructUnresolved:
     def test_merges_records_after_watermark(self, test_domain):
         """The normal case: the snapshot is kept and only records after the
         watermark are merged. A record at or below the watermark is not re-read."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             # Three failed-stream records at per-stream positions 0, 1, 2.
             _seed_failed_record(store, "failed-Handler-order", "Failed", 7)
@@ -2040,7 +2040,7 @@ class TestReconstructUnresolved:
         cursor. Used directly, 1.5 would read from position >= 1.5 and skip the
         records at positions 0 and 1, returning an incomplete set as if clean.
         Instead the whole failed stream is re-read from the start."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             # Two failed records at per-stream positions 0 and 1.
             _seed_failed_record(store, "failed-Handler-order", "Failed", 3)
@@ -2066,7 +2066,7 @@ class TestReconstructUnresolved:
         """``bool`` is an ``int`` subclass, so a ``True`` watermark passes a plain
         int check yet reads from position >= 1 and skips position 0. It is treated
         as corrupt and the failed stream is re-read from the start."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             # One failed record at per-stream position 0.
             _seed_failed_record(store, "failed-Handler-order", "Failed", 3)
@@ -2092,14 +2092,14 @@ class TestCheckpointAheadOfFailedStream:
     """The shared inconsistency check both the runtime rebuild and the CLI use."""
 
     def test_no_checkpoint_is_not_ahead(self, test_domain):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         assert checkpoint_ahead_of_failed_stream(store, "rec", "failed") is False
 
     def test_non_integer_watermark_is_not_ahead(self, test_domain):
         """A corrupt checkpoint whose watermark is not an int is left for the
         reconstruction to handle, not read as ahead-of-stream (which would compare
         a string to an int and raise)."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         store.write_message("rec", "Checkpoint", {"watermark": "oops"})
         assert checkpoint_ahead_of_failed_stream(store, "rec", "failed") is False
 
@@ -2108,11 +2108,11 @@ class TestCollectRecoveryCheckpointStatuses:
     def _seed_order_head(self, store) -> int:
         _seed_event(store, "order-1", "Placed", {"n": 1})
         _seed_event(store, "order-1", "Placed", {"n": 2})
-        return store.stream_head_position("order")
+        return store.domain.event_store.category_head_position("order")
 
     def test_flags_beyond_head_unresolved_entry(self, test_domain):
         """An unresolved entry past the head is named as stale."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             head = self._seed_order_head(store)
             _seed_recovery_checkpoint(
@@ -2151,7 +2151,7 @@ class TestCollectRecoveryCheckpointStatuses:
         no resolved-position tombstones), so the subscription is reported
         ``unknown`` rather than verified. Reset already refuses a non-stale
         finding, so it never touches an unverifiable checkpoint."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             head = self._seed_order_head(store)
             # Watermark 10 sits past the (empty) failed stream's tail (-1): the
@@ -2184,7 +2184,7 @@ class TestCollectRecoveryCheckpointStatuses:
         the failed stream to the first row only. Rather than replay ``Failed(5)``
         and resurrect a resolved position (a duplicate delivery, or a false stale
         report), the inconsistent state is reported ``unknown``."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             head = self._seed_order_head(store)
             # Only the surviving Failed(5) row (per-stream position 0); its
@@ -2213,7 +2213,7 @@ class TestCollectRecoveryCheckpointStatuses:
         normal, consistent case, not an inconsistent restore. It is verified (its
         stale entry is reported stale), not reported unknown. Guards the ahead-of
         check against flagging a healthy checkpoint."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             head = self._seed_order_head(store)
             # Two failed-stream records -> tail per-stream position 1.
@@ -2247,9 +2247,9 @@ class TestCollectRecoveryCheckpointStatuses:
         """The maximal rollback leaves an empty category (head ``-1``); every
         tracked position is then past the head and flagged."""
 
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
-            head = store.stream_head_position("order")
+            head = test_domain.event_store.category_head_position("order")
             assert head == -1
             _seed_recovery_checkpoint(
                 store,
@@ -2276,7 +2276,7 @@ class TestCollectRecoveryCheckpointStatuses:
         present are not stale. Both a below-head position (0) and an at-head
         position resolve here because their category messages exist; staleness is
         decided by the re-read finding nothing, not by comparing to the head."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             head = self._seed_order_head(store)
             _seed_recovery_checkpoint(
@@ -2307,7 +2307,7 @@ class TestCollectRecoveryCheckpointStatuses:
         """A position that began failing after the last checkpoint lives only in
         the failed stream; reconstruction merges it and the re-read (no specific
         stream recorded, so the category stream at its position) finds nothing."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             head = self._seed_order_head(store)
             _seed_recovery_checkpoint(
@@ -2327,7 +2327,7 @@ class TestCollectRecoveryCheckpointStatuses:
         another aggregate has a later event so the category head stays above it.
         Comparing the global position to the head would miss it; re-reading the
         specific stream catches it."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             head = self._seed_order_head(store)  # order-1 holds events; head == 2
             # A tracked position at global_position 1 (<= head) whose own stream
@@ -2356,7 +2356,7 @@ class TestCollectRecoveryCheckpointStatuses:
     def test_present_specific_stream_is_not_flagged(self, test_domain):
         """A tracked position whose specific stream still holds its message is
         healthy and left unreported, even below the head."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             head = self._seed_order_head(store)  # order-1 holds events at pos 0, 1
             _seed_recovery_checkpoint(
@@ -2392,7 +2392,7 @@ class TestCollectRecoveryCheckpointStatuses:
         stale entry when the read-position collection failed and left the status
         with no head (an unreadable read-position checkpoint must not hide
         readable recovery tracking)."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             head = self._seed_order_head(store)  # store is readable
             _seed_recovery_checkpoint(
@@ -2432,7 +2432,7 @@ class TestCollectRecoveryCheckpointStatuses:
     def test_no_tracking_returns_no_finding(self, test_domain):
         """An event-store subscription that never failed a position has no
         recovery streams to read, so it is not a finding."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             head = self._seed_order_head(store)
 
@@ -2444,7 +2444,7 @@ class TestCollectRecoveryCheckpointStatuses:
     def test_store_read_failure_is_reported_unknown(self, test_domain):
         """A store read that raises is reported as an unverified finding, not
         crashed and not silently folded into clean."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         # The head read also fails, so it falls back to the status head; a
         # non-numeric status head (a foreign store) is reported as -1 rather than
         # crashing the int parse.
@@ -2453,7 +2453,9 @@ class TestCollectRecoveryCheckpointStatuses:
                 store, "get_last_stream_message", side_effect=RuntimeError("boom")
             ),
             patch.object(
-                store, "stream_head_position", side_effect=RuntimeError("head boom")
+                test_domain.event_store,
+                "category_head_position",
+                side_effect=RuntimeError("head boom"),
             ),
         ):
             findings = collect_recovery_checkpoint_statuses(
@@ -2468,7 +2470,7 @@ class TestCollectRecoveryCheckpointStatuses:
         """When the read-position collection already recorded a head, the recovery
         lane reuses it and does not pay a second (potentially expensive) store
         head read; the stale entry is still reported."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         # A checkpoint tracking one position, an empty failed stream, and no
         # event at that position (message gone -> stale).
         with test_domain.domain_context():
@@ -2487,7 +2489,9 @@ class TestCollectRecoveryCheckpointStatuses:
 
         # Would raise if the head were read; the test proves it is not.
         with patch.object(
-            store, "stream_head_position", side_effect=RuntimeError("head boom")
+            test_domain.event_store,
+            "category_head_position",
+            side_effect=RuntimeError("head boom"),
         ) as head_read:
             findings = collect_recovery_checkpoint_statuses(
                 test_domain, [_rec_status(head_position="7")]
@@ -2512,7 +2516,7 @@ class TestCollectRecoveryCheckpointStatuses:
     def test_corrupt_checkpoint_record_is_reported_unknown(self, test_domain):
         """A restore can leave a checkpoint record whose ``data`` is malformed;
         the reconstruction raises and the subscription is reported unverified."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         # ``unresolved`` is a list, so reading its entries as a mapping raises.
         with test_domain.domain_context():
             _seed_recovery_checkpoint(
@@ -2528,10 +2532,11 @@ class TestCollectRecoveryCheckpointStatuses:
     def test_read_error_on_one_position_keeps_confirmed_stale(self, test_domain):
         """A re-read that raises for one position must not discard the stale
         entries already confirmed for the same subscription."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             head = self._seed_order_head(store)
-            # A metadata-less message makes ``store.read`` raise on that stream.
+            # A metadata-less message makes ``test_domain.event_store.read``
+            # raise on that stream.
             store.write_message("order-corrupt", "Placed", {"n": 1})
             _seed_recovery_checkpoint(
                 store,
@@ -2564,7 +2569,7 @@ class TestCollectRecoveryCheckpointStatuses:
     def test_read_error_with_no_confirmed_stale_is_unknown(self, test_domain):
         """When the only re-read that could run raises and nothing is confirmed
         stale, the subscription is reported unverified rather than clean."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             head = self._seed_order_head(store)
             store.write_message("order-corrupt", "Placed", {"n": 1})
@@ -2591,7 +2596,7 @@ class TestCollectRecoveryCheckpointStatuses:
     def test_malformed_failed_record_is_skipped(self, test_domain):
         """A failed record missing its position is skipped, not merged as a
         phantom entry."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             head = self._seed_order_head(store)
             # A record whose data carries no position at all.
@@ -2620,7 +2625,7 @@ class TestCollectRecoveryCheckpointStatuses:
 
     def test_collect_does_not_modify_any_stream(self, test_domain):
         """A verify-only collection never writes to the recovery stream."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             head = self._seed_order_head(store)
             _seed_recovery_checkpoint(
@@ -2653,14 +2658,14 @@ class TestResetRecoveryCheckpoint:
     def _seed_order_head(self, store) -> int:
         _seed_event(store, "order-1", "Placed", {"n": 1})
         _seed_event(store, "order-1", "Placed", {"n": 2})
-        return store.stream_head_position("order")
+        return store.domain.event_store.category_head_position("order")
 
     def test_drops_stale_keeps_healthy_and_reverifies_clean(self, test_domain):
         """Round-trip: the reset drops the entry whose message is gone (head+3, the
         category re-read finds nothing) and keeps the one whose message is still
         present (position 1, re-read from its specific stream order-1), and a later
         collection finds nothing."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             head = self._seed_order_head(store)
             _seed_recovery_checkpoint(
@@ -2699,7 +2704,7 @@ class TestResetRecoveryCheckpoint:
     def test_reset_holds_when_stale_only_in_failed_stream(self, test_domain):
         """A stale position present only in the failed stream is cleared and the
         watermark is advanced past it, so a later collection stays clean."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             head = self._seed_order_head(store)
             _seed_recovery_checkpoint(
@@ -2745,7 +2750,7 @@ class TestResetRecoveryCheckpoint:
         """An unknown finding carries an empty snapshot, so resetting it would
         wipe the subscription's real recovery state. It is refused, and the real
         checkpoint is left untouched."""
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         with test_domain.domain_context():
             _seed_recovery_checkpoint(
                 store,

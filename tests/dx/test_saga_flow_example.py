@@ -70,14 +70,14 @@ def _findings(ir: dict, code: str) -> list[dict]:
 def _saga_statuses(domain: Domain, pm_cls: type, order_id: str) -> list[str]:
     """The status the saga recorded at each transition, in order."""
     stream = f"{pm_cls.meta_.stream_category}-{order_id}"
-    messages = domain.event_store.store.read(stream)
+    messages = domain.event_store.read(stream)
     return [message.to_domain_object().state["status"] for message in messages]
 
 
 def _final_transition(domain: Domain, pm_cls: type, order_id: str):
     """The last transition the saga wrote for this instance."""
     stream = f"{pm_cls.meta_.stream_category}-{order_id}"
-    return domain.event_store.store.read(stream)[-1].to_domain_object()
+    return domain.event_store.read(stream)[-1].to_domain_object()
 
 
 def _run_saga(namespace: dict[str, Any], domain: Domain, order_id: str, total: float):

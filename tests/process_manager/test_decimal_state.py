@@ -60,7 +60,7 @@ def register_elements(test_domain):
 
 def _transitions(test_domain, invoice_id: str) -> list:
     stream_name = f"{CollectionPM.meta_.stream_category}-{invoice_id}"
-    return test_domain.event_store.store.read(stream_name)
+    return test_domain.event_store.read(stream_name)
 
 
 def test_a_decimal_field_persists_as_a_string(test_domain):

@@ -20,14 +20,14 @@ def _write(store, stream_name: str, n: int) -> None:
 
 class TestConstruction:
     def test_domain_builds_the_store_named_default(self, test_domain):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
 
         assert isinstance(store, MemoryEventStore)
         assert store.name == "default"
         assert store.domain is test_domain
 
     def test_store_keeps_the_event_store_settings_as_config(self, test_domain):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
 
         assert store.config is test_domain.config["event_store"]
         assert store.config["provider"] == "memory"
@@ -37,7 +37,7 @@ class TestWrites:
     def test_a_write_with_rejected_metadata_leaves_the_stream_unchanged(
         self, test_domain
     ):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         store.write_message("testStream-123", "Event1", {"foo": "bar"})
 
         # Metadata without headers fails validation while the row is built.
@@ -52,7 +52,7 @@ class TestWrites:
     def test_a_wrong_expected_version_names_the_stream_and_its_version(
         self, test_domain
     ):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         store.write_message("testStream-1", "Event1", {"seq": "seed"})
 
         with pytest.raises(ExpectedVersionError) as exc_info:
@@ -67,7 +67,7 @@ class TestWrites:
 
 class TestRowTime:
     def test_every_read_returns_the_time_as_a_datetime(self, test_domain):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         _write(store, "user-1", 0)
 
         rows = [
@@ -93,7 +93,7 @@ class TestConsumerGroups:
         ids=["both", "member-only", "size-only"],
     )
     def test_consumer_group_arguments_raise_not_supported(self, test_domain, group):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
 
         with pytest.raises(NotSupportedError, match="consumer groups"):
             store.get_category_messages("user", **group)
@@ -101,12 +101,12 @@ class TestConsumerGroups:
 
 class TestHealth:
     def test_health_reports_reachable_with_no_pool(self, test_domain):
-        assert test_domain.event_store.store.health() == EventStoreHealth(
+        assert test_domain.event_store._adapter.health() == EventStoreHealth(
             reachable=True, pool=None
         )
 
     def test_get_connection_returns_the_stored_rows(self, test_domain):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         _write(store, "user-1", 0)
 
         rows = store.get_connection()
@@ -117,7 +117,7 @@ class TestHealth:
 
 
 def test_changing_a_read_result_leaves_the_stored_row_unchanged(test_domain):
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     store.write_message("user-1", "Counted", {"n": 0, "tags": ["a"]})
 
     for read in (

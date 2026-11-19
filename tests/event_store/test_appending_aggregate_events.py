@@ -68,9 +68,9 @@ def register_elements(test_domain):
 def test_appending_messages_to_aggregate(test_domain):
     identifier = str(uuid4())
     user = User.register(id=identifier, email="john.doe@example.com", name="John Doe")
-    test_domain.event_store.store.append(user._events[0])
+    test_domain.event_store.append(user._events[0])
 
-    messages = test_domain.event_store.store.get_category_messages("test::user")
+    messages = test_domain.event_store._adapter.get_category_messages("test::user")
 
     assert len(messages) == 1
 
@@ -79,25 +79,25 @@ def test_appending_messages_to_aggregate(test_domain):
 def test_version_increment_on_new_event(test_domain):
     identifier = str(uuid4())
     user = User.register(id=identifier, email="john.doe@example.com", name="John Doe")
-    test_domain.event_store.store.append(user._events[0])
+    test_domain.event_store.append(user._events[0])
 
-    events = test_domain.event_store.store.get_stream_messages(
+    events = test_domain.event_store._adapter.get_stream_messages(
         f"test::user-{identifier}"
     )
     assert events[0]["position"] == 0
 
     user.activate()
-    test_domain.event_store.store.append(user._events[1])
+    test_domain.event_store.append(user._events[1])
 
-    events = test_domain.event_store.store.get_stream_messages(
+    events = test_domain.event_store._adapter.get_stream_messages(
         f"test::user-{identifier}"
     )
     assert events[-1]["position"] == 1
 
     user.rename(name="John Doe 2")
-    test_domain.event_store.store.append(user._events[2])
+    test_domain.event_store.append(user._events[2])
 
-    events = test_domain.event_store.store.get_stream_messages(
+    events = test_domain.event_store._adapter.get_stream_messages(
         f"test::user-{identifier}"
     )
     assert events[-1]["position"] == 2

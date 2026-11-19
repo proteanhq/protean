@@ -11,10 +11,10 @@ import pytest
 
 from protean.domain import Domain
 from protean.infra.registry import event_stores
-from protean.port.event_store import BaseEventStore, EventStoreCapabilities
+from protean.port.event_store import EventStoreCapabilities, EventStorePort
 
 
-def _build(domain: Domain, config: dict[str, Any]) -> BaseEventStore:
+def _build(domain: Domain, config: dict[str, Any]) -> EventStorePort:
     return event_stores.get(config["provider"])("default", domain, dict(config))
 
 

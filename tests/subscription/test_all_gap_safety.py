@@ -483,8 +483,8 @@ async def test_tick_holds_at_gap_then_resumes_in_order(
     thing = Thing(id="t1", name="thing")
     for _ in range(3):
         thing.raise_(Pinged(id="t1"))
-        test_domain.event_store.store.append(thing._events[-1])
-    events = test_domain.event_store.store.read("$all")
+        test_domain.event_store.append(thing._events[-1])
+    events = test_domain.event_store.read("$all")
     assert [e.metadata.event_store.global_position for e in events] == [1, 2, 3]
 
     # Record every position the subscription consumes (advances past), which is
@@ -533,8 +533,8 @@ async def test_durable_position_is_not_written_past_a_gap(
     thing = Thing(id="t1", name="thing")
     for _ in range(3):
         thing.raise_(Pinged(id="t1"))
-        test_domain.event_store.store.append(thing._events[-1])
-    events = test_domain.event_store.store.read("$all")
+        test_domain.event_store.append(thing._events[-1])
+    events = test_domain.event_store.read("$all")
 
     # Position 2 is missing — the subscription processes 1 and holds.
     monkeypatch.setattr(
@@ -582,8 +582,8 @@ async def test_tick_does_not_advance_past_unprocessed_messages_on_interruption(
     thing = Thing(id="t1", name="thing")
     for _ in range(3):
         thing.raise_(Pinged(id="t1"))
-        test_domain.event_store.store.append(thing._events[-1])
-    events = test_domain.event_store.store.read("$all")  # positions 1, 2, 3
+        test_domain.event_store.append(thing._events[-1])
+    events = test_domain.event_store.read("$all")  # positions 1, 2, 3
 
     monkeypatch.setattr(
         sub.store, "_read_with_snapshot_positions", lambda *a, **k: (list(events), [])
@@ -619,7 +619,7 @@ async def test_tick_steps_over_a_real_snapshot_without_waiting(
     ``tick`` consumes both events and moves past the snapshot, with no hold and
     no "Abandoning gap" warning."""
     sub = all_subscription
-    store = test_domain.event_store.store
+    store = test_domain.event_store
 
     consumed: list[int] = []
     original_update = sub.update_read_position
@@ -637,7 +637,7 @@ async def test_tick_steps_over_a_real_snapshot_without_waiting(
     thing.raise_(Pinged(id="t1"))
     store.append(thing._events[-1])
 
-    raw = store.get_all_messages()
+    raw = store._adapter.get_all_messages()
     snapshot_rows = [row for row in raw if row["type"] == "SNAPSHOT"]
     assert len(snapshot_rows) == 1
     event_positions = [
@@ -666,7 +666,7 @@ async def test_tick_past_only_snapshot_rows_counts_as_activity(
     after them at once instead of backing off."""
     sub = all_subscription
     sub.messages_per_tick = 2
-    store = test_domain.event_store.store
+    store = test_domain.event_store
     for identifier in ("t1", "t2"):
         thing = Thing(id=identifier, name="thing")
         thing.raise_(Pinged(id=identifier))
@@ -710,7 +710,7 @@ async def test_tick_past_messages_the_origin_filter_drops_counts_as_activity(
     drops, so the tick reports work and resets the idle wait."""
     sub = all_subscription
     sub.origin_stream = "no-such-stream"
-    store = test_domain.event_store.store
+    store = test_domain.event_store
     for identifier in ("t1", "t2"):
         thing = Thing(id=identifier, name="thing")
         thing.raise_(Pinged(id=identifier))

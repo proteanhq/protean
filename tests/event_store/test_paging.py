@@ -40,18 +40,18 @@ def _global_positions(messages):
 
 def test_read_all_pages_across_boundary_no_gaps_no_dups(test_domain):
     """A store holding ``page_size + 5`` messages is fully paged, in order."""
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     page_size = 10
     _write_n(store, "counter-1", page_size + 5)
 
-    paged = list(store.read_all("$all", page_size=page_size))
+    paged = list(test_domain.event_store.read_all("$all", page_size=page_size))
     gpos = _global_positions(paged)
 
     assert len(gpos) == page_size + 5  # nothing truncated at the read cap
     assert gpos == sorted(gpos)  # global_position order
     assert len(set(gpos)) == len(gpos)  # no duplicates across the boundary
     # The same messages a single uncapped read would return.
-    baseline = _global_positions(store.read("$all", limit=1_000_000))
+    baseline = _global_positions(test_domain.event_store.read("$all", limit=1_000_000))
     assert gpos == baseline
 
 
@@ -63,13 +63,13 @@ def test_read_all_exact_multiple_of_page_size(test_domain):
     test never exercises, and where an off-by-one in the terminate condition
     would drop the boundary row or loop.
     """
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     page_size = 5
     _write_n(store, "counter-1", page_size * 2)
 
     service = test_domain.event_store
     with patch.object(service, "_read_raw", wraps=service._read_raw) as spy:
-        paged = list(store.read_all("$all", page_size=page_size))
+        paged = list(service.read_all("$all", page_size=page_size))
 
     gpos = _global_positions(paged)
     assert len(gpos) == page_size * 2
@@ -82,13 +82,13 @@ def test_read_all_exact_multiple_of_page_size(test_domain):
 def test_read_all_stops_after_a_short_page(test_domain):
     """A store that is not a multiple of ``page_size`` ends on its short last
     page, with no extra empty read after it."""
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     page_size = 5
     _write_n(store, "counter-1", page_size * 2 + 2)
 
     service = test_domain.event_store
     with patch.object(service, "_read_raw", wraps=service._read_raw) as spy:
-        paged = list(store.read_all("$all", page_size=page_size))
+        paged = list(service.read_all("$all", page_size=page_size))
 
     assert len(paged) == page_size * 2 + 2
     # Two full pages, then the short page of two rows ends the read.
@@ -101,10 +101,10 @@ def test_read_all_page_size_one(test_domain):
     This is the size where a dropped ``+ 1`` in the cursor advance would hang
     (re-reading the same single row forever) instead of merely duplicating.
     """
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _write_n(store, "counter-1", 5)
 
-    paged = list(store.read_all("$all", page_size=1))
+    paged = list(test_domain.event_store.read_all("$all", page_size=1))
     gpos = _global_positions(paged)
 
     assert len(gpos) == 5
@@ -114,11 +114,9 @@ def test_read_all_page_size_one(test_domain):
 
 def test_read_all_empty_stream_yields_nothing_in_one_read(test_domain):
     """An empty stream yields nothing and issues a single underlying read."""
-    store = test_domain.event_store.store
-
     service = test_domain.event_store
     with patch.object(service, "_read_raw", wraps=service._read_raw) as spy:
-        result = list(store.read_all("$all", page_size=10))
+        result = list(service.read_all("$all", page_size=10))
 
     assert result == []
     assert spy.call_count == 1
@@ -126,12 +124,12 @@ def test_read_all_empty_stream_yields_nothing_in_one_read(test_domain):
 
 def test_read_all_specific_stream_pages_by_position(test_domain):
     """A specific stream (``category-id``) pages by its per-stream ``position``."""
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _write_n(store, "counter-1", 7)
     # A second stream in the same category must not leak into a specific read.
     _write_n(store, "counter-2", 4)
 
-    paged = list(store.read_all("counter-1", page_size=3))
+    paged = list(test_domain.event_store.read_all("counter-1", page_size=3))
 
     assert len(paged) == 7
     assert all(m.metadata.headers.stream == "counter-1" for m in paged)
@@ -147,13 +145,13 @@ def test_read_all_specific_stream_with_interleaved_writes(test_domain):
     positions are non-contiguous. Paging this stream by ``global_position``
     would skip rows; paging by per-stream ``position`` returns all of them.
     """
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     for i in range(6):
         _write_n(store, "counter-1", 1)
         if i < 4:
             _write_n(store, "counter-2", 1)
 
-    paged = list(store.read_all("counter-1", page_size=2))
+    paged = list(test_domain.event_store.read_all("counter-1", page_size=2))
 
     assert all(m.metadata.headers.stream == "counter-1" for m in paged)
     positions = [m.metadata.event_store.position for m in paged]
@@ -162,11 +160,11 @@ def test_read_all_specific_stream_with_interleaved_writes(test_domain):
 
 def test_read_all_category_pages_by_global_position(test_domain):
     """A bare category read pages by ``global_position`` across its streams."""
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _write_n(store, "counter-1", 6)
     _write_n(store, "counter-2", 6)
 
-    paged = list(store.read_all("counter", page_size=5))
+    paged = list(test_domain.event_store.read_all("counter", page_size=5))
     gpos = _global_positions(paged)
 
     assert len(gpos) == 12
@@ -176,11 +174,11 @@ def test_read_all_category_pages_by_global_position(test_domain):
 
 def test_read_all_category_excludes_other_categories(test_domain):
     """A category read returns only that category's streams, not the whole store."""
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _write_n(store, "counter-1", 4)
     _write_n(store, "other-1", 3)
 
-    paged = list(store.read_all("counter", page_size=2))
+    paged = list(test_domain.event_store.read_all("counter", page_size=2))
 
     assert len(paged) == 4
     assert all(m.metadata.headers.stream.startswith("counter-") for m in paged)
@@ -188,17 +186,17 @@ def test_read_all_category_excludes_other_categories(test_domain):
 
 def test_read_all_defaults_to_all_stream(test_domain):
     """``read_all()`` with no stream reads ``$all``."""
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _write_n(store, "counter-1", 3)
 
-    assert len(list(store.read_all())) == 3
+    assert len(list(test_domain.event_store.read_all())) == 3
 
 
 @pytest.mark.parametrize("bad", [0, -1, 1.5, None])
 def test_read_all_rejects_non_positive_page_size(test_domain, bad):
     """A page size that is not a positive integer is a usage error, not an
     infinite loop or a bare TypeError from the adapter's row limit."""
-    store = test_domain.event_store.store
+    store = test_domain.event_store
 
     with pytest.raises(IncorrectUsageError, match="page_size"):
         list(store.read_all("$all", page_size=bad))

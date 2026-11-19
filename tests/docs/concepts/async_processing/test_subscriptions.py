@@ -27,7 +27,7 @@ def _run_engine(domain):
 
 def _last_position(domain):
     """Return the event store position of the last stored message."""
-    message = domain.event_store.store.read("$all")[-1]
+    message = domain.event_store.read("$all")[-1]
     return message.metadata.event_store.global_position
 
 

@@ -210,7 +210,7 @@ def test_aggregate_tracks_event_version_after_multiple_updates_with_multiple_eve
 def _stored_events(test_domain, user):
     return [
         message.to_domain_object()
-        for message in test_domain.event_store.store.read(f"test::user-{user.id}")
+        for message in test_domain.event_store.read(f"test::user-{user.id}")
     ]
 
 

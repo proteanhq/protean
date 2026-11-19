@@ -283,7 +283,7 @@ class TestGetAtVersionWithSnapshots:
             )
 
         # Verify a snapshot was created
-        snapshot = test_domain.event_store.store.get_last_stream_message(
+        snapshot = test_domain.event_store._adapter.get_last_stream_message(
             f"test::user:snapshot-{identifier}"
         )
         assert snapshot is not None
@@ -315,7 +315,7 @@ class TestGetAtVersionWithSnapshots:
             )
 
         # Verify snapshot exists
-        snapshot = test_domain.event_store.store.get_last_stream_message(
+        snapshot = test_domain.event_store._adapter.get_last_stream_message(
             f"test::user:snapshot-{identifier}"
         )
         assert snapshot is not None
@@ -468,7 +468,7 @@ class TestGetAsOf:
             )
 
         # Verify snapshot exists
-        snapshot = test_domain.event_store.store.get_last_stream_message(
+        snapshot = test_domain.event_store._adapter.get_last_stream_message(
             f"test::user:snapshot-{identifier}"
         )
         assert snapshot is not None
@@ -615,7 +615,7 @@ class TestGetAtVersionSnapshotExact:
             )
 
         # Verify a snapshot was created
-        snapshot = test_domain.event_store.store.get_last_stream_message(
+        snapshot = test_domain.event_store._adapter.get_last_stream_message(
             f"test::user:snapshot-{identifier}"
         )
         assert snapshot is not None

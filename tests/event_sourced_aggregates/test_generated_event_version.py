@@ -82,7 +82,7 @@ def test_aggregate_and_event_version_after_first_persistence(test_domain):
     user = User.register(user_id="1", name="John Doe", email="john.doe@example.com")
     test_domain.repository_for(User).add(user)
 
-    event_messages = test_domain.event_store.store.read(f"test::user-{user.user_id}")
+    event_messages = test_domain.event_store.read(f"test::user-{user.user_id}")
     assert len(event_messages) == 1
 
     refreshed_user = test_domain.repository_for(User).get(user.user_id)
@@ -106,7 +106,7 @@ def test_aggregate_and_event_version_after_first_persistence_after_multiple_pers
         refreshed_user.change_name(f"John Doe {i}")
         test_domain.repository_for(User).add(refreshed_user)
 
-    event_messages = test_domain.event_store.store.read(f"test::user-{user.user_id}")
+    event_messages = test_domain.event_store.read(f"test::user-{user.user_id}")
     assert len(event_messages) == 11
 
     refreshed_user = test_domain.repository_for(User).get(user.user_id)
@@ -140,7 +140,7 @@ def test_aggregate_and_event_version_after_multiple_event_generation_in_one_upda
 
     assert refreshed_user._version == 1
 
-    event_messages = test_domain.event_store.store.read(f"test::user-{user.user_id}")
+    event_messages = test_domain.event_store.read(f"test::user-{user.user_id}")
     assert len(event_messages) == 2
 
     event1 = event_messages[0].to_domain_object()

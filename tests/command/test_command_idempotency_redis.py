@@ -164,7 +164,7 @@ class TestAsyncDuplication:
 
         assert position1 == position2
         # The command should only be appended to event store once
-        messages = test_domain.event_store.store.read("test::user:command")
+        messages = test_domain.event_store.read("test::user:command")
         assert len(messages) == 1
 
 
@@ -273,7 +273,7 @@ class TestFullFlowIntegration:
         assert call_counter == 1
 
         # Command only stored once in event store
-        messages = test_domain.event_store.store.read("test::user:command")
+        messages = test_domain.event_store.read("test::user:command")
         assert len(messages) == 1
 
     def test_full_flow_failed_then_retry(self, test_domain):
