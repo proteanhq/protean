@@ -66,6 +66,13 @@ class AccountEvents(BaseEventHandler):
         handled_events.append(event.account_id)
 
 
+def _circular() -> dict[str, Any]:
+    # json.dumps raises ValueError for this value, where a set raises TypeError
+    value: dict[str, Any] = {}
+    value["self"] = value
+    return value
+
+
 def boom() -> None:
     raise RuntimeError("callback failed")
 
@@ -102,6 +109,8 @@ class TestCommitAfterAFailingCallback:
         assert test_domain.repository_for(Account).get("a1").name == "x"
         records = _failure_records(caplog)
         assert len(records) == 1
+        assert records[0].name == "protean.core.unit_of_work"
+        assert records[0].levelno == logging.ERROR
         assert str(records[0].exc_info[1]) == "callback failed"
 
     def test_the_messages_still_reach_the_broker(self, test_domain):
@@ -147,7 +156,7 @@ class TestUnserializableNestedResult:
             @handle(WriteAccount)
             def write(self, command: WriteAccount) -> set[str]:
                 current_domain.repository_for(Account).add(
-                    Account(id=command.account_id, name="written")
+                    Account.open(command.account_id)
                 )
                 return {command.account_id}
 
@@ -155,6 +164,8 @@ class TestUnserializableNestedResult:
         test_domain.init(traverse=False)
 
     def test_the_outer_commit_returns_and_no_key_is_stored(self, test_domain, caplog):
+        test_domain.config["event_processing"] = Processing.SYNC.value
+
         with caplog.at_level(logging.WARNING, logger="protean.utils.idempotency"):
             with UnitOfWork():
                 test_domain.process(
@@ -163,12 +174,14 @@ class TestUnserializableNestedResult:
                     idempotency_key="key-b1",
                 )
 
-        assert test_domain.repository_for(Account).get("b1").name == "written"
+        assert test_domain.repository_for(Account).get("b1").name == "opened"
+        assert handled_events == ["b1"]
         assert self.redis.data == {}
-        assert any(
-            "key-b1" in r.getMessage() and "not JSON-serializable" in r.getMessage()
-            for r in caplog.records
-        )
+        records = [r for r in caplog.records if "key-b1" in r.getMessage()]
+        assert len(records) == 1
+        assert records[0].name == "protean.utils.idempotency"
+        assert records[0].levelno == logging.WARNING
+        assert "not JSON-serializable" in records[0].getMessage()
 
     def test_a_top_level_command_returns_its_result(self, test_domain):
         result = test_domain.process(
@@ -182,8 +195,13 @@ class TestUnserializableNestedResult:
 
 
 class TestRecordSuccess:
-    @pytest.mark.parametrize("result", [{1, 2}, datetime(2026, 1, 1)])
+    @pytest.mark.parametrize(
+        "result",
+        [{1, 2}, datetime(2026, 1, 1), _circular()],
+        ids=["set", "datetime", "circular"],
+    )
     def test_an_unserializable_result_is_logged_and_not_recorded(self, result, caplog):
+
         store = IdempotencyStore()
         redis = DictRedis()
         store._redis = redis

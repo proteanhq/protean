@@ -12,8 +12,10 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
+from protean.core.event_handler import BaseEventHandler
 from protean.core.unit_of_work import UnitOfWork
 from protean.fields import Identifier, String
+from protean.utils import Processing
 from protean.utils.globals import current_domain
 from protean.utils.mixins import handle
 from tests.shared import REDIS_URI
@@ -23,6 +25,7 @@ REDIS_IDEMPOTENCY_URL = f"{REDIS_URI}/5"
 pytestmark = pytest.mark.redis
 
 runs: list[str] = []
+handled_events: list[str] = []
 
 
 class Tagged(BaseEvent):
@@ -47,9 +50,16 @@ class ItemHandlers(BaseCommandHandler):
         return {command.item_id}
 
 
+class ItemEvents(BaseEventHandler):
+    @handle(Tagged)
+    def on_tagged(self, event: Tagged) -> None:
+        handled_events.append(event.item_id)
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     runs.clear()
+    handled_events.clear()
     test_domain.config["idempotency"]["redis_url"] = REDIS_IDEMPOTENCY_URL
     # Reset the lazily-initialized store so it picks up the new config
     test_domain._idempotency_store = None
@@ -58,6 +68,7 @@ def register_elements(test_domain):
     test_domain.register(Tagged, part_of=Item)
     test_domain.register(TagItem, part_of=Item)
     test_domain.register(ItemHandlers, part_of=Item)
+    test_domain.register(ItemEvents, part_of=Item)
     test_domain.init(traverse=False)
 
     test_domain.idempotency_store.flush()
@@ -68,6 +79,7 @@ def register_elements(test_domain):
 def test_a_nested_command_does_not_fail_the_outer_commit(test_domain):
     item_id = str(uuid4())
     key = f"tag-{item_id}"
+    test_domain.config["event_processing"] = Processing.SYNC.value
 
     with UnitOfWork():
         test_domain.process(
@@ -76,12 +88,7 @@ def test_a_nested_command_does_not_fail_the_outer_commit(test_domain):
 
     assert test_domain.repository_for(Item).get(item_id).name == "tagged"
     assert test_domain.idempotency_store.check(key) is None
-    tagged = [
-        m
-        for m in test_domain.event_store.read(f"test::item-{item_id}")
-        if m.metadata.headers.type == Tagged.__type__
-    ]
-    assert len(tagged) == 1
+    assert handled_events == [item_id]
 
 
 def test_a_top_level_command_returns_its_result(test_domain):
