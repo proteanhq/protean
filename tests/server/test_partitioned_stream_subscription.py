@@ -200,7 +200,7 @@ def _publish(domain: Domain, category: str, event: BaseEvent, key: str) -> None:
     """Publish an event to its partition stream and index it (mimics the outbox)."""
     broker = domain.brokers["default"]
     message = Message.from_domain_object(event)
-    broker.record_partition(category, key)
+    broker._record_partition(category, key)
     broker.publish(f"{category}:{key}", message.to_dict())
 
 
@@ -213,7 +213,7 @@ def _publish_lane(
 ) -> None:
     """Publish to a key's primary or backfill partition lane; index the base key."""
     broker = domain.brokers["default"]
-    broker.record_partition(category, key)
+    broker._record_partition(category, key)
     stream = f"{category}:{key}"
     if backfill:
         stream = f"{stream}:backfill"
@@ -334,7 +334,7 @@ async def test_single_owner_across_instances(domain: Domain, category: str) -> N
     stream = f"{category}:A"
     lease_key = owner._lease_key("A")
     with pytest.raises(LeaseLostError):
-        domain.brokers["default"].read_partition_fenced(
+        domain.brokers["default"]._read_partition_fenced(
             stream,
             owner.consumer_group,
             "intruder:99",
@@ -422,7 +422,7 @@ async def test_crash_failover_reclaims_pending(domain: Domain, category: str) ->
 
     # A reads seq 0, RUNS its handler (records 0), then "crashes" before acking:
     # exactly the applied-but-unacked case the ADR says must re-run, not be lost.
-    delivered = broker.read_partition_fenced(
+    delivered = broker._read_partition_fenced(
         stream,
         sub_a.consumer_group,
         owned_a.consumer_name,
@@ -469,7 +469,7 @@ async def test_stall_failover_fence_holds(domain: Domain, category: str) -> None
     stream = f"{category}:A"
     # The resumed stale owner (A) is fenced out of both reading and acking.
     with pytest.raises(LeaseLostError):
-        broker.read_partition_fenced(
+        broker._read_partition_fenced(
             stream,
             sub_a.consumer_group,
             owned_a.consumer_name,
@@ -477,7 +477,7 @@ async def test_stall_failover_fence_holds(domain: Domain, category: str) -> None
             owned_a.fence_token,
         )
     with pytest.raises(LeaseLostError):
-        broker.ack_partition_fenced(
+        broker._ack_partition_fenced(
             stream,
             "0-0",
             sub_a.consumer_group,
@@ -513,12 +513,12 @@ async def test_cold_partition_reaping(domain: Domain, category: str) -> None:
     assert processed["A"] == [0]
 
     broker = domain.brokers["default"]
-    assert "A" in broker.partition_keys(category)
+    assert "A" in broker._partition_keys(category)
 
     # reap_idle_ms=0 → a fully drained partition is retired immediately.
     retired = await sub._retire(sub._owned["A"])
     assert retired is True
-    assert "A" not in broker.partition_keys(category)
+    assert "A" not in broker._partition_keys(category)
     assert "A" not in sub._owned
 
 
@@ -535,11 +535,11 @@ async def test_reaped_key_is_rediscovered_when_republished(
     await sub._discovery_pass()
     await _drain(sub, "A")
     assert await sub._retire(sub._owned["A"]) is True
-    assert "A" not in broker.partition_keys(category)
+    assert "A" not in broker._partition_keys(category)
 
     # Same key published again → re-indexed and rediscovered with no restart.
     _publish(domain, category, _order_event("A", 1), "A")
-    assert "A" in broker.partition_keys(category)
+    assert "A" in broker._partition_keys(category)
     await sub._discovery_pass()
     assert "A" in sub._owned
     await _drain(sub, "A")
@@ -586,7 +586,7 @@ async def test_retire_covers_backfill_lane(lanes_domain: Domain) -> None:
     assert processed["A"] == [0, 1]
 
     assert await sub._retire(sub._owned["A"]) is True
-    assert "A" not in broker.partition_keys(category)
+    assert "A" not in broker._partition_keys(category)
     assert broker.get_connection().exists(f"{category}:A:backfill") == 0
 
 
@@ -603,17 +603,17 @@ async def test_process_manager_serializes_per_correlation() -> None:
 
         # Two correlation values (order ids), events across both categories.
         oid1, oid2 = "corr-1", "corr-2"
-        broker.record_partition(order_cat, oid1)
+        broker._record_partition(order_cat, oid1)
         broker.publish(
             f"{order_cat}:{oid1}",
             Message.from_domain_object(_pm_order(oid1, 0)).to_dict(),
         )
-        broker.record_partition(pay_cat, oid1)
+        broker._record_partition(pay_cat, oid1)
         broker.publish(
             f"{pay_cat}:{oid1}",
             Message.from_domain_object(_pm_payment(oid1, 1)).to_dict(),
         )
-        broker.record_partition(order_cat, oid2)
+        broker._record_partition(order_cat, oid2)
         broker.publish(
             f"{order_cat}:{oid2}",
             Message.from_domain_object(_pm_order(oid2, 0)).to_dict(),
@@ -669,7 +669,7 @@ async def test_process_manager_single_owner_across_instances() -> None:
         lease_key = owner._lease_key(oid)
         for cat in (order_cat, pay_cat):
             with pytest.raises(LeaseLostError):
-                broker.read_partition_fenced(
+                broker._read_partition_fenced(
                     f"{cat}:{oid}",
                     owner.consumer_group,
                     "intruder:99",
@@ -716,7 +716,7 @@ def _pm_payment(order_id: str, seq: int) -> PaymentReceived:
 
 
 def _pm_publish(broker, category: str, event: BaseEvent, corr: str) -> None:
-    broker.record_partition(category, corr)
+    broker._record_partition(category, corr)
     broker.publish(f"{category}:{corr}", Message.from_domain_object(event).to_dict())
 
 
@@ -842,14 +842,14 @@ async def test_acquire_new_releases_a_lease_won_as_draining_began(
     window, where it would block a healthy peer from taking the partition."""
     _publish(domain, category, _order_event("A", 0), "A")
     sub = await _make_sub(domain)
-    real_acquire = sub.broker.acquire_partition_lease
+    real_acquire = sub.broker._acquire_partition_lease
 
     def _acquire_then_drain(*args, **kwargs):
         generation = real_acquire(*args, **kwargs)
         sub.engine.draining = True  # POST /drainz lands mid-acquisition
         return generation
 
-    monkeypatch.setattr(sub.broker, "acquire_partition_lease", _acquire_then_drain)
+    monkeypatch.setattr(sub.broker, "_acquire_partition_lease", _acquire_then_drain)
     await sub._discovery_pass()
     assert "A" not in sub._owned
 
@@ -910,7 +910,7 @@ async def test_read_head_skips_the_new_read_when_a_drain_lands_between_reads(
     owned = sub._owned["A"]
     stream = owned.streams[0][1]
 
-    real_read = sub.broker.read_partition_fenced
+    real_read = sub.broker._read_partition_fenced
     reads: list[bool] = []
 
     def _read_then_drain(*args, new_messages=False, **kwargs):
@@ -921,7 +921,7 @@ async def test_read_head_skips_the_new_read_when_a_drain_lands_between_reads(
             sub.engine.draining = True
         return messages
 
-    monkeypatch.setattr(sub.broker, "read_partition_fenced", _read_then_drain)
+    monkeypatch.setattr(sub.broker, "_read_partition_fenced", _read_then_drain)
     head = await sub._read_head(owned, stream)
 
     assert head is None  # the waiting message was left for the next process
@@ -978,7 +978,7 @@ async def test_discover_units_swallows_broker_error(
     domain: Domain, monkeypatch
 ) -> None:
     sub = await _make_sub(domain)
-    monkeypatch.setattr(sub.broker, "partition_keys", _raiser(RuntimeError("x")))
+    monkeypatch.setattr(sub.broker, "_partition_keys", _raiser(RuntimeError("x")))
     assert sub._discover_units() == {}
 
 
@@ -994,7 +994,7 @@ async def test_ack_noop_is_counted_and_logged(
     head = await sub._read_head(owned, f"{category}:A")
     assert head is not None
     physical, identifier, payload = head
-    monkeypatch.setattr(sub.broker, "ack_partition_fenced", lambda *a, **k: False)
+    monkeypatch.setattr(sub.broker, "_ack_partition_fenced", lambda *a, **k: False)
     assert (
         await sub._process_message(owned, category, physical, identifier, payload)
         is True
@@ -1028,7 +1028,7 @@ async def test_release_lease_swallows_error(
     await sub._discovery_pass()
     owned = sub._owned["A"]
     monkeypatch.setattr(
-        sub.broker, "release_partition_lease", _raiser(RuntimeError("x"))
+        sub.broker, "_release_partition_lease", _raiser(RuntimeError("x"))
     )
     await sub._release_lease(owned)  # swallowed, no raise
 
@@ -1121,7 +1121,7 @@ async def test_reclaim_propagates_lease_lost(
     await sub._discovery_pass()
     owned = sub._owned["A"]
     monkeypatch.setattr(
-        sub.broker, "reclaim_partition_pending", _raiser(LeaseLostError("gone"))
+        sub.broker, "_reclaim_partition_pending", _raiser(LeaseLostError("gone"))
     )
     with pytest.raises(LeaseLostError):
         await sub._reclaim(owned)
@@ -1138,7 +1138,7 @@ async def test_reclaim_propagates_generic_error(
     await sub._discovery_pass()
     owned = sub._owned["A"]
     monkeypatch.setattr(
-        sub.broker, "reclaim_partition_pending", _raiser(RuntimeError("x"))
+        sub.broker, "_reclaim_partition_pending", _raiser(RuntimeError("x"))
     )
     with pytest.raises(RuntimeError):
         await sub._reclaim(owned)
@@ -1148,7 +1148,7 @@ async def test_deserialize_failure_is_a_processing_failure(
     domain: Domain, category: str
 ) -> None:
     broker = domain.brokers["default"]
-    broker.record_partition(category, "A")
+    broker._record_partition(category, "A")
     broker.publish(f"{category}:A", {"not": "a valid message envelope"})
     sub = await _make_sub(domain)
     await sub._discovery_pass()
@@ -1179,7 +1179,7 @@ async def test_retire_returns_false_when_reap_blocked(
     sub = await _make_sub(domain)
     await sub._discovery_pass()
     owned = sub._owned["A"]
-    monkeypatch.setattr(sub.broker, "reap_partition", _raiser(RuntimeError("x")))
+    monkeypatch.setattr(sub.broker, "_reap_partition", _raiser(RuntimeError("x")))
     assert await sub._retire(owned) is False
     assert "A" in sub._owned  # not retired
 

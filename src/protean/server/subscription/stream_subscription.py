@@ -580,14 +580,14 @@ class StreamSubscription(BaseSubscription):
         Called after each processed batch on the exact stream the batch came
         from (primary or backfill). Returns immediately when
         ``retention_maxlen`` is None or non-positive (retention disabled). The
-        broker's ``trim`` runs off the event loop via ``asyncio.to_thread`` and
+        broker service's ``_trim`` runs off the event loop via ``asyncio.to_thread`` and
         any error is logged and swallowed so a trim failure never stalls
         processing.
         """
         # Guard against a non-positive cap. `validate()` rejects `<= 0`, but the
         # constructor accepts `retention_maxlen` unchecked, so a direct
         # `StreamSubscription(..., retention_maxlen=0)` would otherwise reach
-        # `trim(stream, 0)` and empty the stream.
+        # `_trim(stream, 0)` and empty the stream.
         if (
             self.retention_maxlen is None
             or self.retention_maxlen <= 0
@@ -596,7 +596,7 @@ class StreamSubscription(BaseSubscription):
             return
 
         try:
-            await asyncio.to_thread(self.broker.trim, stream, self.retention_maxlen)
+            await asyncio.to_thread(self.broker._trim, stream, self.retention_maxlen)
         except Exception as e:  # noqa: BLE001 - best effort: a failed trim retries next time
             logger.warning(f"Error trimming stream {stream}: {e}")
 

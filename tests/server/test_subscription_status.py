@@ -1237,7 +1237,7 @@ class TestRedisPartitionedStatus:
 
     def _publish(self, key: str, count: int, *, group_at: str | None = "0") -> str:
         partition = f"{self.category}:{key}"
-        self.broker.record_partition(self.category, key)
+        self.broker._record_partition(self.category, key)
         for n in range(count):
             self.broker.publish(partition, {"key": key, "n": n})
         if group_at is not None:
@@ -1426,7 +1426,7 @@ class TestRedisPartitionedStatus:
         with (
             patch.object(
                 self.broker,
-                "partition_keys",
+                "_partition_keys",
                 side_effect=redis.ConnectionError("index gone"),
             ),
             caplog.at_level(logging.DEBUG, logger=STATUS_LOGGER),

@@ -81,6 +81,8 @@ The Redis Stream broker provides the following capabilities:
 - ✅ **DEAD_LETTER_QUEUE** - Failed messages routed to DLQ streams for inspection and replay
 - ✅ **STREAM_PARTITIONING** - Partition-per-key streams for
   [`sequential_by`](../../server/sequential-by.md)
+- ✅ **STREAM_RETENTION** - Stream trimming for
+  [`retention_maxlen`](../../server/subscription-types.md#stream-retention)
 
 This includes:
 

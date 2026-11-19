@@ -16,6 +16,7 @@ class TestBrokerCapabilities:
         assert BrokerCapabilities.DEAD_LETTER_QUEUE
         assert BrokerCapabilities.REPLAY
         assert BrokerCapabilities.STREAM_PARTITIONING
+        assert BrokerCapabilities.STREAM_RETENTION
 
     def test_capability_combination(self):
         """Test combining capabilities using bitwise operations"""
@@ -73,6 +74,7 @@ class TestBrokerCapabilities:
         assert BrokerCapabilities.DEAD_LETTER_QUEUE in capabilities
         assert BrokerCapabilities.REPLAY in capabilities
         assert BrokerCapabilities.STREAM_PARTITIONING in capabilities
+        assert BrokerCapabilities.STREAM_RETENTION in capabilities
 
     def test_capability_hierarchy(self):
         """Test that higher capability sets include lower ones"""

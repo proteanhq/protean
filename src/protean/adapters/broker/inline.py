@@ -944,14 +944,6 @@ class InlineBroker(BaseBroker, BrokerPort):
             self._dead_letter_queue[group_key].clear()
         return purged
 
-    def trim(self, stream: str, maxlen: int) -> int:
-        """No-op trim: the inline broker has no persistent stream to bound.
-
-        Messages live in an in-memory list that is drained as consumers ack, so
-        there is nothing to trim by retention. Always returns 0.
-        """
-        return 0
-
     def create_group(self, stream: str, consumer_group: str) -> None:
         """Create ``consumer_group`` on ``stream`` if it does not exist."""
         group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"

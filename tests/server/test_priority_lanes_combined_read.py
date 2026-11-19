@@ -60,7 +60,7 @@ class ScriptedLanesBroker:
         self.combined_reads.append(kwargs)
         return self.combined_reply
 
-    def trim(self, stream, maxlen):
+    def _trim(self, stream, maxlen):
         self.trimmed.append(stream)
         return 0
 

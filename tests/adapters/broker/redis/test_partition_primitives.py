@@ -78,12 +78,16 @@ def test_fenced_read_and_stale_owner_rejected(broker: RedisBroker) -> None:
     gen = broker.acquire_partition_lease(lease, gen_key, "owner-1", 5000)
     fence = f"owner-1:{gen}"
 
-    msgs = broker.read_partition_fenced(stream, group, fence, lease, fence, count=10)
+    msgs = broker.read_partition_fenced(
+        stream, group, fence, lease, fence, limit=10, new_messages=True
+    )
     assert [m[1]["data"]["seq"] for m in msgs] == [0, 1]
 
     # A stale fence token cannot read.
     with pytest.raises(LeaseLostError):
-        broker.read_partition_fenced(stream, group, "owner-0:0", lease, "owner-0:0")
+        broker.read_partition_fenced(
+            stream, group, "owner-0:0", lease, "owner-0:0", limit=1, new_messages=True
+        )
 
 
 def test_fenced_ack_and_stale_owner_rejected(broker: RedisBroker) -> None:
@@ -96,7 +100,7 @@ def test_fenced_ack_and_stale_owner_rejected(broker: RedisBroker) -> None:
     gen = broker.acquire_partition_lease(lease, gen_key, "owner-1", 5000)
     fence = f"owner-1:{gen}"
     ((identifier, _),) = broker.read_partition_fenced(
-        stream, group, fence, lease, fence, count=1
+        stream, group, fence, lease, fence, limit=1, new_messages=True
     )
 
     # Stale owner cannot ack.
@@ -117,11 +121,13 @@ def test_reclaim_pending_via_xautoclaim(broker: RedisBroker) -> None:
     gen = broker.acquire_partition_lease(lease, gen_key, "owner-1", 5000)
     fence = f"owner-1:{gen}"
     # owner-1 delivers all three into its PEL (unacked = pending).
-    broker.read_partition_fenced(stream, group, fence, lease, fence, count=3)
+    broker.read_partition_fenced(
+        stream, group, fence, lease, fence, limit=3, new_messages=True
+    )
 
     # A new owner reclaims the dead owner's pending entries.
     reclaimed = broker.reclaim_partition_pending(
-        stream, group, "owner-2:2", min_idle_ms=0
+        stream, group, "owner-2:2", min_idle_ms=0, limit=100
     )
     assert sorted(m[1]["data"]["seq"] for m in reclaimed) == [0, 1, 2]
 
@@ -137,13 +143,16 @@ def test_reap_only_when_idle_and_drained(broker: RedisBroker) -> None:
     # Deliver + leave pending via a plain group read: a pending entry present
     # means the partition is never reaped, however idle.
     broker._client.xreadgroup(group, "c1", {stream: ">"}, count=1)
-    assert broker.reap_partition(cat, "a", min_idle_ms=0) is False
+    assert broker.reap_partition(cat, "a", min_idle_ms=0, backfill_suffix=None) is False
 
     # Ack it → drained. A large idle floor still blocks the reap.
     broker._client.xack(stream, group, identifier)
-    assert broker.reap_partition(cat, "a", min_idle_ms=10_000_000) is False
+    assert (
+        broker.reap_partition(cat, "a", min_idle_ms=10_000_000, backfill_suffix=None)
+        is False
+    )
     # Idle floor of 0 → reaped: index entry and stream gone.
-    assert broker.reap_partition(cat, "a", min_idle_ms=0) is True
+    assert broker.reap_partition(cat, "a", min_idle_ms=0, backfill_suffix=None) is True
     assert "a" not in broker.partition_keys(cat)
 
 
@@ -195,7 +204,7 @@ def test_reap_leaves_generation_counter(broker: RedisBroker) -> None:
     broker.acquire_partition_lease(lease, gen_key, "o2", 100)
     broker.release_partition_lease(lease, "o2:2")
 
-    assert broker.reap_partition(cat, "a", min_idle_ms=0) is True
+    assert broker.reap_partition(cat, "a", min_idle_ms=0, backfill_suffix=None) is True
     # A re-created partition keeps a monotonic generation (fence never resets).
     assert broker.acquire_partition_lease(lease, gen_key, "o3", 100) == 3
 
@@ -217,13 +226,13 @@ def test_reap_blocked_by_group_behind_with_zero_pending(broker: RedisBroker) -> 
     # g1 fully consumes; g2 is behind (last-delivered still 0-0) with 0 pending.
     broker._client.xreadgroup(g1, "c1", {stream: ">"}, count=1)
     broker._client.xack(stream, g1, ident)
-    assert broker.reap_partition(cat, "a", min_idle_ms=0) is False
+    assert broker.reap_partition(cat, "a", min_idle_ms=0, backfill_suffix=None) is False
     assert "a" in broker.partition_keys(cat)
 
     # g2 catches up → every group consumed → reaped.
     broker._client.xreadgroup(g2, "c2", {stream: ">"}, count=1)
     broker._client.xack(stream, g2, ident)
-    assert broker.reap_partition(cat, "a", min_idle_ms=0) is True
+    assert broker.reap_partition(cat, "a", min_idle_ms=0, backfill_suffix=None) is True
     assert "a" not in broker.partition_keys(cat)
 
 
@@ -258,7 +267,9 @@ def test_fenced_read_reraises_non_fence_response_error(
 
     monkeypatch.setattr(broker, "_lua_read_fenced", _boom)
     with pytest.raises(redis.ResponseError):
-        broker.read_partition_fenced("s", "g", "c", "lease", "owner:1")
+        broker.read_partition_fenced(
+            "s", "g", "c", "lease", "owner:1", limit=1, new_messages=True
+        )
 
 
 def test_fenced_read_recovers_from_missing_group(broker: RedisBroker) -> None:
@@ -273,14 +284,17 @@ def test_fenced_read_recovers_from_missing_group(broker: RedisBroker) -> None:
     broker.publish(stream, _payload(0))
     gen = broker.acquire_partition_lease(lease, gen_key, "o", 5000)
     fence = f"o:{gen}"
-    broker.read_partition_fenced(stream, group, fence, lease, fence)  # caches group
+    # Caches the group.
+    broker.read_partition_fenced(
+        stream, group, fence, lease, fence, limit=1, new_messages=True
+    )
 
     # Destroy the stream+group behind the cache's back, then re-create the stream.
     broker._client.delete(stream)
     broker.publish(stream, _payload(1))
 
     msgs = broker.read_partition_fenced(
-        stream, group, fence, lease, fence, new_messages=True
+        stream, group, fence, lease, fence, limit=1, new_messages=True
     )
     # Recovered: group rebuilt and the new message delivered.
     assert [m[1]["data"]["seq"] for m in msgs] == [1]
@@ -294,7 +308,10 @@ def test_reclaim_recovers_from_missing_group(broker: RedisBroker) -> None:
     group = "grp.Handler"
     broker.create_group(stream, group)  # caches group
     broker._client.delete(stream)  # destroy behind the cache
-    assert broker.reclaim_partition_pending(stream, group, "c:1") == []
+    assert (
+        broker.reclaim_partition_pending(stream, group, "c:1", min_idle_ms=0, limit=100)
+        == []
+    )
 
 
 def test_reclaim_propagates_broker_error(broker: RedisBroker, monkeypatch) -> None:
@@ -310,4 +327,6 @@ def test_reclaim_propagates_broker_error(broker: RedisBroker, monkeypatch) -> No
 
     monkeypatch.setattr(broker.redis_instance, "xautoclaim", _boom)
     with pytest.raises(redis.ResponseError):
-        broker.reclaim_partition_pending(stream, "grp.Handler", "c:1")
+        broker.reclaim_partition_pending(
+            stream, "grp.Handler", "c:1", min_idle_ms=0, limit=100
+        )

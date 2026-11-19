@@ -316,7 +316,7 @@ def _collect_partitioned_stream_status(
         return _unknown_status(name, handler_cls.__name__, "stream", stream_category)  # pragma: no cover  # only RedisBroker advertises STREAM_PARTITIONING  # fmt: skip
 
     try:
-        keys = broker.partition_keys(stream_category)
+        keys = broker._partition_keys(stream_category)
     except Exception as exc:  # noqa: BLE001 - status probe: any fault means unknown
         logger.debug("Error listing partitions for %s: %s", stream_category, exc)
         return _unknown_status(name, handler_cls.__name__, "stream", stream_category)
