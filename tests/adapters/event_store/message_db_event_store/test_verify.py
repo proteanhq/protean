@@ -30,7 +30,7 @@ class TestMessageDBVerify:
         assert report.message_count == 0
 
     def test_clean_store_with_events_and_snapshot_passes(self, test_domain):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         metadata = {
             "domain": {"kind": "EVENT"},
             "headers": {"type": "Registered", "stream": "test::user-abc"},
@@ -57,7 +57,7 @@ class TestMessageDBVerify:
     def test_message_with_null_or_non_object_data_is_reported(
         self, test_domain, body, detail
     ):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         metadata = {
             "domain": {"kind": "EVENT"},
             "headers": {"type": "Registered", "stream": "test::user-abc"},

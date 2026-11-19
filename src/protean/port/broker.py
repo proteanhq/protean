@@ -3,7 +3,15 @@ from abc import ABCMeta, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum, Flag, auto
-from typing import TYPE_CHECKING, Any, NamedTuple, NotRequired, Protocol, TypedDict
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    NamedTuple,
+    NotRequired,
+    Protocol,
+    TypedDict,
+)
 
 from protean.exceptions import NotSupportedError, ProteanException
 
@@ -167,10 +175,12 @@ class BrokerPort(Protocol):
     """The operations a broker adapter implements.
 
     An adapter subclasses this Protocol explicitly, and also subclasses
-    ``BaseBroker``, which holds the blocking reads, the dead-letter queue,
-    stream trimming and partitions. The ``Broker`` service raises
-    ``NotSupportedError`` for those operations on an adapter that is not a
-    ``BaseBroker``, and every stream subscription uses the blocking reads.
+    ``BaseBroker``, which holds the dead-letter queue, stream trimming and
+    partitions. The ``Broker`` service raises ``NotSupportedError`` for those
+    operations on an adapter that is not a ``BaseBroker``. An adapter that
+    declares ``BrokerCapabilities.BLOCKING_READ`` subclasses
+    ``BlockingReadPort`` in place of ``BrokerPort``, since
+    ``BlockingReadPort`` extends it.
 
     The ``Broker`` service in ``protean.infra.broker`` wraps the adapter and
     adds unit-of-work recording, the retry after a connection error,
@@ -330,42 +340,83 @@ class BrokerPort(Protocol):
         return {}
 
 
+class BlockingReadPort(BrokerPort, Protocol):
+    """The blocking reads of a broker that declares ``BLOCKING_READ``.
+
+    A broker that declares ``BrokerCapabilities.BLOCKING_READ`` subclasses this
+    Protocol and implements both members. The ``Broker`` service calls them
+    when the broker declares the flag, and reads each stream once with
+    ``read`` when it does not.
+    """
+
+    @abstractmethod
+    def read_blocking(
+        self,
+        stream: str,
+        consumer_group: str,
+        consumer_name: str,
+        timeout_ms: int = 5000,
+        limit: int = 1,
+    ) -> list[BrokerMessage]:
+        """Read up to ``limit`` messages from ``stream`` for one consumer.
+
+        Waits up to ``timeout_ms`` milliseconds for a message.
+        ``timeout_ms=0`` returns at once. Returns an empty list when no
+        message arrives in time.
+        """
+
+    @abstractmethod
+    def read_blocking_streams(
+        self,
+        streams: Sequence[str],
+        consumer_group: str,
+        consumer_name: str,
+        timeout_ms: int = 5000,
+        limit: int = 1,
+    ) -> dict[str, list[BrokerMessage]]:
+        """Read several streams for one consumer, waiting on all of them at once.
+
+        Waits up to ``timeout_ms`` milliseconds in total for a message on any
+        of ``streams``. ``timeout_ms=0`` returns at once. ``limit`` caps the
+        messages read from each stream.
+
+        Returns:
+            The messages read from each stream, keyed by stream name in the
+            order given. Every requested stream has a key, with an empty list
+            when it returned nothing. An empty ``streams`` returns ``{}``.
+        """
+
+
+CAPABILITY_PORTS: dict[BrokerCapabilities, type[object]] = {
+    BrokerCapabilities.BLOCKING_READ: BlockingReadPort,
+}
+"""The sub-protocol an adapter subclasses when it declares each flag listed.
+
+Typed `type[object]` because mypy in strict mode rejects a Protocol with
+abstract members where `type[BrokerPort]` is expected.
+"""
+
+
 class BaseBroker(metaclass=ABCMeta):
-    """Blocking reads, dead letters, partitions and trimming for broker adapters.
+    """Dead letters, partitions and trimming for broker adapters.
 
     A broker adapter subclasses this class and ``BrokerPort``, in that order.
     The core operations are on ``BrokerPort``. This class holds the optional
     groups of operations until they move into sub-protocols of the Port, and
     it is removed when they do.
+
+    Each adapter sets ``broker_type`` to the name it is known by, such as
+    ``"inline"``, ``"redis"`` or ``"redis_pubsub"``.
     """
 
+    broker_type: ClassVar[str]
+
     if TYPE_CHECKING:
-        # Port members that the wrappers below call. Each adapter defines them
-        # through ``BrokerPort``.
+        # The Port member that the wrappers below call. Each adapter defines
+        # it through ``BrokerPort``.
         @property
         def capabilities(self) -> BrokerCapabilities: ...
 
-        def read(
-            self,
-            stream: str,
-            consumer_group: str,
-            limit: int,
-            *,
-            new_messages: bool = False,
-        ) -> list[BrokerMessage]: ...
-
-        # Optional broker-specific method implemented by adapters that advertise
-        # the BLOCKING_READ capability (e.g. the Redis Streams adapter). Declared
-        # here for type-checkers so callers in this base class resolve; there is
-        # no runtime attribute on BaseBroker itself.
-        def _read_blocking(
-            self,
-            stream: str,
-            consumer_group: str,
-            consumer_name: str,
-            timeout_ms: int = 5000,
-            count: int = 1,
-        ) -> list[tuple[str, dict[str, Any]]]: ...
         # Partition-per-key methods (ADR-0028), implemented only by brokers
         # advertising STREAM_PARTITIONING (the Redis Streams adapter). Declared
         # here so the capability-gated public wrappers below type-check; there is
@@ -428,117 +479,6 @@ class BaseBroker(metaclass=ABCMeta):
         self.domain = domain
         # A copy: the broker never writes to the configuration it was given.
         self.config: Mapping[str, Any] = dict(config)
-
-    def read_blocking(
-        self,
-        stream: str,
-        consumer_group: str,
-        consumer_name: str,
-        timeout_ms: int = 5000,
-        count: int = 1,
-    ) -> list[tuple[str, dict[str, Any]]]:
-        """Read messages from the broker using blocking mode.
-
-        This is an optional method that brokers can implement to support
-        efficient blocking reads for stream-based subscriptions.
-
-        Args:
-            stream (str): The stream from which to read messages
-            consumer_group (str): The consumer group identifier
-            consumer_name (str): The unique consumer name within the group
-            timeout_ms (int): Timeout in milliseconds to wait for messages (0 = return immediately, without waiting)
-            count (int): Maximum number of messages to read
-
-        Returns:
-            list[tuple[str, dict]]: The list of (identifier, message) tuples
-        """
-        # Check if broker supports blocking reads
-        if BrokerCapabilities.BLOCKING_READ not in self.capabilities:
-            # Fall back to regular read for brokers that don't support blocking
-            return list(self.read(stream, consumer_group, count))
-
-        return self._read_blocking(
-            stream, consumer_group, consumer_name, timeout_ms, count
-        )
-
-    def read_blocking_streams(
-        self,
-        streams: Sequence[str],
-        consumer_group: str,
-        consumer_name: str,
-        timeout_ms: int = 5000,
-        count: int = 1,
-    ) -> dict[str, list[tuple[str, dict[str, Any]]]]:
-        """Read messages from several streams in one call.
-
-        The result has one key per requested stream, in the order given, with
-        an empty list for a stream that returned nothing. An empty ``streams``
-        returns an empty dict without reading. A broker without
-        ``BLOCKING_READ`` reads each stream once without waiting. A broker
-        changes how the streams are waited on by overriding
-        ``_read_blocking_streams``.
-
-        Args:
-            streams: The streams to read from, in priority order.
-            consumer_name: The consumer's name, unique within the group.
-            timeout_ms: Longest time to wait for messages, in milliseconds.
-                ``0`` returns immediately.
-            count: Maximum number of messages to read from each stream.
-
-        Returns:
-            The ``(identifier, message)`` tuples read from each stream, keyed
-            by stream name.
-        """
-        if not streams:
-            return {}
-
-        # Check if broker supports blocking reads
-        if BrokerCapabilities.BLOCKING_READ not in self.capabilities:
-            # Fall back to a regular read on each stream in turn
-            return {
-                stream: list(self.read(stream, consumer_group, count))
-                for stream in streams
-            }
-
-        return self._read_blocking_streams(
-            streams, consumer_group, consumer_name, timeout_ms, count
-        )
-
-    def _read_blocking_streams(
-        self,
-        streams: Sequence[str],
-        consumer_group: str,
-        consumer_name: str,
-        timeout_ms: int = 5000,
-        count: int = 1,
-    ) -> dict[str, list[tuple[str, dict[str, Any]]]]:
-        """Read several streams through ``_read_blocking``, one at a time.
-
-        Every stream but the last is read without waiting, in order. The first
-        one that returns messages ends the read. If all of them are empty, the
-        last stream is read with the given ``timeout_ms``. Brokers that can wait
-        on several streams in one call override this.
-        """
-        result: dict[str, list[tuple[str, dict[str, Any]]]] = {
-            stream: [] for stream in streams
-        }
-        if not streams:
-            return result
-
-        *leading, last = streams
-        for stream in leading:
-            messages = self._read_blocking(
-                stream, consumer_group, consumer_name, 0, count
-            )
-            if messages:
-                result[stream] = messages
-                return result
-
-        result[last] = (
-            self._read_blocking(last, consumer_group, consumer_name, timeout_ms, count)
-            or []
-        )
-        return result
 
     # ------------------------------------------------------------------
     # Dead Letter Queue Management

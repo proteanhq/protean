@@ -1,4 +1,4 @@
-"""Contract tests for ``BaseDAO._claim`` — the atomic find-and-claim
+"""Contract tests for ``DAO.claim``, the atomic find-and-claim
 primitive that backs the outbox processing path.
 
 These run against the in-memory adapter (core suite). The contract is:
@@ -9,7 +9,7 @@ These run against the in-memory adapter (core suite). The contract is:
 - ordering and limit are honoured.
 
 Adapter-specific fast paths (SQLAlchemy ``FOR UPDATE SKIP LOCKED``) are covered
-separately under ``tests/adapters/repository/``.
+separately under ``tests/adapters/database/``.
 """
 
 import threading
@@ -18,8 +18,8 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import DateTime, Integer, String
-from protean.port import dao as dao_module
-from protean.port.dao import _read_claim_candidates
+from protean.infra import dao as dao_module
+from protean.infra.dao import _read_claim_candidates
 from protean.utils.query import Q
 
 
@@ -63,7 +63,7 @@ class TestClaimContract:
     def test_claims_up_to_limit_and_returns_post_claim_state(self, test_domain, dao):
         _seed(test_domain, 5)
 
-        claimed = dao._claim(_ready(), CLAIM, limit=3)
+        claimed = dao.claim(_ready(), CLAIM, limit=3)
 
         assert len(claimed) == 3
         for job in claimed:
@@ -73,7 +73,7 @@ class TestClaimContract:
     def test_claim_is_persisted(self, test_domain, dao):
         _seed(test_domain, 2)
 
-        claimed = dao._claim(_ready(), CLAIM, limit=10)
+        claimed = dao.claim(_ready(), CLAIM, limit=10)
         assert len(claimed) == 2
 
         repo = test_domain.repository_for(Job)
@@ -83,7 +83,7 @@ class TestClaimContract:
     def test_orders_by_key(self, test_domain, dao):
         _seed(test_domain, 5)
 
-        claimed = dao._claim(_ready(), CLAIM, limit=3, order_by="-priority")
+        claimed = dao.claim(_ready(), CLAIM, limit=3, order_by="-priority")
 
         priorities = [job.priority for job in claimed]
         assert priorities == sorted(priorities, reverse=True)
@@ -91,24 +91,24 @@ class TestClaimContract:
     def test_non_positive_limit_claims_nothing(self, test_domain, dao):
         _seed(test_domain, 3)
 
-        assert dao._claim(_ready(), CLAIM, limit=0) == []
-        assert dao._claim(_ready(), CLAIM, limit=-5) == []
+        assert dao.claim(_ready(), CLAIM, limit=0) == []
+        assert dao.claim(_ready(), CLAIM, limit=-5) == []
 
     def test_second_claim_skips_already_claimed_rows(self, test_domain, dao):
         _seed(test_domain, 4)
 
-        first = dao._claim(_ready(), CLAIM, limit=10)
+        first = dao.claim(_ready(), CLAIM, limit=10)
         assert len(first) == 4
 
         # All rows are now ``claimed``; the eligibility criteria no longer match.
-        second = dao._claim(_ready(), CLAIM, limit=10)
+        second = dao.claim(_ready(), CLAIM, limit=10)
         assert second == []
 
     def test_only_matching_rows_are_claimed(self, test_domain, dao):
         _seed(test_domain, 2, status="ready")
         _seed(test_domain, 3, status="done")
 
-        claimed = dao._claim(_ready(), CLAIM, limit=10)
+        claimed = dao.claim(_ready(), CLAIM, limit=10)
         assert len(claimed) == 2
         assert all(job.status == "claimed" for job in claimed)
 
@@ -121,9 +121,9 @@ class TestClaimContract:
 
         # Force every guarded update to report "nothing claimed", simulating a
         # competing worker that grabbed each candidate first.
-        monkeypatch.setattr(dao, "_update_all", lambda *args, **kwargs: 0)
+        monkeypatch.setattr(dao, "update_all", lambda criteria, values: 0)
 
-        claimed = dao._claim(_ready(), CLAIM, limit=10)
+        claimed = dao.claim(_ready(), CLAIM, limit=10)
         assert claimed == []
 
     def test_stale_candidates_already_claimed_are_not_claimed_again(
@@ -135,13 +135,13 @@ class TestClaimContract:
         stale = _read_claim_candidates(dao, _ready(), 10, 0, ())
         assert len(stale) == 3
 
-        assert len(dao._claim(_ready(), CLAIM, limit=10)) == 3
+        assert len(dao.claim(_ready(), CLAIM, limit=10)) == 3
 
         # Hand the second claim the candidate list read before the first claim.
         monkeypatch.setattr(
             dao_module, "_read_claim_candidates", lambda *args, **kwargs: stale
         )
-        second = dao._claim(
+        second = dao.claim(
             _ready(), {"status": "claimed", "locked_by": "worker-B"}, limit=10
         )
 
@@ -168,7 +168,7 @@ class TestClaimConcurrency:
                 dao = test_domain.repository_for(Job)._dao
                 start.wait()
                 while True:
-                    claimed = dao._claim(
+                    claimed = dao.claim(
                         Q(status="ready"),
                         {"status": "claimed", "locked_by": f"worker-{idx}"},
                         limit=3,

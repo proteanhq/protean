@@ -4,7 +4,7 @@ import os
 import sqlalchemy as sa
 
 from protean import Domain
-from protean.adapters.repository.sqlalchemy import SqlalchemyModel
+from protean.adapters.database.sqlalchemy import SqlalchemyModel
 from protean.fields import Integer, String
 
 domain = Domain()

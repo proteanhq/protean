@@ -31,7 +31,7 @@ def _place_and_run(example, correlation_id):
     Engine(example.domain, test_mode=True).run()
     messages = [
         message
-        for message in example.domain.event_store.store.read("$all")
+        for message in example.domain.event_store.read("$all")
         if message.metadata.domain.correlation_id == correlation_id
     ]
     assert [message.metadata.headers.type for message in messages] == CHAIN
@@ -81,7 +81,7 @@ def test_trace_effects_walks_down_from_the_command(tracing):
     command = _place_and_run(tracing, "ext-1")[0]
 
     effects, direct = tracing.show_effects(
-        tracing.domain.event_store.store, command.metadata.headers.id
+        tracing.domain.event_store, command.metadata.headers.id
     )
 
     assert [message.metadata.headers.type for message in effects] == CHAIN[1:]
@@ -91,7 +91,7 @@ def test_trace_effects_walks_down_from_the_command(tracing):
 def test_the_causation_tree_starts_at_the_command(tracing, capsys):
     _place_and_run(tracing, "ext-1")
 
-    tracing.show_tree(tracing.domain.event_store.store, "ext-1")
+    tracing.show_tree(tracing.domain.event_store, "ext-1")
 
     assert capsys.readouterr().out.splitlines() == [
         "COMMAND MyApp.PlaceOrder.v1",
@@ -100,7 +100,7 @@ def test_the_causation_tree_starts_at_the_command(tracing, capsys):
 
 
 def test_an_unknown_correlation_id_prints_no_tree(tracing, capsys):
-    tracing.show_tree(tracing.domain.event_store.store, "nothing-here")
+    tracing.show_tree(tracing.domain.event_store, "nothing-here")
 
     assert capsys.readouterr().out == ""
 
@@ -110,7 +110,7 @@ def test_the_dsl_groups_both_commands_under_one_correlation_id(tracing):
 
     assert result.aggregate.status == "RESERVED"
     assert result.aggregate.items == [{"sku": "BOOK-1", "qty": 2}]
-    stored = list(tracing.domain.event_store.store.read("$all"))
+    stored = list(tracing.domain.event_store.read("$all"))
     assert [message.metadata.headers.type for message in stored] == CHAIN
     assert {message.metadata.domain.correlation_id for message in stored} == {
         "checkout-42"
@@ -129,7 +129,7 @@ def test_outbox_rows_can_be_found_by_correlation_and_causation():
             asynchronous=False,
             correlation_id="ext-9",
         )
-        command = example.domain.event_store.store.read_last_message(
+        command = example.domain.event_store.read_last_message(
             f"{example.Order.meta_.stream_category}:command"
         )
         by_correlation, by_causation = example.find_outbox_records(
@@ -156,7 +156,7 @@ def test_a_command_sent_from_a_sync_event_handler_names_the_original_command():
         )
         messages = [
             message
-            for message in example.domain.event_store.store.read("$all")
+            for message in example.domain.event_store.read("$all")
             if message.metadata.domain.correlation_id == "sync-1"
         ]
 

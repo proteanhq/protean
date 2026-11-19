@@ -55,7 +55,7 @@ def _load(asset: str, event_processing: str = "sync") -> tuple[Namespace, Domain
 
 
 def _event_names(domain: Domain) -> list[str]:
-    messages = domain.event_store.store.read("$all")
+    messages = domain.event_store.read("$all")
     return [type(message.to_domain_object()).__name__ for message in messages]
 
 
@@ -284,7 +284,7 @@ def test_a_late_enrollment_event_does_not_undo_a_later_one() -> None:
         domain.process(ns["EnrollStudent"](course_id="C-1", student_id="S-1"))
         domain.process(ns["EnrollStudent"](course_id="C-2", student_id="S-1"))
 
-        messages = domain.event_store.store.read("$all")
+        messages = domain.event_store.read("$all")
         events = [message.to_domain_object() for message in messages]
         first = next(e for e in events if type(e).__name__ == "StudentEnrolled")
         assert first.course_id == "C-1"

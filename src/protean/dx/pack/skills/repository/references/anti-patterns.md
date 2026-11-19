@@ -142,7 +142,7 @@ class Order:
 
 # Missing domain.init() and domain_context!
 repo = domain.repository_for(Order)  # Returns a repository
-repo.add(Order(order_id="ORD-001"))  # AttributeError: providers
+repo.add(Order(order_id="ORD-001"))  # AttributeError: databases
 ```
 
 **Instead**: Initialize the domain and use a domain context.
@@ -163,7 +163,7 @@ with domain.domain_context():
 @handle(PlaceOrder)
 def handle_place_order(self, command):
     # Wrong! Bypassing the repository
-    provider = domain.providers["default"]
+    provider = domain.databases["default"]
     provider.raw(
         "INSERT INTO orders (order_id, status) VALUES (:order_id, 'placed')",
         {"order_id": command.order_id},

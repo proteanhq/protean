@@ -76,7 +76,7 @@ def accounts():
 
 def snapshot_rows(example, aggregate_cls, identifier):
     category = aggregate_cls.meta_.stream_category
-    return example.domain.event_store.store.get_stream_messages(
+    return example.domain.event_store._adapter.get_stream_messages(
         f"{category}:snapshot-{identifier}"
     )
 

@@ -50,7 +50,7 @@ import pytest
 
 from protean._deprecation import warn_from_registry
 from protean.domain import Domain
-from protean.port.provider import DatabaseCapabilities
+from protean.port.database import DatabaseCapabilities
 
 warn_from_registry(
     "adapter_conformance_plugin", "protean.integrations.pytest.adapter_conformance"
@@ -124,7 +124,7 @@ BUILTIN_DB_CONFIGS: dict[str, dict[str, Any]] = {
 
 # ---------------------------------------------------------------------------
 # Capability marker → DatabaseCapabilities mapping
-# (mirrors tests/adapters/repository/generic/conftest.py)
+# (mirrors tests/adapters/database/generic/conftest.py)
 # ---------------------------------------------------------------------------
 MARKER_TO_CAPABILITY: dict[str, DatabaseCapabilities] = {
     "basic_storage": DatabaseCapabilities.BASIC_STORAGE,
@@ -334,11 +334,11 @@ def db(test_domain: Domain) -> Iterator[None]:
     Auto-injected for tests marked with ``database`` or any
     capability marker via ``pytest_collection_modifyitems``.
     """
-    test_domain.providers["default"].create_schema()
+    test_domain.databases["default"].create_schema()
 
     yield
 
-    test_domain.providers["default"].drop_schema()
+    test_domain.databases["default"].drop_schema()
     test_domain.registry._reset()
 
 
@@ -348,8 +348,8 @@ def run_around_tests(test_domain: Domain | None) -> Iterator[None]:
     yield
 
     if test_domain:
-        for provider_name in test_domain.providers:
-            provider = test_domain.providers[provider_name]
+        for provider_name in test_domain.databases:
+            provider = test_domain.databases[provider_name]
             try:
                 provider.clear()
             finally:
@@ -394,7 +394,7 @@ def _skip_if_provider_lacks_capability(
         return
 
     marker_name, required_caps = cap_info
-    provider = test_domain.providers["default"]
+    provider = test_domain.databases["default"]
 
     if marker_name == "transactional":
         if not provider.capabilities & required_caps:

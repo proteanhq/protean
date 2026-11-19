@@ -233,7 +233,7 @@ def _truncate_projection(
 
     marker_repo = None
     if handler_ids:
-        provider_name = projection_cls.meta_.provider
+        provider_name = projection_cls.meta_.database
         try:
             marker_repo = domain._get_processed_message_repo(provider_name)
         except KeyError:
@@ -247,9 +247,9 @@ def _truncate_projection(
     # of empty with its markers still in place. Elasticsearch has no
     # transactions and writes each delete at once, so it gets no rollback.
     with UnitOfWork():
-        repo._dao._delete_all()
+        repo._dao.delete_all()
         if marker_repo is not None:
-            marker_repo._dao._delete_all(Q(handler__in=handler_ids))
+            marker_repo._dao.delete_all(Q(handler__in=handler_ids))
 
 
 def _global_position(message: Message) -> int:

@@ -34,7 +34,7 @@ def event(test_domain):
     test_domain.repository_for(User).add(user)
 
     # Read event from event store
-    event_messages = test_domain.event_store.store.read(f"test::user-fact-{user.id}")
+    event_messages = test_domain.event_store.read(f"test::user-fact-{user.id}")
     assert len(event_messages) == 1
 
     # Deserialize event
@@ -64,7 +64,7 @@ def test_fact_event_version_metadata_after_second_edit(test_domain):
     test_domain.repository_for(User).add(refreshed_user)
 
     # Read event from event store
-    event_messages = test_domain.event_store.store.read(f"test::user-fact-{user.id}")
+    event_messages = test_domain.event_store.read(f"test::user-fact-{user.id}")
     assert len(event_messages) == 2
 
     # Deserialize event
@@ -82,7 +82,7 @@ def test_fact_events_on_same_instance_carry_the_saved_version(test_domain):
     user.name = "Jane Doe"
     repo.add(user)
 
-    event_messages = test_domain.event_store.store.read(f"test::user-fact-{user.id}")
+    event_messages = test_domain.event_store.read(f"test::user-fact-{user.id}")
     assert len(event_messages) == 2
 
     events = [message.to_domain_object() for message in event_messages]
@@ -97,8 +97,8 @@ def test_fact_event_follows_a_regular_event_raised_in_the_same_save(test_domain)
     member.raise_(MemberJoined(member_id=member.id))
     test_domain.repository_for(Member).add(member)
 
-    own = test_domain.event_store.store.read(f"test::member-{member.id}")
-    fact = test_domain.event_store.store.read(f"test::member-fact-{member.id}")
+    own = test_domain.event_store.read(f"test::member-{member.id}")
+    fact = test_domain.event_store.read(f"test::member-fact-{member.id}")
     assert len(own) == 1
     assert len(fact) == 1
 
@@ -111,7 +111,7 @@ def test_fact_event_follows_a_regular_event_raised_in_the_same_save(test_domain)
 
 
 def _joined_positions(test_domain, member):
-    messages = test_domain.event_store.store.read(f"test::member-{member.id}")
+    messages = test_domain.event_store.read(f"test::member-{member.id}")
     return [message.metadata.event_store.position for message in messages]
 
 

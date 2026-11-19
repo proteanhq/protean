@@ -73,8 +73,8 @@ def test_user_is_persisted_in_the_archive_provider(tmp_path, monkeypatch):
     example = load_example("guides/domain-definition/004.py")
     example.domain.init(traverse=False)
 
-    assert example.User.meta_.provider == "archive"
-    assert set(example.domain.providers) == {"default", "archive"}
+    assert example.User.meta_.database == "archive"
+    assert set(example.domain.databases) == {"default", "archive"}
 
 
 def test_event_sourced_order_is_placed_through_its_apply_handler():

@@ -7,7 +7,7 @@ import redis
 from fastapi.testclient import TestClient
 
 from protean.adapters.broker.redis import RedisBroker
-from protean.adapters.repository.elasticsearch import ESProvider
+from protean.adapters.database.elasticsearch import ESDatabase
 from protean.domain.context import has_domain_context
 from protean.exceptions import ConfigurationError
 from protean.infra import registry
@@ -221,7 +221,7 @@ def test_the_subscriber_ignores_other_payload_types(example):
 
 def _pm_state(example, order_id):
     stream = f"{example.OrderFulfillmentPM.meta_.stream_category}-{order_id}"
-    transitions = example.fulfillment_domain.event_store.store.read(stream)
+    transitions = example.fulfillment_domain.event_store.read(stream)
     assert transitions
     return transitions[-1].to_domain_object()
 
@@ -277,11 +277,11 @@ def test_catalogue_domain_stores_in_elasticsearch(tmp_path):
     domain = domain_from_config(CATALOGUE, tmp_path, name="Catalogue")
     conn_info = dict(domain.config["databases"]["default"])
 
-    provider = registry.providers.get(conn_info["provider"])(
+    provider = registry.databases.get(conn_info["provider"])(
         "default", domain, conn_info
     )
 
-    assert type(provider) is ESProvider
+    assert type(provider) is ESDatabase
     nodes = provider._client.transport.node_pool.all()
     assert [node.base_url for node in nodes] == ["http://localhost:9200"]
 

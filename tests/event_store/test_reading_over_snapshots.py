@@ -53,12 +53,12 @@ def _ns(messages):
 def test_read_all_over_store_with_snapshot_yields_events_only(test_domain):
     """``read_all("$all")`` returns every event, raises nothing, and skips the
     snapshot rows that would otherwise raise on deserialize."""
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     for i in range(4):
         _write_event(store, "user-1", i)
     _write_snapshot(store, "user", "1")
 
-    messages = list(store.read_all("$all"))
+    messages = list(test_domain.event_store.read_all("$all"))
 
     assert len(messages) == 4, "Expected the four events, got a different count"
     assert all(isinstance(m, Message) for m in messages)
@@ -70,12 +70,12 @@ def test_read_all_stream_reads_over_store_with_snapshot_does_not_raise(test_doma
     """``read("$all")`` on a store containing a snapshot returns the events and
     raises nothing — the original bug was a ``TypeError`` from the snapshot's
     ``None`` metadata."""
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     for i in range(3):
         _write_event(store, "user-1", i)
     _write_snapshot(store, "user", "1")
 
-    messages = store.read("$all")
+    messages = test_domain.event_store.read("$all")
 
     assert len(messages) == 3
     assert "SNAPSHOT" not in _types(messages)
@@ -91,14 +91,14 @@ def test_read_all_snapshot_on_page_boundary_drops_no_events(test_domain):
     first page would deserialize to a single event, read as short, and terminate
     — dropping every later event. Paging on raw rows keeps all four events.
     """
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _write_event(store, "user-1", 0)
     _write_snapshot(store, "user", "1")  # second raw row, last row of page 1
     _write_event(store, "user-1", 1)
     _write_event(store, "user-1", 2)
     _write_event(store, "user-1", 3)
 
-    messages = list(store.read_all("$all", page_size=2))
+    messages = list(test_domain.event_store.read_all("$all", page_size=2))
 
     assert _ns(messages) == [0, 1, 2, 3], "an event was dropped or duplicated"
     assert "SNAPSHOT" not in _types(messages)
@@ -112,12 +112,12 @@ def test_read_all_full_page_of_only_snapshots_still_advances(test_domain):
     A reader that terminated on the yielded count would stop here and lose the
     event; paging on raw rows advances past both snapshots and reads it.
     """
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _write_snapshot(store, "user", "1")
     _write_snapshot(store, "user", "2")
     _write_event(store, "user-1", 0)
 
-    messages = list(store.read_all("$all", page_size=2))
+    messages = list(test_domain.event_store.read_all("$all", page_size=2))
 
     assert _ns(messages) == [0]
     assert "SNAPSHOT" not in _types(messages)
@@ -126,12 +126,12 @@ def test_read_all_full_page_of_only_snapshots_still_advances(test_domain):
 def test_read_all_page_size_one_with_snapshot(test_domain):
     """``page_size=1`` walks one raw row at a time; a snapshot row yields nothing
     for its page but must not stop or re-loop the read."""
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _write_event(store, "user-1", 0)
     _write_snapshot(store, "user", "1")
     _write_event(store, "user-1", 1)
 
-    messages = list(store.read_all("$all", page_size=1))
+    messages = list(test_domain.event_store.read_all("$all", page_size=1))
 
     assert _ns(messages) == [0, 1]
     assert "SNAPSHOT" not in _types(messages)
@@ -145,12 +145,12 @@ def test_read_last_message_skips_a_trailing_snapshot(test_domain):
     last event would otherwise be the tail row, and deserializing its ``None``
     metadata would crash the reconcile sweep.
     """
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     for i in range(3):
         _write_event(store, "user-1", i)
     _write_snapshot(store, "user", "1")  # newest raw row in `$all`
 
-    last = store.read_last_message("$all")
+    last = test_domain.event_store.read_last_message("$all")
 
     assert last is not None
     assert last.metadata.headers.type != "SNAPSHOT"
@@ -166,7 +166,7 @@ def test_read_last_message_walks_back_over_a_run_of_snapshots(test_domain):
     holds. The window is shrunk here so two events and three trailing snapshots
     already span more than one window.
     """
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _write_event(store, "user-1", 0)
     _write_event(store, "user-1", 1)
     _write_snapshot(store, "user", "1")
@@ -174,7 +174,7 @@ def test_read_last_message_walks_back_over_a_run_of_snapshots(test_domain):
     _write_snapshot(store, "user", "3")  # three trailing snapshots > one window
 
     with patch.object(event_store_module, "_SNAPSHOT_TAIL_WINDOW", 2):
-        last = store.read_last_message("$all")
+        last = test_domain.event_store.read_last_message("$all")
 
     assert last is not None
     assert last.metadata.headers.type != "SNAPSHOT"
@@ -190,7 +190,7 @@ def test_read_last_message_scan_is_bounded_near_the_tail(test_domain):
     Here the window is shrunk to 2, so the scan must start at the tail's
     position and read at most two rows, not from position 0.
     """
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     for i in range(6):
         _write_event(store, "user-1", i)
     _write_snapshot(store, "user", "1")  # the tail row
@@ -198,7 +198,7 @@ def test_read_last_message_scan_is_bounded_near_the_tail(test_domain):
     with patch.object(event_store_module, "_SNAPSHOT_TAIL_WINDOW", 2):
         service = test_domain.event_store
         with patch.object(service, "_read_raw", wraps=service._read_raw) as spy:
-            last = store.read_last_message("$all")
+            last = test_domain.event_store.read_last_message("$all")
 
     assert last is not None
     assert last.data["n"] == 5  # the newest event, not a stale one
@@ -214,23 +214,23 @@ def test_read_last_message_scan_is_bounded_near_the_tail(test_domain):
 def test_read_last_message_none_when_only_snapshots(test_domain):
     """A store holding only snapshot rows has no event to return, so
     ``read_last_message`` yields ``None`` rather than raising."""
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _write_snapshot(store, "user", "1")
     _write_snapshot(store, "user", "2")
 
-    assert store.read_last_message("$all") is None
+    assert test_domain.event_store.read_last_message("$all") is None
 
 
 def test_category_read_over_store_with_snapshot_unchanged(test_domain):
     """A category read returns the category's events and never a snapshot row,
     matching the pre-snapshot behaviour (acceptance criterion 3)."""
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     for i in range(3):
         _write_event(store, "user-1", i)
     _write_snapshot(store, "user", "1")
 
-    paged = list(store.read_all("user", page_size=2))
-    direct = store.read("user")
+    paged = list(test_domain.event_store.read_all("user", page_size=2))
+    direct = test_domain.event_store.read("user")
 
     assert _ns(paged) == [0, 1, 2]
     assert _ns(direct) == [0, 1, 2]
@@ -242,13 +242,15 @@ def test_read_with_snapshot_positions_reports_where_snapshots_sat(test_domain):
     """The ``$all`` subscription's read returns the events and the
     ``global_position`` of each snapshot row it skipped, so the gap check can
     count those positions as present. ``read`` returns the same events."""
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _write_event(store, "user-1", 0)
     _write_snapshot(store, "user", "1")
     _write_event(store, "user-1", 1)
     _write_snapshot(store, "user", "2")
 
-    messages, snapshot_positions = store._read_with_snapshot_positions("$all")
+    messages, snapshot_positions = (
+        test_domain.event_store._read_with_snapshot_positions("$all")
+    )
 
     assert _ns(messages) == [0, 1]
     # Global positions are relative: Message DB does not restart them per test.
@@ -258,16 +260,18 @@ def test_read_with_snapshot_positions_reports_where_snapshots_sat(test_domain):
         first + 2,
     ]
     assert snapshot_positions == [first + 1, first + 3]
-    assert _ns(store.read("$all")) == _ns(messages)
+    assert _ns(test_domain.event_store.read("$all")) == _ns(messages)
 
 
 def test_read_with_snapshot_positions_without_snapshots_reports_none(test_domain):
     """A read over a store with no snapshot rows reports no snapshot positions."""
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _write_event(store, "user-1", 0)
     _write_event(store, "user-1", 1)
 
-    messages, snapshot_positions = store._read_with_snapshot_positions("$all")
+    messages, snapshot_positions = (
+        test_domain.event_store._read_with_snapshot_positions("$all")
+    )
 
     assert _ns(messages) == [0, 1]
     assert snapshot_positions == []
@@ -278,7 +282,7 @@ def test_read_with_snapshot_positions_leaves_out_a_snapshot_with_no_position(
 ):
     """A snapshot row with no ``global_position`` is skipped and left out of
     the reported positions."""
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _write_event(store, "user-1", 0)
     rows = store.get_all_messages()
     snapshot_rows = [
@@ -290,7 +294,9 @@ def test_read_with_snapshot_positions_leaves_out_a_snapshot_with_no_position(
     with patch.object(
         test_domain.event_store, "_read_raw", return_value=rows + snapshot_rows
     ) as fake_read:
-        messages, snapshot_positions = store._read_with_snapshot_positions("$all")
+        messages, snapshot_positions = (
+            test_domain.event_store._read_with_snapshot_positions("$all")
+        )
 
     fake_read.assert_called_once()
     assert _ns(messages) == [0]

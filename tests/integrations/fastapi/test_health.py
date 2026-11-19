@@ -114,7 +114,7 @@ class TestDegradedState:
         app.include_router(create_health_router(domain))
         client = TestClient(app)
 
-        for provider in domain.providers.values():
+        for provider in domain.databases.values():
             provider.ping = lambda: False
 
         response = client.get("/readyz")
@@ -145,7 +145,7 @@ class TestDegradedState:
         def _raise(*args, **kwargs):
             raise ConnectionError("unreachable")
 
-        domain.event_store.store.ping = _raise
+        domain.event_store._adapter.ping = _raise
 
         response = client.get("/readyz")
         assert response.status_code == 503
@@ -163,7 +163,7 @@ class TestDegradedState:
         def _explode():
             raise ConnectionError("db down")
 
-        for provider in domain.providers.values():
+        for provider in domain.databases.values():
             provider.ping = _explode
 
         response = client.get("/readyz")

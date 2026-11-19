@@ -78,11 +78,11 @@ lock, so aggregate-level concurrency tests can run against it.
 
 ### No double claim
 
-For queue-style claiming, such as the outbox, each backend's `_claim`
-implementation claims each row once, as the `_claim` contract (ADR-0013)
-requires. PostgreSQL uses `SELECT … FOR UPDATE SKIP LOCKED`. Every other
-backend uses a guarded read-then-update, which gives the same guarantee but
-blocks where PostgreSQL skips.
+For queue-style claiming, such as the outbox, every backend claims each row
+once, as the `claim` contract (ADR-0013) requires. PostgreSQL uses its own
+`claim`, which runs `SELECT … FOR UPDATE SKIP LOCKED`. Every other backend uses
+Protean's portable claim, a guarded read-then-update, which gives the same
+guarantee but blocks where PostgreSQL skips.
 
 ### Known exceptions {#persistence-exceptions}
 
@@ -109,7 +109,7 @@ blocks where PostgreSQL skips.
     committed by the same `session.commit()` as the domain write. For an
     event-sourced aggregate the event-store append is written before the
     relational commit, outside this transaction (ADR-0015).
-    `tests/adapters/repository/sqlalchemy_repo/postgresql/test_postgresql_uow_atomicity_and_ryw.py`
+    `tests/adapters/database/sqlalchemy_repo/postgresql/test_postgresql_uow_atomicity_and_ryw.py`
     and its MSSQL mirror pin these guarantees.
 
     On Memory each session works on a deep copy. At commit, under the
@@ -243,7 +243,7 @@ You can opt in at three places:
   Markers are pruned after a retention window (7 days by default), and a
   redelivery after that is applied again.
 - **Subscribers**: `@domain.subscriber(idempotent=True)` records
-  `(message_id, handler)` in the database named by its `provider` option, in
+  `(message_id, handler)` in the database named by its `database` option, in
   the same unit of work as the subscriber's writes. The message id is the
   payload's `metadata.headers.id`, and a payload without it, or with one over
   255 characters, fails. On a relational provider a unique index also stops

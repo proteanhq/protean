@@ -489,8 +489,8 @@ class TestSetAggregateClusterOptions:
         test_domain.register(Comment, part_of=Post)
         test_domain.init(traverse=False)
 
-        assert Post.meta_.provider == "default"
-        assert Comment.meta_.provider == "default"
+        assert Post.meta_.database == "default"
+        assert Comment.meta_.database == "default"
 
     def test_entity_provider_set_by_propagation_when_missing(self, test_domain):
         """When an entity's meta does not have a provider attribute,
@@ -507,13 +507,13 @@ class TestSetAggregateClusterOptions:
 
         # Manually remove the provider attribute to simulate the scenario
         # where an entity's meta lacks a provider before propagation runs
-        if hasattr(Shelf.meta_, "provider"):
-            delattr(Shelf.meta_, "provider")
+        if hasattr(Shelf.meta_, "database"):
+            delattr(Shelf.meta_, "database")
 
         test_domain.init(traverse=False)
 
         # After init, the resolver should have propagated the aggregate's provider
-        assert Shelf.meta_.provider == Warehouse.meta_.provider
+        assert Shelf.meta_.database == Warehouse.meta_.database
 
     def test_entity_registered_with_matching_provider_passes_validation(
         self, test_domain
@@ -526,12 +526,12 @@ class TestSetAggregateClusterOptions:
         class Shelf(BaseEntity):
             label: String(max_length=50)
 
-        test_domain.register(Warehouse, provider="custom_db")
-        test_domain.register(Shelf, part_of=Warehouse, provider="custom_db")
+        test_domain.register(Warehouse, database="custom_db")
+        test_domain.register(Shelf, part_of=Warehouse, database="custom_db")
         test_domain.init(traverse=False)
 
-        assert Warehouse.meta_.provider == "custom_db"
-        assert Shelf.meta_.provider == "custom_db"
+        assert Warehouse.meta_.database == "custom_db"
+        assert Shelf.meta_.database == "custom_db"
 
 
 # ============================================================================
@@ -629,4 +629,4 @@ class TestFullResolverPipeline:
         assert EmployeeHired.meta_.aggregate_cluster is Company
 
         # Provider is consistent (both default)
-        assert Employee.meta_.provider == Company.meta_.provider
+        assert Employee.meta_.database == Company.meta_.database

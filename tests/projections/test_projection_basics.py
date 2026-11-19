@@ -369,7 +369,7 @@ class TestProjectionMeta:
         assert Person.meta_.schema_name == "person"
 
     def test_default_provider(self):
-        assert Person.meta_.provider == "default"
+        assert Person.meta_.database == "default"
 
     def test_default_order_by(self):
         assert Person.meta_.order_by == ()
@@ -389,7 +389,7 @@ class TestProjectionMeta:
             first_name: str
 
         test_domain.register(CachedPerson, cache="default")
-        assert CachedPerson.meta_.provider is None
+        assert CachedPerson.meta_.database is None
 
     def test_error_without_provider_or_cache(self, test_domain):
         class NoProviderPerson(BaseProjection):
@@ -397,4 +397,4 @@ class TestProjectionMeta:
             first_name: str
 
         with pytest.raises(NotSupportedError):
-            test_domain.register(NoProviderPerson, provider=None, cache=None)
+            test_domain.register(NoProviderPerson, database=None, cache=None)

@@ -193,7 +193,7 @@ def _check_outbox_schema(domain: Domain) -> list[UpgradeFinding]:
     try:
         from sqlalchemy import inspect as sa_inspect  # noqa: F401, PLC0415
         from sqlalchemy.types import String as SAString  # noqa: F401, PLC0415
-    except ImportError:  # pragma: no cover - sqlalchemy backs every SAProvider
+    except ImportError:  # pragma: no cover - sqlalchemy backs every SADatabase
         return []
 
     bounds = _outbox_string_bounds()
@@ -228,13 +228,13 @@ def _check_outbox_schema(domain: Domain) -> list[UpgradeFinding]:
 
 def _sa_outbox_engines(domain: Domain) -> Iterator[tuple[str, Any, str | None]]:
     """Yield each SQLAlchemy provider's name, engine and outbox schema."""
-    from protean.adapters.repository.sqlalchemy import SAProvider  # noqa: PLC0415
+    from protean.adapters.database.sqlalchemy import SADatabase  # noqa: PLC0415
 
-    for name, provider in domain.providers.items():
-        if not isinstance(provider, SAProvider):
+    for name, provider in domain.databases.items():
+        if not isinstance(provider, SADatabase):
             continue
         engine = getattr(provider, "_engine", None)
-        if engine is None:  # pragma: no cover - an initialized SAProvider has one
+        if engine is None:  # pragma: no cover - an initialized SADatabase has one
             continue
         # Honor a non-default provider schema so the right outbox table is found.
         schema = getattr(getattr(provider, "_metadata", None), "schema", None)
@@ -513,7 +513,7 @@ def _check_outbox_migrations(domain: Domain) -> list[UpgradeFinding]:
     """
     try:
         from sqlalchemy import inspect as sa_inspect  # noqa: F401, PLC0415
-    except ImportError:  # pragma: no cover - sqlalchemy backs every SAProvider
+    except ImportError:  # pragma: no cover - sqlalchemy backs every SADatabase
         return []
 
     # The name the framework actually writes, so the emitted SQL labels legacy

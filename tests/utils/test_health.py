@@ -39,7 +39,7 @@ class TestCheckProviders:
 
     def test_returns_unavailable_when_provider_returns_false(self, domain):
         with domain.domain_context():
-            for p in domain.providers.values():
+            for p in domain.databases.values():
                 p.ping = lambda: False
             statuses, all_ok = check_providers(domain)
             assert all_ok is False
@@ -48,7 +48,7 @@ class TestCheckProviders:
 
     def test_returns_unavailable_when_provider_raises(self, domain):
         with domain.domain_context():
-            for p in domain.providers.values():
+            for p in domain.databases.values():
                 p.ping = lambda: (_ for _ in ()).throw(RuntimeError("boom"))
             _statuses, all_ok = check_providers(domain)
             assert all_ok is False
@@ -58,7 +58,7 @@ class TestCheckProviders:
         with (
             domain.domain_context(),
             patch.object(
-                type(domain.providers), "items", side_effect=RuntimeError("broken")
+                type(domain.databases), "items", side_effect=RuntimeError("broken")
             ),
         ):
             statuses, all_ok = check_providers(domain)
@@ -133,7 +133,7 @@ class TestCheckEventStore:
 
     def test_unavailable_when_event_store_raises(self, domain):
         with domain.domain_context():
-            domain.event_store.store.ping = lambda: (_ for _ in ()).throw(
+            domain.event_store._adapter.ping = lambda: (_ for _ in ()).throw(
                 RuntimeError("down")
             )
             status, ok = check_event_store(domain)

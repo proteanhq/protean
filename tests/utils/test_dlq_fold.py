@@ -27,7 +27,7 @@ def _record(store, position: int, status: FailedPositionStatus, **data) -> None:
 
 
 def test_latest_record_per_position_wins(test_domain):
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _record(store, 1, FailedPositionStatus.FAILED)
     _record(store, 2, FailedPositionStatus.FAILED)
     _record(store, 1, FailedPositionStatus.EXHAUSTED, marker="one")
@@ -46,7 +46,7 @@ def test_latest_record_per_position_wins(test_domain):
 
 
 def test_records_without_position_or_type_are_skipped(test_domain):
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     _record(store, 1, FailedPositionStatus.EXHAUSTED)
     # No position: cannot be attributed, so it is ignored.
     _write(store, {"retry_count": 3}, FailedPositionStatus.EXHAUSTED.value)
@@ -59,12 +59,12 @@ def test_records_without_position_or_type_are_skipped(test_domain):
 
 
 def test_missing_stream_is_empty(test_domain):
-    assert exhausted_records(test_domain.event_store.store, FAILED_STREAM) == {}
+    assert exhausted_records(test_domain.event_store._adapter, FAILED_STREAM) == {}
 
 
 def test_records_past_the_first_read_page_are_folded(test_domain):
     """The fold reads the whole stream, not one capped page of it."""
-    store = test_domain.event_store.store
+    store = test_domain.event_store._adapter
     page = 1000  # The default page size of ``read`` and ``read_all``.
     _record(store, 1, FailedPositionStatus.EXHAUSTED)
     for position in range(2, page + 2):

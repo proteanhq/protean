@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeVar, cast
 
 from protean.core.queryset import Record
@@ -38,7 +39,7 @@ class BaseDatabaseModel(Element, OptionsMixin):
     | Option | Type | Description |
     |--------|------|-------------|
     | ``part_of`` | ``type`` or ``str`` | The aggregate, entity or projection this model maps. Required. A string names the element and is resolved at ``domain.init()``. |
-    | ``database`` | ``str`` | The database type this model applies to (e.g. ``"sqlite"``, ``"elasticsearch"``), not a provider name. Without it, the model is used for any database type that has no model of its own. |
+    | ``database_type`` | ``str`` | The database type this model applies to (e.g. ``"sqlite"``, ``"elasticsearch"``), not a provider name. Without it, the model is used for any database type that has no model of its own. |
     | ``schema_name`` | ``str`` | Override the storage table/collection name. |
     """
 
@@ -50,11 +51,13 @@ class BaseDatabaseModel(Element, OptionsMixin):
         return super().__new__(cls)
 
     _default_options: ClassVar[list[tuple[str, Any]]] = [
-        ("database", None),
+        ("database_type", None),
         ("part_of", None),
         ("schema_name", None),
         ("suppress_checks", ()),
     ]
+
+    _renamed_options: ClassVar[Mapping[str, str]] = {"database": "database_type"}
 
     @classmethod
     def derive_schema_name(cls) -> str:
@@ -101,7 +104,7 @@ class BaseDatabaseModel(Element, OptionsMixin):
         """Extract a single value from a storage record by key.
 
         ``to_entity()``, ``to_records()`` and the unique-key check in
-        ``BaseDAO.save_if_absent()`` read each value through it.
+        ``DAO.save_if_absent()`` read each value through it.
         Override in adapter subclasses for storage-specific access patterns.
         The default uses ``getattr()``, which works for object-based records
         (e.g. SQLAlchemy ORM instances).

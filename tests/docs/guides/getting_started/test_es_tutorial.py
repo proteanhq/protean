@@ -56,18 +56,18 @@ _HAS_PROJECTIONS = {ch06, ch08, ch15, ch18, ch20, ch22}
 # ---------------------------------------------------------------------------
 def _cleanup(domain) -> None:
     """Reset all stores and close connections after a test."""
-    for provider_name in domain.providers:
+    for provider_name in domain.databases:
         provider = provider_adapter(domain, provider_name)
         try:
             provider.clear()
         finally:
             provider.close()
 
-    if domain.event_store.store:
+    if domain.event_store._adapter:
         try:
-            domain.event_store.store.clear()
+            domain.event_store._adapter.clear()
         finally:
-            domain.event_store.store.close()
+            domain.event_store._adapter.close()
 
 
 def _init_if_needed(mod) -> None:
@@ -250,8 +250,8 @@ class TestESTutorialCh05(_ESTutorialBase):
         Ch05's tests all use the same account_id="acc-123".
         """
         domain = _configure_chapter
-        if domain.event_store.store:
-            domain.event_store.store.clear()
+        if domain.event_store._adapter:
+            domain.event_store._adapter.clear()
 
     def _make_account_opened(self):
         return ch05.AccountOpened(
@@ -420,7 +420,9 @@ class TestESTutorialCh08(_ESTutorialBase):
             category = f"{ch08.Account.meta_.stream_category}:command"
             queued = [
                 message["data"]
-                for message in domain.event_store.store.get_category_messages(category)
+                for message in domain.event_store._adapter.get_category_messages(
+                    category
+                )
                 if message["type"].endswith(".MakeDeposit.v1")
             ]
             assert queued == [
@@ -559,7 +561,7 @@ def _write_old_deposit(domain, account_id: str, version: int, data: dict) -> Non
     type_string = event_cls.__type__.rsplit(".", 1)[0] + f".v{version}"
     category = ch11_v3.Account.meta_.stream_category
     stream = f"{category}-{account_id}"
-    store = domain.event_store.store
+    store = domain.event_store._adapter
     position = len(store.get_stream_messages(stream))
     store.write_message(
         stream,
@@ -878,7 +880,7 @@ class TestESTutorialCh15(_ESTutorialBase):
 
             # Verify fact events in event store
             fact_stream = f"{ch15.Account.meta_.stream_category}-fact-{account_id}"
-            fact_messages = domain.event_store.store.read(fact_stream)
+            fact_messages = domain.event_store.read(fact_stream)
             assert len(fact_messages) == 3
 
             last_fact = fact_messages[-1].to_domain_object()
@@ -911,7 +913,7 @@ class TestESTutorialCh16(_ESTutorialBase):
                 correlation_id="audit-trail-dep-9921",
             )
 
-            tree = domain.event_store.store.build_causation_tree("audit-trail-dep-9921")
+            tree = domain.event_store.build_causation_tree("audit-trail-dep-9921")
             assert tree is not None
 
             account = domain.repository_for(ch16.Account).get(account_id)
@@ -937,7 +939,7 @@ class TestESTutorialCh16(_ESTutorialBase):
             category = ch16.Account.meta_.stream_category
             deposits = [
                 message
-                for message in domain.event_store.store.read(f"{category}-{account_id}")
+                for message in domain.event_store.read(f"{category}-{account_id}")
                 if message.metadata.headers.type.endswith(".DepositMade.v1")
             ]
             assert len(deposits) == 1
@@ -991,7 +993,7 @@ class TestESTutorialCh17(_ESTutorialBase):
 
             # Verify events are in the store
             stream = f"{ch17.Account.meta_.stream_category}-{account_id}"
-            messages = domain.event_store.store.read(stream)
+            messages = domain.event_store.read(stream)
             assert len(messages) == 2
 
 
@@ -1234,7 +1236,7 @@ class TestESTutorialCh21(_ESTutorialBase):
 
             # Read raw messages from the event store
             stream = f"{ch21.Account.meta_.stream_category}-{account_id}"
-            messages = domain.event_store.store.read(stream)
+            messages = domain.event_store.read(stream)
             assert len(messages) == 3
 
             # Verify message metadata structure
@@ -1289,7 +1291,7 @@ class TestESTutorialCh22(_ESTutorialBase):
 
             # Verify fact events
             fact_stream = f"{ch22.Account.meta_.stream_category}-fact-{alice_id}"
-            fact_messages = domain.event_store.store.read(fact_stream)
+            fact_messages = domain.event_store.read(fact_stream)
             assert len(fact_messages) == 2
             last_fact = fact_messages[-1].to_domain_object()
             assert last_fact.balance == 12000.00

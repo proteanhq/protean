@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Iterator, Mapping
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any, ClassVar, Self, TypeVar, cast
 
@@ -12,10 +13,9 @@ from protean.exceptions import (
 )
 from protean.fields import HasMany, HasOne
 from protean.fields.tempdata import HasManyChanges, HasOneChanges
-from protean.port.dao import BaseDAO
-from protean.port.provider import BaseProvider, DatabaseModelPort
+from protean.infra.dao import DAO
+from protean.port.database import BaseDatabase, DatabaseModelPort
 from protean.utils import (
-    Database,
     DomainObjects,
     _derive_element_class,
     _fully_qualified_name,
@@ -50,10 +50,12 @@ class BaseRepository(Element, OptionsMixin):
     element_type = DomainObjects.REPOSITORY
 
     _default_options: ClassVar[list[tuple[str, Any]]] = [
-        ("database", "ALL"),
+        ("database_type", "ALL"),
         ("part_of", None),
         ("suppress_checks", ()),
     ]
+
+    _renamed_options: ClassVar[Mapping[str, str]] = {"database": "database_type"}
 
     def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         # Prevent instantiation of `BaseRepository itself`
@@ -61,7 +63,7 @@ class BaseRepository(Element, OptionsMixin):
             raise NotSupportedError("BaseRepository cannot be instantiated")
         return super().__new__(cls)
 
-    def __init__(self, domain: "Domain", provider: BaseProvider) -> None:
+    def __init__(self, domain: "Domain", provider: BaseDatabase) -> None:
         self._domain = domain
         self._provider = provider
 
@@ -71,7 +73,7 @@ class BaseRepository(Element, OptionsMixin):
         """Retrieve Database Model class connected to Entity"""
         # Look up custom models registered for this entity, keyed by database type.
         # Prefer a model targeting this provider's database type; fall back to a
-        # generic model (database=None) if no type-specific one exists.
+        # generic model (database_type=None) if no type-specific one exists.
         entity_models = self._domain._database_models.get(
             _fully_qualified_name(self.meta_.part_of), {}
         )
@@ -83,7 +85,7 @@ class BaseRepository(Element, OptionsMixin):
 
     @property
     @lru_cache
-    def _dao(self) -> BaseDAO:
+    def _dao(self) -> DAO:
         """Return the Data Access Object for this repository's aggregate.
 
         Internal. Application code should use ``query``, ``find_by()``,
@@ -91,20 +93,20 @@ class BaseRepository(Element, OptionsMixin):
         as hard deletion and test teardown.
         """
         # Fixate on Model class at the domain level because an explicit model may have been registered
-        dao: BaseDAO = self._provider.dao_for(self.meta_.part_of, self._database_model)
-        return dao
+        adapter = self._provider.dao_for(self.meta_.part_of, self._database_model)
+        return DAO(self._domain, self._provider, adapter)
 
     def _delete_in_batches(self, criteria: Q, batch_size: int) -> int:
         """Delete all rows matching ``criteria`` in bounded batches of ``batch_size``.
 
-        Loops `BaseDAO._delete_top` until a batch deletes fewer than
+        Loops `DAO.delete_top` until a batch deletes fewer than
         ``batch_size`` rows (the matched set is drained), returning the total
         deleted. When called outside a Unit of Work each batch commits before
         the next begins, so a large backlog is cleared without one long-held
         lock or an oversized transaction. Shared by the outbox and consume-side
         idempotency cleanup paths.
         """
-        # Guard the loop invariant: ``_delete_top(limit<=0)`` returns 0, and
+        # Guard the loop invariant: ``delete_top(limit<=0)`` returns 0, and
         # ``0 < batch_size`` is False for a non-positive batch_size, so the loop
         # would never terminate. A user-facing ``--batch-size`` reaches here.
         if batch_size < 1:
@@ -112,7 +114,7 @@ class BaseRepository(Element, OptionsMixin):
 
         total = 0
         while True:
-            deleted = self._dao._delete_top(criteria, limit=batch_size)
+            deleted = self._dao.delete_top(criteria, limit=batch_size)
             total += deleted
             if deleted < batch_size:
                 break
@@ -224,35 +226,7 @@ class BaseRepository(Element, OptionsMixin):
             # store before any child entities that hold a foreign-key reference to
             # it.  This is required for databases that enforce FK constraints
             # immediately (MSSQL, MySQL/InnoDB, SQLite with PRAGMA foreign_keys).
-            root_persisted = False
-            if (not item.state_.is_persisted) or (
-                item.state_.is_persisted
-                and (item.state_.is_changed or self._has_changed_child(item))
-            ):
-                self._dao.save(item)
-                root_persisted = True
-
-                # If Aggregate has signed up Fact Events, raise them now
-                if (
-                    item.element_type == DomainObjects.AGGREGATE
-                    and item.meta_.fact_events
-                ):
-                    payload = item.to_dict()
-
-                    # Remove internal attributes from the payload, as they are not needed for the Fact Event
-                    payload.pop("state_", None)
-                    payload.pop("_version", None)
-
-                    # Construct and raise the Fact Event
-                    fact_event = item._fact_event_cls(**payload)
-                    item.raise_(fact_event)
-            elif item.element_type == DomainObjects.AGGREGATE and item._events:
-                # Aggregate has pending events but no own-field changes (e.g., events
-                # raised by child entities).  We still need to persist the aggregate so
-                # that _version is incremented, and track it in the identity map so that
-                # _gather_events picks up these events on commit.
-                self._dao.save(item)
-                root_persisted = True
+            root_persisted = _save_root(self, item)
 
             # Now sync child entities (HasMany/HasOne) — the parent row exists, so
             # child inserts referencing it will satisfy FK constraints.
@@ -313,18 +287,10 @@ class BaseRepository(Element, OptionsMixin):
         sync). Those are handled separately and do not race the way concurrent
         edits of the same existing data do.
         """
-        for field_name, field in association_fields(entity).items():
-            if isinstance(field, HasMany):
-                for child in getattr(entity, field_name):
-                    if child.state_.is_changed or self._has_changed_child(child):
-                        return True
-            elif isinstance(field, HasOne):
-                child = getattr(entity, field_name)
-                if child is not None and (
-                    child.state_.is_changed or self._has_changed_child(child)
-                ):
-                    return True
-        return False
+        return any(
+            child.state_.is_changed or self._has_changed_child(child)
+            for child in _direct_children(entity)
+        )
 
     def _sync_children(self, entity: Any) -> None:
         """Recursively sync child entities to the persistence store.
@@ -345,95 +311,20 @@ class BaseRepository(Element, OptionsMixin):
 
         for field_name, field in association_fields(entity).items():
             if isinstance(field, HasMany):
-                cache = entity._temp_cache.get(field_name)
-                if cache is None:
-                    cache = HasManyChanges()
-
-                # First, handle direct updates to underlying child objects
-                #   These are ones whose attributes have been changed directly
-                #   instead of being routed via `add`/`remove`
-                for item in getattr(entity, field_name):
-                    # If the item was changed directly AND added via `add`, then
-                    #   we give preference to the object in the cache
-                    if item.state_.is_changed and item not in cache.updated:
-                        self._persist_child(field.to_cls, item)
-
-                for item in cache.removed.values():
-                    self._remove_child(field.to_cls, item)
-
-                for item in cache.updated.values():
-                    self._persist_child(field.to_cls, item)
-
-                for item in cache.added.values():
-                    item.state_.mark_new()
-                    self._persist_child(field.to_cls, item)
-
+                _sync_has_many(self, entity, field_name, field)
                 # Defer cache clearing until all DAO operations succeed
                 cache_clears.append((entity, field_name))
-
-            if isinstance(field, HasOne):
-                cache = entity._temp_cache.get(field_name)
-                if cache is None:
-                    cache = HasOneChanges()
-
-                # First, handle direct updates to underlying child objects
-                #   These are ones whose attributes have been changed directly
-                #   instead of being routed via `add`/`remove`
-                item = getattr(entity, field_name)
-                if item is not None and item.state_.is_changed:
-                    self._persist_child(field.to_cls, item)
-                # Or a new instance has been assigned
-                elif cache.change:
-                    if cache.change == "ADDED":
-                        self._persist_child(field.to_cls, item)
-                    elif cache.change == "UPDATED":
-                        if cache.old_value is not None:
-                            # The object was replaced, so delete the old record
-                            self._remove_child(field.to_cls, cache.old_value)
-                        else:
-                            # The same object was updated.
-                            # Explicitly mark changed: the entity's is_changed flag may
-                            # have been cleared (e.g. by a prior save) even though
-                            # HasOne.__set__ recorded the mutation in _temp_cache.
-                            # ``item`` is the live HasOne value here (same-object
-                            # update path); pyright narrows the ``Any`` from
-                            # ``getattr`` to ``None`` off the ``is not None`` guard
-                            # above, a false positive on this branch.
-                            item.state_.mark_changed()  # pyright: ignore[reportOptionalMemberAccess]
-
-                        self._persist_child(field.to_cls, item)
-                    elif cache.change == "DELETED":
-                        self._remove_child(field.to_cls, cache.old_value)
-
+                _sync_grandchildren(self, entity, field_name, field)
+            else:
+                # ``HasOne`` and ``HasMany`` are the only association fields.
+                assert isinstance(field, HasOne)
+                if _sync_has_one(self, entity, field_name, field):
                     # Defer cache clearing until all DAO operations succeed
                     cache_clears.append((entity, field_name))
-
-            ### RECURSIVE SYNC ###
-            # Recurse AFTER persisting children at this level so that the child
-            # row exists before any grandchild insert that holds an FK to it.
-            # This gives top-down insert ordering: parent → child → grandchild.
-            #
-            # ``field`` is always a ``HasMany``/``HasOne`` here (only those two
-            # ``Association`` subclasses carry a child cluster to recurse into),
-            # so narrow via the same isinstance branches used above to make the
-            # ``to_cls`` attribute visible to the type checkers.
-            if isinstance(field, HasMany):
-                if has_association_fields(field.to_cls):
-                    # Flush this level's child inserts so their rows exist in the
-                    # transaction before grandchild inserts reference them.
-                    self._dao._flush()
-                    for item in getattr(entity, field_name):
-                        self._sync_children(item)
-            elif isinstance(field, HasOne) and has_association_fields(field.to_cls):
-                self._dao._flush()
-                if getattr(entity, field_name):
-                    self._sync_children(getattr(entity, field_name))
+                _sync_grandchildren(self, entity, field_name, field)
 
         # Clear all caches atomically after all DAO operations completed successfully
-        for ent, fname in cache_clears:
-            cache = ent._temp_cache.get(fname)
-            if cache is not None:
-                cache.clear()
+        _clear_caches(cache_clears)
 
     def _prewarm_associations(self, aggregate: Any) -> None:
         """Eagerly load all association fields into the field cache.
@@ -455,8 +346,8 @@ class BaseRepository(Element, OptionsMixin):
 
         Returns the fetched object.
 
-        All other data filtering capabilities can be implemented by using the underlying DAO's
-        ``BaseDAO.filter`` method.
+        All other data filtering capabilities can be implemented by using the
+        ``query`` of the underlying ``DAO`` service.
 
         Filter methods are typically implemented as domain-contextual queries, like `find_adults()`,
         `find_residents_of_area(zipcode)`, etc. It is also possible to make use of more complicated,
@@ -520,6 +411,175 @@ class BaseRepository(Element, OptionsMixin):
                 raise
 
 
+def _save_root(repo: BaseRepository, item: Any) -> bool:
+    """Save ``item`` itself when it needs a write, and return whether it was saved.
+
+    A new item, or one whose own fields or child entities changed, is saved
+    and raises its fact event. An aggregate with only pending events is saved
+    too, without a fact event.
+    """
+    if (not item.state_.is_persisted) or (
+        item.state_.is_persisted
+        and (item.state_.is_changed or repo._has_changed_child(item))
+    ):
+        repo._dao.save(item)
+        _raise_fact_event(item)
+        return True
+
+    if item.element_type == DomainObjects.AGGREGATE and item._events:
+        # Aggregate has pending events but no own-field changes (e.g., events
+        # raised by child entities).  We still need to persist the aggregate so
+        # that _version is incremented, and track it in the identity map so that
+        # _gather_events picks up these events on commit.
+        repo._dao.save(item)
+        return True
+
+    return False
+
+
+def _raise_fact_event(item: Any) -> None:
+    """Raise the fact event of ``item`` when it is an aggregate that signed up for one."""
+    if not (item.element_type == DomainObjects.AGGREGATE and item.meta_.fact_events):
+        return
+
+    payload = item.to_dict()
+
+    # Remove internal attributes from the payload, as they are not needed for the Fact Event
+    payload.pop("state_", None)
+    payload.pop("_version", None)
+
+    # Construct and raise the Fact Event
+    fact_event = item._fact_event_cls(**payload)
+    item.raise_(fact_event)
+
+
+def _direct_children(entity: Any) -> Iterator[Any]:
+    """Yield the child entities of ``entity`` one level down, field by field.
+
+    An unset ``HasOne`` yields nothing.
+    """
+    for field_name, field in association_fields(entity).items():
+        if isinstance(field, HasMany):
+            yield from getattr(entity, field_name)
+        else:
+            # ``HasOne`` and ``HasMany`` are the only association fields.
+            child = getattr(entity, field_name)
+            if child is not None:
+                yield child
+
+
+def _sync_has_many(
+    repo: BaseRepository, entity: Any, field_name: str, field: HasMany
+) -> None:
+    """Write the direct updates, removals, updates and additions of one ``HasMany``."""
+    # Associations resolve ``to_cls`` to a class when the domain initializes.
+    child_cls = cast("type[Any]", field.to_cls)
+    cache = entity._temp_cache.get(field_name)
+    if cache is None:
+        cache = HasManyChanges()
+
+    # First, handle direct updates to underlying child objects
+    #   These are ones whose attributes have been changed directly
+    #   instead of being routed via `add`/`remove`
+    for item in getattr(entity, field_name):
+        # If the item was changed directly AND added via `add`, then
+        #   we give preference to the object in the cache
+        if item.state_.is_changed and item not in cache.updated:
+            repo._persist_child(child_cls, item)
+
+    for item in cache.removed.values():
+        repo._remove_child(child_cls, item)
+
+    for item in cache.updated.values():
+        repo._persist_child(child_cls, item)
+
+    for item in cache.added.values():
+        item.state_.mark_new()
+        repo._persist_child(child_cls, item)
+
+
+def _sync_has_one(
+    repo: BaseRepository, entity: Any, field_name: str, field: HasOne
+) -> bool:
+    """Write the change of one ``HasOne``, and return whether its cache needs clearing.
+
+    The cache needs clearing only when it recorded an assignment.
+    """
+    # Associations resolve ``to_cls`` to a class when the domain initializes.
+    child_cls = cast("type[Any]", field.to_cls)
+    cache = entity._temp_cache.get(field_name)
+    if cache is None:
+        cache = HasOneChanges()
+
+    # First, handle direct updates to underlying child objects
+    #   These are ones whose attributes have been changed directly
+    #   instead of being routed via `add`/`remove`
+    item = getattr(entity, field_name)
+    if item is not None and item.state_.is_changed:
+        repo._persist_child(child_cls, item)
+        return False
+
+    # Or a new instance has been assigned
+    if not cache.change:
+        return False
+
+    _sync_has_one_change(repo, child_cls, item, cache)
+    return True
+
+
+def _sync_has_one_change(
+    repo: BaseRepository, child_cls: type[Any], item: Any, cache: HasOneChanges
+) -> None:
+    """Write the assignment a ``HasOne`` cache recorded: an add, an update or a delete."""
+    if cache.change == "ADDED":
+        repo._persist_child(child_cls, item)
+    elif cache.change == "UPDATED":
+        if cache.old_value is not None:
+            # The object was replaced, so delete the old record
+            repo._remove_child(child_cls, cache.old_value)
+        else:
+            # The same object was updated.
+            # Explicitly mark changed: the entity's is_changed flag may
+            # have been cleared (e.g. by a prior save) even though
+            # HasOne.__set__ recorded the mutation in _temp_cache.
+            item.state_.mark_changed()
+
+        repo._persist_child(child_cls, item)
+    else:  # "DELETED"
+        repo._remove_child(child_cls, cache.old_value)
+
+
+def _sync_grandchildren(
+    repo: BaseRepository, entity: Any, field_name: str, field: HasMany | HasOne
+) -> None:
+    """Flush, then sync the children of each child in one association field.
+
+    Does nothing when the child class has no association fields.
+    """
+    # Recurse AFTER persisting children at this level so that the child
+    # row exists before any grandchild insert that holds an FK to it.
+    # This gives top-down insert ordering: parent → child → grandchild.
+    if not has_association_fields(cast("type[Any]", field.to_cls)):
+        return
+
+    # Flush this level's child inserts so their rows exist in the
+    # transaction before grandchild inserts reference them.
+    repo._dao._flush()
+    if isinstance(field, HasMany):
+        for item in getattr(entity, field_name):
+            repo._sync_children(item)
+    elif getattr(entity, field_name):
+        repo._sync_children(getattr(entity, field_name))
+
+
+def _clear_caches(cache_clears: list[tuple[Any, str]]) -> None:
+    """Clear the association temp cache of each ``(entity, field_name)`` pair."""
+    for ent, fname in cache_clears:
+        cache = ent._temp_cache.get(fname)
+        if cache is not None:
+            cache.clear()
+
+
 _T = TypeVar("_T")
 
 
@@ -556,14 +616,6 @@ def repository_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[
     ):
         raise IncorrectUsageError(
             f"Repository `{repository_cls.__name__}` can only be associated with an Aggregate"
-        )
-
-    # Ensure the value of `database` is among known databases
-    if repository_cls.meta_.database != "ALL" and repository_cls.meta_.database not in [
-        database.value for database in Database
-    ]:
-        raise IncorrectUsageError(
-            f"Repository `{repository_cls.__name__}` should be associated with a valid Database"
         )
 
     return element_cls

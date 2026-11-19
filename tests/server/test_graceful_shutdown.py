@@ -84,7 +84,7 @@ class TestDomainClose:
                 side_effect=lambda: call_order.append("caches"),
             ),
             patch.object(
-                domain.providers,
+                domain.databases,
                 "close",
                 side_effect=lambda: call_order.append("providers"),
             ),
@@ -341,7 +341,7 @@ class TestCachesReinitializeClosesExisting:
 
 @pytest.mark.no_test_domain
 class TestProvidersReinitializeClosesExisting:
-    """Test that Providers._initialize() closes existing providers first."""
+    """Test that Databases._initialize() closes existing providers first."""
 
     def test_reinitialize_closes_old_providers(self):
         """Calling _initialize() again should close old provider connections."""
@@ -350,10 +350,10 @@ class TestProvidersReinitializeClosesExisting:
 
         mock_provider = MagicMock()
         mock_provider.ping.return_value = True
-        domain.providers._providers = {"default": mock_provider}
+        domain.databases._databases = {"default": mock_provider}
 
         # Re-initialize should close the old provider
-        domain.providers._initialize()
+        domain.databases._initialize()
 
         mock_provider.close.assert_called_once()
 
@@ -369,7 +369,7 @@ class TestRegistryCloseErrorIsolation:
             # through ``_close``; the provider registry holds the adapters.
             ("brokers", "_brokers", "broker", "_close"),
             ("caches", "_caches", "cache", "_close"),
-            ("providers", "_providers", "provider", "close"),
+            ("databases", "_databases", "provider", "close"),
         ],
     )
     def test_close_continues_on_error(self, caplog, registry, attribute, kind, close):
@@ -554,12 +554,12 @@ class TestRedisBrokerReconnectAfterClose:
         mock_client.xadd.assert_called_once()
 
     def test_read_blocking_reconnects_on_connection_error(self):
-        """_read_blocking re-establishes the connection on a dropped socket.
+        """read_blocking re-establishes the connection on a dropped socket.
 
         A "Connection closed by server" error on the blocking XREADGROUP is
-        swallowed inside _read_blocking (returns []), so the base read_blocking
-        wrapper's recovery never fires. _read_blocking must trigger the
-        reconnect itself so the next poll tick reads from a healthy socket.
+        swallowed inside read_blocking (returns []), so the Broker service's
+        retry never fires. read_blocking must trigger the reconnect itself so
+        the next poll tick reads from a healthy socket.
         """
         import redis
 
@@ -572,8 +572,8 @@ class TestRedisBrokerReconnectAfterClose:
         mock_client.ping.return_value = True
         broker.redis_instance = mock_client
 
-        result = broker._read_blocking(
-            "stream", "group", "consumer", timeout_ms=100, count=1
+        result = broker.read_blocking(
+            "stream", "group", "consumer", timeout_ms=100, limit=1
         )
 
         assert result == []
@@ -581,15 +581,15 @@ class TestRedisBrokerReconnectAfterClose:
         mock_client.ping.assert_called_once()
 
     def test_read_blocking_does_not_reconnect_on_non_connection_error(self):
-        """_read_blocking does not reconnect for unrelated errors (scope guard)."""
+        """read_blocking does not reconnect for unrelated errors (scope guard)."""
         broker = self._make_broker()
         broker._created_groups_set = {"stream:group"}
         mock_client = MagicMock()
         mock_client.xreadgroup.side_effect = ValueError("bad payload")
         broker.redis_instance = mock_client
 
-        result = broker._read_blocking(
-            "stream", "group", "consumer", timeout_ms=100, count=1
+        result = broker.read_blocking(
+            "stream", "group", "consumer", timeout_ms=100, limit=1
         )
 
         assert result == []

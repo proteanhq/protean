@@ -17,7 +17,7 @@ class Customer:
 domain.init(traverse=False)
 
 with domain.domain_context():
-    provider = domain.providers["default"]
+    provider = domain.databases["default"]
     for table in provider.metadata.sorted_tables:
         print(table.schema, table.name)  # None customer
 # --8<-- [end:full]

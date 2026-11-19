@@ -106,8 +106,9 @@ The PostgreSQL provider supports the following capabilities:
 - :white_check_mark: **NATIVE_CLAIM**: Claims rows in one statement
 - :white_check_mark: **BOUNDED_DELETE**: Deletes up to `limit` rows in one operation, without a separate read of their ids
 - :white_check_mark: **FILTERED_CLAIM_CANDIDATES**: Leaves held rows out of a claim's candidates
+- :white_check_mark: **INSERT_IF_ABSENT**: Writes a row only when no other row holds its unique key, in one atomic step
 
-PostgreSQL supports **15 of the 16 capability flags**. It does not declare
+PostgreSQL supports **16 of the 17 capability flags**. It does not declare
 `SIMULATED_TRANSACTIONS`, which is specific to the Memory provider.
 
 ## Indexes
@@ -158,9 +159,9 @@ Protean installs SQLAlchemy ``before_cursor_execute`` /
 ``after_cursor_execute`` listeners on the engine at provider construction
 time and emits two structured log events per query:
 
-- ``protean.adapters.repository.sqlalchemy.query`` at **DEBUG** for every
+- ``protean.adapters.database.sqlalchemy.query`` at **DEBUG** for every
   query (opt-in via normal level configuration).
-- ``protean.adapters.repository.sqlalchemy.slow_query`` at **WARNING** when
+- ``protean.adapters.database.sqlalchemy.slow_query`` at **WARNING** when
   a query exceeds the configured threshold.
 
 Both events carry ``statement``, ``parameters``, ``duration_ms``, and

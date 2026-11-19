@@ -96,7 +96,7 @@ def test_a_missing_customer_becomes_a_404_and_a_stored_one_a_200():
 
 def _commands(example):
     with example.domain.domain_context():
-        return example.domain.event_store.store.read("ordering::order:command")
+        return example.domain.event_store.read("ordering::order:command")
 
 
 def test_place_order_accepts_and_the_command_carries_the_header_correlation_id():
@@ -151,10 +151,10 @@ def test_x_request_id_is_the_fallback_and_no_header_gets_a_generated_id():
 
 def test_the_lifespan_initializes_the_domain_and_sets_up_the_database():
     example = load_example("guides/fastapi/index/007.py")
-    assert example.domain.event_store.store is None
+    assert example.domain.event_store._adapter is None
 
     with TestClient(example.app) as client:
-        assert example.domain.event_store.store is not None
+        assert example.domain.event_store._adapter is not None
         order_id = client.post("/orders", json={"customer_name": "Alice"}).json()["id"]
         response = client.get(f"/orders/{order_id}")
 
@@ -165,10 +165,10 @@ def test_the_lifespan_initializes_the_domain_and_sets_up_the_database():
 def test_the_multi_domain_lifespan_initializes_every_domain():
     example = load_example("guides/fastapi/index/008.py")
     domains = [example.identity_domain, example.catalogue_domain]
-    assert all(d.event_store.store is None for d in domains)
+    assert all(d.event_store._adapter is None for d in domains)
 
     with TestClient(example.app) as client:
-        assert all(d.event_store.store is not None for d in domains)
+        assert all(d.event_store._adapter is not None for d in domains)
         assert client.get("/customers/1").json() == {"domain": "Identity"}
         assert client.get("/products/1").json() == {"domain": "Catalogue"}
 
@@ -325,7 +325,7 @@ def test_the_yield_check_flags_a_bare_yield_and_a_finally_without_close():
 def test_module_level_init_lets_requests_use_the_domain_at_once():
     example = load_example("guides/fastapi/index/009.py")
 
-    assert example.domain.event_store.store is not None
+    assert example.domain.event_store._adapter is not None
     response = TestClient(example.app).post("/orders", json={"customer_name": "Bob"})
     assert response.status_code == 200
     with example.domain.domain_context():

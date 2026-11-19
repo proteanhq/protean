@@ -33,7 +33,7 @@ pip install "elasticsearch>=8.18.0,<9.0.0"
 --8<-- "adapters/database/elasticsearch/domain.toml"
 ```
 
-Aggregates declared with `provider="search"` are stored in Elasticsearch.
+Aggregates declared with `database="search"` are stored in Elasticsearch.
 `${ELASTICSEARCH_HOST|...}` reads the host from the `ELASTICSEARCH_HOST`
 environment variable, and uses the value after `|` when it is not set.
 
@@ -88,6 +88,7 @@ The Elasticsearch provider supports the following capabilities:
 - :white_check_mark: **BOUNDED_DELETE**: Deletes up to `limit` rows in one operation, without a separate read of their ids
 - :x: **NATIVE_CLAIM**: Claims rows in one statement
 - :x: **FILTERED_CLAIM_CANDIDATES**: Leaves held rows out of a claim's candidates
+- :x: **INSERT_IF_ABSENT**: Writes a row only when no other row holds its unique key, in one atomic step. Without it, `save_if_absent` checks the key and then saves, and Elasticsearch keeps both rows when two writers pass the check together.
 
 ## Indexes
 

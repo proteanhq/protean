@@ -174,7 +174,7 @@ def test_raises_when_event_store_not_configured(test_domain):
 @pytest.mark.eventstore
 def test_store_errors_propagate(test_domain):
     with mock.patch.object(
-        test_domain.event_store.store,
+        test_domain.event_store,
         "load_aggregate",
         side_effect=RuntimeError("store is down"),
     ):

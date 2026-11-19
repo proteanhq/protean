@@ -175,7 +175,7 @@ class TestUpcastWorksWithEventStore:
     """Integration: write a v1-shaped event, read back, verify upcast."""
 
     def test_round_trip_through_event_store(self, test_domain):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
 
         # Simulate a v1 event written to the store in the past
         store.write_message(
@@ -203,7 +203,7 @@ class TestUpcastWorksWithEventStore:
         )
 
         # Read it back — should be upcast to v3
-        messages = store.read("test::order-order-rt")
+        messages = test_domain.event_store.read("test::order-order-rt")
         assert len(messages) == 1
 
         event = messages[0].to_domain_object()

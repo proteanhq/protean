@@ -437,7 +437,7 @@ class TestHealthServerIntegration:
     def test_readyz_degraded_when_provider_fails(self, health_server):
         """Readiness returns degraded when a provider is unavailable."""
         engine, _, loop, port = health_server
-        for provider in engine.domain.providers.values():
+        for provider in engine.domain.databases.values():
             provider.ping = lambda: False
         status, body = _parse_http(_fetch_health(loop, port, path="/readyz"))
         assert "503" in status
@@ -457,7 +457,7 @@ class TestHealthServerIntegration:
         def _raise(*a, **kw):
             raise ConnectionError("unreachable")
 
-        engine.domain.event_store.store.ping = _raise
+        engine.domain.event_store._adapter.ping = _raise
         status, body = _parse_http(_fetch_health(loop, port, path="/readyz"))
         assert "503" in status
         assert body["checks"]["event_store"] == "unavailable"
@@ -707,7 +707,7 @@ def _handler_domain(*handlers):
 
 def _write_events(domain, count):
     """Append *count* events to the HealthUser stream category."""
-    store = domain.event_store.store
+    store = domain.event_store._adapter
     category = HealthUser.meta_.stream_category
     for n in range(count):
         store.write_message(
@@ -725,9 +725,9 @@ def _set_lag(domain, lag, lag_seconds=0.0, handler=HealthUserHandler):
     instant, then sets the domain clock *lag_seconds* past that instant. The
     real collector then reports ``lag`` and, when ``lag > 0``, ``lag_seconds``.
     """
-    store = domain.event_store.store
+    store = domain.event_store._adapter
     category = HealthUser.meta_.stream_category
-    head = store.stream_head_position(category)
+    head = domain.event_store.category_head_position(category)
     domain.clock = FrozenClock(_POSITION_TIME)
     store.write_message(
         f"position-{fqn(handler)}-{category}", "Read", {"position": head - lag}
@@ -1335,7 +1335,7 @@ class TestLagDrainRate:
             assert self._rate(refresher) == 0.0
 
             # The store loses every event, so the lag goes unreadable.
-            domain.event_store.store.clear()
+            domain.event_store._adapter.clear()
             clock[0] += 2.0
             await refresher._refresh_once()
             assert refresher.block["details"][0]["lag_seconds"] is None

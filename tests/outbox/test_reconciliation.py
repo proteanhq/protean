@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 from sqlalchemy import text
 
-from protean.adapters.repository.memory import MemorySession
+from protean.adapters.database.memory import MemorySession
 from protean.core.aggregate import BaseAggregate, apply
 from protean.core.command import BaseCommand
 from protean.core.command_handler import BaseCommandHandler
@@ -21,6 +21,7 @@ from protean.core.unit_of_work import UnitOfWork
 from protean.core.upcaster import BaseUpcaster
 from protean.domain import Domain
 from protean.fields import Identifier, Integer, String
+from protean.infra.dao import DAO
 from protean.server.engine import Engine
 from protean.utils import outbox as outbox_module
 from protean.utils.eventing import Message, MessageHeaders, Metadata
@@ -126,7 +127,7 @@ def _deposit(domain):
 
 
 def _newest_message_id(domain):
-    return domain.event_store.store.read_last_message("$all").metadata.headers.id
+    return domain.event_store.read_last_message("$all").metadata.headers.id
 
 
 def _lose_rows(outbox_repo, message_id):
@@ -160,7 +161,7 @@ class TestOutboxReconciliation:
 
         # Simulate the crash window: the event landed in the store but its
         # outbox row did not (here we delete it after the fact).
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
         assert outbox_repo.find_all_by_message_id(message_id) == []
 
         # Reconcile re-derives the missing row from the event store.
@@ -175,12 +176,12 @@ class TestOutboxReconciliation:
             _fund(domain)
         store_order = [
             m.metadata.headers.id
-            for m in domain.event_store.store.read("$all")
+            for m in domain.event_store.read("$all")
             if m.metadata.headers.type == Funded.__type__
         ]
         assert len(store_order) == 3
 
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
         assert reconcile_outbox(domain) == 3
 
         rows = outbox_repo._dao.query.all().items
@@ -201,17 +202,17 @@ class TestOutboxReconciliation:
         domain, outbox_repo = domain_and_repo
         for _ in range(4):
             _fund(domain)
-        store = domain.event_store.store
+        store = domain.event_store
         tail = store.read_last_message("$all").metadata.event_store.global_position
 
-        outbox_repo._dao._delete_all()  # crash window: newest row missing → scan
+        outbox_repo._dao.delete_all()  # crash window: newest row missing → scan
 
         positions = []
         real_read = store.read
 
-        def spy(*args, **kwargs):
-            positions.append(kwargs.get("position"))
-            return real_read(*args, **kwargs)
+        def spy(stream, position=0, limit=1000):
+            positions.append(position)
+            return real_read(stream, position, limit)
 
         monkeypatch.setattr(store, "read", spy)
 
@@ -230,16 +231,16 @@ class TestOutboxReconciliation:
         domain, outbox_repo = domain_and_repo
         _fund(domain)
         _fund(domain)
-        store = domain.event_store.store
+        store = domain.event_store
 
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
 
         positions = []
         real_read = store.read
 
-        def spy(*args, **kwargs):
-            positions.append(kwargs.get("position"))
-            return real_read(*args, **kwargs)
+        def spy(stream, position=0, limit=1000):
+            positions.append(position)
+            return real_read(stream, position, limit)
 
         monkeypatch.setattr(store, "read", spy)
 
@@ -252,14 +253,14 @@ class TestOutboxReconciliation:
     ):
         domain, outbox_repo = domain_and_repo
         _fund(domain)
-        store = domain.event_store.store
+        store = domain.event_store
 
         positions = []
         real_read = store.read
 
-        def spy(*args, **kwargs):
-            positions.append(kwargs.get("position"))
-            return real_read(*args, **kwargs)
+        def spy(stream, position=0, limit=1000):
+            positions.append(position)
+            return real_read(stream, position, limit)
 
         monkeypatch.setattr(store, "read", spy)
 
@@ -287,7 +288,7 @@ class TestOutboxReconciliation:
         message_id = _newest_message_id(domain)
 
         # Simulate the crash gap: the event is durable, its outbox row is not.
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
         assert outbox_repo.find_all_by_message_id(message_id) == []
 
         engine = Engine(domain, test_mode=True)
@@ -419,7 +420,7 @@ class TestOutboxReconciliationOnMessageDB:
             domain._get_outbox_repo("default")._dao
             provider._metadata.create_all(provider._engine)
             yield domain, domain._get_outbox_repo("default")
-            domain.event_store.store.close()
+            domain.event_store._adapter.close()
 
     def test_reconcile_recreates_missing_row_from_message_db(self, domain_and_repo):
         domain, outbox_repo = domain_and_repo
@@ -428,7 +429,7 @@ class TestOutboxReconciliationOnMessageDB:
         message_id = _newest_message_id(domain)
         assert len(outbox_repo.find_all_by_message_id(message_id)) == 1
 
-        outbox_repo._dao._delete_all()  # simulate the crash window
+        outbox_repo._dao.delete_all()  # simulate the crash window
         assert outbox_repo.find_all_by_message_id(message_id) == []
 
         # Before the fix this returned 0 (read_last_message("$all") was None).
@@ -458,10 +459,13 @@ class TestReconcileBesideALiveWriter:
         domain, outbox_repo = domain_and_repo
         _fund(domain)
         message_id = _newest_message_id(domain)
-        outbox_repo._dao._delete_all()  # simulate the crash window
+        outbox_repo._dao.delete_all()  # simulate the crash window
 
-        live_dao = provider_adapter(domain, "default").dao_for(
-            Outbox, outbox_repo._database_model
+        provider = provider_adapter(domain, "default")
+        live_dao = DAO(
+            domain,
+            provider,
+            provider.dao_for(Outbox, outbox_repo._database_model),
         )
         live_rows = []
         real_rebuilt_partition_key = outbox_module._rebuilt_partition_key
@@ -534,10 +538,10 @@ class TestReconcileBesideALiveUnitOfWorkOnPostgres:
                 with provider._engine.begin() as conn:
                     conn.execute(text(f"DROP SCHEMA IF EXISTS {self.SCHEMA} CASCADE"))
                 provider.close()
-                domain.event_store.store.close()
+                domain.event_store._adapter.close()
 
     def test_the_live_commit_succeeds_and_one_row_is_kept(self, domain, monkeypatch):
-        store = domain.event_store.store
+        store = domain.event_store
         real_append = store.append
         sweep_results = []
         sweep_errors = []
@@ -651,7 +655,7 @@ def _append_foreign_event(domain, foreign_domain):
         shipment = Shipment()
         shipment.raise_(Shipped(shipment_id=shipment.id))
         message = Message.from_domain_object(shipment._events[-1])
-    domain.event_store.store.write_message(
+    domain.event_store._adapter.write_message(
         message.metadata.headers.stream,
         message.metadata.headers.type,
         message.data,
@@ -663,7 +667,7 @@ def _append_foreign_event(domain, foreign_domain):
 def _funded_message_ids(domain):
     return [
         m.metadata.headers.id
-        for m in domain.event_store.store.read("$all")
+        for m in domain.event_store.read("$all")
         if m.metadata.headers.type == Funded.__type__
     ]
 
@@ -720,7 +724,7 @@ class TestReconcileSkipsForeignEvents:
         domain, outbox_repo = domain_and_repo
         _fund(domain)
         [own_id] = _funded_message_ids(domain)
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
         foreign_id = _append_foreign_event(domain, foreign_domain)
 
         assert reconcile_outbox(domain) == 1
@@ -763,7 +767,7 @@ class TestReconcileSkipsForeignEvents:
         domain, outbox_repo = domain_and_repo
         _fund(domain)
         [own_id] = _funded_message_ids(domain)
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
         for _ in range(3):
             _append_foreign_event(domain, foreign_domain)
 
@@ -779,7 +783,7 @@ class TestReconcileSkipsForeignEvents:
         domain, outbox_repo = domain_and_repo
         _fund(domain)
         [own_id] = _funded_message_ids(domain)
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
         foreign_id = _append_foreign_event(domain, foreign_domain)
 
         engine = Engine(domain, test_mode=True)
@@ -839,7 +843,7 @@ class TestReconcileSkipsCommands:
         domain.process(command, asynchronous=True)
         [command_id] = [
             m.metadata.headers.id
-            for m in domain.event_store.store.read("$all")
+            for m in domain.event_store.read("$all")
             if m.metadata.headers.type == Fund.__type__
         ]
         assert _newest_message_id(domain) == command_id  # precondition
@@ -859,7 +863,7 @@ class TestReconcileSkipsCommands:
         domain, outbox_repo = domain_and_repo
         _fund(domain)
         [event_id] = _funded_message_ids(domain)
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
         command_id = self._process_fund(domain)
 
         assert reconcile_outbox(domain) == 1
@@ -884,7 +888,7 @@ class TestReconcileSkipsProcessManagerTransitions:
         transition_type = FundTrackerPM._transition_event_cls.__type__
         [transition_id] = [
             m.metadata.headers.id
-            for m in domain.event_store.store.read("$all")
+            for m in domain.event_store.read("$all")
             if m.metadata.headers.type == transition_type
         ]
         assert _newest_message_id(domain) == transition_id  # precondition
@@ -904,7 +908,7 @@ class TestReconcileSkipsProcessManagerTransitions:
         domain, outbox_repo = domain_and_repo
         _fund(domain)
         [event_id] = _funded_message_ids(domain)
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
         transition_id = self._transition_id(domain)
 
         assert reconcile_outbox(domain) == 1
@@ -935,13 +939,13 @@ class TestReconcilePartitionKey:
         wallet.raise_(Funded(wallet_id=key, amount=100))
         domain.repository_for(Wallet).add(wallet)
         assert key != wallet.id  # precondition
-        return domain.event_store.store.read_last_message("$all").metadata.headers.id
+        return domain.event_store.read_last_message("$all").metadata.headers.id
 
     def _post(self, domain):
         ledger = Ledger()
         ledger.raise_(Posted(ledger_id=ledger.id))
         domain.repository_for(Ledger).add(ledger)
-        return domain.event_store.store.read_last_message("$all").metadata.headers.id
+        return domain.event_store.read_last_message("$all").metadata.headers.id
 
     def test_rebuilt_row_carries_the_unit_of_work_partition_key(
         self, partitioned, caplog
@@ -951,7 +955,7 @@ class TestReconcilePartitionKey:
         [original] = outbox_repo.find_all_by_message_id(event_id)
         assert original.partition_key == "key-7"  # precondition
 
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
         with caplog.at_level(logging.ERROR, logger="protean.utils.outbox"):
             assert reconcile_outbox(domain) == 1
         assert "as abandoned" not in caplog.text
@@ -965,7 +969,7 @@ class TestReconcilePartitionKey:
         [original] = outbox_repo.find_all_by_message_id(event_id)
         assert original.stream_category == Wallet.meta_.stream_category
 
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
         assert reconcile_outbox(domain) == 1
 
         [rebuilt] = outbox_repo.find_all_by_message_id(event_id)
@@ -977,7 +981,7 @@ class TestReconcilePartitionKey:
         domain, outbox_repo = partitioned
         fund_id = self._fund_keyed(domain, "key-7")
         post_id = self._post(domain)
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
 
         assert reconcile_outbox(domain) == 2
         [fund_row] = outbox_repo.find_all_by_message_id(fund_id)
@@ -994,7 +998,7 @@ class TestReconcilePartitionKey:
         domain, outbox_repo = partitioned
         stale_id = self._fund_keyed(domain, "key-7")
         good_id = self._fund_keyed(domain, "key-8")
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
         domain.config["server"]["priority_lanes"] = {"backfill_suffix": "key-7"}
 
         with caplog.at_level(logging.ERROR, logger="protean.utils.outbox"):
@@ -1016,7 +1020,7 @@ class TestReconcilePartitionKey:
         domain, outbox_repo = domain_and_repo
         _fund(domain)
         [event_id] = _funded_message_ids(domain)
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
 
         assert reconcile_outbox(domain) == 1
         [rebuilt] = outbox_repo.find_all_by_message_id(event_id)
@@ -1042,7 +1046,7 @@ class TestOutboxedEventPredicate:
     def test_own_aggregate_event_qualifies(self, domain_and_repo):
         domain, _ = domain_and_repo
         _fund(domain)
-        message = domain.event_store.store.read_last_message("$all")
+        message = domain.event_store.read_last_message("$all")
         assert message.metadata.headers.type == Funded.__type__
         assert _resolve_outboxed_event_class(domain, message, "default") is not None
 
@@ -1053,9 +1057,9 @@ class TestOutboxedEventPredicate:
         rebuilds only the event-sourced aggregate's."""
         domain, _ = domain_and_repo
         _fund(domain)
-        funded = domain.event_store.store.read_last_message("$all")
+        funded = domain.event_store.read_last_message("$all")
         _deposit(domain)
-        deposited = domain.event_store.store.read_last_message("$all")
+        deposited = domain.event_store.read_last_message("$all")
         assert deposited.metadata.headers.type == Deposited.__type__
 
         assert _resolve_outboxed_event_class(domain, funded, "default") is not None
@@ -1079,7 +1083,7 @@ class TestReconcileHonorsTheProvider:
 
         domain = _make_domain_with(
             tmp_path,
-            (Report, {"provider": "analytics", "event_sourced": True}),
+            (Report, {"database": "analytics", "event_sourced": True}),
             (ReportFiled, {"part_of": Report}),
             before_init=add_analytics_database,
         )
@@ -1112,8 +1116,8 @@ class TestReconcileHonorsTheProvider:
         report_event_id = self._file_report(domain)
         default_repo = domain._get_outbox_repo("default")
         analytics_repo = domain._get_outbox_repo("analytics")
-        default_repo._dao._delete_all()
-        analytics_repo._dao._delete_all()
+        default_repo._dao.delete_all()
+        analytics_repo._dao.delete_all()
 
         assert reconcile_outbox(domain) == 1
         assert len(default_repo.find_all_by_message_id(fund_id)) == 1
@@ -1165,7 +1169,7 @@ class TestReconcileRepairsOlderEventVersions:
         assert message.metadata.headers.type == "Reconcile.Withdrawn.v1"
         with domain.domain_context():
             outbox_repo = _create_tables(domain)
-            domain.event_store.store.write_message(
+            domain.event_store._adapter.write_message(
                 message.metadata.headers.stream,
                 message.metadata.headers.type,
                 message.data,
@@ -1191,8 +1195,8 @@ class TestReconcileTwoDomainsOnSharedMessageDB:
         with domain_a.domain_context():
             outbox_repo = _create_tables(domain_a)
         yield domain_a, domain_b, outbox_repo
-        domain_a.event_store.store.close()
-        domain_b.event_store.store.close()
+        domain_a.event_store._adapter.close()
+        domain_b.event_store._adapter.close()
 
     def _write_a_then_b(self, domain_a, domain_b):
         with domain_a.domain_context():
@@ -1219,7 +1223,7 @@ class TestReconcileTwoDomainsOnSharedMessageDB:
         domain_a, domain_b, outbox_repo = domains
         own_id, foreign_id = self._write_a_then_b(domain_a, domain_b)
         with domain_a.domain_context():
-            outbox_repo._dao._delete_all()
+            outbox_repo._dao.delete_all()
 
         assert reconcile_outbox(domain_a) == 1
         with domain_a.domain_context():
@@ -1272,7 +1276,7 @@ class TestReconcileExternalBrokers:
         wallet = Wallet()
         wallet.raise_(Credited(wallet_id=key or wallet.id, amount=100))
         domain.repository_for(Wallet).add(wallet)
-        return domain.event_store.store.read_last_message("$all").metadata.headers.id
+        return domain.event_store.read_last_message("$all").metadata.headers.id
 
     @staticmethod
     def _brokers(outbox_repo, message_id):
@@ -1287,7 +1291,7 @@ class TestReconcileExternalBrokers:
             message_id = self._credit(domain)
             assert self._brokers(outbox_repo, message_id) == ["default", "ext-a"]
 
-            outbox_repo._dao._delete_all()
+            outbox_repo._dao.delete_all()
             assert reconcile_outbox(domain) == 2
             assert self._brokers(outbox_repo, message_id) == ["default", "ext-a"]
 
@@ -1297,7 +1301,7 @@ class TestReconcileExternalBrokers:
             outbox_repo = _create_tables(domain)
             message_id = self._credit(domain)
 
-            outbox_repo._dao._delete_all()
+            outbox_repo._dao.delete_all()
             assert reconcile_outbox(domain) == 3
             assert self._brokers(outbox_repo, message_id) == [
                 "default",
@@ -1311,7 +1315,7 @@ class TestReconcileExternalBrokers:
             outbox_repo = _create_tables(domain)
             message_ids = [self._credit(domain) for _ in range(2)]
 
-            outbox_repo._dao._delete_all()
+            outbox_repo._dao.delete_all()
             assert reconcile_outbox(domain) == 4
 
             numbers = {
@@ -1365,7 +1369,7 @@ class TestReconcileExternalBrokers:
                 assert row["correlation_id"] is not None
                 assert row["causation_id"] is not None
 
-            outbox_repo._dao._delete_all()
+            outbox_repo._dao.delete_all()
             reconcile_outbox(domain)
             rebuilt = {
                 row.target_broker: {f: getattr(row, f) for f in fields}
@@ -1388,7 +1392,7 @@ class TestReconcileExternalBrokers:
             outbox_repo = _create_tables(domain)
             message_id = self._credit(domain, key="key-7")
 
-            outbox_repo._dao._delete_all()
+            outbox_repo._dao.delete_all()
             assert reconcile_outbox(domain) == 2
             rows = outbox_repo.find_all_by_message_id(message_id)
             assert len(rows) == 2
@@ -1410,7 +1414,7 @@ class TestReconcileExternalBrokers:
         with domain.domain_context():
             outbox_repo = _create_tables(domain)
             message_id = self._credit(domain, key="key-7")
-            outbox_repo._dao._delete_all()
+            outbox_repo._dao.delete_all()
             domain.config["server"]["priority_lanes"] = {"backfill_suffix": "key-7"}
 
             with caplog.at_level(logging.ERROR, logger="protean.utils.outbox"):
@@ -1443,7 +1447,7 @@ class TestReconcileExternalBrokers:
         assert message.metadata.headers.type == "Reconcile.Withdrawn.v1"
         with domain.domain_context():
             outbox_repo = _create_tables(domain)
-            domain.event_store.store.write_message(
+            domain.event_store._adapter.write_message(
                 message.metadata.headers.stream,
                 message.metadata.headers.type,
                 message.data,
@@ -1462,7 +1466,7 @@ class TestReconcileExternalBrokers:
             message_id = self._credit(domain)
             assert self._brokers(outbox_repo, message_id) == ["default"]
 
-            outbox_repo._dao._delete_all()
+            outbox_repo._dao.delete_all()
             assert reconcile_outbox(domain) == 1
             assert self._brokers(outbox_repo, message_id) == ["default"]
 
@@ -1474,7 +1478,7 @@ class TestReconcileExternalBrokers:
             outbox_repo = _create_tables(domain)
             message_id = self._credit(domain)
 
-            outbox_repo._dao._delete_all()
+            outbox_repo._dao.delete_all()
             assert reconcile_outbox(domain) == 1
             assert self._brokers(outbox_repo, message_id) == ["default"]
 
@@ -1513,7 +1517,7 @@ class TestReconcileExternalBrokers:
         with domain.domain_context():
             outbox_repo = _create_tables(domain)
             message_id = self._credit(domain)
-            outbox_repo._dao._delete_all()
+            outbox_repo._dao.delete_all()
 
             assert reconcile_outbox(domain) == 2
             assert reconcile_outbox(domain) == 0
@@ -1559,7 +1563,7 @@ class TestReconcileSkipsRowsCleanupMayHaveDeleted:
         domain.repository_for(Wallet).add(wallet)
         message_id = _newest_message_id(domain)
         assert len(outbox_repo.find_all_by_message_id(message_id)) == 2
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
         return outbox_repo, message_id
 
     def test_event_older_than_the_published_retention_is_not_rebuilt(self, tmp_path):
@@ -1648,7 +1652,7 @@ class TestReconcileSkipsStateBasedAggregates:
         domain, outbox_repo = domain_and_repo
         account = Account(balance=100)
         account.raise_(Deposited(account_id=account.id, amount=100))
-        domain.event_store.store.append(account._events[0])
+        domain.event_store.append(account._events[0])
         assert _newest_message_id(domain) == account._events[0]._metadata.headers.id
 
         assert reconcile_outbox(domain) == 0
@@ -1660,9 +1664,9 @@ class TestReconcileSkipsStateBasedAggregates:
     ):
         domain, outbox_repo = domain_and_repo
         account = _deposit(domain)
-        last = domain.event_store.store.read_last_message("$all")
+        last = domain.event_store.read_last_message("$all")
         message_id = last.metadata.headers.id
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
 
         assert reconcile_outbox(domain) == 0
         assert outbox_repo.find_all_by_message_id(message_id) == []
@@ -1684,7 +1688,7 @@ class TestReconcileSkipsStateBasedAggregates:
             outbox_repo = _create_tables(domain)
             account = Account(balance=100)
             account.raise_(Audited(account_id=account.id))
-            domain.event_store.store.append(account._events[0])
+            domain.event_store.append(account._events[0])
             message_id = account._events[0]._metadata.headers.id
 
             assert reconcile_outbox(domain) == 0
@@ -1699,14 +1703,14 @@ class TestReconcileSkipsStateBasedAggregates:
         domain, outbox_repo = domain_and_repo
         wallet = Wallet()
         wallet.raise_(Funded(wallet_id=wallet.id, amount=100))
-        domain.event_store.store.append(wallet._events[0])
+        domain.event_store.append(wallet._events[0])
         message_id = wallet._events[0]._metadata.headers.id
         # The wallet can be loaded, so a lookup would succeed if reconcile made one.
         assert domain.repository_for(Wallet).get(wallet.id).balance == 100
 
         lookups = []
         real_repository_for = domain.repository_for
-        real_load_aggregate = domain.event_store.store.load_aggregate
+        real_load_aggregate = domain.event_store.load_aggregate
 
         # The outbox reaches its own table through ``repository_for`` too, so
         # only a wallet lookup counts.
@@ -1720,9 +1724,7 @@ class TestReconcileSkipsStateBasedAggregates:
             return real_load_aggregate(*args, **kwargs)
 
         monkeypatch.setattr(domain, "repository_for", repository_for_spy)
-        monkeypatch.setattr(
-            domain.event_store.store, "load_aggregate", load_aggregate_spy
-        )
+        monkeypatch.setattr(domain.event_store, "load_aggregate", load_aggregate_spy)
 
         assert reconcile_outbox(domain) == 1
         assert lookups == []
@@ -1744,7 +1746,7 @@ class TestReconcileSkipsStateBasedAggregates:
         domain, outbox_repo = domain_and_repo
         _fund(domain)
         [funded_id] = _funded_message_ids(domain)
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
         _deposit(domain)
         deposited_id = _newest_message_id(domain)
 
@@ -1769,9 +1771,9 @@ class TestReconcileSkipsStateBasedAggregates:
         with domain.domain_context():
             outbox_repo = _create_tables(domain)
             _deposit(domain)
-            outbox_repo._dao._delete_all()
+            outbox_repo._dao.delete_all()
 
-            store = domain.event_store.store
+            store = domain.event_store
             reads = []
             real_read_last_message = store.read_last_message
 
@@ -1807,7 +1809,7 @@ class TestReconcileSkipsStateBasedAggregates:
 
         domain = _make_domain_with(
             tmp_path,
-            (Note, {"provider": "analytics"}),
+            (Note, {"database": "analytics"}),
             (NoteAdded, {"part_of": Note}),
             before_init=add_analytics_database,
         )
@@ -1822,9 +1824,9 @@ class TestReconcileSkipsStateBasedAggregates:
             note.raise_(NoteAdded(note_id=note.id))
             domain.repository_for(Note).add(note)
             assert len(analytics_repo._dao.query.all().items) == 1
-            analytics_repo._dao._delete_all()
+            analytics_repo._dao.delete_all()
 
-            store = domain.event_store.store
+            store = domain.event_store
             reads = []
             real_read_last_message = store.read_last_message
 
@@ -1895,7 +1897,7 @@ class TestOverlappingSweepsInMemory:
             outbox_repo = domain._get_outbox_repo("default")
             _fund(domain)
             message_id = _newest_message_id(domain)
-            outbox_repo._dao._delete_all()  # simulate the crash window
+            outbox_repo._dao.delete_all()  # simulate the crash window
 
             sweep_a, sweep_b, staged_by_a = self._sweep_a_with_sweep_b_inside(
                 domain, monkeypatch
@@ -1915,7 +1917,7 @@ class TestOverlappingSweepsInMemory:
             wallet.raise_(Credited(wallet_id=wallet.id, amount=100))
             domain.repository_for(Wallet).add(wallet)
             message_id = _newest_message_id(domain)
-            outbox_repo._dao._delete_all()  # simulate the crash window
+            outbox_repo._dao.delete_all()  # simulate the crash window
 
             sweep_a, sweep_b, staged_by_a = self._sweep_a_with_sweep_b_inside(
                 domain, monkeypatch
@@ -1936,7 +1938,7 @@ class TestOverlappingSweepsInMemory:
             outbox_repo = domain._get_outbox_repo("default")
             for _ in range(3):
                 _fund(domain)
-            outbox_repo._dao._delete_all()  # simulate the crash window
+            outbox_repo._dao.delete_all()  # simulate the crash window
 
             assert reconcile_outbox(domain) == 3
             assert len(outbox_repo._dao.query.all().items) == 3
@@ -1954,8 +1956,11 @@ class TestOverlappingSweepsInMemory:
         with domain.domain_context():
             outbox_repo = domain._get_outbox_repo("default")
             outbox_cls = outbox_repo._dao.entity_cls
-            sweep_dao = provider_adapter(domain, "default").dao_for(
-                outbox_cls, outbox_repo._database_model
+            provider = provider_adapter(domain, "default")
+            sweep_dao = DAO(
+                domain,
+                provider,
+                provider.dao_for(outbox_cls, outbox_repo._database_model),
             )
             real_commit = MemorySession.commit
             sweep_rows = []

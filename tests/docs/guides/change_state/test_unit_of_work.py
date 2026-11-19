@@ -12,7 +12,7 @@ import threading
 import pytest
 
 from protean import UnitOfWork, current_uow
-from protean.adapters.repository.memory import MemorySession
+from protean.adapters.database.memory import MemorySession
 from protean.exceptions import ObjectNotFoundError, ValidationError
 from tests.docs.guides.change_state.failing import (
     AddFails,
@@ -233,7 +233,7 @@ class TestErrorsDuringCommit:
         assert status_of(rollback_example, order.id) == "PENDING"
 
     def test_a_failed_commit_raises_transaction_error_with_the_listed_keys(
-        self, rollback_example, commit_fails
+        self, rollback_example, commit_fails, monkeypatch
     ):
         order = rollback_example.Order(total=25.0)
 
@@ -247,5 +247,8 @@ class TestErrorsDuringCommit:
             "messages_count": 0,
         }
         assert not current_uow
+        # A standalone read commits its own session, so restore the commit
+        # before reading the store back.
+        monkeypatch.undo()
         with pytest.raises(ObjectNotFoundError):
             rollback_example.domain.repository_for(rollback_example.Order).get(order.id)

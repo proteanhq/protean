@@ -22,8 +22,8 @@ Each adapter package provides:
 
 ## Database Adapters
 
-Database adapters subclass `BaseProvider`, implement `ProviderPort` (or
-`RawQueryProviderPort` for raw queries), and declare their
+Database adapters subclass `BaseDatabase`, implement `DatabasePort` (or
+`RawQueryDatabasePort` for raw queries), and declare their
 capabilities through the `DatabaseCapabilities` flag system.
 
 See [Building Custom Database Adapters](./database/custom-databases.md)

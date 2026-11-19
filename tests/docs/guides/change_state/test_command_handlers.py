@@ -120,7 +120,7 @@ def test_publish_article_handler_raises_article_published(publishing):
         publishing.PublishArticle(article_id="2"), asynchronous=False
     )
 
-    messages = publishing.publishing.event_store.store.read("publishing::article")
+    messages = publishing.publishing.event_store.read("publishing::article")
     events = [m for m in messages if m.metadata.domain.kind == "EVENT"]
     assert len(events) == 1
     assert events[0].metadata.headers.type == "Publishing.ArticlePublished.v1"
@@ -143,7 +143,7 @@ def test_asynchronous_processing_returns_the_command_position(accounts):
     position = accounts.submit_registration(command)
 
     assert isinstance(position, int)
-    stored = accounts.domain.event_store.store.read("accounts::account:command")
+    stored = accounts.domain.event_store.read("accounts::account:command")
     assert len(stored) == 1
     assert stored[0].metadata.headers.type == "Accounts.RegisterCommand.v1"
     assert stored[0].data["email"] == "sam@example.com"

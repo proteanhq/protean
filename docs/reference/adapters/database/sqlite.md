@@ -71,6 +71,7 @@ The SQLite provider supports the following capabilities:
 - :white_check_mark: **BOUNDED_DELETE**: Deletes up to `limit` rows in one operation, without a separate read of their ids
 - :white_check_mark: **FILTERED_CLAIM_CANDIDATES**: Leaves held rows out of a claim's candidates
 - :x: **NATIVE_CLAIM**: Claims rows in one statement
+- :white_check_mark: **INSERT_IF_ABSENT**: Writes a row only when no other row holds its unique key, in one atomic step
 
 ## Timestamps
 
@@ -113,8 +114,8 @@ constraints. The pattern is identical to
 
 The SQLite provider is built on SQLAlchemy, so it emits the same structured log
 events as the [PostgreSQL provider](./postgresql.md#slow-query-detection).
-These are the ``protean.adapters.repository.sqlalchemy.slow_query`` WARNING and
-the ``protean.adapters.repository.sqlalchemy.query`` DEBUG events. Configure
+These are the ``protean.adapters.database.sqlalchemy.slow_query`` WARNING and
+the ``protean.adapters.database.sqlalchemy.query`` DEBUG events. Configure
 the threshold via ``[logging].slow_query_threshold_ms`` in ``domain.toml``.
 
 ## Limitations

@@ -1,4 +1,4 @@
-"""Core unit tests for RedisBroker._read_blocking_streams.
+"""Core unit tests for RedisBroker.read_blocking_streams.
 
 The override reads the pending lists of every stream in one XREADGROUP call,
 then waits for a new message on all the streams in a second call. These tests
@@ -56,9 +56,9 @@ def _broker(client):
     return broker
 
 
-def _read(broker, timeout_ms, count=1):
-    return broker._read_blocking_streams(
-        STREAMS, "group", "consumer-1", timeout_ms=timeout_ms, count=count
+def _read(broker, timeout_ms, limit=1):
+    return broker.read_blocking_streams(
+        STREAMS, "group", "consumer-1", timeout_ms=timeout_ms, limit=limit
     )
 
 
@@ -77,7 +77,7 @@ class TestPendingRead:
         client = _FakeRedisClient([[], []])
         broker = _broker(client)
 
-        assert _read(broker, timeout_ms, count=7) == EMPTY
+        assert _read(broker, timeout_ms, limit=7) == EMPTY
 
         _, ids, kwargs = client.reads[0]
         assert ids == [("orders", "0"), ("orders:backfill", "0")]
@@ -121,7 +121,7 @@ class TestNewMessageRead:
         client = _FakeRedisClient([[], []])
         broker = _broker(client)
 
-        assert _read(broker, timeout_ms, count=7) == EMPTY
+        assert _read(broker, timeout_ms, limit=7) == EMPTY
 
         assert len(client.reads) == 2
         _, ids, kwargs = client.reads[1]
@@ -183,7 +183,7 @@ class TestErrors:
         )
         broker = _broker(client)
 
-        result = _read(broker, timeout_ms, count=7)
+        result = _read(broker, timeout_ms, limit=7)
 
         assert result == {"orders": [], "orders:backfill": [("9-0", {"n": 9})]}
         # Groups were created once up front, then again on both streams after

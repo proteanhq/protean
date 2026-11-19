@@ -65,7 +65,7 @@ def _register_users(test_domain, count):
 
 
 def _stored_message(test_domain, user_id):
-    messages = test_domain.event_store.store.read(f"test::user-{user_id}")
+    messages = test_domain.event_store.read(f"test::user-{user_id}")
     assert len(messages) == 1
     return messages[0]
 
@@ -144,13 +144,13 @@ def test_writing_a_rebuilt_event_again_stores_the_new_positions(test_domain):
     )
     assert second_write._metadata.event_store == original.metadata.event_store
 
-    test_domain.event_store.store.append(second_write)
+    test_domain.event_store.append(second_write)
 
-    raw_rows = test_domain.event_store.store.get_stream_messages(stream)
+    raw_rows = test_domain.event_store._adapter.get_stream_messages(stream)
     assert len(raw_rows) == 2
     assert [row["metadata"].get("event_store") for row in raw_rows] == [None, None]
 
-    rewritten = test_domain.event_store.store.read(stream)[1]
+    rewritten = test_domain.event_store.read(stream)[1]
     assert rewritten.metadata.event_store.position == 1
     assert rewritten.metadata.event_store.global_position > (
         original.metadata.event_store.global_position

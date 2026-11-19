@@ -24,7 +24,7 @@ By default, projections use the `"default"` database provider. This is the most 
 ### Explicit provider
 
 ```python
-@domain.projection(provider="postgres")
+@domain.projection(database="postgres")
 class ProductReport:
     product_id: Identifier(identifier=True)
     name: String(max_length=200)
@@ -61,10 +61,10 @@ class ActiveSession:
 
 | Option | Default | Purpose |
 |--------|---------|---------|
-| `provider` | `"default"` | Database provider name |
+| `database` | `"default"` | Database provider name |
 | `cache` | `None` | Cache provider name |
 | `schema_name` | auto-derived | Custom table/collection name |
 | `order_by` | `()` | Default query ordering |
 | `limit` | `100` | Default query result limit |
 
-When both `provider` and `cache` are specified, `cache` takes precedence.
+When both `database` and `cache` are specified, `cache` takes precedence.

@@ -1,4 +1,4 @@
-"""Contract tests for ``BaseDAO._delete_top``, the bounded-batch delete
+"""Contract tests for ``DAO.delete_top``, the bounded-batch delete
 primitive that backs batched outbox cleanup.
 
 These run against the in-memory adapter (core suite). The contract is:
@@ -10,16 +10,16 @@ These run against the in-memory adapter (core suite). The contract is:
 - ``limit <= 0`` deletes nothing.
 
 Cross-adapter behaviour is covered in
-``tests/adapters/repository/generic/test_bulk_operations.py`` and the
+``tests/adapters/database/generic/test_bulk_operations.py`` and the
 SQLAlchemy single-statement path in
-``tests/adapters/repository/sqlalchemy_repo/``.
+``tests/adapters/database/sqlalchemy_repo/``.
 """
 
 import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Integer, String
-from protean.port.dao import portable_delete_top
+from protean.infra.dao import portable_delete_top
 from protean.utils.query import Q
 
 
@@ -56,7 +56,7 @@ class TestDeleteTopContract:
     def test_deletes_up_to_limit_and_returns_count(self, dao, seed):
         seed(7)
 
-        deleted = dao._delete_top(Q(), limit=3)
+        deleted = dao.delete_top(Q(), limit=3)
 
         assert deleted == 3
         assert dao.query.count() == 4
@@ -64,7 +64,7 @@ class TestDeleteTopContract:
     def test_deletes_fewer_than_limit_when_table_is_small(self, dao, seed):
         seed(2)
 
-        deleted = dao._delete_top(Q(), limit=5)
+        deleted = dao.delete_top(Q(), limit=5)
 
         assert deleted == 2
         assert dao.query.count() == 0
@@ -73,7 +73,7 @@ class TestDeleteTopContract:
         seed(3, status="active")
         seed(4, status="stale")
 
-        deleted = dao._delete_top(Q(status="stale"), limit=10)
+        deleted = dao.delete_top(Q(status="stale"), limit=10)
 
         assert deleted == 4
         assert dao.query.count() == 3
@@ -82,7 +82,7 @@ class TestDeleteTopContract:
     def test_order_by_controls_which_rows_go_first(self, dao, seed):
         seed(5)  # ranks 0..4
 
-        dao._delete_top(Q(), limit=2, order_by="-rank")
+        dao.delete_top(Q(), limit=2, order_by="-rank")
 
         remaining = sorted(w.rank for w in dao.query.all().items)
         assert remaining == [0, 1, 2]
@@ -90,14 +90,14 @@ class TestDeleteTopContract:
     def test_limit_zero_or_negative_deletes_nothing(self, dao, seed):
         seed(3)
 
-        assert dao._delete_top(Q(), limit=0) == 0
-        assert dao._delete_top(Q(), limit=-1) == 0
+        assert dao.delete_top(Q(), limit=0) == 0
+        assert dao.delete_top(Q(), limit=-1) == 0
         assert dao.query.count() == 3
 
     def test_no_matches_returns_zero(self, dao, seed):
         seed(3, status="active")
 
-        assert dao._delete_top(Q(status="missing"), limit=5) == 0
+        assert dao.delete_top(Q(status="missing"), limit=5) == 0
         assert dao.query.count() == 3
 
 
@@ -141,17 +141,17 @@ class TestPortableDefault:
         seed(1000)
 
         delete_all_calls = []
-        original = dao._delete_all
+        original = dao.delete_all
 
         def spy(criteria):
             delete_all_calls.append(criteria)
             return original(criteria)
 
-        dao._delete_all = spy
+        dao.delete_all = spy
 
         deleted = portable_delete_top(dao, Q(), limit=1000)
 
         assert deleted == 1000
         assert dao.query.count() == 0
-        # 1000 ids chunked at 900 → two _delete_all calls.
+        # 1000 ids chunked at 900 → two delete_all calls.
         assert len(delete_all_calls) == 2

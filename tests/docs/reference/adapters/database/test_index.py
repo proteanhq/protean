@@ -2,9 +2,9 @@
 
 import pytest
 
-from protean.adapters.repository.elasticsearch import ESProvider
-from protean.adapters.repository.memory import MemoryProvider
-from protean.adapters.repository.sqlalchemy import PostgresqlProvider, SAProvider
+from protean.adapters.database.elasticsearch import ESDatabase
+from protean.adapters.database.memory import MemoryDatabase
+from protean.adapters.database.sqlalchemy import PostgresqlDatabase, SADatabase
 from protean.infra import registry
 from tests.docs.support import domain_from_config, load_example
 from tests.shared import (
@@ -29,7 +29,7 @@ def test_metadata_lists_the_aggregate_table():
     example = load_example("adapters/database/index/002.py")
 
     provider = provider_adapter(example.domain, "default")
-    assert isinstance(provider, SAProvider)
+    assert isinstance(provider, SADatabase)
     with example.domain.domain_context():
         assert [table.name for table in provider.metadata.sorted_tables] == ["customer"]
 
@@ -40,13 +40,13 @@ MULTIPLE = "adapters/database/index/multiple_databases.toml"
 def _provider(domain, name):
     """Build the provider ``name`` from the loaded config, without ``domain.init()``."""
     conn_info = dict(domain.config["databases"][name])
-    return registry.providers.get(conn_info["provider"])(name, domain, conn_info)
+    return registry.databases.get(conn_info["provider"])(name, domain, conn_info)
 
 
 def test_default_database_is_the_memory_provider(tmp_path):
     domain = domain_from_config(MULTIPLE, tmp_path)
 
-    assert type(_provider(domain, "default")) is MemoryProvider
+    assert type(_provider(domain, "default")) is MemoryDatabase
 
 
 # Each adapter job starts one service, so the analytics and reporting
@@ -59,7 +59,7 @@ def test_analytics_database_connects_to_elasticsearch(tmp_path, monkeypatch):
 
     provider = _provider(domain, "analytics")
 
-    assert type(provider) is ESProvider
+    assert type(provider) is ESDatabase
     nodes = provider._client.transport.node_pool.all()
     assert [node.base_url for node in nodes] == [es_host]
     assert provider.ping()
@@ -72,7 +72,7 @@ def test_reporting_database_connects_to_postgresql(tmp_path, monkeypatch):
 
     provider = _provider(domain, "reporting")
 
-    assert type(provider) is PostgresqlProvider
+    assert type(provider) is PostgresqlDatabase
     url = provider._engine.url
     assert (url.host, url.port, url.database) == (
         "localhost",

@@ -32,7 +32,7 @@ def test_registered_model_overrides_the_schema_name(example):
 
     assert model.meta_.schema_name == "products"
     assert model.derive_schema_name() == "products"
-    assert model.meta_.database is None
+    assert model.meta_.database_type is None
 
 
 def test_reporting_model_is_registered_for_postgresql_only(example):
@@ -40,7 +40,7 @@ def test_reporting_model_is_registered_for_postgresql_only(example):
     model = product_models(example)["ProductReportingModel"]
 
     assert model.meta_.schema_name == "product_reports"
-    assert model.meta_.database == "postgresql"
+    assert model.meta_.database_type == "postgresql"
 
 
 def test_memory_database_uses_the_model_without_a_database_type(example):

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Annotated, TypeVar
 import typer
 from rich import print
 
-from protean.adapters.repository.schema_migrator import (
+from protean.adapters.database.schema_migrator import (
     _migrations_provider_name,
     migration_provider,
 )
@@ -23,7 +23,7 @@ from protean.utils.domain_discovery import derive_domain
 
 if TYPE_CHECKING:
     from protean.domain import Domain
-    from protean.port.provider import SchemaMigrator
+    from protean.port.database import SchemaMigrator
 
 T = TypeVar("T")
 

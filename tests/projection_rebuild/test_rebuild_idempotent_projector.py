@@ -126,7 +126,7 @@ def _marker_ids(handler: str) -> list[str]:
 
 
 def _stored_message_ids(test_domain) -> list[str]:
-    messages = list(test_domain.event_store.store.read_all("test::counter"))
+    messages = list(test_domain.event_store.read_all("test::counter"))
     return sorted(message.metadata.headers.id for message in messages)
 
 
@@ -155,7 +155,7 @@ def _assert_fresh_markers(test_domain) -> None:
     assert _marker_ids(TALLY_HANDLER) == stored
 
     # The fresh markers dedupe a redelivery after the rebuild.
-    message = next(iter(test_domain.event_store.store.read_all("test::counter")))
+    message = next(iter(test_domain.event_store.read_all("test::counter")))
     TallyProjector._handle(message)
     assert _counts(Tally) == before
 
@@ -298,7 +298,7 @@ class TestRebuildIdempotentProjectorRelational:
             calls.append(criteria)
             raise RuntimeError("marker delete failed")
 
-        monkeypatch.setattr(marker_dao, "_delete_all", _boom)
+        monkeypatch.setattr(marker_dao, "delete_all", _boom)
 
         with pytest.raises(RuntimeError, match="marker delete failed"):
             test_domain.rebuild_projection(Tally)

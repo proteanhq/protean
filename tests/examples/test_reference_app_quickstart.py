@@ -113,4 +113,4 @@ class TestReferenceAppQuickstart:
 
         captured = capsys.readouterr()
         assert captured.out == ""
-        assert len(mod.domain.providers) == 0
+        assert len(mod.domain.databases) == 0

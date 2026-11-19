@@ -135,7 +135,7 @@ class _StatusDomain:
         with self.domain.domain_context():
             if self._redis:
                 self.domain.brokers.get("default")._adapter.redis_instance = fake_redis
-            store = self.domain.event_store.store
+            store = self.domain.event_store._adapter
             for handler_cls, stream, events, position in self._event_store_writes:
                 for i in range(events):
                     store.write_message(f"{stream}-{i}", "Placed", {"i": i})

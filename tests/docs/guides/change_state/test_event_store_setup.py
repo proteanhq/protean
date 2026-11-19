@@ -5,6 +5,7 @@ example fresh and writes account ``acc-001`` itself: an ``AccountOpened`` event
 at position 0, then one ``Deposited`` event per deposit.
 """
 
+import inspect
 from datetime import UTC, datetime
 
 import pytest
@@ -33,7 +34,7 @@ def example():
     module.domain.init(traverse=False)
     with module.domain.domain_context():
         yield module
-    module.domain.event_store.store.clear()
+    module.domain.event_store._adapter.clear()
 
 
 def open_account(example, deposits):
@@ -100,7 +101,7 @@ def test_the_category_is_read_through_read_all_in_pages_of_1000(example, monkeyp
     # from a single `read`. A stream long enough to need a second page takes
     # minutes to write to the memory store, so record the call instead.
     open_account(example, DEPOSITS)
-    store = example.domain.event_store.store
+    store = example.domain.event_store
     calls = []
     read_all = store.read_all
 
@@ -114,6 +115,10 @@ def test_the_category_is_read_through_read_all_in_pages_of_1000(example, monkeyp
 
     assert calls == [("myapp::account", {"page_size": 1000})]
     assert deposited == sum(DEPOSITS)
+    # The adapter's delegate always passes ``page_size`` on, so the recorded
+    # call alone cannot show that the example sets it.
+    source = inspect.getsource(example.read_account_events)
+    assert 'store.read_all("myapp::account", page_size=1000)' in source
 
 
 def test_the_account_replays_from_its_events(example):

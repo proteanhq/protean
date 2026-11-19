@@ -38,40 +38,6 @@
     ]
   },
   {
-    "path": "src/protean/core/entity.py",
-    "file_name": "entity.py",
-    "functions": [
-      {
-        "name": "BaseEntity::_update_data",
-        "complexity": 17
-      },
-      {
-        "name": "BaseEntity::__setattr__",
-        "complexity": 29
-      },
-      {
-        "name": "entity_factory",
-        "complexity": 32
-      },
-      {
-        "name": "BaseEntity::_maybe_inject_auto_id",
-        "complexity": 38
-      },
-      {
-        "name": "BaseEntity::_run_invariants",
-        "complexity": 45
-      },
-      {
-        "name": "BaseEntity::__init__",
-        "complexity": 46
-      },
-      {
-        "name": "BaseEntity::model_post_init",
-        "complexity": 46
-      }
-    ]
-  },
-  {
     "path": "src/protean/core/event.py",
     "file_name": "event.py",
     "functions": [
@@ -92,54 +58,12 @@
     ]
   },
   {
-    "path": "src/protean/core/projection.py",
-    "file_name": "projection.py",
-    "functions": [
-      {
-        "name": "BaseProjection::__init__",
-        "complexity": 27
-      },
-      {
-        "name": "BaseProjection::model_post_init",
-        "complexity": 33
-      }
-    ]
-  },
-  {
     "path": "src/protean/core/query.py",
     "file_name": "query.py",
     "functions": [
       {
         "name": "BaseQuery::_convert_vo_descriptors",
         "complexity": 16
-      }
-    ]
-  },
-  {
-    "path": "src/protean/core/repository.py",
-    "file_name": "repository.py",
-    "functions": [
-      {
-        "name": "BaseRepository::_has_changed_child",
-        "complexity": 17
-      },
-      {
-        "name": "BaseRepository::_do_add",
-        "complexity": 19
-      },
-      {
-        "name": "BaseRepository::_sync_children",
-        "complexity": 62
-      }
-    ]
-  },
-  {
-    "path": "src/protean/core/unit_of_work.py",
-    "file_name": "unit_of_work.py",
-    "functions": [
-      {
-        "name": "UnitOfWork::_do_commit",
-        "complexity": 57
       }
     ]
   },

@@ -88,7 +88,7 @@ def test_synchronous_command_is_not_handled_asynchronously(test_domain):
     )
     test_domain.process(command)
 
-    messages = test_domain.event_store.store.read("test::user:command")
+    messages = test_domain.event_store.read("test::user:command")
     assert len(messages) == 1
 
     engine = Engine(domain=test_domain, test_mode=True)

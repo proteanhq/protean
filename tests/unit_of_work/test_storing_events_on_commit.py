@@ -93,7 +93,7 @@ def test_persisting_events_on_commit(test_domain):
         )
     )
 
-    events = test_domain.event_store.store.get_stream_messages(
+    events = test_domain.event_store._adapter.get_stream_messages(
         f"test::user-{identifier}"
     )
 
@@ -106,11 +106,11 @@ def test_event_store_append_precedes_relational_commit(test_domain, monkeypatch)
     the two then leaves the events durable (recoverable) rather than leaving the
     store missing an event whose state/outbox already committed.
     """
-    from protean.adapters.repository.memory import MemorySession
-    from protean.port.event_store import BaseEventStore
+    from protean.adapters.database.memory import MemorySession
+    from protean.infra.event_store import EventStore
 
     order: list[str] = []
-    orig_append = BaseEventStore.append
+    orig_append = EventStore.append
     orig_commit = MemorySession.commit
 
     def traced_append(self, obj):
@@ -121,7 +121,7 @@ def test_event_store_append_precedes_relational_commit(test_domain, monkeypatch)
         order.append("commit")
         return orig_commit(self)
 
-    monkeypatch.setattr(BaseEventStore, "append", traced_append)
+    monkeypatch.setattr(EventStore, "append", traced_append)
     monkeypatch.setattr(MemorySession, "commit", traced_commit)
 
     with UnitOfWork():

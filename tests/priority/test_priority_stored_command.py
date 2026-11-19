@@ -103,9 +103,7 @@ def sync_domain():
 
 
 def _stored_command(domain, gadget_id):
-    message = domain.event_store.store.read_last_message(
-        f"test::gadget:command-{gadget_id}"
-    )
+    message = domain.event_store.read_last_message(f"test::gadget:command-{gadget_id}")
     assert message is not None
     return message
 

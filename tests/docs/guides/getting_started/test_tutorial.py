@@ -79,18 +79,18 @@ _HAS_PROJECTIONS = {ch07, bookshelf, bookshelf.api, ch21}
 # ---------------------------------------------------------------------------
 def _cleanup(domain) -> None:
     """Reset all stores and close connections after a test."""
-    for provider_name in domain.providers:
+    for provider_name in domain.databases:
         provider = provider_adapter(domain, provider_name)
         try:
             provider.clear()
         finally:
             provider.close()
 
-    if domain.event_store.store:
+    if domain.event_store._adapter:
         try:
-            domain.event_store.store.clear()
+            domain.event_store._adapter.clear()
         finally:
-            domain.event_store.store.close()
+            domain.event_store._adapter.close()
 
 
 def _configure_domain(
@@ -640,7 +640,7 @@ class TestTutorialCh12(_TutorialBase):
                 assert books.total == 0
 
                 category = f"{bookshelf.models.Book.meta_.stream_category}:command"
-                stored = domain.event_store.store.read(category)
+                stored = domain.event_store.read(category)
                 assert [m.metadata.headers.type for m in stored] == [
                     "Bookshelf.AddBook.v1"
                 ]
@@ -741,7 +741,7 @@ class TestTutorialCh13(_TutorialBase):
                 event
                 for event in (
                     message.to_domain_object()
-                    for message in domain.event_store.store.read("$all")
+                    for message in domain.event_store.read("$all")
                 )
                 if isinstance(event, ch13.OrderConfirmed)
             ]
@@ -751,7 +751,7 @@ class TestTutorialCh13(_TutorialBase):
             category = f"{ch13.Inventory.meta_.stream_category}:command"
             reservations = [
                 message.to_domain_object()
-                for message in domain.event_store.store.read(category)
+                for message in domain.event_store.read(category)
             ]
             assert [(c.order_id, c.book_title, c.quantity) for c in reservations] == [
                 (order.id, "Dune", 3)
@@ -788,7 +788,7 @@ class TestTutorialCh13(_TutorialBase):
                 event
                 for event in (
                     message.to_domain_object()
-                    for message in domain.event_store.store.read("$all")
+                    for message in domain.event_store.read("$all")
                 )
                 if isinstance(event, ch13.OrderConfirmed) and event.order_id == order.id
             ]
@@ -893,7 +893,7 @@ class TestTutorialCh13(_TutorialBase):
             category = f"{ch13.Inventory.meta_.stream_category}:command"
             reservations = [
                 message.to_domain_object()
-                for message in domain.event_store.store.read(category)
+                for message in domain.event_store.read(category)
             ]
             assert [(c.order_id, c.book_title, c.quantity) for c in reservations] == [
                 (order.id, "Dune", 5)
@@ -1066,7 +1066,7 @@ class TestTutorialCh15(_TutorialBase):
 
             # Verify fact events were stored in the event store
             fact_stream = f"{ch15.Book.meta_.stream_category}-fact-{gatsby.id}"
-            fact_messages = domain.event_store.store.read(fact_stream)
+            fact_messages = domain.event_store.read(fact_stream)
             assert len(fact_messages) == 2  # One per state change
 
             # Last fact event has the final complete state
@@ -1209,7 +1209,7 @@ class TestTutorialCh19(_TutorialBase):
             with domain.domain_context():
                 ch19.add_bulk_book()
                 category = f"{ch19.Book.meta_.stream_category}:command"
-                stored = domain.event_store.store.read(category)
+                stored = domain.event_store.read(category)
         finally:
             domain.config["command_processing"] = "sync"
 

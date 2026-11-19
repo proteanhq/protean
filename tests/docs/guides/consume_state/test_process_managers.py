@@ -46,8 +46,7 @@ def external_example():
 def transitions(module, pm_cls, order_id):
     stream = f"{pm_cls.meta_.stream_category}-{order_id}"
     return [
-        message.to_domain_object()
-        for message in module.domain.event_store.store.read(stream)
+        message.to_domain_object() for message in module.domain.event_store.read(stream)
     ]
 
 
@@ -60,7 +59,7 @@ def commands_for(module, aggregate_cls, order_id):
     prefix = f"{aggregate_cls.meta_.stream_category}:command-"
     commands = [
         message.to_domain_object()
-        for message in module.domain.event_store.store.read("$all")
+        for message in module.domain.event_store.read("$all")
         if message.metadata.headers.stream.startswith(prefix)
     ]
     return [command for command in commands if command.order_id == order_id]
@@ -185,11 +184,11 @@ class TestHandlingEventsFromOtherDomains:
     def test_a_stored_message_is_delivered_by_its_type_string(self, external_example):
         ex = external_example
         pm = ex.OrderFulfillmentPM
-        store = ex.domain.event_store.store
+        store = ex.domain.event_store
         stream = "billing::payment-pay-1"
         # Written the way the billing domain stores it: only the type string
         # links the payload to this domain's PaymentReceived class.
-        store.write_message(
+        store._adapter.write_message(
             stream,
             "Billing.PaymentReceived.v1",
             {"payment_id": "pay-1", "order_id": "ord-1", "amount": 20.0},

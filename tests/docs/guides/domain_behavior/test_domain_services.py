@@ -191,7 +191,7 @@ def test_a_repeated_command_confirms_the_order_once(handler_example):
 
     confirmed = [
         m
-        for m in domain.event_store.store.read("$all")
+        for m in domain.event_store.read("$all")
         if m.metadata.headers.type == example.OrderConfirmed.__type__
     ]
     assert len(confirmed) == 1

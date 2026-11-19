@@ -105,7 +105,7 @@ class TestClaimInCommitOrder:
         # apart in commit order: SQL Server's ``DATETIME`` rounds to about
         # 3 ms, so two fast commits could otherwise share a timestamp and
         # leave the tie to the random ids.
-        outbox_repo._dao._delete_all()
+        outbox_repo._dao.delete_all()
         for row in sorted(rows, key=lambda r: r.data["count"], reverse=True):
             row.created_at = BASE_TIME + timedelta(seconds=row.data["count"])
             row.state_.mark_new()
@@ -297,7 +297,7 @@ class Tallied(BaseEvent):
 @pytest.mark.transactional
 def test_numbering_restarts_for_each_provider(test_domain):
     test_domain.config["databases"]["secondary"] = {"provider": "memory"}
-    test_domain.register(Tally, provider="secondary")
+    test_domain.register(Tally, database="secondary")
     test_domain.register(Tallied, part_of=Tally)
     test_domain.init(traverse=False)
 

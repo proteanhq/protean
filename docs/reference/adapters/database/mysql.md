@@ -98,6 +98,7 @@ MySQL.
 - :white_check_mark: **FILTERED_CLAIM_CANDIDATES**: Leaves held rows out of a claim's candidates.
 - :x: **NATIVE_CLAIM**: Claims rows in one statement.
 - :x: **BOUNDED_DELETE**: Deletes up to `limit` rows in one operation, without a separate read of their ids.
+- :white_check_mark: **INSERT_IF_ABSENT**: Writes a row only when no other row holds its unique key, in one atomic step.
 
 ## Collation and case sensitivity
 
@@ -331,8 +332,8 @@ same as for [PostgreSQL](./postgresql.md#sqlalchemy-model).
 ## Slow query detection
 
 The provider emits the same structured
-`protean.adapters.repository.sqlalchemy.slow_query` WARNING and
-`protean.adapters.repository.sqlalchemy.query` DEBUG events as the
+`protean.adapters.database.sqlalchemy.slow_query` WARNING and
+`protean.adapters.database.sqlalchemy.query` DEBUG events as the
 [PostgreSQL provider](./postgresql.md#slow-query-detection). Set the threshold
 with `[logging].slow_query_threshold_ms` in `domain.toml`.
 

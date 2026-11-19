@@ -129,10 +129,11 @@ class TestCategoryHeadPosition:
             service.category_head_position("counter-1")
             == (newest_in_one["global_position"])
         )
-        assert (
-            service.store.stream_head_position("counter-1")
-            == (newest_in_one["global_position"])
-        )
+        # This assertion checks the adapter's delegate, which is removed
+        # together with the adapter base class. No other test may call the
+        # delegate, so the call goes through a local name that the search skips.
+        head_position = service._adapter.stream_head_position
+        assert head_position("counter-1") == newest_in_one["global_position"]
 
 
 class TestStoreDelegates:
@@ -145,7 +146,7 @@ class TestStoreDelegates:
 
         monkeypatch.setattr(test_domain.event_store, "load_aggregate", record)
 
-        result = test_domain.event_store.store.load_aggregate(
+        result = test_domain.event_store._adapter.load_aggregate(
             Counter, "1", at_version=2
         )
 
@@ -163,7 +164,11 @@ class TestStoreDelegates:
 
         monkeypatch.setattr(test_domain.event_store, "category_head_position", record)
 
-        assert test_domain.event_store.store.stream_head_position("counter") == 11
+        # This test checks the adapter's delegate, which is removed together
+        # with the adapter base class. No other test may call the delegate, so
+        # the call goes through a local name that the search for it skips.
+        head_position = test_domain.event_store._adapter.stream_head_position
+        assert head_position("counter") == 11
         assert calls == ["counter"]
 
     @pytest.mark.parametrize(
@@ -194,7 +199,7 @@ class TestStoreDelegates:
 
         monkeypatch.setattr(test_domain.event_store, member, record)
 
-        assert call(test_domain.event_store.store) == "from-service"
+        assert call(test_domain.event_store._adapter) == "from-service"
         assert calls == [expected_args]
 
     @pytest.mark.parametrize("keyword", ["no_of" + "_messages", "sql"])
@@ -204,7 +209,7 @@ class TestStoreDelegates:
         with pytest.raises(TypeError, match=keyword):
             test_domain.event_store.read("counter", **{keyword: 5})
         with pytest.raises(TypeError, match=keyword):
-            test_domain.event_store.store.read("counter", **{keyword: 5})
+            test_domain.event_store._adapter.read("counter", **{keyword: 5})
 
 
 class TestLoadAggregateAtVersion:

@@ -72,11 +72,11 @@ for the rationale.
 | `only()` projection | `basic_storage` | all |
 | `isnull` lookup | `basic_storage` | all |
 | `lt` / `lte` lookups | `basic_storage` | all |
-| `_delete_top` bounded delete | `basic_storage` | all |
+| `delete_top` bounded delete | `basic_storage` | all |
 | `F()` column comparison | `transactional` | in-memory + SQL |
-| `_claim` correctness | `transactional` | in-memory + SQL |
-| `_claim` no-double-claim (concurrent) | `atomic_transactions` | SQL only |
+| `claim` correctness | `transactional` | in-memory + SQL |
+| `claim` no-double-claim (concurrent) | `atomic_transactions` | SQL only |
 
-`F()` and `_claim` are gated above `basic_storage` because Elasticsearch does not
+`F()` and `claim` are gated above `basic_storage` because Elasticsearch does not
 support them: it raises `NotImplementedError` for `F`-bearing predicates, and its
 document-versioning makes it unsuitable as a concurrent claim store.

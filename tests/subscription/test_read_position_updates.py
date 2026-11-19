@@ -126,7 +126,7 @@ async def test_write_position_after_interval(test_domain):
     last_written_position = await email_event_handler_subscription.fetch_last_position()
     assert last_written_position == -1  # Default value
 
-    test_domain.event_store.store.append(email._events[0])
+    test_domain.event_store.append(email._events[0])
 
     await email_event_handler_subscription.tick()
 
@@ -138,7 +138,7 @@ async def test_write_position_after_interval(test_domain):
     # Populate 15 messages (5 more than default interval)
     for _ in range(15):
         email.raise_(event)
-        test_domain.event_store.store.append(email._events[-1])
+        test_domain.event_store.append(email._events[-1])
 
     await email_event_handler_subscription.tick()
     last_written_position = await email_event_handler_subscription.fetch_last_position()
@@ -176,14 +176,14 @@ async def test_that_positions_are_not_written_when_already_in_sync(test_domain):
     # Populate 15 messages (5 more than default interval)
     for _ in range(15):
         email.raise_(event)
-        test_domain.event_store.store.append(email._events[-1])
+        test_domain.event_store.append(email._events[-1])
 
     # Consume messages (By default, 10 messages per tick)
     await email_event_handler_subscription.tick()
 
     # Fetch the current event store state
     # After reading 15 messages with batch size 100, we get all messages + position update
-    total_messages = len(test_domain.event_store.store.read("$all"))
+    total_messages = len(test_domain.event_store.read("$all"))
     # We should have 15 events + 1 position update = 16, but since all processed at once,
     # we might have an additional position update at the end
     assert total_messages in [16, 17]  # Allow for extra position update
@@ -194,7 +194,7 @@ async def test_that_positions_are_not_written_when_already_in_sync(test_domain):
 
     # Ensure that the event store state did not change significantly
     #   We might have one more position update if the interval was reached
-    new_total = len(test_domain.event_store.store.read("$all"))
+    new_total = len(test_domain.event_store.read("$all"))
     assert new_total in [total_messages, total_messages + 1]
     # Ensure last read message is 15 (all messages were processed in one batch)
     assert await email_event_handler_subscription.fetch_last_position() == 15
@@ -298,7 +298,7 @@ def test_shutdown_writes_the_position_reached_in_the_drain_window(test_domain):
     email = Email(id=str(uuid4()), email=email_address, sent_at=datetime.now(UTC))
     for _ in range(3):
         email.raise_(Sent(email=email_address, sent_at=datetime.now(UTC)))
-        test_domain.event_store.store.append(email._events[-1])
+        test_domain.event_store.append(email._events[-1])
 
     handle_message = engine.handle_message
 

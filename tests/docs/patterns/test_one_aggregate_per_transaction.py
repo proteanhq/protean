@@ -66,7 +66,7 @@ def _commands_for(example, aggregate_cls):
     stream = f"{aggregate_cls.meta_.stream_category}:command"
     return [
         (m.metadata.headers.type.split(".")[-2], m.data)
-        for m in example.domain.event_store.store.read(stream)
+        for m in example.domain.event_store.read(stream)
     ]
 
 
@@ -190,7 +190,7 @@ def test_a_redelivered_money_debited_credits_the_target_once():
         stream = f"{example.Account.meta_.stream_category}-a"
         [message] = [
             m
-            for m in domain.event_store.store.read(stream)
+            for m in domain.event_store.read(stream)
             if m.metadata.headers.type.endswith(".MoneyDebited.v1")
         ]
         example.AccountEventHandler._handle(message)
@@ -245,7 +245,7 @@ def test_the_debit_transaction_alone_leaves_the_target_unchanged():
         stream = f"{example.Account.meta_.stream_category}-a"
         [message] = [
             m
-            for m in domain.event_store.store.read(stream)
+            for m in domain.event_store.read(stream)
             if m.metadata.headers.type.endswith(".MoneyDebited.v1")
         ]
         assert message.data["target_account_id"] == "b"

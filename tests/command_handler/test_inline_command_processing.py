@@ -76,7 +76,7 @@ def test_that_command_is_persisted_in_message_store(test_domain):
     identifier = str(uuid4())
     test_domain.process(Register(user_id=identifier, email="john.doe@gmail.com"))
 
-    messages = test_domain.event_store.store.read("test::user:command")
+    messages = test_domain.event_store.read("test::user:command")
 
     assert len(messages) == 1
     assert messages[0].metadata.headers.stream == f"test::user:command-{identifier}"

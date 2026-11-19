@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 # renders nothing, on any adapter, so ``validate_indexes`` rejects it at
 # ``Domain.init()`` rather than letting the index be silently dropped.
 #
-# The renderer in ``protean/adapters/repository/sqlalchemy.py`` holds a matching
+# The renderer in ``protean/adapters/database/sqlalchemy.py`` holds a matching
 # map, ``_SA_DIALECT_FACTORIES``, with one SQLAlchemy compiler per name in this
 # set. The two are declared separately and
 # ``test_factory_map_covers_every_rendered_dialect`` fails if they go out of

@@ -21,9 +21,7 @@ def customers():
 
 
 def _fact_messages(example, customer_id):
-    return example.customers.event_store.store.read(
-        f"customers::customer-fact-{customer_id}"
-    )
+    return example.customers.event_store.read(f"customers::customer-fact-{customer_id}")
 
 
 def _fact_payloads(example, customer_id):

@@ -17,7 +17,7 @@ from protean.infra.broker import Broker
 from protean.infra.cache import Cache
 from protean.port.broker import BrokerCapabilities, BrokerMessage, BrokerPort
 from protean.port.cache import CachePatternPort, CachePort, CacheTTLPort
-from protean.port.provider import BaseProvider, ProviderPort, RawQueryProviderPort
+from protean.port.database import BaseDatabase, DatabasePort, RawQueryDatabasePort
 
 
 # ---------------------------------------------------------------------------
@@ -169,12 +169,12 @@ class TestBrokerPortTypeHints:
 
 PROVIDER_PORT_MEMBERS = sorted(
     (port.__name__, name)
-    for port in (ProviderPort, RawQueryProviderPort)
+    for port in (DatabasePort, RawQueryDatabasePort)
     for name in port.__abstractmethods__
 )
 
 
-class TestProviderPortTypeHints:
+class TestDatabasePortTypeHints:
     """Each abstract member names its return type.
 
     The annotations are read as written, because several name classes the
@@ -183,13 +183,13 @@ class TestProviderPortTypeHints:
 
     def test_every_provider_port_declares_abstract_members(self):
         ports = {port for port, _name in PROVIDER_PORT_MEMBERS}
-        assert ports == {"ProviderPort", "RawQueryProviderPort"}
+        assert ports == {"DatabasePort", "RawQueryDatabasePort"}
 
     @pytest.mark.parametrize(("port_name", "member"), PROVIDER_PORT_MEMBERS)
     def test_member_has_return_type(self, port_name, member):
         port = {
-            "ProviderPort": ProviderPort,
-            "RawQueryProviderPort": RawQueryProviderPort,
+            "DatabasePort": DatabasePort,
+            "RawQueryDatabasePort": RawQueryDatabasePort,
         }[port_name]
         attribute = getattr(port, member)
         function = attribute.fget if isinstance(attribute, property) else attribute
@@ -197,8 +197,8 @@ class TestProviderPortTypeHints:
 
     @pytest.mark.parametrize("member", ["close", "create_schema", "drop_schema"])
     def test_optional_member_has_return_type(self, member):
-        assert "return" in getattr(ProviderPort, member).__annotations__
+        assert "return" in getattr(DatabasePort, member).__annotations__
 
     def test_base_provider_raw_has_return_type(self):
-        hints = get_type_hints(BaseProvider.raw)
+        hints = get_type_hints(BaseDatabase.raw)
         assert "return" in hints

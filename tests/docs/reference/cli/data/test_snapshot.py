@@ -23,7 +23,7 @@ def example():
 
 def snapshot_rows(module, aggregate_cls, identifier):
     category = aggregate_cls.meta_.stream_category
-    return module.domain.event_store.store.get_stream_messages(
+    return module.domain.event_store._adapter.get_stream_messages(
         f"{category}:snapshot-{identifier}"
     )
 

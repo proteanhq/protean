@@ -59,13 +59,13 @@ def order_id() -> str:
 def _read_events(test_domain, order_id: str) -> list[Message]:
     """Read all messages from the order's event stream."""
     stream = f"{Order.meta_.stream_category}-{order_id}"
-    return test_domain.event_store.store.read(stream)
+    return test_domain.event_store.read(stream)
 
 
 def _read_commands(test_domain, order_id: str) -> list[Message]:
     """Read all messages from the order's command stream."""
     stream = f"{Order.meta_.stream_category}:command-{order_id}"
-    return test_domain.event_store.store.read(stream)
+    return test_domain.event_store.read(stream)
 
 
 # ---------------------------------------------------------------------------
@@ -466,7 +466,7 @@ class TestResolveAndLoadGroupEdgeCases:
         msg.metadata = None
 
         with pytest.raises(ValueError, match="Message has no headers.id"):
-            causation._resolve_and_load_group(store.store, msg)
+            causation._resolve_and_load_group(store._adapter, msg)
 
     @pytest.mark.eventstore
     def test_message_with_no_correlation_id_returns_empty_group(self, test_domain):
@@ -478,7 +478,7 @@ class TestResolveAndLoadGroupEdgeCases:
         msg.metadata.headers.id = "some-msg-id"
         msg.metadata.domain = None
 
-        mid, group = causation._resolve_and_load_group(store.store, msg)
+        mid, group = causation._resolve_and_load_group(store._adapter, msg)
         assert mid == "some-msg-id"
         assert group == []
 

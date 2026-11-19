@@ -73,7 +73,7 @@ def _stream(order_id):
 
 @pytest.mark.eventstore
 def test_load_applies_the_last_transition(test_domain, order_id, transitions):
-    assert len(list(test_domain.event_store.store.read_all(_stream(order_id)))) == (
+    assert len(list(test_domain.event_store.read_all(_stream(order_id)))) == (
         transitions
     )
 
@@ -88,7 +88,7 @@ def test_load_applies_the_last_transition(test_domain, order_id, transitions):
 def test_next_transition_persists_past_one_page(test_domain, order_id, transitions):
     OrderFulfillmentPM._handle(ShipmentDelivered(order_id=order_id))
 
-    messages = list(test_domain.event_store.store.read_all(_stream(order_id)))
+    messages = list(test_domain.event_store.read_all(_stream(order_id)))
     assert len(messages) == transitions + 1
     assert messages[-1].metadata.event_store.position == transitions
 

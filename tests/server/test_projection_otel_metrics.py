@@ -100,11 +100,11 @@ def _get_metric(metric_reader, name: str):
 
 def _seed_caught_up(test_domain):
     with test_domain.domain_context():
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         category = BalancesProjector.meta_.stream_categories[0]
         for i in range(3):
             store.write_message(f"{category}-{i}", "Registered", {"user_id": str(i)})
-        head = store.stream_head_position(category)
+        head = test_domain.event_store.category_head_position(category)
         store.write_message(
             f"position-{fqn(BalancesProjector)}-{category}",
             "Read",

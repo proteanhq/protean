@@ -1151,7 +1151,11 @@ def _check_outbox_repo(
     """Check an outbox repository's table, and warn about rows no processor publishes."""
     try:
         outbox_repo._dao  # noqa: B018
-    # Any DAO error is reported as a missing outbox table.
+    # A provider whose capability flags its DAO class cannot serve already
+    # names the flag and the class.
+    except ConfigurationError:
+        raise
+    # Any other DAO error is reported as a missing outbox table.
     except Exception as e:
         raise ConfigurationError(
             f"Outbox table not found for provider '{provider_name}'. "

@@ -230,9 +230,9 @@ def _append_provider_pool_stats(
     rows of the providers before it in place.
     """
     with domain.domain_context():
-        providers = domain.providers
-        if providers and providers._providers:
-            for name, provider in providers._providers.items():
+        providers = domain.databases
+        if providers and providers._databases:
+            for name, provider in providers._databases.items():
                 pool = provider.health().pool
                 # An empty dict carries no counters, so it gets no row either.
                 if pool:

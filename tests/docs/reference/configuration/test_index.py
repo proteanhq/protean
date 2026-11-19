@@ -8,8 +8,8 @@ import pytest
 from protean import Domain
 from protean.adapters.broker.redis import RedisBroker
 from protean.adapters.cache.redis import RedisCache
+from protean.adapters.database.sqlalchemy import SqliteDatabase
 from protean.adapters.event_store.message_db import MessageDBStore
-from protean.adapters.repository.sqlalchemy import SqliteProvider
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.projection import BaseProjection
@@ -226,17 +226,17 @@ def test_databases_and_provider_on_an_aggregate(load_toml, tmp_path, monkeypatch
     }
 
     example = load_example("reference/configuration/index/002.py")
-    assert example.User.meta_.provider == "sqlite"
+    assert example.User.meta_.database == "sqlite"
 
     # The relative sqlite path is resolved from the working directory
     monkeypatch.chdir(tmp_path)
 
     # The example's own class, registered in the domain the TOML file built
-    domain.register(example.User, provider="sqlite")
+    domain.register(example.User, database="sqlite")
     domain.init(traverse=False)
     with domain.domain_context():
-        provider = domain.providers["sqlite"]
-        assert isinstance(provider, SqliteProvider)
+        provider = domain.databases["sqlite"]
+        assert isinstance(provider, SqliteDatabase)
         assert domain.repository_for(example.User)._provider is provider
 
 

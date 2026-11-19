@@ -228,7 +228,7 @@ providers, so no single atomic dedup marker applies. Protean offers
 framework-managed deduplication only where it knows the one provider that holds
 the writes: a projector's projection provider (see
 [Projectors](./projectors.md#opting-into-built-in-deduplication)) and an
-idempotent subscriber's `provider` (see
+idempotent subscriber's `database` (see
 [Subscribers](./subscribers.md#idempotent-optional-default-false)).
 
 ## Configuration Options

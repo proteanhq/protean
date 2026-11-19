@@ -235,7 +235,7 @@ async def test_successful_message_acknowledgment(
             subscription.consumer_group,
             subscription.consumer_name,
             timeout_ms=100,
-            count=1,
+            limit=1,
         )
 
         if messages:

@@ -22,8 +22,8 @@ def test_read_blocking_fallback_for_unsupported_brokers(broker, monkeypatch):
     had_blocking_read = broker.has_capability(BrokerCapabilities.BLOCKING_READ)
 
     # If broker supports blocking reads, temporarily remove that capability.
-    # The adapter decides between blocking and fallback reads, so the patch goes
-    # on the adapter's class; monkeypatch restores the original property.
+    # The Broker service reads the flag from the adapter, so the patch goes on
+    # the adapter's class; monkeypatch restores the original property.
     if had_blocking_read:
         new_capabilities = original_capabilities & ~BrokerCapabilities.BLOCKING_READ
         monkeypatch.setattr(
@@ -32,13 +32,13 @@ def test_read_blocking_fallback_for_unsupported_brokers(broker, monkeypatch):
             property(lambda self: new_capabilities),
         )
 
-    # Call read_blocking - should either use _read_blocking or fall back to regular read
+    # Call read_blocking - the service either calls the adapter's read_blocking or falls back to read
     result = broker.read_blocking(
         stream=stream,
         consumer_group=consumer_group,
         consumer_name=consumer_name,
         timeout_ms=1000,
-        count=2,
+        limit=2,
     )
 
     # Should get messages either way
@@ -72,7 +72,7 @@ def test_read_blocking_with_supported_broker(broker):
             consumer_group=consumer_group,
             consumer_name=consumer_name,
             timeout_ms=1000,
-            count=2,
+            limit=2,
         )
 
         # Should get up to 2 messages
@@ -91,7 +91,7 @@ def test_read_blocking_with_supported_broker(broker):
             consumer_group=consumer_group,
             consumer_name=consumer_name,
             timeout_ms=1000,
-            count=2,
+            limit=2,
         )
 
         # Should work through fallback
@@ -110,7 +110,7 @@ def test_read_blocking_with_connection_error_recovery(broker):
     # For brokers that support blocking reads, we need to test connection error handling
     if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
         # Store original method
-        original_read_blocking = broker._adapter._read_blocking
+        original_read_blocking = broker._adapter.read_blocking
 
         # Create a mock that simulates connection error on first call, then succeeds
         call_count = [0]
@@ -125,7 +125,7 @@ def test_read_blocking_with_connection_error_recovery(broker):
                 return original_read_blocking(*args, **kwargs)
 
         # Replace the method
-        broker._adapter._read_blocking = mock_read_blocking
+        broker._adapter.read_blocking = mock_read_blocking
 
         try:
             # This should trigger error handling and retry
@@ -134,7 +134,7 @@ def test_read_blocking_with_connection_error_recovery(broker):
                 consumer_group=consumer_group,
                 consumer_name=consumer_name,
                 timeout_ms=1000,
-                count=1,
+                limit=1,
             )
 
             # Should eventually succeed
@@ -142,7 +142,7 @@ def test_read_blocking_with_connection_error_recovery(broker):
 
         finally:
             # Restore original method
-            broker._adapter._read_blocking = original_read_blocking
+            broker._adapter.read_blocking = original_read_blocking
 
     else:
         # For brokers without blocking read support, verify the fallback works
@@ -152,7 +152,7 @@ def test_read_blocking_with_connection_error_recovery(broker):
             consumer_group=consumer_group,
             consumer_name=consumer_name,
             timeout_ms=1000,
-            count=1,
+            limit=1,
         )
 
         # Should work through fallback
@@ -169,12 +169,12 @@ def test_read_blocking_with_non_connection_error(broker):
 
     # Test with an error that's not connection-related
     if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
-        original_read_blocking = broker._adapter._read_blocking
+        original_read_blocking = broker._adapter.read_blocking
 
         def mock_read_blocking_error(*args, **kwargs):
             raise ValueError("Invalid argument")
 
-        broker._adapter._read_blocking = mock_read_blocking_error
+        broker._adapter.read_blocking = mock_read_blocking_error
 
         try:
             # This should raise the error without retry
@@ -184,10 +184,10 @@ def test_read_blocking_with_non_connection_error(broker):
                     consumer_group=consumer_group,
                     consumer_name=consumer_name,
                     timeout_ms=1000,
-                    count=1,
+                    limit=1,
                 )
         finally:
-            broker._adapter._read_blocking = original_read_blocking
+            broker._adapter.read_blocking = original_read_blocking
     else:
         # Test fallback path with non-connection error
         original_read = broker._adapter.read
@@ -205,7 +205,7 @@ def test_read_blocking_with_non_connection_error(broker):
                     consumer_group=consumer_group,
                     consumer_name=consumer_name,
                     timeout_ms=1000,
-                    count=1,
+                    limit=1,
                 )
         finally:
             broker._adapter.read = original_read
@@ -229,12 +229,12 @@ def test_read_blocking_connection_recovery_failure(broker):
     try:
         if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
             # For brokers with blocking read support
-            original_read_blocking = broker._adapter._read_blocking
+            original_read_blocking = broker._adapter.read_blocking
 
             def mock_read_blocking_error(*args, **kwargs):
                 raise Exception("Connection reset by peer")
 
-            broker._adapter._read_blocking = mock_read_blocking_error
+            broker._adapter.read_blocking = mock_read_blocking_error
 
             try:
                 # Should raise the connection error since recovery fails
@@ -244,10 +244,10 @@ def test_read_blocking_connection_recovery_failure(broker):
                         consumer_group=consumer_group,
                         consumer_name=consumer_name,
                         timeout_ms=1000,
-                        count=1,
+                        limit=1,
                     )
             finally:
-                broker._adapter._read_blocking = original_read_blocking
+                broker._adapter.read_blocking = original_read_blocking
         else:
             # For brokers using fallback
             original_read = broker._adapter.read
@@ -265,7 +265,7 @@ def test_read_blocking_connection_recovery_failure(broker):
                         consumer_group=consumer_group,
                         consumer_name=consumer_name,
                         timeout_ms=1000,
-                        count=1,
+                        limit=1,
                     )
             finally:
                 broker._adapter.read = original_read
@@ -290,7 +290,7 @@ def test_read_blocking_with_zero_timeout(broker):
         consumer_group=consumer_group,
         consumer_name=consumer_name,
         timeout_ms=0,  # Return immediately
-        count=1,
+        limit=1,
     )
 
     # Should get the message
@@ -311,7 +311,7 @@ def test_read_blocking_successful_retry_after_connection_error(broker):
 
     if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
         # Store original methods
-        original_read_blocking = broker._adapter._read_blocking
+        original_read_blocking = broker._adapter.read_blocking
         original_ensure_connection = broker._adapter.reconnect
 
         # Track calls
@@ -332,7 +332,7 @@ def test_read_blocking_successful_retry_after_connection_error(broker):
             return True  # Successful recovery
 
         # Replace methods
-        broker._adapter._read_blocking = mock_read_blocking
+        broker._adapter.read_blocking = mock_read_blocking
         broker._adapter.reconnect = mock_ensure_connection
 
         try:
@@ -342,14 +342,14 @@ def test_read_blocking_successful_retry_after_connection_error(broker):
                 consumer_group=consumer_group,
                 consumer_name=consumer_name,
                 timeout_ms=1000,
-                count=2,
+                limit=2,
             )
 
             # Should have called ensure_connection
             assert ensure_called[0], "ensure_connection should have been called"
 
             # Should have retried and succeeded
-            assert call_count[0] == 2, "Should have called _read_blocking twice"
+            assert call_count[0] == 2, "Should have called read_blocking twice"
 
             # Should get messages
             assert isinstance(result, list)
@@ -357,7 +357,7 @@ def test_read_blocking_successful_retry_after_connection_error(broker):
 
         finally:
             # Restore original methods
-            broker._adapter._read_blocking = original_read_blocking
+            broker._adapter.read_blocking = original_read_blocking
             broker._adapter.reconnect = original_ensure_connection
 
 
@@ -369,7 +369,7 @@ def test_read_blocking_connection_error_without_recovery(broker):
 
     if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
         # Store original methods
-        original_read_blocking = broker._adapter._read_blocking
+        original_read_blocking = broker._adapter.read_blocking
         original_ensure_connection = broker._adapter.reconnect
 
         # Track calls
@@ -383,7 +383,7 @@ def test_read_blocking_connection_error_without_recovery(broker):
             return False  # Recovery fails
 
         # Replace methods
-        broker._adapter._read_blocking = mock_read_blocking_error
+        broker._adapter.read_blocking = mock_read_blocking_error
         broker._adapter.reconnect = mock_ensure_connection_fail
 
         try:
@@ -394,7 +394,7 @@ def test_read_blocking_connection_error_without_recovery(broker):
                     consumer_group=consumer_group,
                     consumer_name=consumer_name,
                     timeout_ms=1000,
-                    count=1,
+                    limit=1,
                 )
 
             # Should have attempted recovery
@@ -402,7 +402,7 @@ def test_read_blocking_connection_error_without_recovery(broker):
 
         finally:
             # Restore original methods
-            broker._adapter._read_blocking = original_read_blocking
+            broker._adapter.read_blocking = original_read_blocking
             broker._adapter.reconnect = original_ensure_connection
 
 
@@ -417,7 +417,7 @@ def test_read_blocking_with_various_connection_errors(broker):
 
     if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
         # Store original methods
-        original_read_blocking = broker._adapter._read_blocking
+        original_read_blocking = broker._adapter.read_blocking
         original_ensure_connection = broker._adapter.reconnect
 
         # Test various connection error messages
@@ -445,7 +445,7 @@ def test_read_blocking_with_various_connection_errors(broker):
             def mock_ensure_connection():
                 return True
 
-            broker._adapter._read_blocking = mock_read_blocking
+            broker._adapter.read_blocking = mock_read_blocking
             broker._adapter.reconnect = mock_ensure_connection
 
             try:
@@ -455,7 +455,7 @@ def test_read_blocking_with_various_connection_errors(broker):
                     consumer_group=consumer_group,
                     consumer_name=consumer_name,
                     timeout_ms=1000,
-                    count=1,
+                    limit=1,
                 )
 
                 # Should have retried
@@ -464,7 +464,7 @@ def test_read_blocking_with_various_connection_errors(broker):
 
             finally:
                 # Restore for next iteration
-                broker._adapter._read_blocking = original_read_blocking
+                broker._adapter.read_blocking = original_read_blocking
                 broker._adapter.reconnect = original_ensure_connection
 
 
@@ -475,7 +475,7 @@ def test_read_blocking_connection_error_logging(broker, caplog):
     consumer_name = "test_consumer"
 
     if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
-        original_read_blocking = broker._adapter._read_blocking
+        original_read_blocking = broker._adapter.read_blocking
         original_ensure_connection = broker._adapter.reconnect
 
         def mock_read_blocking_error(*args, **kwargs):
@@ -484,10 +484,10 @@ def test_read_blocking_connection_error_logging(broker, caplog):
         def mock_ensure_connection():
             return True  # Recovery succeeds
 
-        broker._adapter._read_blocking = mock_read_blocking_error
+        broker._adapter.read_blocking = mock_read_blocking_error
         broker._adapter.reconnect = mock_ensure_connection
 
-        # Temporarily replace _read_blocking to succeed on second call
+        # Temporarily replace read_blocking to succeed on second call
         call_count = [0]
 
         def mock_read_blocking_retry(*args, **kwargs):
@@ -497,7 +497,7 @@ def test_read_blocking_connection_error_logging(broker, caplog):
             else:
                 return []  # Return empty list on retry
 
-        broker._adapter._read_blocking = mock_read_blocking_retry
+        broker._adapter.read_blocking = mock_read_blocking_retry
 
         try:
             with caplog.at_level("WARNING"):
@@ -506,7 +506,7 @@ def test_read_blocking_connection_error_logging(broker, caplog):
                     consumer_group=consumer_group,
                     consumer_name=consumer_name,
                     timeout_ms=1000,
-                    count=1,
+                    limit=1,
                 )
 
                 # Check that connection error was logged
@@ -515,7 +515,7 @@ def test_read_blocking_connection_error_logging(broker, caplog):
                 assert isinstance(result, list)
 
         finally:
-            broker._adapter._read_blocking = original_read_blocking
+            broker._adapter.read_blocking = original_read_blocking
             broker._adapter.reconnect = original_ensure_connection
 
 
@@ -529,7 +529,7 @@ def test_read_blocking_retry_after_successful_recovery(broker):
     broker.publish(stream, {"id": 1, "data": "message_1"})
 
     if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
-        original_read_blocking = broker._adapter._read_blocking
+        original_read_blocking = broker._adapter.read_blocking
         original_ensure_connection = broker._adapter.reconnect
 
         # Track method calls
@@ -549,7 +549,7 @@ def test_read_blocking_retry_after_successful_recovery(broker):
             ensure_connection_calls.append(True)
             return True  # Recovery successful
 
-        broker._adapter._read_blocking = mock_read_blocking
+        broker._adapter.read_blocking = mock_read_blocking
         broker._adapter.reconnect = mock_ensure_connection
 
         try:
@@ -558,12 +558,12 @@ def test_read_blocking_retry_after_successful_recovery(broker):
                 consumer_group=consumer_group,
                 consumer_name=consumer_name,
                 timeout_ms=1000,
-                count=1,
+                limit=1,
             )
 
             # Verify the retry sequence
             assert len(read_blocking_calls) == 2, (
-                "Should have called _read_blocking twice"
+                "Should have called read_blocking twice"
             )
             assert len(ensure_connection_calls) == 1, (
                 "Should have called _ensure_connection once"
@@ -581,5 +581,5 @@ def test_read_blocking_retry_after_successful_recovery(broker):
             assert len(result) > 0
 
         finally:
-            broker._adapter._read_blocking = original_read_blocking
+            broker._adapter.read_blocking = original_read_blocking
             broker._adapter.reconnect = original_ensure_connection

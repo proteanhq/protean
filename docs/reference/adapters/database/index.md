@@ -2,7 +2,7 @@
 
 Database providers abstract the underlying persistence technology, allowing
 Protean to support various databases without changing domain or application
-logic. Each provider implements `ProviderPort` and declares the
+logic. Each provider implements `DatabasePort` and declares the
 capabilities it supports.
 
 ## Overview
@@ -161,7 +161,7 @@ flags:
 | `NATIVE_JSON` | Native JSON column support (e.g. PostgreSQL `JSONB`) |
 | `NATIVE_ARRAY` | Native array column support (e.g. PostgreSQL `ARRAY`) |
 
-**Claim and delete**
+**Claim, delete and insert-if-absent**
 
 No convenience set includes these flags. Each provider declares them on its own.
 
@@ -170,6 +170,7 @@ No convenience set includes these flags. Each provider declares them on its own.
 | `NATIVE_CLAIM` | Claims rows in one statement |
 | `BOUNDED_DELETE` | Deletes up to `limit` rows in one operation, without a separate read of their ids |
 | `FILTERED_CLAIM_CANDIDATES` | Leaves held rows out of a claim's candidates |
+| `INSERT_IF_ABSENT` | Writes a row only when no other row holds its unique key, in one atomic step |
 
 ### Convenience Sets
 
@@ -222,12 +223,13 @@ On the memory provider, `results` holds one record, Ada's.
 | NATIVE_CLAIM |  |  | :white_check_mark: |  |  |  |
 | BOUNDED_DELETE | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  | :white_check_mark: |
 | FILTERED_CLAIM_CANDIDATES |  | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
+| INSERT_IF_ABSENT | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |  |
 
 ## Provider Registry
 
 Providers register themselves through Python
 [entry points](https://packaging.python.org/en/latest/specifications/entry-points/)
-under the `protean.providers` group. This means third-party database adapters
+under the `protean.databases` group. This means third-party database adapters
 can be pip-installed and automatically discovered by Protean without any source
 code changes.
 
@@ -237,18 +239,18 @@ Protean's built-in providers are registered in `pyproject.toml`:
 
 ```toml
 # fragment
-[project.entry-points."protean.providers"]
-memory = "protean.adapters.repository.memory:register"
-postgresql = "protean.adapters.repository.sqlalchemy:register_postgresql"
-sqlite = "protean.adapters.repository.sqlalchemy:register_sqlite"
-mssql = "protean.adapters.repository.sqlalchemy:register_mssql"
-mysql = "protean.adapters.repository.sqlalchemy:register_mysql"
-elasticsearch = "protean.adapters.repository.elasticsearch:register"
+[project.entry-points."protean.databases"]
+memory = "protean.adapters.database.memory:register"
+postgresql = "protean.adapters.database.sqlalchemy:register_postgresql"
+sqlite = "protean.adapters.database.sqlalchemy:register_sqlite"
+mssql = "protean.adapters.database.sqlalchemy:register_mssql"
+mysql = "protean.adapters.database.sqlalchemy:register_mysql"
+elasticsearch = "protean.adapters.database.elasticsearch:register"
 ```
 
 Each entry point maps a provider name to a `register()` function. The function
 is called on first access and registers the provider class path with
-`protean.infra.registry.providers`, the `AdapterRegistry` for database
+`protean.infra.registry.databases`, the `AdapterRegistry` for database
 providers. A `register()` function for a provider with optional
 dependencies imports them inside `try/except`, so it silently skips
 registering that provider when those dependencies are not installed.
@@ -260,7 +262,7 @@ their `pyproject.toml`:
 
 ```toml
 # fragment
-[project.entry-points."protean.providers"]
+[project.entry-points."protean.databases"]
 dynamodb = "my_package:register"
 ```
 

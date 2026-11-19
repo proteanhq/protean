@@ -15,7 +15,7 @@ The conformance tests check that a provider:
 - Works with Protean's Unit of Work, QuerySet, and repository patterns
 - Passes the same tests that Protean's built-in adapters pass
 
-The generic test suite is in `tests/adapters/repository/generic/` and covers
+The generic test suite is in `tests/adapters/database/generic/` and covers
 CRUD, filtering, ordering, transactions, raw queries, schema management,
 optimistic locking, value objects, associations, and more.
 
@@ -31,7 +31,7 @@ The `cache` folder holds the cache suite. Each of its tests names the
 event-store suite, described in
 [The event-store suite](#the-event-store-suite). The `database` and `broker`
 folders each hold one placeholder test until their port's suite moves in. The
-database suite is still in `tests/adapters/repository/generic/`, and
+database suite is still in `tests/adapters/database/generic/`, and
 `protean test test-adapter` runs it. For the other three ports,
 `protean test test-adapter --port <port>` runs the port's folder; see
 [CLI: `protean test test-adapter`](#cli-protean-test-test-adapter).
@@ -152,7 +152,7 @@ protean test test-adapter --provider=memory
 ```
 
 `--port` picks the port whose suite runs. It defaults to `database`, which runs
-the generic database suite in `tests/adapters/repository/generic/`. `broker`,
+the generic database suite in `tests/adapters/database/generic/`. `broker`,
 `cache` and `event_store` run the port's folder under `tests/conformance/`
 with the plugin described in
 [Port suites under `tests/conformance/`](#port-suites-under-testsconformance).
@@ -242,7 +242,7 @@ protean test test-adapter --provider=postgresql \
 ### Sample Output
 
 ```
-Running conformance tests for provider 'memory' (MemoryProvider)...
+Running conformance tests for provider 'memory' (MemoryDatabase)...
 Capabilities to test: basic_storage, transactional, raw_queries
 Capabilities to skip: atomic_transactions, schema_management, native_json, native_array
 
@@ -365,7 +365,7 @@ Tests are automatically skipped when the provider lacks a required capability.
 No manual skip markers or conditionals are needed:
 
 ```
-SKIPPED [1] Provider 'elasticsearch' (ElasticsearchProvider) lacks
+SKIPPED [1] Provider 'elasticsearch' (ESDatabase) lacks
 required capability: raw_queries
 ```
 
@@ -400,8 +400,8 @@ The generic test suite covers these areas:
 | `test_filtering.py` | `basic_storage`, `transactional` | Filtering, lookups (incl. `isnull`, `lt`/`lte`), and `F()` column comparison |
 | `test_queryset.py` | `basic_storage` | QuerySet chaining, pagination, `count()`, `only()` projection |
 | `test_ordering.py` | `basic_storage` | Server-side result ordering |
-| `test_bulk_operations.py` | `basic_storage` | `_update_all()`, `_delete_all()`, `_delete_top()` |
-| `test_claim.py` | `transactional`, `atomic_transactions` | `_claim()` find-and-claim correctness and no-double-claim |
+| `test_bulk_operations.py` | `basic_storage` | `update_all()`, `delete_all()`, `delete_top()` |
+| `test_claim.py` | `transactional`, `atomic_transactions` | `claim()` find-and-claim correctness and no-double-claim |
 | `test_persistence.py` | `basic_storage` | End-to-end aggregate persistence |
 | `test_value_objects.py` | `basic_storage` | Value object embedding and retrieval |
 | `test_associations.py` | `basic_storage` | HasOne, HasMany, Reference associations |
@@ -430,12 +430,12 @@ for the rationale.
 | `only()` projection | `basic_storage` | all |
 | `isnull` lookup | `basic_storage` | all |
 | `lt` / `lte` lookups | `basic_storage` | all |
-| `_delete_top` bounded delete | `basic_storage` | all |
+| `delete_top` bounded delete | `basic_storage` | all |
 | `F()` column comparison | `transactional` | in-memory + SQL |
-| `_claim` correctness | `transactional` | in-memory + SQL |
-| `_claim` no-double-claim (concurrent) | `atomic_transactions` | SQL only |
+| `claim` correctness | `transactional` | in-memory + SQL |
+| `claim` no-double-claim (concurrent) | `atomic_transactions` | SQL only |
 
-`F()` and `_claim` are gated above `basic_storage` because Elasticsearch does not
+`F()` and `claim` are gated above `basic_storage` because Elasticsearch does not
 support them: it raises `NotImplementedError` for `F`-bearing predicates, and its
 document-versioning makes it unsuitable as a concurrent claim store. A provider
 that declares only `basic_storage` (like Elasticsearch) is therefore never asked

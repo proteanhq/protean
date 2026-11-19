@@ -214,9 +214,7 @@ def _status(domain: Domain, notification_id: str) -> str:
 
 
 def _stored_commands(domain: Domain) -> list:
-    return domain.event_store.store.read(
-        f"{Notification.meta_.stream_category}:command"
-    )
+    return domain.event_store.read(f"{Notification.meta_.stream_category}:command")
 
 
 def _stored_dispatch_started(domain: Domain) -> tuple[str, object]:
@@ -226,7 +224,7 @@ def _stored_dispatch_started(domain: Domain) -> tuple[str, object]:
     with UnitOfWork():
         notification = Notification.start()
         domain.repository_for(Notification).add(notification)
-    event_message = domain.event_store.store.read_last_message(
+    event_message = domain.event_store.read_last_message(
         f"{Notification.meta_.stream_category}-{notification.id}"
     )
     return notification.id, event_message

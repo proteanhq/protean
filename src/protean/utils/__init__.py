@@ -61,26 +61,6 @@ class Processing(Enum):
     ASYNC = "async"
 
 
-class Database(Enum):
-    """Database names a repository may be bound to via ``database=``.
-
-    Validated in ``protean.core.repository``, so a provider missing from this
-    list cannot be named on a repository even when it is registered and working.
-    """
-
-    elasticsearch = "elasticsearch"
-    memory = "memory"
-    mssql = "mssql"
-    mysql = "mysql"
-    postgresql = "postgresql"
-    sqlite = "sqlite"
-
-
-class Cache(Enum):
-    memory = "memory"
-    redis = "redis"
-
-
 def ensure_utc_aware(dt: datetime) -> datetime:
     """Ensure a datetime is timezone-aware, assuming naive values are UTC.
 
@@ -668,8 +648,16 @@ def _normalize_deprecated(value: str | dict[str, Any] | None) -> dict[str, str] 
 
 
 def _check_element_options(base_cls: type[OptionsMixin], opts: dict[str, Any]) -> None:
-    """Raise ``ConfigurationError`` if *opts* holds an unknown option or one
-    the framework sets itself."""
+    """Raise ``ConfigurationError`` if *opts* holds a renamed option, an unknown
+    option, or one the framework sets itself."""
+    renamed_supplied = sorted(set(opts) & base_cls._renamed_options.keys())
+    if renamed_supplied:
+        renames = ", ".join(
+            f"`{old}` is now `{base_cls._renamed_options[old]}`"
+            for old in renamed_supplied
+        )
+        raise ConfigurationError(f"Renamed option(s): {renames}")
+
     # Ensure options being passed in are known
     known_options = [name for (name, _) in base_cls._default_options]
     if not all(opt in known_options for opt in opts):
@@ -997,9 +985,7 @@ def _clonable_attrs(cls: type) -> dict[str, Any]:
 
 
 __all__ = [
-    "Cache",
     "Clock",
-    "Database",
     "DomainObjects",
     "IdentityStrategy",
     "IdentityType",

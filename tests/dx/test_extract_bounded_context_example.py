@@ -204,7 +204,7 @@ def test_after_flow_creates_a_shipment_from_the_sales_event():
 
     with sales.domain_context():
         sales.process(PlaceOrder(customer_id="CUST-1", address="1 Market St"))
-        fact = sales.event_store.store.read(Order.meta_.stream_category)[-1]
+        fact = sales.event_store.read(Order.meta_.stream_category)[-1]
 
     assert fact.data["customer_id"] == "CUST-1", "sales must record OrderPlaced"
     order_id = fact.data["order_id"]

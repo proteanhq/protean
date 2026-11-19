@@ -77,7 +77,7 @@ def test_the_command_enrichers_add_tenant_user_and_request():
         example.domain.process(example.PlaceOrder(order_id="ord-1"))
         [stored] = [
             message
-            for message in example.domain.event_store.store.read("$all")
+            for message in example.domain.event_store.read("$all")
             if message.metadata.domain.kind == "COMMAND"
         ]
 
@@ -135,9 +135,7 @@ def placed_order():
         order = example.Order(items=[{"product_id": "prod-1", "quantity": 2}])
         order.place()
         example.domain.repository_for(example.Order).add(order)
-        [message] = example.domain.event_store.store.read(
-            f"saasapp::order-{order.order_id}"
-        )
+        [message] = example.domain.event_store.read(f"saasapp::order-{order.order_id}")
         yield example, order, message
 
 

@@ -120,7 +120,7 @@ class TestPMWithExternalEvents:
         )
 
         stream_name = f"{EnrollmentPM.meta_.stream_category}-{enrollment_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         assert len(messages) == 1
 
         transition = messages[0].to_domain_object()
@@ -131,7 +131,7 @@ class TestPMWithExternalEvents:
             PaymentReceived(enrollment_id=enrollment_id, amount=299.99)
         )
 
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         assert len(messages) == 2
 
         final = messages[-1].to_domain_object()
@@ -157,5 +157,5 @@ class TestPMWithExternalEvents:
         EnrollmentPM._handle(PaymentReceived(enrollment_id=enrollment_id, amount=50.0))
 
         stream_name = f"{EnrollmentPM.meta_.stream_category}-{enrollment_id}"
-        messages = test_domain.event_store.store.read(stream_name)
+        messages = test_domain.event_store.read(stream_name)
         assert len(messages) == 2  # Only the original 2 transitions

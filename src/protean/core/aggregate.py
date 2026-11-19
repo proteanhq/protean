@@ -5,6 +5,7 @@ import inspect
 import logging
 import typing
 from collections import defaultdict
+from collections.abc import Mapping
 from enum import Enum
 from functools import partial
 from types import TracebackType
@@ -86,7 +87,7 @@ class BaseAggregate(BaseEntity):
     | ``event_sourced`` | ``bool`` | Enable event-sourcing mode (default: ``False``). |
     | ``fact_events`` | ``bool`` | Auto-generate fact events on persistence (default: ``False``). |
     | ``stream_category`` | ``str`` | Override the event stream category name. |
-    | ``provider`` | ``str`` | The persistence provider name (default: ``"default"``). |
+    | ``database`` | ``str`` | The ``[databases.*]`` entry that persists it (default: ``"default"``). |
     | ``schema_name`` | ``str`` | The storage table/collection name. |
     | ``abstract`` | ``bool`` | The class cannot be instantiated when ``True`` (default: ``False``). |
     | ``auto_add_id_field`` | ``bool`` | Whether to auto-inject an ``id`` field (default: ``True``). |
@@ -136,7 +137,7 @@ class BaseAggregate(BaseEntity):
         ("fact_events", False),
         ("indexes", ()),
         ("is_event_sourced", False),
-        ("provider", "default"),
+        ("database", "default"),
         (
             "schema_name",
             DerivedDefault(lambda cls: inflection.underscore(cls.__name__)),
@@ -149,6 +150,8 @@ class BaseAggregate(BaseEntity):
         ("suppress_checks", ()),
         ("reserved", ()),
     ]
+
+    _renamed_options: ClassVar[Mapping[str, str]] = {"provider": "database"}
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -1000,7 +1003,7 @@ class atomic_change:
 
 
 class _pre_persist_change(atomic_change):
-    """The block ``BaseDAO.save`` runs each pre-persist hook in.
+    """The block ``DAO.save`` runs each pre-persist hook in.
 
     An ``auto_now`` stamp or an enricher's audit field is not a business
     change, so the ``@invariant.pre`` checks, which guard a business change

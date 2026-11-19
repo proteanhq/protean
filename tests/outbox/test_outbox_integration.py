@@ -270,7 +270,7 @@ class TestOutboxIntegration:
     def test_outbox_repo_provider_mapping(self, test_domain):
         """Test that outbox repositories are correctly mapped to providers"""
         # Test that each provider has its own outbox repository
-        for provider_name, provider in test_domain.providers._providers.items():
+        for provider_name, provider in test_domain.databases._databases.items():
             assert provider_name in test_domain._outbox_repos
             outbox_repo = test_domain._outbox_repos[provider_name]
 
@@ -398,7 +398,9 @@ class TestEventSourcedAggregateOutbox:
             test_domain.repository_for(ESOrder).add(order)
 
         # Verify event store has the event
-        messages = test_domain.event_store.store.get_category_messages("test::es_order")
+        messages = test_domain.event_store._adapter.get_category_messages(
+            "test::es_order"
+        )
         assert len(messages) == 1
         assert messages[0]["type"] == ESOrderPlaced.__type__
 

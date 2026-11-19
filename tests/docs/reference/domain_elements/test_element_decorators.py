@@ -23,7 +23,7 @@ def test_options_left_out_keep_their_defaults():
     example.domain.init(traverse=False)
 
     assert example.User.meta_.abstract is False
-    assert example.User.meta_.provider == "default"
+    assert example.User.meta_.database == "default"
     assert example.User.meta_.limit == 100
     assert example.User.meta_.suppress_checks == ()
 

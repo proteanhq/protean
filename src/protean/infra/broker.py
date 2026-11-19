@@ -6,13 +6,15 @@ import logging
 import time
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Sequence
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from protean.core.subscriber import BaseSubscriber
 from protean.exceptions import ConfigurationError, NotSupportedError, ValidationError
 from protean.infra.registry import brokers as broker_registry
 from protean.port.broker import (
+    CAPABILITY_PORTS,
     BaseBroker,
+    BlockingReadPort,
     BrokerCapabilities,
     BrokerHealth,
     BrokerMessage,
@@ -50,6 +52,15 @@ def is_connection_error(exc: BaseException) -> bool:
     return any(marker in error_str for marker in _CONNECTION_ERROR_MARKERS)
 
 
+def _missing_port_members(adapter_cls: type, port: type[object]) -> list[str]:
+    """The members `port` adds to `BrokerPort` that `adapter_cls` lacks."""
+    added = sorted(
+        getattr(port, "__abstractmethods__", frozenset())
+        - BrokerPort.__abstractmethods__
+    )
+    return [member for member in added if not hasattr(adapter_cls, member)]
+
+
 class Broker:
     """The framework's view of one broker adapter.
 
@@ -57,10 +68,16 @@ class Broker:
     recording messages on the current unit of work, one retry after a
     connection error, capability checks, ping timing, the health envelope and
     synchronous dispatch to registered subscribers.
+
+    Raises:
+        ConfigurationError: When it is built, if the adapter declares a
+            capability flag without subclassing the sub-protocol
+            `CAPABILITY_PORTS` maps it to.
     """
 
     def __init__(self, adapter: BrokerPort) -> None:
         self._adapter = adapter
+        self._check_capability_ports()
         self._subscribers: defaultdict[str, set[type[BaseSubscriber]]] = defaultdict(
             set
         )
@@ -71,6 +88,20 @@ class Broker:
     @property
     def name(self) -> str:
         return self._adapter.name
+
+    def _check_capability_ports(self) -> None:
+        adapter_cls = type(self._adapter)
+        for flag, port in CAPABILITY_PORTS.items():
+            if flag in self._adapter.capabilities and port not in adapter_cls.__mro__:
+                message = (
+                    f"Broker '{self._adapter.name}' declares "
+                    f"BrokerCapabilities.{flag.name}, but {adapter_cls.__name__} "
+                    f"does not subclass {port.__name__}."
+                )
+                missing = _missing_port_members(adapter_cls, port)
+                if missing:
+                    message += f" It does not implement: {', '.join(missing)}."
+                raise ConfigurationError(message)
 
     @property
     def domain(self) -> "Domain":
@@ -158,6 +189,86 @@ class Broker:
         return self._retry_once(
             "read", lambda: self._adapter.read(stream, consumer_group, limit)
         )
+
+    def read_blocking(
+        self,
+        stream: str,
+        consumer_group: str,
+        consumer_name: str,
+        timeout_ms: int = 5000,
+        limit: int = 1,
+    ) -> list[BrokerMessage]:
+        """Read up to ``limit`` messages from ``stream`` for one consumer.
+
+        A broker with ``BLOCKING_READ`` waits up to ``timeout_ms`` milliseconds
+        for a message. A broker without it reads ``stream`` once with ``read``
+        and does not wait. Either read runs again once after a connection
+        error.
+        """
+        if BrokerCapabilities.BLOCKING_READ not in self.capabilities:
+            return self._retry_once(
+                "read_blocking",
+                lambda: self._adapter.read(stream, consumer_group, limit),
+            )
+
+        adapter = cast(BlockingReadPort, self._adapter)
+        return self._retry_once(
+            "read_blocking",
+            lambda: adapter.read_blocking(
+                stream,
+                consumer_group,
+                consumer_name,
+                timeout_ms=timeout_ms,
+                limit=limit,
+            ),
+        )
+
+    def read_blocking_streams(
+        self,
+        streams: Sequence[str],
+        consumer_group: str,
+        consumer_name: str,
+        timeout_ms: int = 5000,
+        limit: int = 1,
+    ) -> dict[str, list[BrokerMessage]]:
+        """Read several streams for one consumer in one call.
+
+        The result has one key per requested stream, in the order given, with
+        an empty list for a stream that returned nothing. An empty ``streams``
+        returns ``{}`` without reading. A broker with ``BLOCKING_READ`` waits
+        up to ``timeout_ms`` milliseconds in total. A broker without it reads
+        each stream once with ``read`` and does not wait. ``limit`` caps the
+        messages read from each stream. The read runs again once after a
+        connection error.
+        """
+        if not streams:
+            return {}
+
+        if BrokerCapabilities.BLOCKING_READ not in self.capabilities:
+            return self._retry_once(
+                "read_blocking_streams",
+                lambda: self._read_each_stream(streams, consumer_group, limit),
+            )
+
+        adapter = cast(BlockingReadPort, self._adapter)
+        return self._retry_once(
+            "read_blocking_streams",
+            lambda: adapter.read_blocking_streams(
+                streams,
+                consumer_group,
+                consumer_name,
+                timeout_ms=timeout_ms,
+                limit=limit,
+            ),
+        )
+
+    def _read_each_stream(
+        self, streams: Sequence[str], consumer_group: str, limit: int
+    ) -> dict[str, list[BrokerMessage]]:
+        return {
+            stream: self._adapter.read(stream, consumer_group, limit)
+            for stream in streams
+        }
 
     def get_next(self, stream: str, consumer_group: str) -> BrokerMessage | None:
         """Return the next message the adapter reads with ``new_messages=True``.
@@ -323,41 +434,6 @@ class Broker:
         if isinstance(self._adapter, BaseBroker):
             return self._adapter
         raise NotSupportedError(f"Broker {self.name} does not implement `{operation}`.")
-
-    def read_blocking(
-        self,
-        stream: str,
-        consumer_group: str,
-        consumer_name: str,
-        timeout_ms: int = 5000,
-        count: int = 1,
-    ) -> list[tuple[str, dict[str, Any]]]:
-        """Forward to `BaseBroker.read_blocking`, retrying once after a connection error."""
-        adapter = self._base_broker("read_blocking")
-        return self._retry_once(
-            "read_blocking",
-            lambda: adapter.read_blocking(
-                stream, consumer_group, consumer_name, timeout_ms, count
-            ),
-        )
-
-    def read_blocking_streams(
-        self,
-        streams: Sequence[str],
-        consumer_group: str,
-        consumer_name: str,
-        timeout_ms: int = 5000,
-        count: int = 1,
-    ) -> dict[str, list[tuple[str, dict[str, Any]]]]:
-        """Forward to `BaseBroker.read_blocking_streams`, retrying once after a
-        connection error."""
-        adapter = self._base_broker("read_blocking_streams")
-        return self._retry_once(
-            "read_blocking_streams",
-            lambda: adapter.read_blocking_streams(
-                streams, consumer_group, consumer_name, timeout_ms, count
-            ),
-        )
 
     def dlq_list(self, dlq_streams: list[str], limit: int = 100) -> list[DLQEntry]:
         return self._base_broker("dlq_list").dlq_list(dlq_streams, limit)
@@ -582,7 +658,7 @@ def _build_brokers(
                 broker_objects[broker_name] = current
             else:
                 broker_cls = broker_registry.get(config["provider"])
-                broker = Broker(broker_cls(broker_name, brokers.domain, config))
+                broker = _wrap_adapter(broker_cls(broker_name, brokers.domain, config))
                 broker_objects[broker_name] = broker
                 newly_created.append(broker)
     except Exception:
@@ -599,6 +675,24 @@ def _build_brokers(
         raise
 
     return broker_objects
+
+
+def _wrap_adapter(adapter: BrokerPort) -> Broker:
+    """Return the ``Broker`` service for ``adapter``.
+
+    When the service rejects the adapter, closes the adapter and re-raises
+    the error.
+    """
+    try:
+        return Broker(adapter)
+    except ConfigurationError:
+        # The adapter never reaches the brokers the caller closes on failure.
+        try:
+            adapter.close()
+        # a close failure must not mask the configuration error; logged
+        except Exception:
+            logger.exception("broker.init.rejected_adapter_close_failed")
+        raise
 
 
 def _close_replaced_brokers(

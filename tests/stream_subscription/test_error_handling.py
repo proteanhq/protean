@@ -63,7 +63,7 @@ class BrokenBroker:
         if self.fail_create_group:
             raise Exception("Failed to create consumer group")
 
-    def read_blocking(self, stream, consumer_group, consumer_name, timeout_ms, count):
+    def read_blocking(self, stream, consumer_group, consumer_name, timeout_ms, limit):
         return self.messages
 
     def ack(self, stream, identifier, consumer_group):

@@ -66,7 +66,7 @@ class TestRedisPendingMessages:
 
         # Read with specific consumer but don't ACK
         messages = redis_broker.read_blocking(
-            stream, consumer_group, consumer_name, timeout_ms=100, count=1
+            stream, consumer_group, consumer_name, timeout_ms=100, limit=1
         )
         assert len(messages) == 1
         assert messages[0][1] == msg1
@@ -77,7 +77,7 @@ class TestRedisPendingMessages:
 
         # Read again with same consumer - should get pending msg1 first
         messages = redis_broker.read_blocking(
-            stream, consumer_group, consumer_name, timeout_ms=100, count=1
+            stream, consumer_group, consumer_name, timeout_ms=100, limit=1
         )
         assert len(messages) == 1
         assert messages[0][0] == id1  # Should be first message
@@ -88,7 +88,7 @@ class TestRedisPendingMessages:
 
         # Now should get the second message
         messages = redis_broker.read_blocking(
-            stream, consumer_group, consumer_name, timeout_ms=100, count=1
+            stream, consumer_group, consumer_name, timeout_ms=100, limit=1
         )
         assert len(messages) == 1
         assert messages[0][0] == id2
@@ -195,7 +195,7 @@ class TestRedisPendingMessages:
 
         # Ensure stream is empty initially
         messages = redis_broker.read_blocking(
-            stream, consumer_group, consumer_name, timeout_ms=100, count=1
+            stream, consumer_group, consumer_name, timeout_ms=100, limit=1
         )
         assert messages == []  # Should timeout with no messages
 
@@ -204,14 +204,14 @@ class TestRedisPendingMessages:
         msg_id = redis_broker.publish(stream, msg)
 
         messages = redis_broker.read_blocking(
-            stream, consumer_group, consumer_name, timeout_ms=100, count=1
+            stream, consumer_group, consumer_name, timeout_ms=100, limit=1
         )
         assert len(messages) == 1
 
         # Now message is pending, read_blocking should return it immediately
         start_time = time.time()
         messages = redis_broker.read_blocking(
-            stream, consumer_group, consumer_name, timeout_ms=5000, count=1
+            stream, consumer_group, consumer_name, timeout_ms=5000, limit=1
         )
         elapsed = time.time() - start_time
 
@@ -235,27 +235,27 @@ class TestRedisPendingMessages:
 
         # Consumer1 reads first message
         messages1 = redis_broker.read_blocking(
-            stream, consumer_group, consumer1, timeout_ms=100, count=1
+            stream, consumer_group, consumer1, timeout_ms=100, limit=1
         )
         assert len(messages1) == 1
         assert messages1[0][0] == id1
 
         # Consumer2 reads second message
         messages2 = redis_broker.read_blocking(
-            stream, consumer_group, consumer2, timeout_ms=100, count=1
+            stream, consumer_group, consumer2, timeout_ms=100, limit=1
         )
         assert len(messages2) == 1
         assert messages2[0][0] == id2
 
         # Each consumer re-reading should get their own pending message
         messages1_retry = redis_broker.read_blocking(
-            stream, consumer_group, consumer1, timeout_ms=100, count=1
+            stream, consumer_group, consumer1, timeout_ms=100, limit=1
         )
         assert len(messages1_retry) == 1
         assert messages1_retry[0][0] == id1  # Consumer1 gets msg1 again
 
         messages2_retry = redis_broker.read_blocking(
-            stream, consumer_group, consumer2, timeout_ms=100, count=1
+            stream, consumer_group, consumer2, timeout_ms=100, limit=1
         )
         assert len(messages2_retry) == 1
         assert messages2_retry[0][0] == id2  # Consumer2 gets msg2 again
@@ -319,7 +319,7 @@ class TestRedisPendingMessages:
 
         # Read with specific consumer name
         messages = redis_broker.read_blocking(
-            stream, consumer_group, consumer_name, timeout_ms=100, count=1
+            stream, consumer_group, consumer_name, timeout_ms=100, limit=1
         )
         assert len(messages) == 1
 
@@ -328,7 +328,7 @@ class TestRedisPendingMessages:
 
         # The pending message should be available to the same consumer
         messages2 = new_broker.read_blocking(
-            stream, consumer_group, consumer_name, timeout_ms=100, count=1
+            stream, consumer_group, consumer_name, timeout_ms=100, limit=1
         )
         assert len(messages2) == 1
         assert messages2[0][0] == msg_id
@@ -337,7 +337,7 @@ class TestRedisPendingMessages:
         # But not available to a different consumer
         different_consumer = f"different_{uuid4().hex[:8]}"
         messages3 = new_broker.read_blocking(
-            stream, consumer_group, different_consumer, timeout_ms=100, count=1
+            stream, consumer_group, different_consumer, timeout_ms=100, limit=1
         )
         assert len(messages3) == 0  # No messages for different consumer
 
@@ -349,7 +349,7 @@ class TestRedisPendingMessages:
 
         # Try to read with no messages at all
         messages = redis_broker.read_blocking(
-            stream, consumer_group, consumer_name, timeout_ms=100, count=1
+            stream, consumer_group, consumer_name, timeout_ms=100, limit=1
         )
         assert messages == []
 
@@ -362,6 +362,6 @@ class TestRedisPendingMessages:
 
         # No pending messages, no new messages
         messages = redis_broker.read_blocking(
-            stream, consumer_group, consumer_name, timeout_ms=100, count=1
+            stream, consumer_group, consumer_name, timeout_ms=100, limit=1
         )
         assert messages == []

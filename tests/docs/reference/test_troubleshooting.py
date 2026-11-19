@@ -316,7 +316,7 @@ class TestMessageTracing:
 
         assert response.status_code == 200
         with module.domain.domain_context():
-            store = module.domain.event_store.store
+            store = module.domain.event_store
             assert store.build_causation_tree("from-middleware") is None
             tree = store.build_causation_tree("req-42")
         assert tree.message_type == "Sales.PlaceOrder.v1"

@@ -59,7 +59,15 @@ def _mock_domain_with_store(
     """Create a MagicMock domain with an event store configured."""
     mock_domain = MagicMock()
     mock_store = MagicMock()
-    mock_domain.event_store.store = mock_store
+    # The CLI reads the adapter through the service's ``store``; tests reach it
+    # through ``_adapter``. Both name the same object, as on a real service.
+    # The adapter's readers forward to the service's, so both share one mock.
+    mock_domain.event_store = MagicMock(
+        store=mock_store,
+        _adapter=mock_store,
+        _read_raw=mock_store._read_raw,
+        _read_stream_fully=mock_store._read_stream_fully,
+    )
 
     mock_store._read_raw.return_value = read_return or []
     mock_store.get_category_messages.return_value = read_return or []
@@ -154,7 +162,7 @@ class TestEventsRead:
                 ],
             )
             assert result.exit_code == 0
-            mock_domain.event_store.store._read_raw.assert_called_once_with(
+            mock_domain.event_store._read_raw.assert_called_once_with(
                 "test::user-abc123", position=5, limit=20
             )
 
@@ -177,7 +185,7 @@ class TestEventsRead:
                 ],
             )
             assert result.exit_code == 0
-            mock_domain.event_store.store._read_raw.assert_called_once_with(
+            mock_domain.event_store._read_raw.assert_called_once_with(
                 "test::user-abc123", position=0, limit=5
             )
 
@@ -248,7 +256,7 @@ class TestEventsStats:
         ]
 
         mock_domain = _mock_domain_with_store(aggregates=aggregates)
-        store = mock_domain.event_store.store
+        store = mock_domain.event_store._adapter
 
         def side_effect_read(stream, **kwargs):
             if stream == "test::user":
@@ -409,7 +417,7 @@ class TestEventsSearch:
                 ],
             )
             assert result.exit_code == 0
-            mock_domain.event_store.store._read_raw.assert_called_once_with(
+            mock_domain.event_store._read_raw.assert_called_once_with(
                 "test::user", limit=1_000_000
             )
 
@@ -503,7 +511,7 @@ class TestEventsHistory:
             aggregates=aggregates,
         )
         # get_last_stream_message for the snapshot check returns None
-        mock_domain.event_store.store.get_last_stream_message.return_value = None
+        mock_domain.event_store._adapter.get_last_stream_message.return_value = None
 
         with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
@@ -628,7 +636,7 @@ class TestEventsHistory:
             read_return=events,
             aggregates=aggregates,
         )
-        mock_domain.event_store.store.get_last_stream_message.return_value = None
+        mock_domain.event_store._adapter.get_last_stream_message.return_value = None
 
         with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
@@ -730,7 +738,7 @@ class TestEventsStatsExceptions:
         aggregates = {"test.User": user_record}
 
         mock_domain = _mock_domain_with_store(aggregates=aggregates)
-        store = mock_domain.event_store.store
+        store = mock_domain.event_store._adapter
         store.stream_ids.side_effect = Exception("Connection error")
         store.get_category_messages.return_value = [_make_raw_event(0, 1)]
 
@@ -757,7 +765,7 @@ class TestEventsStatsExceptions:
         aggregates = {"test.User": user_record}
 
         mock_domain = _mock_domain_with_store(aggregates=aggregates)
-        store = mock_domain.event_store.store
+        store = mock_domain.event_store._adapter
         store.stream_ids.return_value = ["id1"]
         store.get_category_messages.side_effect = Exception("Connection error")
 
@@ -1061,7 +1069,7 @@ def test_history_reads_the_whole_stream_past_one_read_page(
     account = Account(id="acc-1", name="Start")
     for i in range(events):
         account.rename(name=f"Name {i}")
-        test_domain.event_store.store.append(account._events[-1])
+        test_domain.event_store.append(account._events[-1])
 
     with patch("protean.cli.events.load_domain", return_value=test_domain):
         result = runner.invoke(
@@ -1113,7 +1121,7 @@ class TestEventsHistoryTrace:
             read_return=events,
             aggregates=aggregates,
         )
-        mock_domain.event_store.store.get_last_stream_message.return_value = None
+        mock_domain.event_store._adapter.get_last_stream_message.return_value = None
 
         with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(
@@ -1155,7 +1163,7 @@ class TestEventsHistoryTrace:
             read_return=events,
             aggregates=aggregates,
         )
-        mock_domain.event_store.store.get_last_stream_message.return_value = None
+        mock_domain.event_store._adapter.get_last_stream_message.return_value = None
 
         with patch("protean.cli._helpers.derive_domain", return_value=mock_domain):
             result = runner.invoke(

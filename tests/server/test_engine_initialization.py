@@ -22,7 +22,7 @@ def _register_aggregate(domain, provider="default"):
     record_cls = type(
         f"{provider.capitalize()}Record", (BaseAggregate,), {"name": String()}
     )
-    domain.register(record_cls, provider=provider)
+    domain.register(record_cls, database=provider)
 
 
 def test_engine_initialized_from_a_domain_object_owns_an_idle_loop(test_domain):
@@ -95,6 +95,31 @@ class TestEngineOutboxValidation:
                         Engine(domain, test_mode=True)
                 finally:
                     type(outbox_repo)._dao = original_dao
+
+    @pytest.mark.no_test_domain
+    def test_engine_reraises_a_capability_flag_mismatch_as_it_is(self):
+        domain = Domain(name="Test")
+        domain.config["server"]["default_subscription_type"] = "stream"
+        domain.init(traverse=False)
+        mismatch = ConfigurationError(
+            "Provider `default` declares `NATIVE_CLAIM`, but DAO class "
+            "`DictDAO` does not subclass `NativeClaimPort`"
+        )
+
+        with domain.domain_context():
+            for outbox_repo in domain._outbox_repos.values():
+                original_dao = type(outbox_repo)._dao
+                type(outbox_repo)._dao = property(
+                    lambda self: (_ for _ in ()).throw(mismatch)
+                )
+
+                try:
+                    with pytest.raises(ConfigurationError) as exc:
+                        Engine(domain, test_mode=True)
+                finally:
+                    type(outbox_repo)._dao = original_dao
+
+                assert exc.value is mismatch
 
 
 # ---------------------------------------------------------------------------

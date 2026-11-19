@@ -40,7 +40,7 @@ def _stored(example, aggregate, event):
     category = type(aggregate).meta_.stream_category
     messages = [
         m
-        for m in example.domain.event_store.store.read(category)
+        for m in example.domain.event_store.read(category)
         if m.metadata.headers.type == event.__class__.__type__
     ]
     assert messages, f"no {event.__class__.__name__} stored in {category}"
@@ -421,9 +421,7 @@ def test_loyalty_points_are_awarded_for_a_new_order(worked):
 def _reserved_events(ex):
     return [
         m
-        for m in ex.domain.event_store.store.read(
-            f"{ex.Inventory.meta_.stream_category}-p1"
-        )
+        for m in ex.domain.event_store.read(f"{ex.Inventory.meta_.stream_category}-p1")
         if m.metadata.headers.type == ex.InventoryReserved.__type__
     ]
 

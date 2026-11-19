@@ -21,7 +21,7 @@ pytestmark = pytest.mark.message_db
 @pytest.fixture
 def store(test_domain):
     test_domain.init(traverse=False)
-    event_store = test_domain.event_store.store
+    event_store = test_domain.event_store._adapter
     assert isinstance(event_store, MessageDBStore)
     return event_store
 
@@ -81,7 +81,7 @@ class TestUnreachableDatabase:
             f"postgresql://message_store@localhost:{MESSAGE_DB_PORT}/missing"
         )
         domain.init(traverse=False)
-        return domain.event_store.store
+        return domain.event_store._adapter
 
     def test_ping_returns_false(self, unreachable):
         assert unreachable.ping() is False

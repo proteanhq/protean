@@ -116,7 +116,7 @@ class TestAggregateReconstructionWithMixedVersions:
     """Simulate an aggregate whose events span multiple schema versions."""
 
     def test_load_aggregate_with_v1_creation_event(self, test_domain):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         stream = "test::account-acct-1"
 
         # Write a v1 AccountOpened (no currency field)
@@ -140,7 +140,7 @@ class TestAggregateReconstructionWithMixedVersions:
         )
 
         # Load aggregate — v1 AccountOpened should be upcast to v2
-        aggregate = store.load_aggregate(Account, "acct-1")
+        aggregate = test_domain.event_store.load_aggregate(Account, "acct-1")
 
         assert aggregate is not None
         assert aggregate.account_id == "acct-1"
@@ -149,7 +149,7 @@ class TestAggregateReconstructionWithMixedVersions:
         assert aggregate.currency == "USD"  # Default from upcaster
 
     def test_load_aggregate_with_current_version_events(self, test_domain):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         stream = "test::account-acct-2"
 
         # Write a v2 AccountOpened (current version, has currency)
@@ -167,7 +167,7 @@ class TestAggregateReconstructionWithMixedVersions:
             position=0,
         )
 
-        aggregate = store.load_aggregate(Account, "acct-2")
+        aggregate = test_domain.event_store.load_aggregate(Account, "acct-2")
 
         assert aggregate is not None
         assert aggregate.owner == "Bob"
@@ -175,7 +175,7 @@ class TestAggregateReconstructionWithMixedVersions:
         assert aggregate.currency == "EUR"
 
     def test_apply_handler_receives_upcast_event(self, test_domain):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         stream = "test::account-acct-3"
 
         # Write a v1 event
@@ -188,7 +188,7 @@ class TestAggregateReconstructionWithMixedVersions:
             position=0,
         )
 
-        aggregate = store.load_aggregate(Account, "acct-3")
+        aggregate = test_domain.event_store.load_aggregate(Account, "acct-3")
 
         # The @apply handler received the upcast event with currency="USD"
         assert aggregate.currency == "USD"
@@ -199,7 +199,7 @@ class TestRepositoryWithUpcasting:
     """Test that repository.get() works with old-version events."""
 
     def test_repository_get_with_old_events(self, test_domain):
-        store = test_domain.event_store.store
+        store = test_domain.event_store._adapter
         stream = "test::account-acct-repo"
 
         _write_raw_event(

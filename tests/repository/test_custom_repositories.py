@@ -52,7 +52,7 @@ class TestRepositoryConstructionAndRegistration:
         custom_test_domain.register(PersonGeneric)
         custom_test_domain.repository_for(PersonGeneric)
 
-        repo_cls_constructed = custom_test_domain.providers._repositories[
+        repo_cls_constructed = custom_test_domain.databases._repositories[
             _fully_qualified_name(PersonGeneric)
         ]["ALL"]
         repo_retrieved_from_domain = custom_test_domain.repository_for(PersonGeneric)
@@ -65,7 +65,7 @@ class TestRepositoryConstructionAndRegistration:
         custom_test_domain.register(PersonCustomRepository, part_of=PersonGeneric)
         custom_test_domain.repository_for(PersonGeneric)
 
-        repo_cls_constructed = custom_test_domain.providers._repositories[
+        repo_cls_constructed = custom_test_domain.databases._repositories[
             _fully_qualified_name(PersonGeneric)
         ]["ALL"]
         repo_retrieved_from_domain = custom_test_domain.repository_for(PersonGeneric)
@@ -76,10 +76,10 @@ class TestRepositoryConstructionAndRegistration:
     def test_default_repository_construction_and_registration_for_non_memory_database(
         self, custom_test_domain
     ):
-        custom_test_domain.register(PersonSQLite, provider="sqlite")
+        custom_test_domain.register(PersonSQLite, database="sqlite")
         custom_test_domain.repository_for(PersonSQLite)
 
-        repo_cls_constructed = custom_test_domain.providers._repositories[
+        repo_cls_constructed = custom_test_domain.databases._repositories[
             _fully_qualified_name(PersonSQLite)
         ]["ALL"]
         repo_retrieved_from_domain = custom_test_domain.repository_for(PersonSQLite)
@@ -90,13 +90,13 @@ class TestRepositoryConstructionAndRegistration:
     def test_custom_repository_construction_and_registration_for_non_memory_database(
         self, custom_test_domain
     ):
-        custom_test_domain.register(PersonSQLite, provider="sqlite")
+        custom_test_domain.register(PersonSQLite, database="sqlite")
         custom_test_domain.register(
-            PersonSQLiteCustomRepository, part_of=PersonSQLite, database="sqlite"
+            PersonSQLiteCustomRepository, part_of=PersonSQLite, database_type="sqlite"
         )
         custom_test_domain.repository_for(PersonSQLite)
 
-        repo_cls_constructed = custom_test_domain.providers._repositories[
+        repo_cls_constructed = custom_test_domain.databases._repositories[
             _fully_qualified_name(PersonSQLite)
         ]["sqlite"]
         repo_retrieved_from_domain = custom_test_domain.repository_for(PersonSQLite)
@@ -107,14 +107,14 @@ class TestRepositoryConstructionAndRegistration:
     def test_that_sqlite_repository_is_chosen_over_generic_provider(
         self, custom_test_domain
     ):
-        custom_test_domain.register(PersonSQLite, provider="sqlite")
+        custom_test_domain.register(PersonSQLite, database="sqlite")
         custom_test_domain.register(PersonSQLiteGenericRepository, part_of=PersonSQLite)
         custom_test_domain.register(
-            PersonSQLiteCustomRepository, part_of=PersonSQLite, database="sqlite"
+            PersonSQLiteCustomRepository, part_of=PersonSQLite, database_type="sqlite"
         )
         custom_test_domain.repository_for(PersonSQLite)
 
-        repo_cls_constructed = custom_test_domain.providers._repositories[
+        repo_cls_constructed = custom_test_domain.databases._repositories[
             _fully_qualified_name(PersonSQLite)
         ]["sqlite"]
         repo_retrieved_from_domain = custom_test_domain.repository_for(PersonSQLite)

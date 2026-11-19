@@ -3,7 +3,7 @@
 Protean does not emit SQLAlchemy ``ForeignKey``/``relationship`` metadata for
 ``Reference`` fields, so the ORM cannot order parent-before-child inserts at
 commit-time flush on its own. ``_do_add`` / ``_sync_children`` therefore call
-``BaseDAO._flush()`` after each parent level so the parent row materializes in
+``DAO._flush()`` after each parent level so the parent row materializes in
 the transaction before its FK-referencing children are written.
 
 Two layers of coverage:
@@ -19,10 +19,10 @@ Two layers of coverage:
   emits the child INSERT first and the assertion goes red.
 
   These are a real fail-without-fix guard on **autoflush=False** providers
-  (``MssqlProvider`` / ``PostgresqlProvider`` — see ``sqlalchemy.py``): with
+  (``MssqlDatabase`` / ``PostgresqlDatabase`` — see ``sqlalchemy.py``): with
   nothing flushing early, disabling the ``_flush`` cascade makes the commit emit
   children before parents (verified on MSSQL — child-first order). On **SQLite**
-  they pass either way, because ``SqliteProvider`` leaves ``autoflush`` at its
+  they pass either way, because ``SqliteDatabase`` leaves ``autoflush`` at its
   default ``True``, so the per-save existence-check ``SELECT`` incidentally
   flushes the parent row before each child regardless of the fix. Postgres, which
   runs in the standard CI matrix, exercises them as a genuine guard.
@@ -36,6 +36,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.unit_of_work import UnitOfWork
 from protean.fields import HasMany, HasOne, Integer, Reference, String
+from protean.infra.dao import DAO
 from protean.integrations.pytest import capture_queries
 from protean.utils.globals import current_domain
 from tests.shared import provider_adapter
@@ -156,16 +157,14 @@ def flush_spy(monkeypatch):
     Returns a dict with a mutable counter so a test can assert how many flushes
     the cascade issued.
     """
-    from protean.port.dao import BaseDAO
-
     counter = {"count": 0}
-    original = BaseDAO._flush
+    original = DAO._flush
 
     def spy(self):
         counter["count"] += 1
         return original(self)
 
-    monkeypatch.setattr(BaseDAO, "_flush", spy)
+    monkeypatch.setattr(DAO, "_flush", spy)
     return counter
 
 

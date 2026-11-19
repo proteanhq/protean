@@ -130,7 +130,7 @@ its writes and the marker roll back together, so the next delivery runs it
 again. Two subscribers on the same stream keep separate markers.
 
 The rollback covers writes made through repositories on the subscriber's
-`provider`. It does not cover a command the subscriber issues with
+`database`. It does not cover a command the subscriber issues with
 `domain.process`: that call stores the command in the event store at once, and
 an event store that writes outside the unit of work, such as Message DB, keeps
 it after a rollback. A redelivery after a raise then issues the command again.
@@ -163,7 +163,7 @@ it does not stop two concurrent deliveries from both running. A relational
 provider adds a unique index that stops the second one. See
 [ADR-0017](../../adr/0017-consume-side-idempotency-for-projectors.md).
 
-### `provider` (optional, default: `"default"`)
+### `database` (optional, default: `"default"`)
 
 The database provider that stores the markers of an `idempotent` subscriber.
 Use the provider the subscriber writes to, so that the marker and the writes

@@ -53,7 +53,7 @@ def _domain_from(config_text, tmp_path, monkeypatch):
     monkeypatch.setenv("PROTEAN_ENV", "staging")
     domain = Domain(root_path=str(tmp_path), name="Search")
 
-    @domain.aggregate(provider="search")
+    @domain.aggregate(database="search")
     class Person:
         name: String()
 

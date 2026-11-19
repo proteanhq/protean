@@ -6,17 +6,17 @@ from typing import ClassVar
 
 from protean.adapters.broker.inline import InlineBroker
 from protean.adapters.cache.memory import MemoryCache
+from protean.adapters.database.memory import MemoryDatabase
 from protean.adapters.event_store.memory import MemoryEventStore
-from protean.adapters.repository.memory import MemoryProvider
-from protean.infra.registry import brokers, caches, event_stores, providers
+from protean.infra.registry import brokers, caches, databases, event_stores
 from protean.port.broker import BaseBroker
 from protean.port.cache import CachePort
 from protean.port.dao import REQUIRED_LOOKUPS, LookupPort
-from protean.port.event_store import BaseEventStore
-from protean.port.provider import BaseProvider
+from protean.port.database import BaseDatabase
+from protean.port.event_store import EventStorePort
 
 
-class CustomProvider(MemoryProvider):
+class CustomDatabase(MemoryDatabase):
     pass
 
 
@@ -32,7 +32,7 @@ class CustomCache(MemoryCache):
     pass
 
 
-class IncompleteProvider(BaseProvider):
+class IncompleteDatabase(BaseDatabase):
     pass
 
 
@@ -40,7 +40,7 @@ class IncompleteBroker(BaseBroker):
     pass
 
 
-class IncompleteEventStore(BaseEventStore):
+class IncompleteEventStore(EventStorePort):
     pass
 
 
@@ -48,17 +48,17 @@ class IncompleteCache(CachePort):
     pass
 
 
-class ProviderWithoutLookup(MemoryProvider):
+class ProviderWithoutLookup(MemoryDatabase):
     """A memory provider whose ``get_lookups()`` leaves out ``omitted``."""
 
     omitted: ClassVar[frozenset[str]]
 
     # Cached like the mixin's ``get_lookups``, because registering a lookup on
-    # ``MemoryProvider`` calls ``cache_clear`` on every subclass.
+    # ``MemoryDatabase`` calls ``cache_clear`` on every subclass.
     @classmethod
     @functools.cache
     def get_lookups(cls) -> Mapping[str, type[LookupPort]]:
-        lookups = MemoryProvider.get_lookups()
+        lookups = MemoryDatabase.get_lookups()
         return {
             name: lookup for name, lookup in lookups.items() if name not in cls.omitted
         }
@@ -87,17 +87,17 @@ class PlainIsnull:
     lookup_name = "isnull"
 
 
-class ProviderWithPlainIsnull(MemoryProvider):
+class ProviderWithPlainIsnull(MemoryDatabase):
     """A memory provider that registers ``isnull`` as ``PlainIsnull``."""
 
     @classmethod
     @functools.cache
     def get_lookups(cls) -> Mapping[str, type[LookupPort]]:
-        return {**MemoryProvider.get_lookups(), "isnull": PlainIsnull}  # type: ignore[dict-item]
+        return {**MemoryDatabase.get_lookups(), "isnull": PlainIsnull}  # type: ignore[dict-item]
 
 
-def register_custom_provider() -> None:
-    providers.register("custom", "tests.infra.adapters.CustomProvider")
+def register_custom_database() -> None:
+    databases.register("custom", "tests.infra.adapters.CustomDatabase")
 
 
 def register_custom_broker() -> None:

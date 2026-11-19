@@ -518,9 +518,9 @@ class Caches(MutableMapping[str, Cache]):
             self._initialize()
 
         # Use meta_.cache (the cache adapter name) when the projection is
-        # cache-backed.  Fall back to meta_.provider for backward compatibility
+        # cache-backed.  Fall back to meta_.database for backward compatibility
         # with projections that call cache_for() without formal registration.
-        cache_name = projection_cls.meta_.cache or projection_cls.meta_.provider
+        cache_name = projection_cls.meta_.cache or projection_cls.meta_.database
 
         cache = self[cache_name]
 

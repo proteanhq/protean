@@ -145,7 +145,7 @@ class TestDaoUpdateDeprecation:
         module.ship_order(order.id)
 
         assert repo.get(order.id).status == "shipped"
-        events = module.domain.event_store.store.read(f"ordering::order-{order.id}")
+        events = module.domain.event_store.read(f"ordering::order-{order.id}")
         assert [m.metadata.headers.type for m in events] == ["Ordering.OrderShipped.v1"]
 
     def test_cancel_pending_orders_cancels_only_pending_ones(self, orders_example):
