@@ -98,13 +98,15 @@ def test_a_top_level_command_returns_its_result(test_domain):
 
 
 def test_a_retry_with_the_same_key_runs_the_command_again(test_domain):
-    item_id = str(uuid4())
-    key = f"tag-{item_id}"
+    # The key alone decides deduplication, so each run tags a new item and
+    # the second run does not collide with the first run's saved aggregate.
+    item_ids = [str(uuid4()), str(uuid4())]
+    key = f"tag-{item_ids[0]}"
 
-    for _ in range(2):
+    for item_id in item_ids:
         with UnitOfWork():
             test_domain.process(
                 TagItem(item_id=item_id), asynchronous=False, idempotency_key=key
             )
 
-    assert runs == [item_id, item_id]
+    assert runs == item_ids
