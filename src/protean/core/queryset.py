@@ -115,8 +115,14 @@ class QuerySet:
 
     def exclude(self, *args: Any, **kwargs: Any) -> Self:
         """
-        Return a new QuerySet instance with NOT (args) ANDed to the existing
-        set.
+        Return a new QuerySet instance that drops every record matching any
+        of the given conditions.
+
+        Each keyword and each positional ``Q`` is negated on its own and the
+        results are ANDed to the existing set, so ``exclude(a=1, b=2)`` keeps
+        ``NOT a=1 AND NOT b=2``. A positional ``Q`` with several conditions is
+        negated as a whole: ``exclude(Q(a=1, b=2))`` drops only the records
+        that match both. An empty ``Q`` drops nothing.
         """
         return self._filter_or_exclude(True, *args, **kwargs)
 
@@ -154,10 +160,12 @@ class QuerySet:
             # through untouched, and an ``__in`` list is serialized item by item.
             new_kwargs[new_key_name] = serialize_custom_value(field_obj, value)
 
-        if negate:
-            clone._add_q(~Q(*args, **new_kwargs))
-        else:
-            clone._add_q(Q(*args, **new_kwargs))
+        # ``exclude(a=1, b=2)`` drops a record that matches either condition,
+        # so it negates each condition. ``~Q(a=1, b=2)`` negates them as a whole.
+        # An empty ``Q`` holds no condition; a negated node would negate it
+        # whole and match no record, so it is left out.
+        conditions = [arg for arg in args if not (isinstance(arg, Q) and not arg)]
+        clone._add_q(Q(*conditions, _negated=negate, **new_kwargs))
         return clone
 
     def limit(self, limit: int | None) -> Self:

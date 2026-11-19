@@ -171,6 +171,11 @@ In [2]: [person.name for person in people]
 Out[2]: ['John Doe', 'Jane Doe', 'Baby Doe', 'Boy Doe', 'Girl Doe']
 ```
 
+With several keyword arguments, `exclude` drops a record that matches any one
+of them. `exclude(country="US", age__gte=18)` drops every person in the US and
+every adult. To drop only adults in the US, negate a Q object, as described in
+[NOT](#not).
+
 ### Chaining operations
 
 QuerySets can chain operations. Each chained call returns a new QuerySet. The
@@ -300,6 +305,18 @@ Negate a Q object with `~` to exclude matching records:
 ```python
 --8<-- "guides/change-state/retrieve-aggregates/001.py:q_not"
 ```
+
+`~` negates the whole expression it wraps. `~(Q(country="US") | Q(country="CA"))`
+matches people in neither country. `~(Q(country="US") & Q(age__gte=18))` matches
+everyone except adults in the US. `~Q(country="US", age__gte=18)` means the same
+as the second expression.
+
+On the memory and SQL providers, a negated comparison such as
+`~Q(country="US")` does not match a NULL value.
+`~(Q(country="US") & Q(age__gte=18))` leaves out an adult with no `country`,
+because the database cannot tell that the adult is outside the US.
+On Elasticsearch, a negated condition matches a document with no value for the
+field.
 
 ### Nesting
 
