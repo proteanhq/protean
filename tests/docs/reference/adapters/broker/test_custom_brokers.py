@@ -20,7 +20,7 @@ import delegating_broker
 
 from protean.adapters.broker.inline import InlineBroker
 from protean.infra.broker import Broker
-from protean.port.broker import BaseBroker, BrokerPort
+from protean.port.broker import BrokerPort, DeadLetterQueuePort
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -32,7 +32,10 @@ def test_page_lists_every_abstract_method():
     bullets = [line for line in section.splitlines() if line.startswith("- ")]
     listed = set(re.findall(r"`(\w+)`", "\n".join(bullets)))
 
-    assert listed == BrokerPort.__abstractmethods__ | BaseBroker.__abstractmethods__
+    assert (
+        listed
+        == BrokerPort.__abstractmethods__ | DeadLetterQueuePort.__abstractmethods__
+    )
 
 
 def test_example_reads_back_and_acknowledges_the_message():

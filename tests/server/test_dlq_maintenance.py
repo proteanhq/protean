@@ -12,6 +12,7 @@ Covers:
 import asyncio
 import contextlib
 import logging
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -26,7 +27,7 @@ from protean.port.broker import BrokerCapabilities
 from protean.server.dlq_maintenance import (
     DLQMaintenanceTask,
     _resolve_callback,
-    _retention_hours_to_min_id,
+    _retention_cutoff,
 )
 from protean.server.engine import Engine
 from protean.server.subscription.profiles import (
@@ -66,22 +67,21 @@ class DLQMaintFeed(BaseSubscriber):
 
 
 class FakeBroker:
-    """Stands in for the Redis broker, the only one that trims a DLQ and reports
-    its depth."""
+    """Stands in for a broker service, recording each trim and answering set depths."""
 
     def __init__(
         self, capabilities: BrokerCapabilities = BrokerCapabilities.DEAD_LETTER_QUEUE
     ) -> None:
         self._capabilities = capabilities
-        self._trim_calls: list[tuple[str, str]] = []
+        self._trim_calls: list[tuple[str, datetime]] = []
         self._depths: dict[str, int] = {}
         self._trim_returns: dict[str, int] = {}
 
     def has_capability(self, cap) -> bool:
         return bool(self._capabilities & cap)
 
-    def dlq_trim(self, dlq_stream: str, min_id: str) -> int:
-        self._trim_calls.append((dlq_stream, min_id))
+    def dlq_trim(self, dlq_stream: str, older_than: datetime) -> int:
+        self._trim_calls.append((dlq_stream, older_than))
         return self._trim_returns.get(dlq_stream, 0)
 
     def dlq_depth(self, dlq_stream: str) -> int:
@@ -147,14 +147,21 @@ def _messages(caplog, message: str) -> list[logging.LogRecord]:
 # ── Unit tests ───────────────────────────────────────────────────────────
 
 
-class TestRetentionHoursToMinId:
-    def test_min_id_is_a_millisecond_cutoff_that_falls_with_retention(self):
-        id_7d = _retention_hours_to_min_id(168)
-        id_1d = _retention_hours_to_min_id(24)
+class TestRetentionCutoff:
+    def test_cutoff_is_retention_hours_before_now_in_utc(self):
+        before = datetime.now(UTC)
+        cutoff = _retention_cutoff(24)
+        after = datetime.now(UTC)
 
-        assert id_1d.endswith("-0")
-        assert int(id_1d.split("-")[0]) > 0
-        assert int(id_7d.split("-")[0]) < int(id_1d.split("-")[0])
+        assert cutoff.utcoffset() == timedelta(0)
+        assert before - timedelta(hours=24) <= cutoff <= after - timedelta(hours=24)
+
+    def test_cutoff_accepts_fractional_hours(self):
+        before = datetime.now(UTC)
+        cutoff = _retention_cutoff(0.5)
+
+        assert cutoff <= before - timedelta(minutes=30) + timedelta(seconds=5)
+        assert cutoff >= before - timedelta(minutes=30) - timedelta(seconds=5)
 
 
 class TestResolveCallback:
@@ -280,11 +287,9 @@ class TestDLQMaintenanceCycle:
             await task._maintenance_cycle()
 
             assert len(fake_broker._trim_calls) > 0, "Expected trim to be called"
-            _stream, trim_min_id = fake_broker._trim_calls[0]
-            expected_min_id = _retention_hours_to_min_id(24)
-            actual_ts = int(trim_min_id.split("-")[0])
-            expected_ts = int(expected_min_id.split("-")[0])
-            assert abs(actual_ts - expected_ts) < 2000
+            _stream, older_than = fake_broker._trim_calls[0]
+            expected = datetime.now(UTC) - timedelta(hours=24)
+            assert abs(older_than - expected) < timedelta(seconds=2)
 
     @pytest.mark.no_test_domain
     @pytest.mark.asyncio
@@ -478,12 +483,35 @@ class TestDLQMaintenanceStartAndRun:
         assert len(_messages(caplog, "dlq_maintenance.cycle_failed")) == 1
 
 
-class TestBaseBrokerDefaultMethods:
-    def test_dlq_trim_and_depth_default_to_zero(self, test_domain):
-        """BaseBroker.dlq_trim and dlq_depth return 0 by default."""
-        broker = test_domain.brokers["default"]
-        assert broker.dlq_trim("some:dlq", "0-0") == 0
-        assert broker.dlq_depth("some:dlq") == 0
+class TestTheInlineBrokerTrimsByRetention:
+    @pytest.mark.no_test_domain
+    @pytest.mark.asyncio
+    async def test_a_cycle_removes_the_entries_past_retention(self):
+        """The task trims an inline DLQ stream, which has no Redis stream IDs."""
+        domain = _setup_domain(_dlq_config())
+
+        with domain.domain_context():
+            _register_handler(domain)
+            dlq_stream = _get_dlq_stream(domain)
+            broker = domain.brokers["default"]
+            now = datetime.now(UTC)
+            for name, age in [
+                ("expired", timedelta(hours=200)),
+                ("kept", timedelta(hours=1)),
+            ]:
+                broker.publish(
+                    dlq_stream,
+                    {
+                        "name": name,
+                        "_dlq_metadata": {"failed_at": (now - age).isoformat()},
+                    },
+                )
+
+            task = DLQMaintenanceTask(Engine(domain, test_mode=True))
+            await task._maintenance_cycle()
+
+            [entry] = broker.dlq_list([dlq_stream])
+            assert entry.payload["name"] == "kept"
 
 
 class TestSubscriptionConfigDLQOverrides:
@@ -613,10 +641,10 @@ class TestDLQMaintenancePerStreamException:
             _register_handler(domain)
 
             class FailingTrimBroker(FakeBroker):
-                def dlq_trim(self, dlq_stream, min_id):
+                def dlq_trim(self, dlq_stream, older_than):
                     if "fail" in dlq_stream:
                         raise RuntimeError("trim failed")
-                    return super().dlq_trim(dlq_stream, min_id)
+                    return super().dlq_trim(dlq_stream, older_than)
 
             fake_broker = FailingTrimBroker()
             engine = Engine(domain, test_mode=True)

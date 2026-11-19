@@ -3,6 +3,7 @@ import logging
 import re
 import time
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime, timedelta
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -23,10 +24,12 @@ from protean.port.broker import (
     BrokerPort,
     ConsumerGroupInfo,
     ConsumerInfo,
+    DeadLetterQueuePort,
     DLQEntry,
     LeaseLostError,
     PartitioningPort,
     StreamRetentionPort,
+    require_aware_cutoff,
 )
 
 if TYPE_CHECKING:
@@ -62,6 +65,8 @@ _STREAM_ID_PART_MAX = 2**64 - 1
 
 # Redis rejects a stream ID longer than 127 characters, leading zeroes included.
 _STREAM_ID_MAX_LENGTH = 127
+
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 def _is_stream_id(dlq_id: str) -> bool:
@@ -205,7 +210,13 @@ return 1
 """
 
 
-class RedisBroker(BaseBroker, BlockingReadPort, PartitioningPort, StreamRetentionPort):
+class RedisBroker(
+    BaseBroker,
+    BlockingReadPort,
+    DeadLetterQueuePort,
+    PartitioningPort,
+    StreamRetentionPort,
+):
     """Redis Streams as the Message Broker.
 
     This broker leverages Redis Streams' native consumer group functionality
@@ -775,8 +786,8 @@ class RedisBroker(BaseBroker, BlockingReadPort, PartitioningPort, StreamRetentio
     # DLQ Management
     # ------------------------------------------------------------------
 
-    def _dlq_list(self, dlq_streams: list[str], limit: int) -> list[DLQEntry]:
-        """List DLQ messages across specified DLQ streams."""
+    def dlq_list(self, dlq_streams: list[str], limit: int = 100) -> list[DLQEntry]:
+        """Return up to ``limit`` entries from ``dlq_streams``, newest failure first."""
         entries: list[DLQEntry] = []
         for dlq_stream in dlq_streams:
             # XRANGE returns an empty list for a stream that does not exist
@@ -791,8 +802,8 @@ class RedisBroker(BaseBroker, BlockingReadPort, PartitioningPort, StreamRetentio
         entries.sort(key=lambda e: e.failed_at or "", reverse=True)
         return entries[:limit]
 
-    def _dlq_inspect(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
-        """Inspect a specific DLQ message by ID."""
+    def dlq_get(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
+        """Return the entry ``dlq_id`` in ``dlq_stream``, or ``None`` if there is none."""
         if not _is_stream_id(dlq_id):
             return None
 
@@ -805,8 +816,9 @@ class RedisBroker(BaseBroker, BlockingReadPort, PartitioningPort, StreamRetentio
         redis_id, fields = raw_messages[0]
         return self._parse_dlq_entry(dlq_stream, redis_id, fields)
 
-    def _dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
-        """Replay a single DLQ message back to its original stream."""
+    def dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
+        """Publish the entry ``dlq_id`` to ``target_stream`` without its
+        ``_dlq_metadata``, and delete it."""
         if not _is_stream_id(dlq_id):
             return False
 
@@ -825,8 +837,9 @@ class RedisBroker(BaseBroker, BlockingReadPort, PartitioningPort, StreamRetentio
         logger.info(f"Replayed DLQ message '{dlq_id}' to stream '{target_stream}'")
         return True
 
-    def _dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
-        """Replay all DLQ messages from a stream."""
+    def dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
+        """Publish every entry in ``dlq_stream`` to ``target_stream`` without its
+        ``_dlq_metadata``, and delete it."""
         # XRANGE returns an empty list for a stream that does not exist
         raw_messages = self._client.xrange(dlq_stream)
 
@@ -839,8 +852,8 @@ class RedisBroker(BaseBroker, BlockingReadPort, PartitioningPort, StreamRetentio
             replayed += 1
         return replayed
 
-    def _dlq_purge(self, dlq_stream: str) -> int:
-        """Purge all messages from a DLQ stream."""
+    def dlq_purge(self, dlq_stream: str) -> int:
+        """Delete the stream ``dlq_stream`` and return how many entries it held."""
         # XLEN returns 0 for a stream that does not exist
         count = self._client.xlen(dlq_stream)
         if count > 0:
@@ -870,18 +883,29 @@ class RedisBroker(BaseBroker, BlockingReadPort, PartitioningPort, StreamRetentio
             dlq_stream=dlq_stream,
         )
 
-    def dlq_trim(self, dlq_stream: str, min_id: str) -> int:
-        """Trim DLQ entries older than *min_id* using Redis XTRIM MINID.
+    def dlq_trim(self, dlq_stream: str, older_than: datetime) -> int:
+        """Remove the entries in ``dlq_stream`` added before ``older_than``.
 
-        Args:
-            dlq_stream: The DLQ stream to trim.
-            min_id: Minimum stream ID to keep (millisecond timestamp format).
+        Redis stream IDs start with the time the entry was added, in
+        milliseconds, so XTRIM MINID removes every entry whose ID is lower
+        than that of ``older_than``. An entry added in the same millisecond as
+        ``older_than`` is kept. Returns ``0`` when Redis rejects the trim.
 
-        Returns:
-            Number of messages trimmed.
+        Raises:
+            ValueError: ``older_than`` has no time zone.
         """
+        require_aware_cutoff(older_than)
+        # Integer division avoids the float rounding of ``timestamp() * 1000``.
+        cutoff_ms = (older_than - _EPOCH) // timedelta(milliseconds=1)
         try:
-            trimmed = self._client.xtrim(dlq_stream, minid=min_id) or 0
+            # An approximate trim removes only whole internal nodes, so it can
+            # keep entries older than the cutoff.
+            trimmed = (
+                self._client.xtrim(
+                    dlq_stream, minid=f"{cutoff_ms}-0", approximate=False
+                )
+                or 0
+            )
             if trimmed > 0:
                 logger.info(
                     "broker.redis.dlq_trimmed",
@@ -1989,6 +2013,7 @@ def register() -> None:
 
 
 _PORT_CHECK: type[BrokerPort] = RedisBroker
+_DLQ_PORT_CHECK: type[DeadLetterQueuePort] = RedisBroker
 _BLOCKING_READ_CHECK: type[BlockingReadPort] = RedisBroker
 _PARTITIONING_CHECK: type[PartitioningPort] = RedisBroker
 _STREAM_RETENTION_CHECK: type[StreamRetentionPort] = RedisBroker

@@ -6,6 +6,7 @@ import logging
 import time
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Sequence
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from protean.core.subscriber import BaseSubscriber
@@ -13,16 +14,17 @@ from protean.exceptions import ConfigurationError, NotSupportedError, Validation
 from protean.infra.registry import brokers as broker_registry
 from protean.port.broker import (
     CAPABILITY_PORTS,
-    BaseBroker,
     BlockingReadPort,
     BrokerCapabilities,
     BrokerHealth,
     BrokerMessage,
     BrokerPort,
     ConsumerGroupInfo,
+    DeadLetterQueuePort,
     DLQEntry,
     PartitioningPort,
     StreamRetentionPort,
+    require_aware_cutoff,
 )
 from protean.utils import Processing
 from protean.utils.consume_idempotency import dispatch_to_subscriber
@@ -425,42 +427,78 @@ class Broker:
     def _close(self) -> None:
         self._adapter.close()
 
-    # Forwarders for the operations still on ``BaseBroker``.
-
-    def _base_broker(self, operation: str) -> BaseBroker:
-        """Return the adapter as a ``BaseBroker``.
-
-        Raises:
-            NotSupportedError: When the adapter does not subclass ``BaseBroker``.
-        """
-        if isinstance(self._adapter, BaseBroker):
-            return self._adapter
-        raise NotSupportedError(f"Broker {self.name} does not implement `{operation}`.")
+    def _dlq_port(self) -> DeadLetterQueuePort | None:
+        """Return the adapter as a ``DeadLetterQueuePort``, or ``None`` without the flag."""
+        if BrokerCapabilities.DEAD_LETTER_QUEUE not in self.capabilities:
+            logger.warning(f"Broker {self.name} does not support DLQ management")
+            return None
+        return cast(DeadLetterQueuePort, self._adapter)
 
     def dlq_list(self, dlq_streams: list[str], limit: int = 100) -> list[DLQEntry]:
-        return self._base_broker("dlq_list").dlq_list(dlq_streams, limit)
+        """Return up to ``limit`` entries from ``dlq_streams``, newest failure first.
 
-    def dlq_inspect(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
-        return self._base_broker("dlq_inspect").dlq_inspect(dlq_stream, dlq_id)
+        Returns an empty list when the broker lacks ``DEAD_LETTER_QUEUE``.
+        """
+        adapter = self._dlq_port()
+        return adapter.dlq_list(dlq_streams, limit) if adapter else []
+
+    def dlq_get(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
+        """Return the entry ``dlq_id`` in ``dlq_stream``, or ``None`` if there is none.
+
+        Returns ``None`` when the broker lacks ``DEAD_LETTER_QUEUE``.
+        """
+        adapter = self._dlq_port()
+        return adapter.dlq_get(dlq_stream, dlq_id) if adapter else None
 
     def dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
-        return self._base_broker("dlq_replay").dlq_replay(
-            dlq_stream, dlq_id, target_stream
+        """Publish the entry ``dlq_id`` to ``target_stream`` and remove it.
+
+        Returns ``False`` when there is no such entry, or when the broker lacks
+        ``DEAD_LETTER_QUEUE``.
+        """
+        adapter = self._dlq_port()
+        return (
+            adapter.dlq_replay(dlq_stream, dlq_id, target_stream) if adapter else False
         )
 
     def dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
-        return self._base_broker("dlq_replay_all").dlq_replay_all(
-            dlq_stream, target_stream
-        )
+        """Publish every entry in ``dlq_stream`` to ``target_stream`` and remove it.
+
+        Returns the number replayed, ``0`` when the broker lacks
+        ``DEAD_LETTER_QUEUE``.
+        """
+        adapter = self._dlq_port()
+        return adapter.dlq_replay_all(dlq_stream, target_stream) if adapter else 0
 
     def dlq_purge(self, dlq_stream: str) -> int:
-        return self._base_broker("dlq_purge").dlq_purge(dlq_stream)
+        """Remove every entry in ``dlq_stream``.
 
-    def dlq_trim(self, dlq_stream: str, min_id: str) -> int:
-        return self._base_broker("dlq_trim").dlq_trim(dlq_stream, min_id)
+        Returns the number removed, ``0`` when the broker lacks
+        ``DEAD_LETTER_QUEUE``.
+        """
+        adapter = self._dlq_port()
+        return adapter.dlq_purge(dlq_stream) if adapter else 0
+
+    def dlq_trim(self, dlq_stream: str, older_than: datetime) -> int:
+        """Remove the entries in ``dlq_stream`` that failed before ``older_than``.
+
+        Returns the number removed, ``0`` when the broker lacks
+        ``DEAD_LETTER_QUEUE``.
+
+        Raises:
+            ValueError: ``older_than`` has no time zone.
+        """
+        require_aware_cutoff(older_than)
+        adapter = self._dlq_port()
+        return adapter.dlq_trim(dlq_stream, older_than) if adapter else 0
 
     def dlq_depth(self, dlq_stream: str) -> int:
-        return self._base_broker("dlq_depth").dlq_depth(dlq_stream)
+        """Return the number of entries in ``dlq_stream``.
+
+        Returns ``0`` when the broker lacks ``DEAD_LETTER_QUEUE``.
+        """
+        adapter = self._dlq_port()
+        return adapter.dlq_depth(dlq_stream) if adapter else 0
 
     # Stream retention, for the stream subscription.
 

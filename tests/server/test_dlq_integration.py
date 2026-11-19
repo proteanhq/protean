@@ -4,7 +4,7 @@ Verifies end-to-end error handling flows:
 - BrokerSubscription: handler fail → retry → DLQ publish
 - EventStoreSubscription: handler fail → failed position → recovery
 - DLQ discovery: all subscription types surfaced by discovery utility
-- InlineBroker internal DLQ: nack → max retries → list/inspect/replay/purge
+- InlineBroker DLQ: nack → max retries → list/get/replay/purge
 """
 
 import logging
@@ -22,6 +22,16 @@ from protean.core.subscriber import BaseSubscriber
 from protean.fields import String
 from protean.server.engine import Engine
 from protean.utils.dlq import collect_dlq_streams, discover_subscriptions
+
+
+def _dead_lettered_ids(broker, stream, group):
+    """Return the original IDs of the ``{stream}:dlq`` entries ``group`` failed."""
+    return [
+        entry.original_id
+        for entry in broker.dlq_list([f"{stream}:dlq"])
+        if entry.consumer_group == group
+    ]
+
 
 # ── Shared domain elements ──────────────────────────────────────────────
 
@@ -179,10 +189,10 @@ class TestBrokerSubscriptionDLQIntegration:
         Under a persistent ``{stream}:dlq`` outage the subscription holds the
         message by NACKing it. Because the subscription owns retry and
         dead-lettering for this stream, the InlineBroker holds-and-redelivers
-        with no independent ceiling: it never moves the message to its own native
-        DLQ, no matter how many rounds the outage lasts. When the DLQ recovers,
-        the message lands in the single documented ``{stream}:dlq`` and the retry
-        count is cleared, so nothing leaks.
+        with no independent ceiling: it never dead-letters the message itself,
+        no matter how many rounds the outage lasts. When the DLQ recovers, the
+        message lands in ``{stream}:dlq`` once and the retry count is cleared,
+        so nothing leaks.
         """
         engine = Engine(test_domain, test_mode=True)
         broker = test_domain.brokers["default"]
@@ -239,10 +249,8 @@ class TestBrokerSubscriptionDLQIntegration:
 
         # Never reached the published DLQ stream (publish failed every round).
         assert len(broker._adapter._messages.get(sub.dlq_stream, [])) == 0
-        # And never routed to the broker's native DLQ: it is held, not lost.
-        native_dlq = broker._adapter.get_dlq_messages(group, "integration_stream")
-        dlq_ids = [entry[0] for entries in native_dlq.values() for entry in entries]
-        assert identifier not in dlq_ids
+        # And the broker did not dead-letter it either: it is held, not lost.
+        assert _dead_lettered_ids(broker, "integration_stream", group) == []
         group_key = f"integration_stream:{group}"
         held_ids = [entry[0] for entry in broker._adapter._failed_messages[group_key]]
         assert identifier in held_ids
@@ -254,12 +262,13 @@ class TestBrokerSubscriptionDLQIntegration:
         reseed_in_flight()
         await sub._handle_failed_message(identifier, payload)
 
-        # It now lands in the single documented DLQ, the native DLQ stays empty,
-        # and the retry count is cleared on ACK, so nothing leaks.
+        # It now lands in the DLQ stream once, written by the subscription and
+        # not also by the broker, and the retry count is cleared on ACK, so
+        # nothing leaks.
         assert len(broker._adapter._messages.get(sub.dlq_stream, [])) == 1
-        native_dlq = broker._adapter.get_dlq_messages(group, "integration_stream")
-        dlq_ids = [entry[0] for entries in native_dlq.values() for entry in entries]
-        assert identifier not in dlq_ids
+        assert _dead_lettered_ids(broker, "integration_stream", group) == [identifier]
+        [entry] = broker.dlq_list([sub.dlq_stream])
+        assert entry.failure_reason == "unknown"
         assert identifier not in sub.retry_counts
 
     def test_broker_direct_group_still_ceilings_to_native_dlq(self, test_domain):
@@ -267,7 +276,8 @@ class TestBrokerSubscriptionDLQIntegration:
 
         The reconciliation covers subscription-consumed streams only. A consumer
         group that was never marked owned still trips the broker's nack ceiling
-        and lands in the native DLQ, so the boundary is real.
+        and the broker dead-letters it to ``{stream}:dlq``, so the boundary is
+        real.
         """
         broker = test_domain.brokers["default"]
         broker._adapter._max_retries = 1
@@ -285,9 +295,9 @@ class TestBrokerSubscriptionDLQIntegration:
         assert broker.get_next(stream, consumer_group) is not None
         assert broker.nack(stream, identifier, consumer_group) is True
 
-        dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
-        dlq_ids = [entry[0] for entry in dlq_messages.get(stream, [])]
-        assert identifier in dlq_ids
+        assert _dead_lettered_ids(broker, stream, consumer_group) == [identifier]
+        [entry] = broker.dlq_list([f"{stream}:dlq"])
+        assert entry.failure_reason == "max_retries_exceeded"
 
     def test_owned_group_holds_and_redelivers_through_the_real_poll_loop(
         self, test_domain
@@ -319,9 +329,7 @@ class TestBrokerSubscriptionDLQIntegration:
             assert broker.nack(stream, identifier, group) is True
 
         # Never dead-lettered, still held and redeliverable.
-        native_dlq = broker._adapter.get_dlq_messages(group, stream)
-        native_ids = [e[0] for entries in native_dlq.values() for e in entries]
-        assert identifier not in native_ids
+        assert _dead_lettered_ids(broker, stream, group) == []
         assert identifier in [e[0] for e in broker._adapter._failed_messages[group_key]]
 
         # Held-then-succeed: redeliver once more, then ack. Broker-side retry
@@ -394,7 +402,7 @@ class TestBrokerSubscriptionDLQIntegration:
         """A timed-out in-flight message on an owned group is held, not DLQ'd.
 
         ``_cleanup_stale_messages`` runs on every ``get_next``. For an owned
-        group it must not move the message to the native DLQ; it holds it for
+        group it must not dead-letter the message; it holds it for
         redelivery instead. Stream names that carry the group separator
         themselves (``domain::aggregate``, ``{stream}:dlq``) must be held under
         their real group key, otherwise the redelivery never happens.
@@ -411,9 +419,7 @@ class TestBrokerSubscriptionDLQIntegration:
         # A negative timeout makes the just-read message count as stale.
         broker._adapter._cleanup_stale_messages(group, -1)
 
-        native_dlq = broker._adapter.get_dlq_messages(group, stream)
-        native_ids = [e[0] for entries in native_dlq.values() for e in entries]
-        assert identifier not in native_ids
+        assert _dead_lettered_ids(broker, stream, group) == []
 
         # Held and redeliverable on the next read.
         delivered = broker.get_next(stream, group)
@@ -503,26 +509,23 @@ class TestStreamSubscriptionDLQReconciliation:
             reseed_in_flight()
             await sub.handle_failed_message(identifier, payload)
 
-        # Never routed to the broker's native DLQ, and never to {stream}:dlq
-        # (publish failed every round). It is held.
+        # Neither the broker nor the subscription (whose publish failed every
+        # round) wrote it to {stream}:dlq. It is held.
         assert len(broker._adapter._messages.get(sub.dlq_stream, [])) == 0
-        native_dlq = broker._adapter.get_dlq_messages(group, "stream_reconcile")
-        native_ids = [e[0] for entries in native_dlq.values() for e in entries]
-        assert identifier not in native_ids
+        assert _dead_lettered_ids(broker, "stream_reconcile", group) == []
         group_key = f"stream_reconcile:{group}"
         assert identifier in [e[0] for e in broker._adapter._failed_messages[group_key]]
         assert f"stream_reconcile:{identifier}" in sub.retry_counts
 
-        # Recovery: lift the outage, run one more cycle. It lands in {stream}:dlq,
-        # the native DLQ stays empty, and the retry count clears.
+        # Recovery: lift the outage, run one more cycle. It lands in {stream}:dlq
+        # once, the broker does not also dead-letter it, and the retry count
+        # clears.
         monkeypatch.setattr(broker, "publish", real_publish)
         reseed_in_flight()
         await sub.handle_failed_message(identifier, payload)
 
         assert len(broker._adapter._messages.get(sub.dlq_stream, [])) == 1
-        native_dlq = broker._adapter.get_dlq_messages(group, "stream_reconcile")
-        native_ids = [e[0] for entries in native_dlq.values() for e in entries]
-        assert identifier not in native_ids
+        assert _dead_lettered_ids(broker, "stream_reconcile", group) == [identifier]
         assert f"stream_reconcile:{identifier}" not in sub.retry_counts
 
 
@@ -705,7 +708,7 @@ class TestDLQDiscoveryIntegration:
 
 
 class TestInlineBrokerDLQOperations:
-    """Test InlineBroker's built-in DLQ management (list, inspect, replay, purge)."""
+    """Test InlineBroker's DLQ management (list, get, replay, purge)."""
 
     @pytest.fixture(autouse=True)
     def register_elements(self, test_domain):
@@ -713,16 +716,16 @@ class TestInlineBrokerDLQOperations:
         test_domain.init(traverse=False)
 
     def _populate_broker_dlq(self, broker, stream, consumer_group, count=3):
-        """Put messages into the broker's internal DLQ."""
+        """Dead-letter ``count`` messages into ``{stream}:dlq``."""
         for i in range(count):
             identifier = f"msg-{i}"
             message = {"data": f"payload-{i}", "index": i}
             broker._adapter._store_dlq_message(
-                stream, consumer_group, identifier, message, "test_failure"
+                stream, consumer_group, identifier, message, "test_failure", 3
             )
 
-    def test_dlq_inspect_returns_entry(self, test_domain):
-        """broker.dlq_inspect() returns a specific entry by ID."""
+    def test_dlq_get_returns_entry(self, test_domain):
+        """broker.dlq_get() returns a specific entry by ID."""
         broker = test_domain.brokers["default"]
         self._populate_broker_dlq(broker, "broker_dlq_test", "test_group", count=1)
 
@@ -730,15 +733,15 @@ class TestInlineBrokerDLQOperations:
         assert len(entries) == 1
         dlq_id = entries[0].dlq_id
 
-        entry = broker.dlq_inspect("broker_dlq_test:dlq", dlq_id)
+        entry = broker.dlq_get("broker_dlq_test:dlq", dlq_id)
         assert entry is not None
         assert entry.dlq_id == dlq_id
         assert entry.payload["data"] == "payload-0"
 
-    def test_dlq_inspect_not_found(self, test_domain):
-        """broker.dlq_inspect() returns None for unknown ID."""
+    def test_dlq_get_not_found(self, test_domain):
+        """broker.dlq_get() returns None for unknown ID."""
         broker = test_domain.brokers["default"]
-        entry = broker.dlq_inspect("broker_dlq_test:dlq", "nonexistent")
+        entry = broker.dlq_get("broker_dlq_test:dlq", "nonexistent")
         assert entry is None
 
     def test_dlq_replay_single_message(self, test_domain):

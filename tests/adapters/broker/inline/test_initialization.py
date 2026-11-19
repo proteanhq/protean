@@ -48,5 +48,5 @@ def test_broker_internal_data_structures_initialization(test_domain):
     assert hasattr(broker, "_retry_counts")
     assert hasattr(broker, "_consumer_positions")
     assert hasattr(broker, "_message_ownership")
-    assert hasattr(broker, "_dead_letter_queue")
+    assert not hasattr(broker, "_dead_letter_queue")
     assert hasattr(broker, "_operation_states")

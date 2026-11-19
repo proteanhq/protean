@@ -1,6 +1,7 @@
 """Tests for internal state management and tracking in InlineBroker."""
 
 import time
+from datetime import datetime
 
 from protean.port.broker import OperationState
 
@@ -123,16 +124,16 @@ class TestInlineBrokerInternalState:
         broker.get_next(stream, consumer_group)
         broker.nack(stream, identifier, consumer_group)
 
-        # Check DLQ structure
-        group_key = f"{stream}:{consumer_group}"
-        assert group_key in broker._adapter._dead_letter_queue
-        assert len(broker._adapter._dead_letter_queue[group_key]) == 1
-
-        dlq_entry = broker._adapter._dead_letter_queue[group_key][0]
-        assert dlq_entry[0] == identifier  # Message ID
-        assert dlq_entry[1] == message  # Message content
-        assert dlq_entry[2] == "max_retries_exceeded"  # Failure reason
-        assert isinstance(dlq_entry[3], float)  # Timestamp
+        # The entry is a message on ``{stream}:dlq`` with a metadata record
+        [(_, dlq_message)] = broker._adapter._messages[f"{stream}:dlq"]
+        assert dlq_message["test"] == "data"
+        metadata = dlq_message["_dlq_metadata"]
+        assert metadata["original_id"] == identifier
+        assert metadata["original_stream"] == stream
+        assert metadata["consumer_group"] == consumer_group
+        assert metadata["failure_reason"] == "max_retries_exceeded"
+        assert metadata["retry_count"] == 1
+        assert datetime.fromisoformat(metadata["failed_at"]).utcoffset() is not None
 
     def test_remove_stale_consumers_default_is_noop(self, broker):
         """InlineBroker inherits the port's no-op remove_stale_consumers (0)."""
@@ -163,7 +164,9 @@ class TestInlineBrokerInternalState:
         # Message should be moved to DLQ
         group_key = f"{stream}:{consumer_group}"
         assert identifier not in broker._adapter._in_flight.get(group_key, {})
-        assert len(broker._adapter._dead_letter_queue[group_key]) == 1
+        [entry] = broker.dlq_list([f"{stream}:dlq"])
+        assert entry.original_id == identifier
+        assert entry.failure_reason == "timeout"
 
     def test_requeue_failed_messages_logic(self, broker):
         """Test logic for requeuing failed messages."""
@@ -352,10 +355,7 @@ def test_stale_message_cleanup_with_dlq_disabled(broker):
     # Message should be removed but not in DLQ
     group_key = f"{stream}:{consumer_group}"
     assert identifier not in broker._adapter._in_flight.get(group_key, {})
-    assert (
-        group_key not in broker._adapter._dead_letter_queue
-        or len(broker._adapter._dead_letter_queue[group_key]) == 0
-    )
+    assert broker.dlq_depth(f"{stream}:dlq") == 0
 
 
 def test_clear_operation_state_when_not_exists(broker):

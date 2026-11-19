@@ -1510,8 +1510,8 @@ class TestDLQListEndpoint:
 class TestDLQInspectEndpoint:
     """Tests for GET /api/dlq/{dlq_id}."""
 
-    def test_dlq_inspect_returns_entry_with_payload(self, test_domain):
-        """DLQ inspect returns entry details including payload."""
+    def test_dlq_get_returns_entry_with_payload(self, test_domain):
+        """DLQ get returns entry details including payload."""
         redis_conn = _dlq_setup(test_domain)
         dlq_id = _add_dlq_message(redis_conn)
 
@@ -1531,16 +1531,16 @@ class TestDLQInspectEndpoint:
         assert "_dlq_metadata" not in data["payload"]
         assert data["payload"] == {"type": "OrderPlaced", "data": {"order_id": "123"}}
 
-    def test_dlq_inspect_not_found(self, test_domain):
-        """DLQ inspect returns 404 when message is not in any DLQ stream."""
+    def test_dlq_get_not_found(self, test_domain):
+        """DLQ get returns 404 when message is not in any DLQ stream."""
         _dlq_setup(test_domain)
 
         response = _dlq_client(test_domain).get("/api/dlq/nonexistent-id")
         assert response.status_code == 404
         assert "not found" in response.json()["error"]
 
-    def test_dlq_inspect_searches_multiple_streams(self, test_domain):
-        """DLQ inspect searches across multiple DLQ streams."""
+    def test_dlq_get_searches_multiple_streams(self, test_domain):
+        """DLQ get searches across multiple DLQ streams."""
         redis_conn = _dlq_setup(test_domain)
         # Not in the first DLQ stream, which holds a different entry
         _add_dlq_message(redis_conn, "orders::order:dlq")
@@ -1558,14 +1558,14 @@ class TestDLQInspectEndpoint:
         assert response.json()["dlq_stream"] == "inventory::product:dlq"
 
     @_WITHOUT_DLQ
-    def test_dlq_inspect_unavailable(self, make_domain):
-        """DLQ inspect returns 503 without a broker or without DLQ capability."""
+    def test_dlq_get_unavailable(self, make_domain):
+        """DLQ get returns 503 without a broker or without DLQ capability."""
         response = _dlq_client(make_domain()).get("/api/dlq/some-id")
         assert response.status_code == 503
         assert response.json()["error"] == "DLQ not available"
 
-    def test_dlq_inspect_handles_exception(self, test_domain):
-        """DLQ inspect returns 500 on unexpected exception."""
+    def test_dlq_get_handles_exception(self, test_domain):
+        """DLQ get returns 500 on unexpected exception."""
         with _failing_capability_check(test_domain):
             response = _dlq_client(test_domain).get("/api/dlq/some-id")
         assert response.status_code == 500

@@ -3,7 +3,7 @@ import time
 import uuid
 from collections import defaultdict
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from protean.infra.registry import brokers
@@ -14,8 +14,10 @@ from protean.port.broker import (
     BrokerMessage,
     BrokerPort,
     ConsumerGroupInfo,
+    DeadLetterQueuePort,
     DLQEntry,
     OperationState,
+    require_aware_cutoff,
 )
 
 if TYPE_CHECKING:
@@ -36,9 +38,10 @@ MAX_BACKOFF_DELAY = 3600.0
 MESSAGE_TIMEOUT = 300.0
 ENABLE_DLQ = True
 OPERATION_STATE_TTL_MAX = 60.0
+DLQ_SUFFIX = ":dlq"
 
 
-class InlineBroker(BaseBroker, BrokerPort):
+class InlineBroker(BaseBroker, DeadLetterQueuePort):
     broker_type = "inline"
 
     def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
@@ -91,13 +94,6 @@ class InlineBroker(BaseBroker, BrokerPort):
 
         # Which consumer groups own each message, keyed by message identifier
         self._message_ownership: defaultdict[str, dict[str, bool]] = defaultdict(dict)
-
-        # Dead-letter queue for permanently failed messages, keyed by
-        # "stream:consumer_group". Each entry is (identifier, message, failure
-        # reason, timestamp).
-        self._dead_letter_queue: defaultdict[
-            str, list[tuple[str, dict[str, Any], str, float]]
-        ] = defaultdict(list)
 
         # Operation state and its timestamp per message identifier, keyed by
         # consumer group, for idempotency
@@ -454,7 +450,12 @@ class InlineBroker(BaseBroker, BrokerPort):
             # Max retries exceeded - move to DLQ or discard
             if self._enable_dlq:
                 self._store_dlq_message(
-                    stream, consumer_group, identifier, message, "max_retries_exceeded"
+                    stream,
+                    consumer_group,
+                    identifier,
+                    message,
+                    "max_retries_exceeded",
+                    new_retry_count,
                 )
                 logger.warning(
                     f"Message '{identifier}' moved to DLQ after {self._max_retries} retries"
@@ -489,18 +490,6 @@ class InlineBroker(BaseBroker, BrokerPort):
                 "broker.inline.requeue_failed",
                 extra={"consumer_group": consumer_group, "stream": stream},
             )
-
-    def get_dlq_messages(
-        self, consumer_group: str, stream: str | None = None
-    ) -> dict[str, list[tuple[str, dict[str, Any], str, float]]]:
-        """Get messages from Dead Letter Queue for inspection"""
-        return self._get_dlq_messages(consumer_group, stream)
-
-    def reprocess_dlq_message(
-        self, identifier: str, consumer_group: str, stream: str
-    ) -> bool:
-        """Move a message from DLQ back to the main queue for reprocessing"""
-        return self._reprocess_dlq_message(identifier, consumer_group, stream)
 
     # Manual broker implementation methods
     def _store_in_flight_message(
@@ -623,12 +612,25 @@ class InlineBroker(BaseBroker, BrokerPort):
         identifier: str,
         message: dict[str, Any],
         failure_reason: str,
+        retry_count: int,
     ) -> None:
-        """Store a message in Dead Letter Queue"""
-        group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
-        self._dead_letter_queue[group_key].append(
-            (identifier, message, failure_reason, time.time())
-        )
+        """Publish a message to ``{stream}:dlq`` with a ``_dlq_metadata`` record.
+
+        The record has the keys the engine writes when it dead-letters a
+        message, plus ``failure_reason``.
+        """
+        dlq_message = {
+            **message,
+            "_dlq_metadata": {
+                "original_stream": stream,
+                "original_id": identifier,
+                "consumer_group": consumer_group,
+                "failure_reason": failure_reason,
+                "failed_at": self.domain.clock.now().isoformat(),
+                "retry_count": retry_count,
+            },
+        }
+        self.publish(f"{stream}{DLQ_SUFFIX}", dlq_message)
 
     def _validate_consumer_group(self, consumer_group: str) -> bool:
         """Validate that the consumer group exists"""
@@ -775,174 +777,119 @@ class InlineBroker(BaseBroker, BrokerPort):
             if not self._operation_states[consumer_group]:
                 del self._operation_states[consumer_group]
 
-    def _get_dlq_messages(
-        self, consumer_group: str, stream: str | None = None
-    ) -> dict[str, list[tuple[str, dict[str, Any], str, float]]]:
-        """Get messages from Dead Letter Queue for inspection"""
-        if stream:
-            group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
-            return {stream: list(self._dead_letter_queue[group_key])}
-        else:
-            # Get all DLQ messages for this consumer group across all streams
-            result: dict[str, list[tuple[str, dict[str, Any], str, float]]] = {}
-            for group_key in self._dead_letter_queue:
-                if group_key.endswith(f"{CONSUMER_GROUP_SEPARATOR}{consumer_group}"):
-                    stream_name = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)[0]
-                    result[stream_name] = list(self._dead_letter_queue[group_key])
-            return result
-
-    def _reprocess_dlq_message(
-        self, identifier: str, consumer_group: str, stream: str
-    ) -> bool:
-        """Move a message from DLQ back to the main queue for reprocessing"""
-        try:
-            group_key = f"{stream}{CONSUMER_GROUP_SEPARATOR}{consumer_group}"
-            dlq_messages = self._dead_letter_queue[group_key]
-            for i, (msg_id, message, _failure_reason, _timestamp) in enumerate(
-                dlq_messages
-            ):
-                if msg_id == identifier:
-                    # Remove from DLQ
-                    del dlq_messages[i]
-
-                    # Reset retry count
-                    self._set_retry_count(stream, consumer_group, identifier, 0)
-
-                    # Add back to main queue at current position
-                    current_position = self._consumer_positions[group_key]
-                    self._messages[stream].insert(
-                        current_position, (identifier, message)
-                    )
-
-                    # Adjust all consumer group positions for this stream
-                    for other_group_key in self._consumer_positions:
-                        if (
-                            other_group_key != group_key
-                            and other_group_key.startswith(
-                                f"{stream}{CONSUMER_GROUP_SEPARATOR}"
-                            )
-                            and self._consumer_positions[other_group_key]
-                            >= current_position
-                        ):
-                            self._consumer_positions[other_group_key] += 1
-
-                    logger.info(f"Message '{identifier}' reprocessed from DLQ")
-                    return True
-            return False
-        except Exception:  # a failed DLQ reprocess reports False; logged with traceback
-            logger.exception(
-                "broker.inline.dlq_reprocess_failed", extra={"identifier": identifier}
-            )
-            return False
-
     # ------------------------------------------------------------------
     # DLQ Management
     # ------------------------------------------------------------------
 
-    def _dlq_list(self, dlq_streams: list[str], limit: int) -> list[DLQEntry]:
-        """List DLQ messages across specified DLQ streams."""
-        entries: list[DLQEntry] = []
-        for group_key, messages in self._dead_letter_queue.items():
-            if not messages:
-                continue
-            stream, consumer_group = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
-            dlq_stream_name = f"{stream}:dlq"
-            if dlq_stream_name not in dlq_streams:
-                continue
-            for identifier, message, failure_reason, timestamp in messages:
-                entries.append(
-                    DLQEntry(
-                        dlq_id=identifier,
-                        original_id=identifier,
-                        stream=stream,
-                        consumer_group=consumer_group,
-                        payload=message,
-                        failure_reason=failure_reason,
-                        failed_at=(
-                            datetime.fromtimestamp(timestamp, tz=UTC).isoformat()
-                            if timestamp
-                            else None
-                        ),
-                        retry_count=0,
-                        dlq_stream=dlq_stream_name,
-                    )
-                )
+    def dlq_list(self, dlq_streams: list[str], limit: int = 100) -> list[DLQEntry]:
+        """Return up to ``limit`` entries from ``dlq_streams``, newest failure first."""
+        entries = [
+            self._parse_dlq_entry(dlq_stream, identifier, message)
+            for dlq_stream in dlq_streams
+            for identifier, message in self._messages.get(dlq_stream, [])
+        ]
         entries.sort(key=lambda e: e.failed_at or "", reverse=True)
         return entries[:limit]
 
-    def _dlq_inspect(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
-        """Inspect a specific DLQ message by ID."""
-        for group_key, messages in self._dead_letter_queue.items():
-            if not messages:
-                continue
-            stream, consumer_group = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
-            dlq_stream_name = f"{stream}:dlq"
-            if dlq_stream_name != dlq_stream:
-                continue
-            for identifier, message, failure_reason, timestamp in messages:
-                if identifier == dlq_id:
-                    return DLQEntry(
-                        dlq_id=identifier,
-                        original_id=identifier,
-                        stream=stream,
-                        consumer_group=consumer_group,
-                        payload=message,
-                        failure_reason=failure_reason,
-                        failed_at=(
-                            datetime.fromtimestamp(timestamp, tz=UTC).isoformat()
-                            if timestamp
-                            else None
-                        ),
-                        retry_count=0,
-                        dlq_stream=dlq_stream_name,
-                    )
+    def dlq_get(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
+        """Return the entry ``dlq_id`` in ``dlq_stream``, or ``None`` if there is none."""
+        for identifier, message in self._messages.get(dlq_stream, []):
+            if identifier == dlq_id:
+                return self._parse_dlq_entry(dlq_stream, identifier, message)
         return None
 
-    def _dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
-        """Replay a single DLQ message back to its original stream."""
-        for group_key, messages in self._dead_letter_queue.items():
-            stream, _consumer_group = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
-            dlq_stream_name = f"{stream}:dlq"
-            if dlq_stream_name != dlq_stream:
-                continue
-            for i, (identifier, message, _failure_reason, _timestamp) in enumerate(
-                messages
-            ):
-                if identifier == dlq_id:
-                    del messages[i]
-                    self.publish(target_stream, message)
-                    logger.info(
-                        f"Replayed DLQ message '{identifier}' to stream '{target_stream}'"
-                    )
-                    return True
+    def dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
+        """Publish the entry ``dlq_id`` to ``target_stream`` without its
+        ``_dlq_metadata``, and remove it."""
+        for index, (identifier, message) in enumerate(
+            self._messages.get(dlq_stream, [])
+        ):
+            if identifier == dlq_id:
+                self._remove_dlq_entries(dlq_stream, {index})
+                self.publish(target_stream, _without_dlq_metadata(message))
+                logger.info(
+                    f"Replayed DLQ message '{identifier}' to stream '{target_stream}'"
+                )
+                return True
         return False
 
-    def _dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
-        """Replay all DLQ messages from a stream."""
-        replayed = 0
-        for group_key in list(self._dead_letter_queue.keys()):
-            messages = self._dead_letter_queue[group_key]
-            stream, _ = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
-            dlq_stream_name = f"{stream}:dlq"
-            if dlq_stream_name != dlq_stream:
-                continue
-            for _identifier, message, _failure_reason, _timestamp in messages:
-                self.publish(target_stream, message)
-                replayed += 1
-            messages.clear()
-        return replayed
+    def dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
+        """Publish every entry in ``dlq_stream`` to ``target_stream`` without its
+        ``_dlq_metadata``, and remove it."""
+        entries = list(self._messages.get(dlq_stream, []))
+        self._remove_dlq_entries(dlq_stream, set(range(len(entries))))
+        for _identifier, message in entries:
+            self.publish(target_stream, _without_dlq_metadata(message))
+        return len(entries)
 
-    def _dlq_purge(self, dlq_stream: str) -> int:
-        """Purge all messages from a DLQ stream."""
-        purged = 0
-        for group_key in list(self._dead_letter_queue.keys()):
-            stream, _ = group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)
-            dlq_stream_name = f"{stream}:dlq"
-            if dlq_stream_name != dlq_stream:
-                continue
-            purged += len(self._dead_letter_queue[group_key])
-            self._dead_letter_queue[group_key].clear()
-        return purged
+    def dlq_purge(self, dlq_stream: str) -> int:
+        """Remove every entry in ``dlq_stream``."""
+        entries = self._messages.get(dlq_stream, [])
+        return self._remove_dlq_entries(dlq_stream, set(range(len(entries))))
+
+    def dlq_trim(self, dlq_stream: str, older_than: datetime) -> int:
+        """Remove the entries in ``dlq_stream`` that failed before ``older_than``.
+
+        Keeps an entry whose ``_dlq_metadata.failed_at`` is missing, cannot be
+        parsed, or has no time zone, since it cannot be compared with
+        ``older_than``.
+
+        Raises:
+            ValueError: ``older_than`` has no time zone.
+        """
+        require_aware_cutoff(older_than)
+        expired = {
+            index
+            for index, (_identifier, message) in enumerate(
+                self._messages.get(dlq_stream, [])
+            )
+            if _failed_before(message, older_than)
+        }
+        return self._remove_dlq_entries(dlq_stream, expired)
+
+    def dlq_depth(self, dlq_stream: str) -> int:
+        """Return the number of entries in ``dlq_stream``."""
+        return len(self._messages.get(dlq_stream, []))
+
+    def _remove_dlq_entries(self, dlq_stream: str, indices: set[int]) -> int:
+        """Delete the entries at ``indices`` from ``dlq_stream`` and return how many.
+
+        Lowers the read position of each consumer group on ``dlq_stream`` by
+        the number of removed entries before it, so the group's next read
+        returns the entry it would have read next.
+        """
+        entries = self._messages.get(dlq_stream)
+        if not entries or not indices:
+            return 0
+
+        self._messages[dlq_stream] = [
+            entry for index, entry in enumerate(entries) if index not in indices
+        ]
+        for group_key, position in self._consumer_positions.items():
+            # Compare the whole stream part: a prefix match would also take
+            # the groups of ``{dlq_stream}:dlq``.
+            if group_key.rsplit(CONSUMER_GROUP_SEPARATOR, 1)[0] == dlq_stream:
+                self._consumer_positions[group_key] = position - sum(
+                    1 for index in indices if index < position
+                )
+        return len(indices)
+
+    def _parse_dlq_entry(
+        self, dlq_stream: str, identifier: str, message: dict[str, Any]
+    ) -> DLQEntry:
+        """Build a ``DLQEntry`` from a message and its ``_dlq_metadata`` record."""
+        dlq_meta = message.get("_dlq_metadata", {})
+        return DLQEntry(
+            dlq_id=identifier,
+            original_id=dlq_meta.get("original_id", identifier),
+            stream=dlq_meta.get("original_stream", dlq_stream.removesuffix(DLQ_SUFFIX)),
+            consumer_group=dlq_meta.get("consumer_group", ""),
+            payload=message,
+            failure_reason=dlq_meta.get("failure_reason", "unknown"),
+            failed_at=dlq_meta.get("failed_at"),
+            retry_count=int(dlq_meta.get("retry_count", 0)),
+            dlq_stream=dlq_stream,
+        )
 
     def create_group(self, stream: str, consumer_group: str) -> None:
         """Create ``consumer_group`` on ``stream`` if it does not exist."""
@@ -1008,7 +955,6 @@ class InlineBroker(BaseBroker, BrokerPort):
         self._retry_counts.clear()
         self._consumer_positions.clear()
         self._message_ownership.clear()
-        self._dead_letter_queue.clear()
         self._operation_states.clear()
 
     def ping(self) -> bool:
@@ -1035,8 +981,13 @@ class InlineBroker(BaseBroker, BrokerPort):
         # Calculate total failed messages across all consumer groups
         total_failed = sum(len(failed) for failed in self._failed_messages.values())
 
-        # Calculate total DLQ messages across all consumer groups
-        total_dlq = sum(len(dlq) for dlq in self._dead_letter_queue.values())
+        # Count the messages in the ``{stream}:dlq`` streams, which
+        # ``total_messages`` also counts
+        total_dlq = sum(
+            len(messages)
+            for stream, messages in self._messages.items()
+            if stream.endswith(DLQ_SUFFIX)
+        )
 
         # Get unique streams and consumer groups
         streams = set(self._messages.keys())
@@ -1048,7 +999,7 @@ class InlineBroker(BaseBroker, BrokerPort):
 
         # Calculate memory usage estimate (rough approximation)
         memory_estimate = (
-            total_messages * 100  # Rough estimate per message
+            (total_messages - total_dlq) * 100  # Rough estimate per message
             + total_in_flight * 150  # In-flight messages have more metadata
             + total_failed * 150  # Failed messages have retry info
             + total_dlq * 150  # DLQ messages have failure info
@@ -1164,13 +1115,40 @@ def _expire_stale_message(
     # Move to DLQ if enabled
     if broker._enable_dlq:
         broker._store_dlq_message(
-            stream, consumer_group, identifier, message, "timeout"
+            stream,
+            consumer_group,
+            identifier,
+            message,
+            "timeout",
+            broker._get_retry_count(stream, consumer_group, identifier),
         )
         logger.warning(f"Message '{identifier}' moved to DLQ due to timeout")
 
     # Clean up tracking
     broker._remove_retry_count(stream, consumer_group, identifier)
     broker._cleanup_message_ownership(identifier, consumer_group)
+
+
+def _without_dlq_metadata(message: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in message.items() if key != "_dlq_metadata"}
+
+
+def _failed_before(message: dict[str, Any], older_than: datetime) -> bool:
+    """Return ``True`` when the message's ``failed_at`` is earlier than ``older_than``.
+
+    Returns ``False`` when ``failed_at`` is missing, cannot be parsed, or has
+    no time zone.
+    """
+    failed_at = message.get("_dlq_metadata", {}).get("failed_at")
+    if not isinstance(failed_at, str):
+        return False
+    try:
+        failed_time = datetime.fromisoformat(failed_at)
+    except ValueError:
+        return False
+    if failed_time.utcoffset() is None:
+        return False
+    return failed_time < older_than
 
 
 # Self-registration function for entry point
@@ -1183,3 +1161,4 @@ def register() -> None:
 
 
 _PORT_CHECK: type[BrokerPort] = InlineBroker
+_DLQ_PORT_CHECK: type[DeadLetterQueuePort] = InlineBroker

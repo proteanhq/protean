@@ -55,11 +55,6 @@ def test_consumer_groups_with_multiple_streams_and_groups(broker):
         ("fail2", {}, 1, time.time())
     )
 
-    # Add DLQ messages
-    broker._adapter._dead_letter_queue[group_key1_s1].append(
-        ("dlq1", {}, "timeout", time.time())
-    )
-
     # Get consumer group info
     groups = broker._consumer_groups()
 
@@ -78,8 +73,6 @@ def test_consumer_groups_with_multiple_streams_and_groups(broker):
     assert len(adapter._in_flight[group_key1_s2]) == 1
     assert len(adapter._failed_messages[group_key1_s1]) == 1
     assert len(adapter._failed_messages[group_key1_s2]) == 1
-    assert len(adapter._dead_letter_queue[group_key1_s1]) == 1
-    assert len(adapter._dead_letter_queue[group_key1_s2]) == 0
 
     # Per-stream counts for group2
     assert len(adapter._in_flight[group_key2_s1]) == 1
@@ -121,22 +114,21 @@ def test_adapter_health_with_various_states(broker):
     # Add failed messages
     broker._adapter._failed_messages["stream1:group1"] = [("fail1", {}, 1, time.time())]
 
-    # Add DLQ messages
-    broker._adapter._dead_letter_queue["stream2:group2"] = [
-        ("dlq1", {}, "timeout", time.time())
-    ]
+    # Add a DLQ message, which is also a message on a stream
+    broker._adapter._messages["stream2:dlq"] = [("dlq1", {})]
 
     # Get health stats
     stats = broker._adapter.health()
 
     # Verify counts
-    assert stats.message_counts["total_messages"] == 3
+    assert stats.message_counts["total_messages"] == 4
     assert stats.message_counts["in_flight"] == 1
     assert stats.message_counts["failed"] == 1
     assert stats.message_counts["dlq"] == 1
+    assert stats.details["memory_estimate_bytes"] == 3 * 100 + 150 + 150 + 150
 
     # Verify streams and consumer groups
-    assert stats.details["streams"]["count"] == 2
+    assert stats.details["streams"]["count"] == 3
     assert "stream1" in stats.details["streams"]["names"]
     assert "stream2" in stats.details["streams"]["names"]
 
@@ -221,9 +213,7 @@ def test_clear_removes_all_data(broker):
     broker._adapter._failed_messages[f"{stream}:{consumer_group}"] = [
         ("id", {}, 1, time.time())
     ]
-    broker._adapter._dead_letter_queue[f"{stream}:{consumer_group}"] = [
-        ("id", {}, "reason", time.time())
-    ]
+    broker._adapter._messages[f"{stream}:dlq"] = [("id", {})]
     broker._adapter._operation_states[consumer_group] = {"id": ("state", time.time())}
 
     # Verify data exists
@@ -242,7 +232,6 @@ def test_clear_removes_all_data(broker):
     assert len(broker._adapter._retry_counts) == 0
     assert len(broker._adapter._consumer_positions) == 0
     assert len(broker._adapter._message_ownership) == 0
-    assert len(broker._adapter._dead_letter_queue) == 0
     assert len(broker._adapter._operation_states) == 0
 
 
@@ -286,4 +275,5 @@ def test_consumer_group_tracking_with_operations(broker):
     broker.nack(stream, identifier, consumer_group)
 
     # Should show in DLQ
-    assert len(broker._adapter._dead_letter_queue[f"{stream}:{consumer_group}"]) == 1
+    [entry] = broker.dlq_list([f"{stream}:dlq"])
+    assert entry.consumer_group == consumer_group

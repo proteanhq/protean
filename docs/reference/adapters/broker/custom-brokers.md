@@ -14,14 +14,14 @@ Custom brokers allow you to:
 
 A broker adapter subclasses `BaseBroker` and `BrokerPort`, in that order.
 `BrokerPort` holds the operations Protean calls on every broker. `BaseBroker`
-declares the dead letter queue hooks as abstract methods. Three capabilities
-have their own Port, and each Port extends `BrokerPort`. A broker that
-advertises one of them subclasses `BaseBroker` and that Port in place of
-`BrokerPort`:
+stores the adapter's name, domain and configuration. Four capabilities have
+their own Port, and each Port extends `BrokerPort`. A broker that advertises
+one of them subclasses `BaseBroker` and that Port in place of `BrokerPort`:
 
 | Capability | Port | Methods |
 |------------|------|---------|
 | `BLOCKING_READ` | `BlockingReadPort` | The blocking reads (see [Blocking reads](#blocking-reads)) |
+| `DEAD_LETTER_QUEUE` | `DeadLetterQueuePort` | The dead letter queue operations (see [Dead letter queues](#dead-letter-queues)) |
 | `STREAM_PARTITIONING` | `PartitioningPort` | The partition-per-key operations (see [Partitioning](partitioning.md)) |
 | `STREAM_RETENTION` | `StreamRetentionPort` | `trim` (see [Stream retention](partitioning.md#stream-retention)) |
 
@@ -32,11 +32,12 @@ The adapter implements these members:
 - Acknowledgment: `ack`, `nack`
 - Consumer groups: `create_group`, `consumer_groups`
 - Connection and health: `ping`, `health`, `get_connection`, `reconnect`, `clear`
-- Dead letter queue: `_dlq_list`, `_dlq_inspect`, `_dlq_replay`, `_dlq_replay_all`, `_dlq_purge`
+- Dead letter queue, only on a broker that declares that capability: `dlq_list`, `dlq_get`, `dlq_replay`, `dlq_replay_all`, `dlq_purge`, `dlq_trim`, `dlq_depth`
 
-A broker that does not support a feature still implements the method. It
-returns an empty result, as the Redis PubSub broker does for the dead letter
-queue methods.
+A broker that does not support a feature still implements the `BrokerPort`
+method, and returns an empty result or raises `NotSupportedError`. A broker
+without `DEAD_LETTER_QUEUE` has no dead letter queue methods. The `Broker`
+service answers its dead letter queue calls with an empty result.
 
 `BrokerPort` also defines `close`, `mark_subscription_owned`,
 `remove_stale_consumers` and `reclaim_idle_pending`. Their defaults do
@@ -255,9 +256,9 @@ class KafkaBroker(BaseBroker, BrokerPort):
 ```
 
 This listing shows the core methods only. A complete Kafka broker also
-implements `create_group`, `consumer_groups`, `get_connection`, `clear` and the
-five `_dlq_*` methods from the [Architecture](#architecture) list. Without them,
-Python refuses to create an instance of the class.
+implements `create_group`, `consumer_groups`, `get_connection` and `clear` from
+the [Architecture](#architecture) list. Without them, Python refuses to create
+an instance of the class.
 
 ## Installation & Usage
 
@@ -317,9 +318,10 @@ def capabilities(self) -> BrokerCapabilities:
     return BrokerCapabilities.ENTERPRISE_STREAMING
 ```
 
-`ENTERPRISE_STREAMING` includes `BLOCKING_READ`, `STREAM_PARTITIONING` and
-`STREAM_RETENTION`, so a broker that declares it subclasses `BlockingReadPort`,
-`PartitioningPort` and `StreamRetentionPort`.
+`ENTERPRISE_STREAMING` includes `BLOCKING_READ`, `DEAD_LETTER_QUEUE`,
+`STREAM_PARTITIONING` and `STREAM_RETENTION`, so a broker that declares it
+subclasses `BlockingReadPort`, `DeadLetterQueuePort`, `PartitioningPort` and
+`StreamRetentionPort`.
 
 ### Blocking reads
 
@@ -360,6 +362,51 @@ class MyBroker(BaseBroker, BlockingReadPort):
     ) -> dict[str, list[BrokerMessage]]:
         ...
 ```
+
+### Dead letter queues
+
+A broker that declares `DEAD_LETTER_QUEUE` subclasses `DeadLetterQueuePort`
+from `protean.port.broker` and implements its seven methods. If the broker
+declares the capability and does not subclass `DeadLetterQueuePort`,
+`domain.init()` raises `ConfigurationError`. The message names the methods the
+broker does not implement. The `Broker` service reads the capability flag, not
+the methods. On a broker without the flag, `dlq_list` returns `[]`, `dlq_get`
+returns `None`, `dlq_replay` returns `False`, and the counting methods return
+0.
+
+A dead letter queue lives on its own stream, named after the source stream
+with a `:dlq` suffix. `dlq_trim` removes the entries that failed before
+`older_than`, which must be a timezone-aware `datetime`. Both the `Broker`
+service and the inline and Redis brokers raise `ValueError` for a naive one.
+
+```python
+# fragment
+class MyBroker(BaseBroker, DeadLetterQueuePort):
+    def dlq_list(self, dlq_streams: list[str], limit: int = 100) -> list[DLQEntry]:
+        ...
+
+    def dlq_get(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
+        ...
+
+    def dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
+        ...
+
+    def dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
+        ...
+
+    def dlq_purge(self, dlq_stream: str) -> int:
+        ...
+
+    def dlq_trim(self, dlq_stream: str, older_than: datetime) -> int:
+        ...
+
+    def dlq_depth(self, dlq_stream: str) -> int:
+        ...
+```
+
+A broker that declares both `BLOCKING_READ` and `DEAD_LETTER_QUEUE` subclasses
+both sub-protocols, as `class MyBroker(BaseBroker, BlockingReadPort,
+DeadLetterQueuePort)`.
 
 ## Testing Your Broker
 

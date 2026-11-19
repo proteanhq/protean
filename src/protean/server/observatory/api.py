@@ -1190,7 +1190,7 @@ def _dlq_not_found(dlq_id: str) -> JSONResponse:
     )
 
 
-def _dlq_inspect(domains: list[Domain], dlq_id: str) -> JSONResponse:
+def _dlq_get(domains: list[Domain], dlq_id: str) -> JSONResponse:
     from protean.utils.dlq import collect_dlq_streams  # noqa: PLC0415
 
     domain = domains[0]
@@ -1201,7 +1201,7 @@ def _dlq_inspect(domains: list[Domain], dlq_id: str) -> JSONResponse:
                 return _dlq_not_available()
 
             for dlq_stream in collect_dlq_streams(domain):
-                entry = broker.dlq_inspect(dlq_stream, dlq_id)
+                entry = broker.dlq_get(dlq_stream, dlq_id)
                 if entry:
                     # Strip internal DLQ metadata from displayed payload
                     payload = {
@@ -1246,7 +1246,7 @@ def _dlq_replay(domains: list[Domain], dlq_id: str) -> JSONResponse:
                 return _dlq_not_available()
 
             for dlq_stream in collect_dlq_streams(domain):
-                entry = broker.dlq_inspect(dlq_stream, dlq_id)
+                entry = broker.dlq_get(dlq_stream, dlq_id)
                 if entry:
                     return _replay_entry(broker, dlq_stream, dlq_id, entry.stream)
 
@@ -1481,9 +1481,9 @@ def create_api_router(domains: list[Domain]) -> APIRouter:
         return _dlq_list(domains, subscription, limit, offset)
 
     @router.get("/dlq/{dlq_id}")
-    async def dlq_inspect(dlq_id: str) -> JSONResponse:
+    async def dlq_get(dlq_id: str) -> JSONResponse:
         """Inspect a single DLQ message with full payload."""
-        return _dlq_inspect(domains, dlq_id)
+        return _dlq_get(domains, dlq_id)
 
     @router.post("/dlq/{dlq_id}/replay")
     async def dlq_replay(dlq_id: str) -> JSONResponse:

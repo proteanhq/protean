@@ -58,41 +58,48 @@ def test_dlq_list_filters_by_stream(broker):
     assert entries[0].stream == "stream1"
 
 
-def test_dlq_inspect_found(broker):
-    """Test dlq_inspect returns entry when found."""
+def _dead_letter_one(broker, stream: str, payload: dict) -> str:
+    """Publish ``payload``, exhaust its retries and return its original ID."""
+    msg_id = broker.publish(stream, payload)
+    broker.get_next(stream, "group1")
+    broker.nack(stream, msg_id, "group1")
+    return msg_id
+
+
+def test_dlq_get_found(broker):
+    """dlq_get returns the entry under the ID it has in the DLQ stream."""
     broker._adapter._max_retries = 0
+    msg_id = _dead_letter_one(broker, "stream1", {"key": "value"})
+    [listed] = broker.dlq_list(["stream1:dlq"])
 
-    msg_id = broker.publish("stream1", {"key": "value"})
-    broker.get_next("stream1", "group1")
-    broker.nack("stream1", msg_id, "group1")
+    entry = broker.dlq_get("stream1:dlq", listed.dlq_id)
 
-    entry = broker.dlq_inspect("stream1:dlq", msg_id)
     assert entry is not None
-    assert entry.dlq_id == msg_id
+    assert entry.dlq_id != msg_id
     assert entry.original_id == msg_id
     assert entry.stream == "stream1"
     assert entry.consumer_group == "group1"
-    assert entry.payload == {"key": "value"}
+    assert entry.payload["key"] == "value"
+    assert entry.payload["_dlq_metadata"]["original_id"] == msg_id
     assert entry.failure_reason == "max_retries_exceeded"
     assert entry.failed_at is not None
+    assert entry.retry_count == 1
     assert entry.dlq_stream == "stream1:dlq"
 
 
-def test_dlq_inspect_not_found(broker):
-    """Test dlq_inspect returns None when not found."""
-    entry = broker.dlq_inspect("stream1:dlq", "nonexistent-id")
+def test_dlq_get_not_found(broker):
+    """dlq_get returns None when there is no such entry."""
+    entry = broker.dlq_get("stream1:dlq", "nonexistent-id")
     assert entry is None
 
 
-def test_dlq_inspect_wrong_stream(broker):
-    """Test dlq_inspect returns None when searching wrong stream."""
+def test_dlq_get_wrong_stream(broker):
+    """dlq_get returns None when searching another DLQ stream."""
     broker._adapter._max_retries = 0
+    _dead_letter_one(broker, "stream1", {"key": "value"})
+    [listed] = broker.dlq_list(["stream1:dlq"])
 
-    msg_id = broker.publish("stream1", {"key": "value"})
-    broker.get_next("stream1", "group1")
-    broker.nack("stream1", msg_id, "group1")
-
-    entry = broker.dlq_inspect("stream2:dlq", msg_id)
+    entry = broker.dlq_get("stream2:dlq", listed.dlq_id)
     assert entry is None
 
 
@@ -100,15 +107,11 @@ def test_dlq_replay_success(broker):
     """Test dlq_replay moves message back to target stream."""
     broker._adapter._max_retries = 0
 
-    msg_id = broker.publish("stream1", {"key": "value"})
-    broker.get_next("stream1", "group1")
-    broker.nack("stream1", msg_id, "group1")
+    _dead_letter_one(broker, "stream1", {"key": "value"})
 
-    # Verify in DLQ
-    assert len(broker.dlq_list(["stream1:dlq"])) == 1
+    [entry] = broker.dlq_list(["stream1:dlq"])
 
-    # Replay to target stream
-    result = broker.dlq_replay("stream1:dlq", msg_id, "stream1")
+    result = broker.dlq_replay("stream1:dlq", entry.dlq_id, "stream1")
     assert result is True
 
     # DLQ should be empty
@@ -191,8 +194,8 @@ def test_dlq_list_sorted_newest_first(broker):
     entries = broker.dlq_list(["stream1:dlq"])
     assert len(entries) == 2
     # Newest first
-    assert entries[0].payload == {"order": 2}
-    assert entries[1].payload == {"order": 1}
+    assert entries[0].payload["order"] == 2
+    assert entries[1].payload["order"] == 1
 
 
 def test_dlq_capability_flag(broker):

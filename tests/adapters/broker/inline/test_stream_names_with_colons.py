@@ -40,25 +40,29 @@ def test_health_names_the_consumer_group(broker):
     }
 
 
-def test_get_dlq_messages_for_a_group_keys_by_full_stream(broker, dead_lettered):
-    dlq_messages = broker._adapter.get_dlq_messages(GROUP)
+def test_the_entry_is_stored_in_the_dlq_stream_of_the_full_stream(
+    broker, dead_lettered
+):
+    [(_, message)] = broker._adapter._messages[DLQ_STREAM]
 
-    assert list(dlq_messages) == [STREAM]
-    assert dlq_messages[STREAM][0][0] == dead_lettered
+    assert message["_dlq_metadata"]["original_id"] == dead_lettered
+    assert message["_dlq_metadata"]["original_stream"] == STREAM
 
 
 def test_dlq_list_reports_the_full_stream_and_group(broker, dead_lettered):
     entries = broker.dlq_list([DLQ_STREAM])
 
     assert len(entries) == 1
-    assert entries[0].dlq_id == dead_lettered
+    assert entries[0].original_id == dead_lettered
     assert entries[0].stream == STREAM
     assert entries[0].consumer_group == GROUP
     assert entries[0].dlq_stream == DLQ_STREAM
 
 
-def test_dlq_inspect_finds_the_entry(broker, dead_lettered):
-    entry = broker.dlq_inspect(DLQ_STREAM, dead_lettered)
+def test_dlq_get_finds_the_entry(broker, dead_lettered):
+    [listed] = broker.dlq_list([DLQ_STREAM])
+
+    entry = broker.dlq_get(DLQ_STREAM, listed.dlq_id)
 
     assert entry is not None
     assert entry.stream == STREAM
@@ -66,7 +70,9 @@ def test_dlq_inspect_finds_the_entry(broker, dead_lettered):
 
 
 def test_dlq_replay_republishes_the_entry(broker, dead_lettered):
-    assert broker.dlq_replay(DLQ_STREAM, dead_lettered, "target") is True
+    [listed] = broker.dlq_list([DLQ_STREAM])
+
+    assert broker.dlq_replay(DLQ_STREAM, listed.dlq_id, "target") is True
 
     replayed = broker.get_next("target", GROUP)
     assert replayed is not None

@@ -52,7 +52,7 @@ def _mock_domain_with_broker(
         mock_broker.has_capability.return_value = False
 
     mock_broker.dlq_list.return_value = dlq_entries or []
-    mock_broker.dlq_inspect.return_value = dlq_entries[0] if dlq_entries else None
+    mock_broker.dlq_get.return_value = dlq_entries[0] if dlq_entries else None
     mock_broker.dlq_replay.return_value = True
     mock_broker.dlq_replay_all.return_value = len(dlq_entries) if dlq_entries else 0
     mock_broker.dlq_purge.return_value = len(dlq_entries) if dlq_entries else 0
@@ -246,7 +246,7 @@ class TestDlqInspect:
         entry = _make_dlq_entry()
         mock_domain = _mock_domain_with_broker([entry])
         mock_broker = mock_domain.brokers["default"]
-        mock_broker.dlq_inspect.return_value = entry
+        mock_broker.dlq_get.return_value = entry
 
         with (
             patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
@@ -267,7 +267,7 @@ class TestDlqInspect:
         change_working_directory_to("test7")
         mock_domain = _mock_domain_with_broker([])
         mock_broker = mock_domain.brokers["default"]
-        mock_broker.dlq_inspect.return_value = None
+        mock_broker.dlq_get.return_value = None
 
         with (
             patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
@@ -303,7 +303,7 @@ class TestDlqReplay:
         entry = _make_dlq_entry()
         mock_domain = _mock_domain_with_broker([entry])
         mock_broker = mock_domain.brokers["default"]
-        mock_broker.dlq_inspect.return_value = entry
+        mock_broker.dlq_get.return_value = entry
         mock_broker.dlq_replay.return_value = True
 
         with (
@@ -323,7 +323,7 @@ class TestDlqReplay:
         change_working_directory_to("test7")
         mock_domain = _mock_domain_with_broker([])
         mock_broker = mock_domain.brokers["default"]
-        mock_broker.dlq_inspect.return_value = None
+        mock_broker.dlq_get.return_value = None
 
         with (
             patch("protean.cli._helpers.derive_domain", return_value=mock_domain),
@@ -344,7 +344,7 @@ class TestDlqReplay:
         entry = _make_dlq_entry()
         mock_domain = _mock_domain_with_broker([entry])
         mock_broker = mock_domain.brokers["default"]
-        mock_broker.dlq_inspect.return_value = entry
+        mock_broker.dlq_get.return_value = entry
         mock_broker.dlq_replay.return_value = False
 
         with (

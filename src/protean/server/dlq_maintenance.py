@@ -19,8 +19,8 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
-import time
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from protean.port.broker import BrokerCapabilities
@@ -65,15 +65,12 @@ def _resolve_callback(dotted_path: str | None) -> Callable[..., Any] | None:
         return None
 
 
-def _retention_hours_to_min_id(retention_hours: int) -> str:
-    """Convert a retention window (hours) to a Redis stream MINID.
+def _retention_cutoff(hours: float) -> datetime:
+    """Return the time ``hours`` before now, in UTC.
 
-    Redis stream IDs are millisecond-epoch timestamps.  We compute the
-    cutoff as ``now - retention_hours`` and format it so that XTRIM
-    MINID removes everything strictly older.
+    Entries that failed before this time are past their retention window.
     """
-    cutoff_ms = int((time.time() - retention_hours * 3600) * 1000)
-    return f"{cutoff_ms}-0"
+    return datetime.now(UTC) - timedelta(hours=hours)
 
 
 class DLQMaintenanceTask:
@@ -177,9 +174,9 @@ class DLQMaintenanceTask:
                 )
 
                 # Trim + depth in a single thread call to minimize overhead
-                min_id = _retention_hours_to_min_id(retention)
+                older_than = _retention_cutoff(retention)
                 trimmed, depth = await asyncio.to_thread(
-                    self._trim_and_depth, broker, dlq_stream, min_id
+                    self._trim_and_depth, broker, dlq_stream, older_than
                 )
                 if trimmed > 0:
                     metrics.dlq_trimmed.add(trimmed, {"dlq_stream": dlq_stream})
@@ -203,10 +200,10 @@ class DLQMaintenanceTask:
 
     @staticmethod
     def _trim_and_depth(
-        broker: Broker, dlq_stream: str, min_id: str
+        broker: Broker, dlq_stream: str, older_than: datetime
     ) -> tuple[int, int]:
         """Run trim + depth in a single thread call."""
-        trimmed = broker.dlq_trim(dlq_stream, min_id)
+        trimmed = broker.dlq_trim(dlq_stream, older_than)
         depth = broker.dlq_depth(dlq_stream)
         return trimmed, depth
 
