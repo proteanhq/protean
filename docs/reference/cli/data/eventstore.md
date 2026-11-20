@@ -14,9 +14,10 @@ All commands accept a `--domain` option to specify the domain module path
 
 ## `protean eventstore verify`
 
-Reads the whole store once and reports any violation of its internal
-invariants. It mutates nothing and works against any adapter (memory,
-MessageDB).
+Reads every message in the store once and reports any violation of its
+internal invariants. For each aggregate stream with no snapshot among those
+messages, it also reads the stream's snapshot, which a store such as `sql`
+keeps apart from its messages. It mutates nothing and works against any adapter (memory, MessageDB, sql).
 
 ```bash
 protean eventstore verify --domain=my_domain
