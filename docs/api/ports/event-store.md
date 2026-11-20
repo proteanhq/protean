@@ -5,7 +5,9 @@ Event store interface for event-sourced persistence. Every event store adapter
 is the `EventStore` service that calls it.
 
 See [Event Store Adapters](../../reference/adapters/eventstore/index.md) for
-concrete adapter configuration.
+concrete adapter configuration, and
+[Write an Event-Store Adapter](../../guides/write-an-adapter/event-store.md)
+for a worked adapter that implements this Port.
 
 ---
 

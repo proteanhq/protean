@@ -197,3 +197,4 @@ See [`protean events`](../../cli/data/events.md) for the full CLI reference.
 - Explore [temporal queries](../../../guides/change-state/temporal-queries.md)
 - Learn about [event sourcing](../../../concepts/architecture/event-sourcing.md)
 - Set up the [`protean events` CLI](../../cli/data/events.md) for monitoring
+- Write an [event-store adapter](../../../guides/write-an-adapter/event-store.md) for a store Protean does not support yet

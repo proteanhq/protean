@@ -222,7 +222,7 @@ in detail.
 
 ### Write an Adapter
 
-- [Write an Adapter](./guides/write-an-adapter/index.md): Add an adapter to Protean itself, step by step for each port.
+- [Write an Adapter](./guides/write-an-adapter/index.md): Add an adapter to Protean itself. The section has a guide for event stores.
 - [Write an Event-Store Adapter](./guides/write-an-adapter/event-store.md): Implement `EventStorePort`, register the adapter, and run the event-store conformance suite.
 
 ---

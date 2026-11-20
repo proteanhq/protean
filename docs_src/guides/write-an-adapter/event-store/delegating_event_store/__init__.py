@@ -23,7 +23,6 @@ class DelegatingEventStore(EventStorePort):
         self.name = name
         self.domain = domain
         self.config = config
-        # Open your store's client here
         self._delegate = MemoryEventStore(name, domain, config)
 
     @property
@@ -93,6 +92,7 @@ class DelegatingEventStore(EventStorePort):
         return self._delegate.health()
 
     def get_connection(self) -> object:
+        # Open your store's client here, on the first call
         return self._delegate.get_connection()
 
     def close(self) -> None:
@@ -117,5 +117,8 @@ def register() -> None:
     event_stores.register("delegating_memory", f"{__name__}.DelegatingEventStore")
 
 
-register()
 # --8<-- [end:register]
+
+
+# Lets a test run load the example with `-p delegating_event_store`
+register()
