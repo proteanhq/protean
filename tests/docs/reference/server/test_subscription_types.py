@@ -70,7 +70,6 @@ def test_production_profile_selects_a_stream_subscription(example, engine):
     assert isinstance(subscription, StreamSubscription)
     # The production profile's own values, not the hardcoded defaults.
     assert subscription.messages_per_tick == 100
-    assert subscription.retention_maxlen == 100_000
 
 
 def test_event_store_config_example_builds_an_event_store_subscription(example, engine):

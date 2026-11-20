@@ -165,8 +165,8 @@ class RetentionStubAdapter(StubAdapter, StreamRetentionPort):
     ) -> None:
         super().__init__(name, domain, config, capabilities)
 
-    def trim(self, stream: str, maxlen: int) -> int:
-        self.calls.append(("trim", stream, maxlen))
+    def trim(self, stream: str) -> int:
+        self.calls.append(("trim", stream))
         return 4
 
 
@@ -363,14 +363,14 @@ class TestTrim:
         for n in range(3):
             broker.publish("s", {"n": n})
 
-        assert broker._trim("s", 1) == 0
+        assert broker._trim("s") == 0
         assert len(broker._adapter._messages["s"]) == 3
 
     def test_a_retention_broker_returns_what_the_adapter_trims(self, test_domain):
         adapter = RetentionStubAdapter("stub", test_domain, {"provider": "stub"})
 
-        assert Broker(adapter)._trim("s", 10) == 4
-        assert adapter.calls == [("trim", "s", 10)]
+        assert Broker(adapter)._trim("s") == 4
+        assert adapter.calls == [("trim", "s")]
 
     def test_the_adapter_trim_is_not_called_without_the_flag(self, test_domain):
         adapter = RetentionStubAdapter(
@@ -380,7 +380,7 @@ class TestTrim:
             BrokerCapabilities.RELIABLE_MESSAGING,
         )
 
-        assert Broker(adapter)._trim("s", 10) == 0
+        assert Broker(adapter)._trim("s") == 0
         assert _calls_named(adapter, "trim") == []
 
 

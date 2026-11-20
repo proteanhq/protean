@@ -212,8 +212,7 @@ without narrowing it, and mypy would not report a wrong assumption.
 - One concept has one name across every port. Arguments come in one order: the
   stream or key, then the group, then options. `limit` is the name for a count
   of messages or rows. The exceptions: `ack`, `nack` and `ack_partition_fenced`
-  put the message ID between the stream and the group, `trim` takes `maxlen`,
-  the name of the `retention_maxlen` setting it serves, and the `EventStore`
+  put the message ID between the stream and the group, and the `EventStore`
   service's `read_all` takes `page_size`, because it sets the size of each
   page.
 - The event-store Port uses Message DB's function names where they exist, such

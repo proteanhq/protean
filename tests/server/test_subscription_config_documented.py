@@ -81,7 +81,6 @@ class TestTuningGuideCoversTheTuningFeatures:
         [
             "subscription_profile",
             "server.profiles",
-            "retention_maxlen",
             "circuit_breaker_threshold",
             "sequential_by",
             "protean subscriptions status",

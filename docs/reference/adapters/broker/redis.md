@@ -81,8 +81,8 @@ The Redis Stream broker provides the following capabilities:
 - ✅ **DEAD_LETTER_QUEUE** - Failed messages routed to DLQ streams for inspection and replay
 - ✅ **STREAM_PARTITIONING** - Partition-per-key streams for
   [`sequential_by`](../../server/sequential-by.md)
-- ✅ **STREAM_RETENTION** - Stream trimming for
-  [`retention_maxlen`](../../server/subscription-types.md#stream-retention)
+- ✅ **STREAM_RETENTION** - Trims a stream to what every consumer group has
+  acknowledged (see [Stream retention](../../server/subscription-types.md#stream-retention))
 
 This includes:
 
@@ -94,16 +94,15 @@ This includes:
 - **Dead letter queue management**: List, inspect, replay, and purge failed messages via
   [`protean dlq`](../../cli/data/dlq.md) CLI or the
   [Observatory dashboard](../../server/observability.md)
-- **Stream retention (XTRIM)**: When a subscription sets
-  [`retention_maxlen`](../../server/subscription-types.md#stream-retention), the
-  broker trims the stream after each batch. It uses `XTRIM MINID` at the slowest
-  consumer group's position when several groups read the stream (so no unread
-  entry is lost, though a group parked at `0-0` holds the floor down) and a
-  fixed-size `XTRIM MAXLEN` when at most one group reads it (which can drop
-  unread entries if that lone handler falls more than `retention_maxlen`
-  behind). Both are approximate (Redis's `~`), trimming a node at a time. See
-  [Stream retention](../../server/subscription-types.md#stream-retention) for the
-  full caveats.
+- **Stream retention (XTRIM)**: After each batch, a stream subscription asks
+  the broker to trim the stream it read. One Lua script reads every consumer
+  group's progress and trims in the same step. A group's bound is its oldest
+  pending entry when it has one, and its last-delivered ID otherwise. The
+  script trims with `XTRIM MINID ~` at the lowest bound, so it removes only
+  entries every group has acknowledged. A stream with no consumer group is not
+  trimmed, and a group at `0-0` (it has never read) blocks trimming until you
+  delete it. See
+  [Stream retention](../../server/subscription-types.md#stream-retention).
 
 ## Monitoring and Debugging
 

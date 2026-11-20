@@ -464,15 +464,15 @@ class Broker:
 
     # Stream retention, for the stream subscription.
 
-    def _trim(self, stream: str, maxlen: int) -> int:
-        """Trim ``stream`` toward ``maxlen`` entries by the adapter's rule.
+    def _trim(self, stream: str) -> int:
+        """Remove the entries of ``stream`` every consumer group has acknowledged.
 
         Returns the number of entries removed, or ``0`` without calling the adapter when the broker lacks
         ``STREAM_RETENTION``.
         """
         if BrokerCapabilities.STREAM_RETENTION not in self.capabilities:
             return 0
-        return cast(StreamRetentionPort, self._adapter).trim(stream, maxlen)
+        return cast(StreamRetentionPort, self._adapter).trim(stream)
 
     # Partition-per-key operations (ADR-0028), for the outbox processor, the
     # partitioned stream subscription and the status collector. They skip

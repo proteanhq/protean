@@ -125,17 +125,17 @@ End the adapter module with
 
 | Method | Contract |
 |--------|----------|
-| `trim(stream, maxlen)` | Trim `stream` toward `maxlen` entries, returning the number of entries removed. |
+| `trim(stream)` | Remove the entries of `stream` that every consumer group has acknowledged, returning the number of entries removed. |
 
-The Redis adapter's rule is worth copying. With **two or more** consumer groups,
-it trims to the minimum `last-delivered-id` across them and **ignores
-`maxlen`**, because consumer progress bounds the stream. That removes only
-entries every group has had delivered, including entries delivered and not yet
-acknowledged. With **zero or one** group, it caps the stream at about `maxlen`
-entries. A single group more than `maxlen` entries behind then loses its oldest
-unread entries, so document that limit for operators. Both trims are
-approximate, so the stream can stay a little above the target. Refuse a
-non-positive `maxlen` rather than emptying the stream. See
+The trim must never remove an entry that a consumer group has not read and
+acknowledged. The Redis adapter's rule is worth copying. Each group's bound is
+the ID of its oldest pending entry when it has pending entries, and its
+`last-delivered-id` when it has none. The adapter trims below the lowest bound,
+and it reads the bounds and trims in one atomic step, so a consumer group
+created in between cannot lose entries. A stream with no consumer group has no
+bound and is not trimmed. A group that has never read holds the bound at the
+start of the stream, so document for operators that they delete such a group.
+The trim may be approximate, so the stream can stay a little above the bound. See
 [Tuning subscriptions](../../../guides/server/tuning-subscriptions.md#stop-a-stream-from-growing-forever)
 for the operator-facing consequences.
 

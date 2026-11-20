@@ -105,8 +105,6 @@ PROFILE_DEFAULTS: dict[SubscriptionProfile, dict[str, Any]] = {
         # Circuit breaker options
         "circuit_breaker_threshold": 10,
         "circuit_breaker_reset_seconds": 60,
-        # Stream retention: cap the primary stream at this many entries
-        "retention_maxlen": 100_000,
     },
     SubscriptionProfile.FAST: {
         "subscription_type": SubscriptionType.STREAM,
@@ -124,9 +122,6 @@ PROFILE_DEFAULTS: dict[SubscriptionProfile, dict[str, Any]] = {
         # Circuit breaker options
         "circuit_breaker_threshold": 10,
         "circuit_breaker_reset_seconds": 60,
-        # Stream retention: same cap as PRODUCTION (a fast handler still
-        # produces production traffic that needs bounding).
-        "retention_maxlen": 100_000,
     },
     SubscriptionProfile.BATCH: {
         "subscription_type": SubscriptionType.STREAM,
@@ -144,8 +139,6 @@ PROFILE_DEFAULTS: dict[SubscriptionProfile, dict[str, Any]] = {
         # Circuit breaker options
         "circuit_breaker_threshold": 10,
         "circuit_breaker_reset_seconds": 60,
-        # Stream retention: larger cap for high-throughput bulk traffic.
-        "retention_maxlen": 500_000,
     },
     SubscriptionProfile.DEBUG: {
         "subscription_type": SubscriptionType.STREAM,
@@ -163,8 +156,6 @@ PROFILE_DEFAULTS: dict[SubscriptionProfile, dict[str, Any]] = {
         # Circuit breaker options
         "circuit_breaker_threshold": 10,
         "circuit_breaker_reset_seconds": 60,
-        # Stream retention: tiny cap to keep dev streams small.
-        "retention_maxlen": 1_000,
     },
     SubscriptionProfile.PROJECTION: {
         "subscription_type": SubscriptionType.EVENT_STORE,
@@ -182,9 +173,6 @@ PROFILE_DEFAULTS: dict[SubscriptionProfile, dict[str, Any]] = {
         # Circuit breaker options
         "circuit_breaker_threshold": 10,
         "circuit_breaker_reset_seconds": 60,
-        # Stream retention: not applicable — reads from the event store, not a
-        # broker stream that could be trimmed.
-        "retention_maxlen": None,
     },
 }
 
@@ -210,7 +198,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "origin_stream": None,
     "circuit_breaker_threshold": 10,
     "circuit_breaker_reset_seconds": 60,
-    "retention_maxlen": None,
 }
 
 # Built-in profile names, normalized to lowercase. These are reserved: a custom
@@ -392,8 +379,8 @@ class SubscriptionConfig:
 
     Holds the options for both StreamSubscription and EventStoreSubscription.
     Construction calls :meth:`validate`, which raises ``ConfigurationError``
-    for an out-of-range value, and for ``enable_dlq`` or ``retention_maxlen``
-    on an EVENT_STORE subscription. The subscription configuration reference
+    for an out-of-range value, and for ``enable_dlq`` on an EVENT_STORE
+    subscription. The subscription configuration reference
     page describes each option.
 
     Attributes:
@@ -418,11 +405,6 @@ class SubscriptionConfig:
         circuit_breaker_reset_seconds: Seconds an OPEN breaker waits before it
             allows a single HALF_OPEN probe (STREAM only). Must be positive
             and finite.
-        retention_maxlen: Cap the subscription's broker stream at this many
-            entries, trimmed after each batch (STREAM only). None disables
-            trimming (the default). Trimming never removes an entry a consumer
-            group has not yet received; see the stream retention section of
-            the subscription types reference page.
 
     Example:
         >>> config = SubscriptionConfig.from_profile(SubscriptionProfile.PRODUCTION)
@@ -481,9 +463,6 @@ class SubscriptionConfig:
     circuit_breaker_reset_seconds: float = field(
         default_factory=lambda: DEFAULT_CONFIG["circuit_breaker_reset_seconds"]
     )
-
-    # Stream retention: max entries to keep on the broker stream (None = off)
-    retention_maxlen: int | None = None
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -557,7 +536,6 @@ class SubscriptionConfig:
         dlq_alert_threshold: int | None = None,
         circuit_breaker_threshold: int | None = None,
         circuit_breaker_reset_seconds: float | None = None,
-        retention_maxlen: int | None = None,
     ) -> "SubscriptionConfig":
         """Create a configuration from a profile with optional overrides.
 
@@ -580,11 +558,8 @@ class SubscriptionConfig:
                 threshold.
             circuit_breaker_reset_seconds: Override for the circuit breaker
                 reset time.
-            retention_maxlen: Override for the stream retention cap.
 
-        An override left as ``None`` takes the profile's value. When the result
-        is an EVENT_STORE subscription, the profile's ``retention_maxlen`` is
-        dropped; an explicit ``retention_maxlen`` still fails validation.
+        An override left as ``None`` takes the profile's value.
 
         Returns:
             A SubscriptionConfig instance with profile defaults and overrides applied.
@@ -626,25 +601,6 @@ class SubscriptionConfig:
             key: value if value is not None else profile_defaults[key]
             for key, value in overrides.items()
         }
-        config_kwargs["retention_maxlen"] = (
-            retention_maxlen
-            if retention_maxlen is not None
-            else profile_defaults.get("retention_maxlen")
-        )
-        # An EVENT_STORE subscription reads the event store, not a broker stream,
-        # so it has nothing to trim. Passing retention_maxlen=None means "inherit
-        # the profile default" (not "off"), so switching a stream profile to
-        # EVENT_STORE would otherwise carry the profile's cap and fail validate().
-        # Clear it here, mirroring how ConfigResolver sanitizes the same field.
-        # Only clear the *inherited* value though: if the caller explicitly
-        # passed retention_maxlen alongside EVENT_STORE, leave it so validate()
-        # rejects the combination instead of silently dropping it.
-        if (
-            config_kwargs["subscription_type"] == SubscriptionType.EVENT_STORE
-            and retention_maxlen is None
-        ):
-            config_kwargs["retention_maxlen"] = None
-
         # DLQ overrides are pass-through (None means inherit global)
         if dlq_retention_hours is not None:
             config_kwargs["dlq_retention_hours"] = dlq_retention_hours
@@ -719,7 +675,6 @@ class SubscriptionConfig:
             ("dlq_alert_threshold", int),
             ("circuit_breaker_threshold", int),
             ("circuit_breaker_reset_seconds", float),
-            ("retention_maxlen", int),
         ]
 
         for key, expected_type in config_keys:
@@ -821,7 +776,6 @@ class SubscriptionConfig:
             "dlq_alert_threshold": self.dlq_alert_threshold,
             "circuit_breaker_threshold": self.circuit_breaker_threshold,
             "circuit_breaker_reset_seconds": self.circuit_breaker_reset_seconds,
-            "retention_maxlen": self.retention_maxlen,
         }
 
 
@@ -865,9 +819,6 @@ def _numeric_option_errors(config: SubscriptionConfig) -> list[str]:
         # silently disables the pause.
         errors.append("circuit_breaker_reset_seconds must be positive and finite")
 
-    if config.retention_maxlen is not None and config.retention_maxlen <= 0:
-        errors.append("retention_maxlen must be positive when set")
-
     return errors
 
 
@@ -880,19 +831,6 @@ def _event_store_option_errors(config: SubscriptionConfig) -> list[str]:
         errors.append(
             "enable_dlq is not supported for EVENT_STORE subscription type. "
             "EventStoreSubscription handles messages without DLQ support."
-        )
-
-    # Validate retention_maxlen is not set for EVENT_STORE. An
-    # EventStoreSubscription reads the event store, not a broker stream, so
-    # there is nothing to trim — reject it rather than silently ignore it.
-    if (
-        config.subscription_type == SubscriptionType.EVENT_STORE
-        and config.retention_maxlen is not None
-    ):
-        errors.append(
-            "retention_maxlen is not supported for EVENT_STORE subscription "
-            "type. EventStoreSubscription reads the event store, which has no "
-            "broker stream to trim."
         )
 
     return errors

@@ -58,7 +58,6 @@ PROFILE_EXPECTATIONS = [
             "blocking_timeout_ms": 5000,
             "max_retries": 3,
             "enable_dlq": True,
-            "retention_maxlen": 100_000,
         },
     ),
     (
@@ -68,7 +67,6 @@ PROFILE_EXPECTATIONS = [
             "messages_per_tick": 10,
             "blocking_timeout_ms": 100,
             "retry_delay_seconds": 0,
-            "retention_maxlen": 100_000,
         },
     ),
     (
@@ -78,7 +76,6 @@ PROFILE_EXPECTATIONS = [
             "messages_per_tick": 500,
             "blocking_timeout_ms": 10000,
             "max_retries": 5,
-            "retention_maxlen": 500_000,
         },
     ),
     (
@@ -88,7 +85,6 @@ PROFILE_EXPECTATIONS = [
             "messages_per_tick": 1,
             "tick_interval": 1,
             "enable_dlq": False,
-            "retention_maxlen": 1_000,
         },
     ),
     (
@@ -96,7 +92,6 @@ PROFILE_EXPECTATIONS = [
         {
             "subscription_type": SubscriptionType.EVENT_STORE,
             "enable_dlq": False,
-            "retention_maxlen": None,
         },
     ),
 ]
@@ -130,7 +125,6 @@ class TestSubscriptionConfigCreation:
                     "subscription_type": SubscriptionType.STREAM,
                     "messages_per_tick": DEFAULT_CONFIG["messages_per_tick"],
                     "tick_interval": DEFAULT_CONFIG["tick_interval"],
-                    "retention_maxlen": None,
                 },
             ),
             (
@@ -152,7 +146,6 @@ class TestSubscriptionConfigCreation:
             ({"tick_interval": 0}, None),
             ({"blocking_timeout_ms": 1}, None),
             ({"max_retries": 0}, None),
-            ({"retention_maxlen": 1}, None),
         ],
         ids=[
             "defaults",
@@ -161,7 +154,6 @@ class TestSubscriptionConfigCreation:
             "zero_tick_interval",
             "smallest_blocking_timeout",
             "zero_max_retries",
-            "smallest_retention",
         ],
     )
     def test_config_creation(self, kwargs, expected):
@@ -210,25 +202,6 @@ class TestSubscriptionConfigFromProfile:
             enable_dlq=False,  # Must disable DLQ for EVENT_STORE
         )
         assert config.subscription_type == SubscriptionType.EVENT_STORE
-        # from_profile clears the inherited stream retention for EVENT_STORE.
-        assert config.retention_maxlen is None
-
-    def test_profile_override_subscription_type_rejects_explicit_retention(self):
-        """An explicit retention_maxlen alongside an EVENT_STORE override is rejected.
-
-        Unlike the inherited-from-profile case (cleared silently, see
-        test_profile_override_subscription_type), a retention_maxlen passed
-        directly to from_profile() is a config mistake and must surface via
-        validate() rather than being dropped.
-        """
-        with pytest.raises(ConfigurationError) as exc:
-            SubscriptionConfig.from_profile(
-                SubscriptionProfile.PRODUCTION,
-                subscription_type=SubscriptionType.EVENT_STORE,
-                enable_dlq=False,
-                retention_maxlen=1_000,
-            )
-        assert "retention_maxlen is not supported for EVENT_STORE" in str(exc.value)
 
 
 class TestSubscriptionConfigFromDict:
@@ -342,16 +315,6 @@ class TestSubscriptionConfigValidation:
                 {"subscription_type": SubscriptionType.EVENT_STORE, "enable_dlq": True},
                 "enable_dlq is not supported for EVENT_STORE",
             ),
-            (
-                {
-                    "subscription_type": SubscriptionType.EVENT_STORE,
-                    "enable_dlq": False,
-                    "retention_maxlen": 1_000,
-                },
-                "retention_maxlen is not supported for EVENT_STORE",
-            ),
-            ({"retention_maxlen": 0}, "retention_maxlen must be positive when set"),
-            ({"retention_maxlen": -5}, "retention_maxlen must be positive when set"),
             ({"messages_per_tick": -1}, "messages_per_tick must be positive"),
             ({"messages_per_tick": 0}, "messages_per_tick must be positive"),
             ({"tick_interval": -1}, "tick_interval must be non-negative"),
@@ -378,9 +341,6 @@ class TestSubscriptionConfigValidation:
         ],
         ids=[
             "event_store_with_dlq",
-            "event_store_with_retention",
-            "zero_retention",
-            "negative_retention",
             "negative_messages_per_tick",
             "zero_messages_per_tick",
             "negative_tick_interval",
@@ -670,40 +630,6 @@ class TestBuildProfileRegistry:
             registry["keepy"]["messages_per_tick"]
             != DEFAULT_CONFIG["messages_per_tick"]
         )
-
-
-class TestRetentionMaxlen:
-    """Tests for the retention_maxlen stream-retention config field."""
-
-    def test_retention_is_off_by_default(self):
-        """retention_maxlen defaults to None (trimming off)."""
-        assert DEFAULT_CONFIG["retention_maxlen"] is None
-        assert SubscriptionConfig().retention_maxlen is None
-
-    def test_from_profile_override_retention(self):
-        """An explicit retention_maxlen override wins over the profile default."""
-        config = SubscriptionConfig.from_profile(
-            SubscriptionProfile.PRODUCTION,
-            retention_maxlen=42,
-        )
-        assert config.retention_maxlen == 42
-
-    def test_from_dict_reads_retention(self):
-        """from_dict picks up retention_maxlen and coerces it to int."""
-        config = SubscriptionConfig.from_dict({"retention_maxlen": 50})
-        assert config.retention_maxlen == 50
-
-    def test_to_dict_round_trips_retention(self):
-        """to_dict includes retention_maxlen for a full round-trip."""
-        config = SubscriptionConfig(retention_maxlen=123)
-        assert config.to_dict()["retention_maxlen"] == 123
-
-    def test_retention_is_a_profile_field(self):
-        """retention_maxlen is settable on a custom [server.profiles] profile."""
-        registry = build_profile_registry(
-            {"capped": {"inherits": "production", "retention_maxlen": 42}}
-        )
-        assert registry["capped"]["retention_maxlen"] == 42
 
 
 class TestTheProfilesSlotMustBeATable:

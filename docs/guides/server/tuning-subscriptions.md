@@ -70,44 +70,30 @@ The full resolution order is in the
 ## Stop a stream from growing forever
 
 Stream subscriptions read from Redis streams, which keep every message until
-something trims them. Set a cap:
+something trims them. Protean trims them for you, and no setting controls it.
+After each batch, the subscription asks the broker to trim the stream it read.
+The broker removes only the entries that every consumer group on the stream has
+read and acknowledged, so the trim never deletes an event a handler still
+needs. An entry that was delivered and not yet acknowledged stays until it is
+acknowledged, so a retry or a claim after a crash still finds it.
 
-```toml
-[server.subscriptions.OrderEventHandler]
-retention_maxlen = 100_000
-```
+The stream therefore grows as large as the slowest handler lets it. To shrink an
+oversized stream, find the handler that is behind and fix it.
 
-**Read this before you rely on that number.** What Protean actually does depends
-on how many consumer groups read the stream, because the priority is never
-deleting an event somebody still needs:
+A consumer group that never reads stops all trimming on its stream, because it
+has not read the first entry. This happens when a consumer dies before its first
+read, or when you remove a handler and leave its consumer group behind. Delete
+that group to let the stream shrink again.
 
-- **Two or more consumer groups**: The stream is trimmed to the slowest group's
-  read position, and **`retention_maxlen` is ignored**. Consumer progress bounds
-  the stream, not your number. A stream with several handlers on it therefore
-  grows as large as the slowest handler lets it. To shrink an oversized stream,
-  find the handler that is behind, because lowering `retention_maxlen` has no
-  effect here.
-- **One consumer group, or none**: The stream is capped at `retention_maxlen`.
-  This cap is a hard size ceiling. It is *not* progress-safe: if the single
-  reader falls more than `retention_maxlen` behind, the oldest **unread**
-  entries are dropped. That happens during an initial catch-up on a
-  pre-existing stream, after an outage, or under a producer faster than the
-  handler. Set `retention_maxlen` above the largest backlog you expect. A value
-  at the steady-state length is too small.
+Trimming is approximate (Redis's `~`), so the stream can stay a little above the
+point every group has reached. Exact trimming costs far more for a bound that
+does not need to be exact.
 
-Trimming is approximate in both cases (Redis's `~`), so the stream settles
-slightly above the target. Exact trimming costs far more for a bound that did
-not need to be exact.
+Only a broker that declares `STREAM_RETENTION`, such as Redis Streams, trims. On
+any other broker Protean does not call the trim.
 
-The cap needs a broker that declares `STREAM_RETENTION`, such as Redis Streams.
-On any other broker Protean skips the trim without a log line.
-
-Retention is size-based only. There is no time-based option, so choose from how
-far behind you will let a consumer fall, not from how long you want to keep
-history. For history, use the event store.
-
-`production`, `fast`, and `batch` already set a cap. The bare default with no
-profile does not.
+Retention follows consumer progress only. There is no time-based option. For
+history, use the event store.
 
 ## Stop a failing handler from burning through its backlog
 

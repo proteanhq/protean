@@ -60,7 +60,7 @@ class ScriptedLanesBroker:
         self.combined_reads.append(kwargs)
         return self.combined_reply
 
-    def _trim(self, stream, maxlen):
+    def _trim(self, stream):
         self.trimmed.append(stream)
         return 0
 
@@ -73,6 +73,7 @@ def _lanes_subscription(domain, combined_reply, primary_reply=(), **overrides):
     """
     sub = _make_stream_subscription(domain, **overrides)
     sub._lanes_enabled = True
+    sub._trims_stream = True
     sub.broker = ScriptedLanesBroker(combined_reply, primary_reply)
     sub.batches = []
 
@@ -94,7 +95,6 @@ class TestCombinedRead:
                 "test::user": [PRIMARY_MESSAGE],
                 "test::user:backfill": [BACKFILL_MESSAGE],
             },
-            retention_maxlen=100,
         )
 
         await sub.poll()

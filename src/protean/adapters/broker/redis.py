@@ -205,6 +205,46 @@ return 1
 """
 
 
+# Race-safe trim by consumer progress. KEYS[1]=stream. Each consumer group's
+# bound is its oldest pending entry when it has pending entries, else its
+# last-delivered id; the stream is trimmed with MINID ~ at the smallest bound.
+# MINID removes only ids strictly below the bound, so every entry some group has
+# not acknowledged survives. Reading the bound and trimming in one script stops a
+# group created in between (which starts at the stream's beginning) from losing
+# entries. A stream with no group has no bound and is not trimmed; a group at
+# 0-0 blocks the trim. Returns the number of entries removed.
+_LUA_TRIM_BY_PROGRESS = """
+local function id_lt(a, b)
+    local ams, aseq = string.match(a, '^(%d+)-(%d+)$')
+    local bms, bseq = string.match(b, '^(%d+)-(%d+)$')
+    if not (ams and bms) then return false end
+    ams, aseq, bms, bseq = tonumber(ams), tonumber(aseq), tonumber(bms), tonumber(bseq)
+    if ams ~= bms then return ams < bms end
+    return aseq < bseq
+end
+local groups = redis.pcall('XINFO', 'GROUPS', KEYS[1])
+if type(groups) ~= 'table' or groups.err or #groups == 0 then return 0 end
+local bound
+for _, g in ipairs(groups) do
+    local name, pending, delivered
+    for i = 1, #g - 1, 2 do
+        if g[i] == 'name' then name = g[i + 1] end
+        if g[i] == 'pending' then pending = tonumber(g[i + 1]) end
+        if g[i] == 'last-delivered-id' then delivered = g[i + 1] end
+    end
+    local group_bound = delivered
+    if pending and pending > 0 then
+        group_bound = redis.call('XPENDING', KEYS[1], name)[2]
+    end
+    -- A group whose bound cannot be read keeps the whole stream.
+    if not group_bound or not string.match(group_bound, '^%d+-%d+$') then return 0 end
+    if not bound or id_lt(group_bound, bound) then bound = group_bound end
+end
+if bound == '0-0' then return 0 end
+return redis.call('XTRIM', KEYS[1], 'MINID', '~', bound)
+"""
+
+
 class RedisBroker(BaseBroker, BlockingReadPort, PartitioningPort, StreamRetentionPort):
     """Redis Streams as the Message Broker.
 
@@ -257,6 +297,7 @@ class RedisBroker(BaseBroker, BlockingReadPort, PartitioningPort, StreamRetentio
         self._lua_ack_fenced = self._client.register_script(_LUA_ACK_FENCED)
         self._lua_reap_partition = self._client.register_script(_LUA_REAP_PARTITION)
         self._lua_autoclaim_justid = self._client.register_script(_LUA_AUTOCLAIM_JUSTID)
+        self._lua_trim_by_progress = self._client.register_script(_LUA_TRIM_BY_PROGRESS)
 
         # Add compatibility attributes for generic tests
         # Redis Streams handle these differently but tests expect these attributes
@@ -901,52 +942,25 @@ class RedisBroker(BaseBroker, BlockingReadPort, PartitioningPort, StreamRetentio
     # Stream Retention
     # ------------------------------------------------------------------
 
-    def trim(self, stream: str, maxlen: int) -> int:
-        """Trim ``stream``, keeping what its consumer groups still need.
+    def trim(self, stream: str) -> int:
+        """Trim ``stream`` to what every consumer group has acknowledged.
 
-        - **More than one group:** removes only entries older than the slowest
-          group's ``last-delivered-id``, so no group loses an entry it has not
-          read. ``maxlen`` is ignored.
-        - **Zero or one group:** caps the stream at about ``maxlen`` entries.
-          If the one group is more than ``maxlen`` entries behind, its oldest
-          unread entries are removed, so set ``maxlen`` above the largest
-          expected backlog. A ``maxlen`` of zero or less trims nothing.
-
-        Trimming is approximate (Redis's ``~``), so the stream can stay a little
-        above the target.
-
-        Args:
-            stream: The stream to trim.
-            maxlen: Target maximum entries, used only with zero or one group.
+        Each group's bound is the ID of its oldest pending entry when it has
+        pending entries, and its ``last-delivered-id`` when it has none. The
+        trim removes entries below the smallest bound, so it never removes an
+        entry a group has not read and acknowledged. A stream with no consumer
+        group is not trimmed, and a group that has never read blocks trimming
+        until it is deleted. Trimming is approximate (Redis's ``~``), so the
+        stream can stay a little above the bound.
 
         Returns:
             The number of entries removed. ``0`` when nothing was removed, when
             the stream does not exist, and on a Redis error.
         """
         try:
-            # redis-stubs leaves xinfo_groups untyped (stub gap, not our bug).
-            groups_info = self._client.xinfo_groups(stream)  # type: ignore[no-untyped-call]
-        except redis.ResponseError:
-            # Stream does not exist yet — nothing to trim.
-            return 0
-
-        min_id = self._min_last_delivered_id(groups_info)
-
-        try:
-            if min_id is not None:
-                # >1 group: bound by the slowest group's read position.
-                trimmed = (
-                    self._client.xtrim(stream, minid=min_id, approximate=True) or 0
-                )
-            else:
-                # 0 or 1 group: a fixed-size cap. Refuse a non-positive maxlen —
-                # `xtrim(maxlen=0)` would empty the stream, so treat it as "no
-                # cap" rather than "delete everything".
-                if maxlen <= 0:
-                    return 0
-                trimmed = (
-                    self._client.xtrim(stream, maxlen=maxlen, approximate=True) or 0
-                )
+            trimmed = int(
+                self._lua_trim_by_progress(keys=[stream], client=self._client) or 0
+            )
         except redis.ResponseError as e:
             logger.warning(f"Failed to trim stream {stream}: {e}")
             return 0
@@ -957,45 +971,6 @@ class RedisBroker(BaseBroker, BlockingReadPort, PartitioningPort, StreamRetentio
                 extra={"stream": stream, "trimmed": trimmed},
             )
         return trimmed
-
-    def _min_last_delivered_id(self, groups_info: Any) -> str | None:
-        """Return the smallest ``last-delivered-id`` across groups, or None.
-
-        Returns ``None`` when fewer than two groups carry a truthy
-        ``last-delivered-id`` (the caller then uses a MAXLEN trim). Real Redis
-        groups always report ``"0-0"`` until first read, so in practice this is
-        "fewer than two consumer groups"; groups with a missing or empty id are
-        skipped. With two or more usable ids, returns the minimum as a
-        ``"ms-seq"`` string, comparing the two numeric halves as an
-        ``(int, int)`` tuple so ``"100-0"`` sorts after ``"99-0"``
-        (lexicographic string order would get this wrong).
-        """
-        ids: list[str] = []
-        for group_info in groups_info:
-            if not isinstance(group_info, dict):
-                continue
-            last_delivered = get_field_value(group_info, "last-delivered-id")
-            if last_delivered:
-                ids.append(last_delivered)
-
-        if len(ids) < 2:
-            return None
-
-        return min(ids, key=self._stream_id_sort_key)
-
-    @staticmethod
-    def _stream_id_sort_key(stream_id: str) -> tuple[int, int]:
-        """Parse a ``"ms-seq"`` stream id into an ``(int, int)`` sort key.
-
-        A malformed id sorts first (``(-1, -1)``) so it never masks a real,
-        smaller floor: trimming conservatively keeps more than needed rather
-        than removing an unread entry.
-        """
-        ms, _, seq = stream_id.partition("-")
-        try:
-            return (int(ms), int(seq)) if seq else (int(ms), 0)
-        except ValueError:
-            return (-1, -1)
 
     def create_group(self, stream: str, consumer_group: str) -> None:
         """Create ``consumer_group`` on ``stream`` if it does not exist.

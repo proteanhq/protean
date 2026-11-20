@@ -149,44 +149,31 @@ Failed messages are automatically retried with configurable delays:
 | `max_retries` | 3 | Retry attempts before moving to DLQ |
 | `retry_delay_seconds` | 1 | Delay between retries |
 | `enable_dlq` | true | Whether to use dead letter queue |
-| `retention_maxlen` | none | Cap the stream at this many entries (see [Stream retention](#stream-retention)) |
 
 #### Stream retention {#stream-retention}
 
-By default a StreamSubscription never trims its broker stream: processed
-messages stay in Redis forever, so the stream grows without bound. Set
-`retention_maxlen` to cap it. After each batch, the subscription trims the
-stream it just read from.
+After each batch, a StreamSubscription trims the stream it just read from. The
+broker removes only the entries that every consumer group on the stream has
+read and acknowledged. No setting controls the trim.
 
-How the trim behaves depends on the consumer topology:
+Each consumer group sets a bound. A group with pending entries (delivered but
+not yet acknowledged) keeps its oldest pending entry and everything after it.
+A group with no pending entries keeps everything after the last entry it read.
+The broker trims below the lowest bound across all groups, so no group loses an
+entry it still needs, and a pending entry is still there when a retry or a
+claim reads it.
 
-- **More than one consumer group** (for example a projector plus an event
-  handler): Protean trims by `MINID` at the slowest group's last-delivered
-  position, so nothing a slow group has not yet read is ever removed.
-  `retention_maxlen` is ignored here, because consumer progress bounds the
-  stream. The same rule has a cost. A group whose last-delivered position stays
-  at `0-0` (a dead consumer, or a handler you removed without deleting its
-  group) is always the slowest group, so Protean trims nothing and the stream
-  keeps growing until you delete that group. Retention is progress-bounded, not
-  size-bounded, whenever multiple groups exist.
-- **At most one consumer group:** Protean caps the stream at `retention_maxlen`
-  with a plain `MAXLEN` trim. This cap has a fixed size and ignores how far the
-  handler has read. If the single handler falls more than `retention_maxlen`
-  entries behind, `MAXLEN` drops the oldest *unread* entries. The handler can
-  fall behind during catch-up on a pre-existing stream, during an outage, or
-  when a slow handler runs under a fast producer. Size `retention_maxlen` above
-  your largest expected backlog.
+A consumer group that never reads keeps the whole stream. Its last-delivered
+position stays at `0-0`, so it always holds the lowest bound, and the stream
+grows until you delete that group. This happens with a dead consumer or with a
+handler you removed without deleting its group.
 
-Trimming is approximate (Redis's `~`): the stream is trimmed a whole node at a
-time, so it may settle slightly above `retention_maxlen`, never below it. This
-is size-based retention only; there is no time-based TTL.
+A stream with no consumer group is not trimmed. Trimming is approximate
+(Redis's `~`): the broker removes whole nodes of entries, so the stream can
+stay a little above the bound. There is no time-based TTL.
 
-Trimming needs a broker that declares `STREAM_RETENTION`, such as Redis
-Streams. On any other broker the subscription skips the trim without a log
-line, so `retention_maxlen` has no effect.
-
-Each built-in profile carries a default cap (see
-[Stream retention defaults](configuration.md#stream-retention-defaults)).
+Only a broker that declares `STREAM_RETENTION`, such as Redis Streams, trims.
+On any other broker the subscription does not call the trim.
 
 ### When to Use {#stream-when-to-use}
 

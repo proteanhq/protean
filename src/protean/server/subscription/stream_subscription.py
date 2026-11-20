@@ -12,7 +12,7 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event_handler import BaseEventHandler
 from protean.exceptions import ConfigurationError
 from protean.infra.broker import Broker
-from protean.port.broker import BrokerMessage
+from protean.port.broker import BrokerCapabilities, BrokerMessage
 from protean.utils import fqn
 from protean.utils.eventing import Message
 from protean.utils.telemetry import get_domain_metrics
@@ -63,10 +63,9 @@ class StreamSubscription(BaseSubscription):
         enable_dlq: bool | None = None,
         circuit_breaker_threshold: int | None = None,
         circuit_breaker_reset_seconds: float | None = None,
-        retention_maxlen: int | None = None,
     ) -> None:
         """
-        Each tuning option except ``retention_maxlen`` that is left as None
+        Each tuning option that is left as None
         falls back to the domain config (``server.messages_per_tick`` or
         ``server.stream_subscription.<option>``), then to the default named
         below.
@@ -82,9 +81,6 @@ class StreamSubscription(BaseSubscription):
                 the circuit breaker OPEN. Default 10.
             circuit_breaker_reset_seconds: Seconds an OPEN breaker waits
                 before allowing a single HALF_OPEN probe. Default 60.
-            retention_maxlen: Cap the subscribed stream at this many entries,
-                trimmed after each batch. None (the default) disables
-                trimming.
 
         Raises:
             ConfigurationError: If the resolved ``blocking_timeout_ms`` is not
@@ -167,11 +163,10 @@ class StreamSubscription(BaseSubscription):
         self.consecutive_handler_failures: int = 0
         self.circuit_opened_at: float | None = None
 
-        # Stream retention: cap the stream at this many entries after each batch.
-        # None disables trimming. Passed explicitly (usually via from_config);
-        # there is no server-config fallback because retention is a per-profile
-        # concern resolved upstream by the ConfigResolver.
-        self.retention_maxlen: int | None = retention_maxlen
+        # Set in initialize() from the broker's STREAM_RETENTION flag. The
+        # default matters because PartitionedStreamSubscription overrides
+        # initialize() without calling it.
+        self._trims_stream: bool = False
 
         # Consumer name for Redis Streams (unique per consumer instance)
         self.consumer_name = self.subscription_id
@@ -240,7 +235,6 @@ class StreamSubscription(BaseSubscription):
             enable_dlq=config.enable_dlq,
             circuit_breaker_threshold=config.circuit_breaker_threshold,
             circuit_breaker_reset_seconds=config.circuit_breaker_reset_seconds,
-            retention_maxlen=config.retention_maxlen,
         )
 
     def _generate_subscription_id(self) -> str:
@@ -271,6 +265,10 @@ class StreamSubscription(BaseSubscription):
             raise RuntimeError(
                 f"No default broker configured for StreamSubscription {self.subscriber_name}"
             )
+
+        self._trims_stream = self.broker.has_capability(
+            BrokerCapabilities.STREAM_RETENTION
+        )
 
         # Ensure consumer group exists for primary stream
         try:
@@ -575,28 +573,19 @@ class StreamSubscription(BaseSubscription):
         )
 
     async def _maybe_trim(self, stream: str) -> None:
-        """Trim *stream* to ``retention_maxlen`` entries, if retention is on.
+        """Trim *stream* to what every consumer group has acknowledged.
 
         Called after each processed batch on the exact stream the batch came
-        from (primary or backfill). Returns immediately when
-        ``retention_maxlen`` is None or non-positive (retention disabled). The
-        broker service's ``_trim`` runs off the event loop via ``asyncio.to_thread`` and
-        any error is logged and swallowed so a trim failure never stalls
-        processing.
+        from (primary or backfill). Returns immediately when the broker does
+        not declare ``STREAM_RETENTION``. The broker service's ``_trim`` runs
+        off the event loop via ``asyncio.to_thread``, and any error is logged
+        and swallowed so a trim failure never stalls processing.
         """
-        # Guard against a non-positive cap. `validate()` rejects `<= 0`, but the
-        # constructor accepts `retention_maxlen` unchecked, so a direct
-        # `StreamSubscription(..., retention_maxlen=0)` would otherwise reach
-        # `_trim(stream, 0)`, and a broker's trim could empty the stream.
-        if (
-            self.retention_maxlen is None
-            or self.retention_maxlen <= 0
-            or not self.broker
-        ):
+        if not self._trims_stream or not self.broker:
             return
 
         try:
-            await asyncio.to_thread(self.broker._trim, stream, self.retention_maxlen)
+            await asyncio.to_thread(self.broker._trim, stream)
         except Exception as e:  # noqa: BLE001 - best effort: a failed trim retries next time
             logger.warning(f"Error trimming stream {stream}: {e}")
 
