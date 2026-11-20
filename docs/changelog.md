@@ -11,6 +11,39 @@ Run `protean --version` to check your installed version.
 
 <div class="pt-changelog-release" markdown="1">
 <div class="pt-changelog-meta" markdown="1">
+## 0.18.2 { #v0-18-2 }
+<p class="pt-changelog-date">November 20, 2026</p>
+</div>
+<div class="pt-changelog-body" markdown="1">
+
+<p class="pt-changelog-group">Upgrade Notes</p>
+
+Read the [0.18 migration guide](https://docs.proteanhq.com/reference/migration/v0-18/) before you upgrade. These changes can need action, in the order the guide covers them:
+
+- [A stream subscription keeps one retry count per stream](https://docs.proteanhq.com/reference/migration/v0-18/#a-stream-subscription-keeps-one-retry-count-per-stream) (#2113)
+- [A negated `Q` excludes the whole expression](https://docs.proteanhq.com/reference/migration/v0-18/#a-negated-q-excludes-the-whole-expression) (#2020)
+- [A failing after-commit callback no longer fails the commit](https://docs.proteanhq.com/reference/migration/v0-18/#a-failing-after-commit-callback-no-longer-fails-the-commit) (#2035)
+
+<p class="pt-changelog-group">Changed</p>
+
+- <span class="pt-changelog-area">Database</span> **Breaking.** A negated `Q` that combines conditions with `|` or `&`, and `exclude()` given a positional `Q`, now leave out the records that match the whole expression on the memory, SQL and Elasticsearch providers. (#2020)
+- <span class="pt-changelog-area">Handlers</span> **Breaking.** A failing after-commit callback, such as an idempotency store that cannot serialize a command's result, is now logged and no longer fails a commit whose writes are already durable. (#2035)
+
+<p class="pt-changelog-group">Fixed</p>
+
+- <span class="pt-changelog-area">Handlers</span> A command processed with `priority=` or inside `processing_priority()` now keeps that priority in the event store, where it was stored as 0. (#1826)
+- <span class="pt-changelog-area">Server</span> **Breaking.** `StreamSubscription` now keeps one retry count per stream and entry id, so an entry that shares a Redis id across the primary and backfill streams reaches the dead-letter queue after its own `max_retries` failures. (#2113)
+- <span class="pt-changelog-area">Database</span> An OR filter on the Elasticsearch adapter no longer matches every document, so `delete_all()` with an OR filter no longer deletes the whole index. (#2181)
+- <span class="pt-changelog-area">Broker</span> On the in-memory provider, `reconcile_outbox` no longer counts an outbox row that its commit dropped. (#2045)
+- <span class="pt-changelog-area">Docs</span> The payload-validation example in the subscribers guide now rejects a boolean `amount`. (#1762)
+- <span class="pt-changelog-area">Docs</span> The inventory examples on the thin-handlers and application-service pattern pages now reject a zero, negative or over-stock reservation in `Inventory.reserve()`. (#1857)
+- <span class="pt-changelog-area">Docs</span> The concurrent-event-processing examples declare `Client.hubspot_id` unique, so a redelivered creation message writes no second `Client`. (#1861)
+
+</div>
+</div>
+
+<div class="pt-changelog-release" markdown="1">
+<div class="pt-changelog-meta" markdown="1">
 ## 0.18.1 { #v0-18-1 }
 <p class="pt-changelog-date">November 9, 2026</p>
 </div>
