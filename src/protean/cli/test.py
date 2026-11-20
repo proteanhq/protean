@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import tomllib
@@ -1249,6 +1250,15 @@ URI_KEYS = {
     "event_store": "database_uri",
 }
 
+# The URI an adapter with no default of its own gets when ``--uri`` and
+# ``--config`` leave it unset. The sql event store raises without a
+# ``database_uri``, so the capability probe needs one before the suite's
+# own default applies, and the pytest rows then use the same file.
+DEFAULT_URIS = {
+    ("event_store", "sql"): "sqlite:///"
+    + str(Path(tempfile.gettempdir()) / f"protean-test-adapter-sql-{os.getpid()}.db"),
+}
+
 # The first row of a port report: the tests that need no capability flag.
 UNMARKED_ROW = "unmarked"
 
@@ -1596,11 +1606,14 @@ def _adapter_config(
     """Return the adapter configuration: ``overrides``, the URI and the provider.
 
     ``--uri`` sets the port's URI key over the same key in ``overrides``, and
-    ``provider`` always names the adapter under test.
+    ``provider`` always names the adapter under test. When neither sets the
+    key, an adapter in ``DEFAULT_URIS`` gets its default URI there.
     """
     adapter_config: dict[str, Any] = {**overrides, "provider": provider}
     if uri:
         adapter_config[URI_KEYS[port]] = uri
+    elif (port, provider) in DEFAULT_URIS:
+        adapter_config.setdefault(URI_KEYS[port], DEFAULT_URIS[(port, provider)])
     return adapter_config
 
 
