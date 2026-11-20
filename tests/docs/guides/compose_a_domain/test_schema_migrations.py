@@ -181,11 +181,18 @@ def test_empty_migration_command_writes_a_file(tmp_path, monkeypatch):
 
 @pytest.mark.sqlite
 def test_sql_range_prints_only_the_pending_migration(tmp_path, monkeypatch):
-    tokens = only_command("Apply migrations to production", "protean")
-    args = protean_args(tokens)
+    sql_commands = [
+        tokens
+        for tokens in bash_commands(section("Apply migrations to production"))
+        if "--sql" in tokens
+    ]
+    assert len(sql_commands) == 1, sql_commands
+    # Offline SQL takes its dialect from the configured provider.
+    assert sql_commands[0][0] == "PROTEAN_ENV=production"
+    args = protean_args(sql_commands[0])
     assert args is not None
     args = args[: args.index(">")] if ">" in args else args
-    assert args[:2] == ["db", "upgrade"] and "--sql" in args
+    assert args[:2] == ["db", "upgrade"]
     project = make_project(tmp_path, monkeypatch, {"default": sqlite_db("shop.db")})
     project.write(PRODUCT)
     project.run_ok("init")
