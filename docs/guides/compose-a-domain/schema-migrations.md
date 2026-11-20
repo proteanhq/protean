@@ -21,6 +21,14 @@ providers have no migrations.
 Run the commands from the project root, the folder that holds the domain. Each
 command finds the domain there, as `--domain` defaults to the current folder.
 
+Point the dev box at a database of the same kind as production, with the same
+settings that add tables, such as the outbox. Autogenerate writes only what the
+dev database's dialect and settings declare: on SQLite, a migration leaves out
+an index declared for PostgreSQL, and a disabled outbox has no table. If the
+dev database already holds tables and has no migration history, first follow
+[Adopt migrations on an existing database](#adopt-migrations-on-an-existing-database).
+Otherwise the first migration holds only the change, not the tables.
+
 Create the migrations folder for the `default` provider once per project:
 
 ```bash
@@ -74,6 +82,11 @@ nothing else. Every migration file needs a review, because:
 - **A renamed aggregate shows as a new table.** Rename an aggregate, and the
   migration creates a new, empty table and leaves the old one in place.
   Replace `op.create_table(...)` with `op.rename_table(old_name, new_name)`.
+- **A rename needs the inverse rename in `downgrade()`.** For both renames,
+  replace the operations in `downgrade()` as well, with the rename from the
+  new name back to the old one. Otherwise the downgrade drops the table or
+  the column and loses its data. Check the index operations in both
+  functions too.
 - **Some changes go undetected.** A changed server default is not compared.
   Some type changes are missed, depending on the database. Alembic lists these
   in its
@@ -281,6 +294,13 @@ An index declared with
 goes into the migration that creates its table. A named raw index added to an
 existing table gets a migration that creates it by name. An index declared for
 another database is left out.
+
+Give every raw index a `name=`. On SQLite, a change to a column makes Alembic
+copy the table, and the copy loses each expression index. The migration
+creates a named raw index again after the copy. It does not create an
+unnamed one again, and `protean db check` does not report the missing index.
+For an existing unnamed raw index, set `name=` to the name its SQL gives the
+index.
 
 Autogenerate compares raw indexes by name only. Change the SQL of a raw index
 and keep its name, and `protean db migrate` sees no change. Write that
