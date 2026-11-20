@@ -268,8 +268,8 @@ would require every event store to implement them.
 - Lock-key or position-rule changes require stopping every writer.
 - The database does not prevent a user with write access from changing or
   deleting events.
-- On SQLite, all writers run on one machine, and read-only transactions on a
-  shared file take the write lock.
+- On SQLite, all writers run on one machine, and one write at a time holds the
+  file's write lock.
 - An idle subscription reads a new event up to `max_tick_interval` late.
 - A command sent from inside a handler reaches the engine when that handler
   commits.

@@ -357,11 +357,13 @@ class SqlEventStore(EventStorePort):
     defines. On SQLite the write lock ``BEGIN IMMEDIATE`` takes is the lock.
 
     Raises:
-        ConfigurationError: At construction, when ``database_uri`` is missing,
-            names a database other than SQLite or PostgreSQL, or is an
-            in-memory SQLite database; when ``schema`` is set on SQLite; when
-            the isolation level is unsafe for the database; or when the
-            PostgreSQL driver cannot be imported.
+        ConfigurationError: At construction, when ``database_uri`` is missing
+            or unparseable, names a database other than SQLite or PostgreSQL,
+            or is an in-memory SQLite database; when ``schema`` is set on
+            SQLite, or is not a non-empty string on PostgreSQL; when
+            ``execution_options`` is not a table; when the isolation level is
+            unsafe for the database; or when the PostgreSQL driver cannot be
+            imported.
         ValueError: On a read with a negative ``limit``.
     """
 

@@ -1,7 +1,7 @@
 """The ``EventStorePort`` members of the Message DB event store.
 
 The event-store conformance suite, ``tests/conformance/event_store/``, tests
-the Port behaviour both built-in stores share. These tests cover what only
+the Port behaviour the built-in stores share. These tests cover what only
 the Message DB store does: its connection pool and an unreachable database.
 """
 
