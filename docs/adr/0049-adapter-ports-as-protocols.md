@@ -74,7 +74,7 @@ abstract. The service holds retry policy, TTL defaults, aggregate loading and
 unit-of-work binding.
 
 A no-op default fits only an operation whose absence changes no outcome for the
-caller. Some operations, such as trimming a stream to a retention limit, change
+caller. Some operations, such as trimming the acknowledged entries of a stream, change
 the outcome for the caller when an adapter lacks them. Each such operation is a
 sub-protocol behind its own flag (decision 4), and the service reads that flag
 to learn whether the adapter has the operation.
@@ -324,7 +324,8 @@ framework would become a public name that application code may call.
   runtime check compares method names only, so a member with the wrong
   signature passes.
 - **Give the Port a no-op default for every optional operation.** Rejected: a
-  no-op hides a limit the adapter ignores, such as a stream retention limit.
+  no-op hides an operation the adapter does not perform, such as stream
+  trimming.
 - **Put stream trimming in the partitioning sub-protocol.** Rejected: retention
   and partitioning are independent, and an adapter that only trims would write
   the lease members.

@@ -130,10 +130,10 @@ End the adapter module with
 The trim must never remove an entry that a consumer group has not read and
 acknowledged. The Redis adapter's rule is worth copying. Each group's bound is
 the ID of its oldest pending entry when it has pending entries, and its
-`last-delivered-id` when it has none. The adapter trims below the lowest bound,
-and it reads the bounds and trims in one atomic step, so a consumer group
-created in between cannot lose entries. A stream with no consumer group has no
-bound and is not trimmed. A group that has never read holds the bound at the
+`last-delivered-id` when it has none. The adapter trims below the lowest bound.
+It reads the bounds and trims in one atomic step, so no consumer group can be
+created between reading the bounds and trimming and then lose entries. A stream
+with no consumer group has no bound and is not trimmed. A group that has never read holds the bound at the
 start of the stream, so document for operators that they delete such a group.
 The trim may be approximate, so the stream can stay a little above the bound. See
 [Tuning subscriptions](../../../guides/server/tuning-subscriptions.md#stop-a-stream-from-growing-forever)

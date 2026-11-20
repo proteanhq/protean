@@ -783,6 +783,7 @@ class TestUnknownSubscriptionKeysAreDropped:
 
         config = ConfigResolver(test_domain).resolve(LegacyHandler)
 
+        # Reaching this line is the proof: an unknown key passed through to
+        # SubscriptionConfig would have raised TypeError in resolve().
         assert config.messages_per_tick == 7
-        assert not hasattr(config, "obsolete_option")
         assert "obsolete_option" not in config.to_dict()

@@ -222,8 +222,11 @@ class TestMaybeTrim:
         assert sub._trims_stream is False
         assert broker.calls == []
 
-    async def test_no_trim_without_broker(self, sub):
+    async def test_no_trim_without_broker(self, sub, caplog):
         sub._trims_stream = True
         sub.broker = None
 
         await sub._maybe_trim("account")
+
+        # Without the guard, ``None._trim`` raises and the handler logs it.
+        assert "Error trimming stream" not in caplog.text

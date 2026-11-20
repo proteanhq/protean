@@ -578,8 +578,9 @@ class StreamSubscription(BaseSubscription):
         Called after each processed batch on the exact stream the batch came
         from (primary or backfill). Returns immediately when the broker does
         not declare ``STREAM_RETENTION``. The broker service's ``_trim`` runs
-        off the event loop via ``asyncio.to_thread``, and any error is logged
-        and swallowed so a trim failure never stalls processing.
+        off the event loop via ``asyncio.to_thread``. An exception it raises,
+        such as a lost connection, is logged and swallowed so a trim failure
+        never stalls processing.
         """
         if not self._trims_stream or not self.broker:
             return

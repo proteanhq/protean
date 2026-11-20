@@ -366,9 +366,10 @@ def _fields_changed_by_default_profile(server: dict) -> dict:
     }
 
 
-def test_debug_as_default_profile_changes_no_field():
+@pytest.mark.parametrize("profile", sorted(p.value for p in SubscriptionProfile))
+def test_a_built_in_default_profile_changes_no_field(profile):
     assert (
-        _fields_changed_by_default_profile({"default_subscription_profile": "debug"})
+        _fields_changed_by_default_profile({"default_subscription_profile": profile})
         == {}
     )
 

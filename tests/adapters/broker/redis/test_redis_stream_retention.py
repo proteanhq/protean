@@ -141,3 +141,31 @@ class TestTrimByConsumerProgress:
         broker = _broker(test_domain)
 
         assert broker.trim("no-such-stream") == 0
+
+    def test_key_of_another_type_logs_the_error(self, test_domain, caplog):
+        broker = _broker(test_domain)
+        broker._client.set(STREAM, "not a stream")
+
+        assert broker.trim(STREAM) == 0
+        assert f"Failed to trim stream {STREAM}" in caplog.text
+        assert "WRONGTYPE" in caplog.text
+
+    def test_ids_above_2_pow_53_compare_exactly(self, test_domain):
+        # Both millisecond parts round to 2**53 as Lua numbers. Compared that
+        # way, group B's bound looks lower than group A's pending entry and the
+        # trim removes the entry group A has not acknowledged.
+        broker = _broker(test_domain)
+        low, high = 2**53, 2**53 + 1
+        ids = [
+            broker._client.xadd(STREAM, {"n": seq}, id=f"{ms}-{seq}").decode()
+            for ms in (low, high)
+            for seq in range(200)
+        ]
+        broker.create_group(STREAM, "groupA")
+        broker.create_group(STREAM, "groupB")
+        assert _read(broker, "groupA", 6) == ids[:6]
+        broker._client.xack(STREAM, "groupA", *ids[:5])
+        assert _read_and_ack(broker, "groupB", 201) == ids[:201]
+
+        assert broker.trim(STREAM) == 0
+        assert _remaining_ids(broker) == ids

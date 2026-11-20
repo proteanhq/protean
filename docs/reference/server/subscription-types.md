@@ -158,15 +158,18 @@ read and acknowledged. No setting controls the trim.
 
 Each consumer group sets a bound. A group with pending entries (delivered but
 not yet acknowledged) keeps its oldest pending entry and everything after it.
-A group with no pending entries keeps everything after the last entry it read.
-The broker trims below the lowest bound across all groups, so no group loses an
-entry it still needs, and a pending entry is still there when a retry or a
-claim reads it.
+A group with no pending entries keeps the last entry it read and everything
+after it.
+The broker trims below the lowest bound across all groups, so no group that
+exists at trim time loses an entry it still needs, and a pending entry is still
+there when a retry or a claim reads it. A handler added later starts at the
+oldest entry left in the stream.
 
 A consumer group that never reads keeps the whole stream. Its last-delivered
 position stays at `0-0`, so it always holds the lowest bound, and the stream
-grows until you delete that group. This happens with a dead consumer or with a
-handler you removed without deleting its group.
+grows until you delete that group. This happens with a consumer that died
+before its first read. A handler you removed without deleting its group stops
+trimming in the same way, from the last entry that group read.
 
 A stream with no consumer group is not trimmed. Trimming is approximate
 (Redis's `~`): the broker removes whole nodes of entries, so the stream can

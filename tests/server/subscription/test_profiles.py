@@ -5,6 +5,7 @@ SubscriptionType, SubscriptionProfile enums, and profile loading functionality.
 """
 
 import dataclasses
+import inspect
 
 import pytest
 
@@ -17,6 +18,7 @@ from protean.server.subscription.profiles import (
     SubscriptionType,
     build_profile_registry,
 )
+from protean.server.subscription.stream_subscription import StreamSubscription
 
 
 class TestSubscriptionTypeEnum:
@@ -655,3 +657,56 @@ class TestTheProfilesSlotMustBeATable:
         assert set(registry) == {p.value for p in SubscriptionProfile}
         for profile in SubscriptionProfile:
             assert registry[profile.value] == PROFILE_DEFAULTS[profile]
+
+
+TUNING_FIELDS = {
+    "subscription_type",
+    "messages_per_tick",
+    "tick_interval",
+    "blocking_timeout_ms",
+    "max_retries",
+    "retry_delay_seconds",
+    "enable_dlq",
+    "position_update_interval",
+    "origin_stream",
+    "dlq_retention_hours",
+    "dlq_alert_threshold",
+    "circuit_breaker_threshold",
+    "circuit_breaker_reset_seconds",
+}
+
+
+class TestKeywordSurfaces:
+    """A keyword outside these sets raises TypeError when a caller passes it.
+
+    The sets are exact, so a removed setting that comes back fails here.
+    """
+
+    def test_subscription_config_fields(self):
+        assert {f.name for f in dataclasses.fields(SubscriptionConfig)} == (
+            TUNING_FIELDS
+        )
+
+    def test_from_profile_parameters(self):
+        params = set(inspect.signature(SubscriptionConfig.from_profile).parameters)
+        assert params == TUNING_FIELDS | {"profile"}
+
+    def test_stream_subscription_parameters(self):
+        params = set(inspect.signature(StreamSubscription.__init__).parameters)
+        assert params == {
+            "self",
+            "engine",
+            "stream_category",
+            "handler",
+            "messages_per_tick",
+            "blocking_timeout_ms",
+            "max_retries",
+            "retry_delay_seconds",
+            "enable_dlq",
+            "circuit_breaker_threshold",
+            "circuit_breaker_reset_seconds",
+        }
+
+    def test_an_unknown_keyword_raises_type_error(self):
+        with pytest.raises(TypeError):
+            SubscriptionConfig(obsolete_option=1)  # type: ignore[call-arg]

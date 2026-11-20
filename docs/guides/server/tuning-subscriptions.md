@@ -70,13 +70,13 @@ The full resolution order is in the
 ## Stop a stream from growing forever
 
 Stream subscriptions read from Redis streams, which keep every message until
-something trims them. Protean trims them for you, and no setting controls it.
+something trims them. Protean trims them, and no setting controls it.
 After each batch, a stream subscription asks the broker to trim the stream it
 read. The one exception is a handler that uses `sequential_by`: Protean does
 not trim its per-key partition streams.
 The broker removes only the entries that every consumer group on the stream has
-read and acknowledged, so the trim never deletes an event a handler still
-needs. An entry that was delivered and not yet acknowledged stays until it is
+read and acknowledged, so the trim never deletes an event an existing handler
+still needs. A handler you add later starts at the oldest entry left. An entry that was delivered and not yet acknowledged stays until it is
 acknowledged, so a retry or a claim after a crash still finds it.
 
 The stream therefore grows as large as the slowest handler lets it. To shrink an
@@ -84,12 +84,12 @@ oversized stream, find the handler that is behind and fix it.
 
 A consumer group that never reads stops all trimming on its stream, because it
 has not read the first entry. This happens when a consumer dies before its first
-read, or when you remove a handler and leave its consumer group behind. Delete
-that group to let the stream shrink again.
+read. A handler you remove and whose consumer group you leave behind stops
+trimming in the same way, from the last entry that group read. Delete that group
+to let the stream shrink again.
 
 Trimming is approximate (Redis's `~`), so the stream can stay a little above the
-point every group has reached. Exact trimming costs far more for a bound that
-does not need to be exact.
+point every group has reached.
 
 Only a broker that declares `STREAM_RETENTION`, such as Redis Streams, trims. On
 any other broker Protean does not call the trim.

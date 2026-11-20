@@ -153,6 +153,24 @@ end
 return {reply[1], reply[2], counts}
 """
 
+# Lua stream-id comparison shared by the scripts below. It compares the digit
+# strings (shorter is smaller, then lexical) because ``tonumber`` rounds above
+# 2^53, and an explicit id from an outside producer can be that large. Redis
+# never writes a leading zero in an id part.
+_LUA_ID_LT = """
+local function num_lt(a, b)
+    if #a ~= #b then return #a < #b end
+    return a < b
+end
+local function id_lt(a, b)
+    local ams, aseq = string.match(a, '^(%d+)-(%d+)$')
+    local bms, bseq = string.match(b, '^(%d+)-(%d+)$')
+    if not (ams and bms) then return false end
+    if ams ~= bms then return num_lt(ams, bms) end
+    return num_lt(aseq, bseq)
+end
+"""
+
 # Race-safe cold-partition reap. KEYS[1]=index_set, KEYS[2..]=every physical
 # stream for the key (the main partition stream and, when priority lanes are on,
 # its backfill lane); ARGV[1]=key, ARGV[2]=min_idle_ms. A stream is shared by
@@ -166,15 +184,9 @@ return {reply[1], reply[2], counts}
 # reapable. Removes the index entry and every stream, but deliberately leaves the
 # generation counter so a re-created partition keeps a monotonic generation (the
 # fence never goes backwards across a reap). Returns 1 if reaped, else 0.
-_LUA_REAP_PARTITION = """
-local function id_lt(a, b)
-    local ams, aseq = string.match(a, '^(%d+)-(%d+)$')
-    local bms, bseq = string.match(b, '^(%d+)-(%d+)$')
-    if not (ams and bms) then return false end
-    ams, aseq, bms, bseq = tonumber(ams), tonumber(aseq), tonumber(bms), tonumber(bseq)
-    if ams ~= bms then return ams < bms end
-    return aseq < bseq
-end
+_LUA_REAP_PARTITION = (
+    _LUA_ID_LT
+    + """
 for s = 2, #KEYS do
     local last = redis.call('XREVRANGE', KEYS[s], '+', '-', 'COUNT', 1)
     if last and last[1] then
@@ -203,6 +215,7 @@ redis.call('SREM', KEYS[1], ARGV[1])
 for s = 2, #KEYS do redis.call('DEL', KEYS[s]) end
 return 1
 """
+)
 
 
 # Race-safe trim by consumer progress. KEYS[1]=stream. Each consumer group's
@@ -210,20 +223,20 @@ return 1
 # last-delivered id; the stream is trimmed with MINID ~ at the smallest bound.
 # MINID removes only ids strictly below the bound, so every entry some group has
 # not acknowledged survives. Reading the bound and trimming in one script stops a
-# group created in between (which starts at the stream's beginning) from losing
-# entries. A stream with no group has no bound and is not trimmed; a group at
-# 0-0 blocks the trim. Returns the number of entries removed.
-_LUA_TRIM_BY_PROGRESS = """
-local function id_lt(a, b)
-    local ams, aseq = string.match(a, '^(%d+)-(%d+)$')
-    local bms, bseq = string.match(b, '^(%d+)-(%d+)$')
-    if not (ams and bms) then return false end
-    ams, aseq, bms, bseq = tonumber(ams), tonumber(aseq), tonumber(bms), tonumber(bseq)
-    if ams ~= bms then return ams < bms end
-    return aseq < bseq
-end
+# group created between the two (which starts at the stream's beginning) from
+# losing entries. A missing stream or a stream with no group has no bound and is
+# not trimmed. A group at 0-0 needs no special case: MINID 0-0 removes nothing.
+# Any other XINFO error goes back to the caller as an error reply, so it is
+# logged. Returns the number of entries removed.
+_LUA_TRIM_BY_PROGRESS = (
+    _LUA_ID_LT
+    + """
 local groups = redis.pcall('XINFO', 'GROUPS', KEYS[1])
-if type(groups) ~= 'table' or groups.err or #groups == 0 then return 0 end
+if type(groups) == 'table' and groups.err then
+    if string.find(groups.err, 'no such key', 1, true) then return 0 end
+    return redis.error_reply(groups.err)
+end
+if type(groups) ~= 'table' or #groups == 0 then return 0 end
 local bound
 for _, g in ipairs(groups) do
     local name, pending, delivered
@@ -240,9 +253,9 @@ for _, g in ipairs(groups) do
     if not group_bound or not string.match(group_bound, '^%d+-%d+$') then return 0 end
     if not bound or id_lt(group_bound, bound) then bound = group_bound end
 end
-if bound == '0-0' then return 0 end
 return redis.call('XTRIM', KEYS[1], 'MINID', '~', bound)
 """
+)
 
 
 class RedisBroker(BaseBroker, BlockingReadPort, PartitioningPort, StreamRetentionPort):
@@ -954,8 +967,13 @@ class RedisBroker(BaseBroker, BlockingReadPort, PartitioningPort, StreamRetentio
         stream can stay a little above the bound.
 
         Returns:
-            The number of entries removed. ``0`` when nothing was removed, when
-            the stream does not exist, and on a Redis error.
+            The number of entries removed. ``0`` when nothing was removed or
+            the stream does not exist. A Redis error reply (such as ``WRONGTYPE``
+            or ``NOPERM``) is logged and returns ``0``.
+
+        Raises:
+            redis.ConnectionError: When Redis cannot be reached.
+            redis.TimeoutError: When the call times out.
         """
         try:
             trimmed = int(
