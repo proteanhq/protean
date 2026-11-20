@@ -59,8 +59,9 @@ describes every flag and which built-in store declares it.
 ## Write the adapter
 
 Each of Protean's event-store adapters is one module in
-`src/protean/adapters/event_store/`. The class subclasses `EventStorePort`, sets `name`,
-`domain` and `config`, and opens the store's client in its constructor. Each
+`src/protean/adapters/event_store/`. The class subclasses `EventStorePort`
+and sets `name`, `domain` and `config` in its constructor. A store with a
+client, such as Message DB, opens it in `get_connection()` on first use. Each
 member keeps the signature `EventStorePort` gives it. The example forwards
 every call to the memory store:
 
