@@ -22,6 +22,8 @@ from protean.utils.eventing import (
     DomainMeta,
     MessageHeaders,
     Metadata,
+    _assemble_message_metadata,
+    _resolve_message_lineage,
 )
 from protean.utils.globals import _domain_now, g
 
@@ -145,47 +147,7 @@ class BaseCommand(BaseMessageType):
             self.__class__.__version__ if hasattr(self.__class__, "__version__") else 1
         )
 
-        origin_stream = None
-        correlation_id = None
-        causation_id = None
-        if hasattr(g, "message_in_context"):
-            msg_ctx = g.message_in_context
-            if msg_ctx.metadata.domain.kind == "EVENT":
-                origin_stream = msg_ctx.metadata.headers.stream
-            # Inherit correlation_id from parent message
-            if msg_ctx.metadata.domain:
-                correlation_id = msg_ctx.metadata.domain.correlation_id
-            # Set causation_id = parent message's ID
-            if msg_ctx.metadata.headers:
-                causation_id = msg_ctx.metadata.headers.id
-
-        # Use existing headers if they have meaningful content, otherwise create new ones
-        has_meaningful_headers = (
-            incoming
-            and hasattr(incoming, "headers")
-            and incoming.headers
-            and (
-                incoming.headers.type
-                or incoming.headers.id
-                or incoming.headers.traceparent
-            )
-        )
-
-        if has_meaningful_headers:
-            headers = incoming.headers  # type: ignore[union-attr]
-            # Ensure type is set even when headers were kept for traceparent
-            if not headers.type:
-                headers = MessageHeaders(
-                    id=headers.id,
-                    time=headers.time or _domain_now(),
-                    type=self.__class__.__type__,
-                    stream=headers.stream,
-                    traceparent=headers.traceparent,
-                    idempotency_key=headers.idempotency_key,
-                    deadline=headers.deadline,
-                )
-        else:
-            headers = MessageHeaders(type=self.__class__.__type__, time=_domain_now())
+        headers = _command_headers(self.__class__.__type__, incoming)
 
         # If metadata already has domain with sequence_id, asynchronous and
         # priority set (from enrich), preserve those values
@@ -193,18 +155,9 @@ class BaseCommand(BaseMessageType):
             incoming.domain if incoming and hasattr(incoming, "domain") else None
         )
 
-        # On a rebuild, copy the stored IDs and origin stream, including
-        # `None`. `g.message_in_context` holds the message being handled now,
-        # which did not cause the stored one.
-        if rebuild and existing_domain:
-            correlation_id = existing_domain.correlation_id
-            causation_id = existing_domain.causation_id
-            origin_stream = existing_domain.origin_stream
-        else:
-            if existing_domain and existing_domain.correlation_id:
-                correlation_id = existing_domain.correlation_id
-            if existing_domain and existing_domain.causation_id:
-                causation_id = existing_domain.causation_id
+        origin_stream, correlation_id, causation_id = _resolve_message_lineage(
+            existing_domain, _parent_command_lineage(), rebuild=rebuild
+        )
 
         # Build domain metadata — preserve values from _enrich_command() if set
         domain_meta = DomainMeta(
@@ -217,39 +170,61 @@ class BaseCommand(BaseMessageType):
             **_enriched_domain_fields(existing_domain),
         )
 
-        # Also preserve envelope if it exists
-        existing_envelope = (
-            incoming.envelope if incoming and hasattr(incoming, "envelope") else None
+        self._metadata = _assemble_message_metadata(
+            incoming, headers, domain_meta, rebuild=rebuild
         )
 
-        # Preserve stream in headers if it exists
-        existing_stream = None
-        if (
-            incoming
-            and hasattr(incoming, "headers")
-            and incoming.headers
-            and hasattr(incoming.headers, "stream")
-        ):
-            existing_stream = incoming.headers.stream
 
-        # Create new headers with stream if needed
-        if existing_stream:
-            headers = MessageHeaders(**{**headers.to_dict(), "stream": existing_stream})
+def _parent_command_lineage() -> tuple[str | None, str | None, str | None]:
+    """Return the ``(origin_stream, correlation_id, causation_id)`` a new
+    command takes from the message being handled now, if any.
 
-        metadata_kwargs: dict[str, Any] = {"headers": headers, "domain": domain_meta}
-        if existing_envelope is not None:
-            metadata_kwargs["envelope"] = existing_envelope
-        # Preserve extensions from incoming metadata (set by command enrichers,
-        # and lenient-deserialization dropped-field records).
-        if incoming and hasattr(incoming, "extensions") and incoming.extensions:
-            metadata_kwargs["extensions"] = incoming.extensions
-        # Keep the store positions of a message read back from the store, so
-        # a handler can see where it sits in its stream and in the store. A
-        # new message built from another's metadata was never stored, so it
-        # takes no positions.
-        if rebuild and incoming and getattr(incoming, "event_store", None) is not None:
-            metadata_kwargs["event_store"] = incoming.event_store
-        self._metadata = Metadata(**metadata_kwargs)
+    The origin stream is set only when that message is an event.
+    """
+    origin_stream = None
+    correlation_id = None
+    causation_id = None
+    if hasattr(g, "message_in_context"):
+        msg_ctx = g.message_in_context
+        if msg_ctx.metadata.domain.kind == "EVENT":
+            origin_stream = msg_ctx.metadata.headers.stream
+        # Inherit correlation_id from parent message
+        if msg_ctx.metadata.domain:
+            correlation_id = msg_ctx.metadata.domain.correlation_id
+        # Set causation_id = parent message's ID
+        if msg_ctx.metadata.headers:
+            causation_id = msg_ctx.metadata.headers.id
+    return origin_stream, correlation_id, causation_id
+
+
+def _command_headers(type_: str, incoming: Metadata | None) -> MessageHeaders:
+    """Return the incoming headers when they carry a type, an ID or a
+    traceparent, with ``type_`` filled in if missing. Otherwise return new
+    headers of type ``type_``."""
+    # Use existing headers if they have meaningful content, otherwise create new ones
+    if not (
+        incoming
+        and hasattr(incoming, "headers")
+        and incoming.headers
+        and (
+            incoming.headers.type or incoming.headers.id or incoming.headers.traceparent
+        )
+    ):
+        return MessageHeaders(type=type_, time=_domain_now())
+
+    headers = incoming.headers
+    # Ensure type is set even when headers were kept for traceparent
+    if not headers.type:
+        headers = MessageHeaders(
+            id=headers.id,
+            time=headers.time or _domain_now(),
+            type=type_,
+            stream=headers.stream,
+            traceparent=headers.traceparent,
+            idempotency_key=headers.idempotency_key,
+            deadline=headers.deadline,
+        )
+    return headers
 
 
 def _enriched_domain_fields(existing_domain: DomainMeta | None) -> dict[str, Any]:

@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any, ClassVar, TypeVar, cast
 
 from pydantic import Field as PydanticField
 from pydantic import PrivateAttr
-from pydantic_core import PydanticUndefined
 
 from protean._deprecation import (
     external_stacklevel,
@@ -29,7 +28,7 @@ from protean.core.entity import (
     _snapshot_entity_trees,
 )
 from protean.core.event import BaseEvent
-from protean.core.value_object import value_object_from_entity
+from protean.core.value_object import _project_resolved_field, value_object_from_entity
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
@@ -38,7 +37,7 @@ from protean.exceptions import (
 )
 from protean.fields import HasMany, HasOne, Reference, ValueObject
 from protean.fields.basic import ValueObjectList
-from protean.fields.resolved import ResolvedField, custom_field_declaration
+from protean.fields.resolved import ResolvedField
 from protean.fields.tempdata import AssociationCache
 from protean.utils import (
     DomainObjects,
@@ -69,6 +68,86 @@ def _dropped_helper(*args: Any, **kwargs: Any) -> None:
     """Stand-in for the ``add_``/``remove_`` helper of a reserved association
     during replay. It accepts any arguments and does nothing."""
     return
+
+
+def _next_event_identity(
+    aggregate: "BaseAggregate", event: Any, stream: str
+) -> tuple[str, str]:
+    """Return the ``(message id, sequence id)`` pair for an event the aggregate
+    raises.
+
+    On an event-sourced aggregate, a non-fact event first moves ``_version``
+    up by one, and both ids come from the new version. Otherwise both ids
+    combine the aggregate version with the event's position in ``_events``.
+    """
+    if aggregate.meta_.is_event_sourced:
+        if not event.__class__.meta_.is_fact_event:
+            aggregate._version += 1
+
+        return f"{stream}-{aggregate._version}", f"{aggregate._version}"
+
+    aggregate_version = max(aggregate._version, aggregate._next_version)
+    event_number = len(aggregate._events) + 1
+    return (
+        f"{stream}-{aggregate_version}.{event_number}",
+        f"{aggregate_version}.{event_number}",
+    )
+
+
+def _recorded_event_headers(
+    event: Any, stream: str, event_identity: str
+) -> MessageHeaders:
+    """Build the headers for an event the aggregate raises.
+
+    The event's own ``time`` and ``traceparent`` headers carry over when set.
+    """
+    # Carry forward an existing traceparent from the event's original
+    # metadata, or inject the current OTEL span context so that events
+    # raised during handler execution remain part of the distributed trace.
+    traceparent = (
+        event._metadata.headers.traceparent
+        if event._metadata.headers and event._metadata.headers.traceparent
+        else None
+    )
+    if traceparent is None:
+        traceparent = inject_traceparent_from_context()
+
+    return MessageHeaders(
+        id=event_identity,
+        type=event.__class__.__type__,
+        stream=stream,
+        time=event._metadata.headers.time
+        if (event._metadata.headers and event._metadata.headers.time)
+        else None,
+        traceparent=traceparent,
+    )
+
+
+def _run_event_enrichers(
+    event: Any, aggregate: "BaseAggregate", metadata: Metadata
+) -> Metadata:
+    """Return ``metadata`` with the domain's event enrichers' extensions added.
+
+    Returns ``metadata`` itself when no enricher adds an extension and the
+    metadata had none.
+    """
+    if not current_domain._event_enrichers:
+        return metadata
+
+    extensions = dict(metadata.extensions)
+    for enricher in current_domain._event_enrichers:
+        result = enricher(event, aggregate)
+        if result:
+            extensions.update(result)
+    if not extensions:
+        return metadata
+    return Metadata(
+        headers=metadata.headers,
+        envelope=metadata.envelope,
+        domain=metadata.domain,
+        event_store=metadata.event_store,
+        extensions=extensions,
+    )
 
 
 class BaseAggregate(BaseEntity):
@@ -263,39 +342,8 @@ class BaseAggregate(BaseEntity):
         handler inside ``atomic_change``. ``raise_()`` undoes the counters
         and ``_events`` if this raises.
         """
-        if self.meta_.is_event_sourced:
-            if not event.__class__.meta_.is_fact_event:
-                self._version += 1
-
-            event_identity = f"{stream}-{self._version}"
-            sequence_id = f"{self._version}"
-        else:
-            aggregate_version = max(self._version, self._next_version)
-            event_number = len(self._events) + 1
-
-            event_identity = f"{stream}-{aggregate_version}.{event_number}"
-            sequence_id = f"{aggregate_version}.{event_number}"
-
-        # Carry forward an existing traceparent from the event's original
-        # metadata, or inject the current OTEL span context so that events
-        # raised during handler execution remain part of the distributed trace.
-        traceparent = (
-            event._metadata.headers.traceparent
-            if event._metadata.headers and event._metadata.headers.traceparent
-            else None
-        )
-        if traceparent is None:
-            traceparent = inject_traceparent_from_context()
-
-        headers = MessageHeaders(
-            id=event_identity,
-            type=event.__class__.__type__,
-            stream=stream,
-            time=event._metadata.headers.time
-            if (event._metadata.headers and event._metadata.headers.time)
-            else None,
-            traceparent=traceparent,
-        )
+        event_identity, sequence_id = _next_event_identity(self, event, stream)
+        headers = _recorded_event_headers(event, stream, event_identity)
 
         envelope = MessageEnvelope.build(event.payload)
 
@@ -315,21 +363,7 @@ class BaseAggregate(BaseEntity):
             domain=domain_meta,
         )
 
-        # Run event enrichers
-        if current_domain._event_enrichers:
-            extensions = dict(metadata.extensions)
-            for enricher in current_domain._event_enrichers:
-                result = enricher(event, self)
-                if result:
-                    extensions.update(result)
-            if extensions:
-                metadata = Metadata(
-                    headers=metadata.headers,
-                    envelope=metadata.envelope,
-                    domain=metadata.domain,
-                    event_store=metadata.event_store,
-                    extensions=extensions,
-                )
+        metadata = _run_event_enrichers(event, self, metadata)
 
         event_with_metadata = event.__class__(
             event.payload,
@@ -655,78 +689,32 @@ def _pydantic_element_to_fact_event(element_cls: type[Any]) -> Any:
     model_field_info = getattr(element_cls, "model_fields", {})
 
     for key, value in fields(element_cls).items():
-        if isinstance(value, Reference):
-            continue
-
         # Skip internal fields (e.g. _version) — Pydantic treats _ prefix as private
-        if key.startswith("_"):
+        if isinstance(value, Reference) or key.startswith("_"):
             continue
 
-        if isinstance(value, HasOne):
-            # Recursively convert entity to VO. ``to_cls`` is typed ``str | type``
-            # because associations carry a string reference during registration;
-            # by the time fact events are built (domain init, post-resolution) it
-            # is always the resolved target class.
-            assert not isinstance(value.to_cls, str)
-            result = element_to_fact_event(value.to_cls)
-            vo_descriptor = (
-                result
-                if isinstance(result, ValueObject)
-                else ValueObject(value_object_cls=result)
+        if isinstance(value, (HasOne, HasMany)):
+            association_descriptors[key] = _fact_event_association(
+                key, value, annotations, namespace
             )
-            vo_cls = vo_descriptor.value_object_cls
-            annotations[key] = vo_cls | None
-            namespace[key] = None
-            association_descriptors[key] = vo_descriptor
-
-        elif isinstance(value, HasMany):
-            # Recursively convert entity to list of VOs. ``to_cls`` is resolved to
-            # the target class by the time fact events are built (see above).
-            assert not isinstance(value.to_cls, str)
-            result = element_to_fact_event(value.to_cls)
-            vo_descriptor = (
-                result
-                if isinstance(result, ValueObject)
-                else ValueObject(value_object_cls=result)
-            )
-            list_descriptor = ValueObjectList(content_type=vo_descriptor)
-            vo_cls = vo_descriptor.value_object_cls
-            # Dynamic generic alias built from a runtime-derived VO class for
-            # Pydantic's annotations; mypy cannot treat a variable as a type here.
-            annotations[key] = list[vo_cls]  # type: ignore[valid-type]
-            namespace[key] = PydanticField(default_factory=list)
-            association_descriptors[key] = list_descriptor
 
         elif isinstance(value, ValueObject):
             # Legacy-style VO descriptor in a Pydantic element. ``value_object_cls``
-            # is typed ``type[BaseValueObject] | str`` for the same registration-time
-            # reason; it is the resolved class at fact-event build time.
+            # is typed ``type[BaseValueObject] | str`` because it carries a
+            # string reference during registration; it is the resolved class
+            # at fact-event build time.
             assert not isinstance(value.value_object_cls, str)
-            vo_cls = value.value_object_cls
-            annotations[key] = vo_cls | None
+            annotations[key] = value.value_object_cls | None
             namespace[key] = None
             association_descriptors[key] = value
 
         elif isinstance(value, ResolvedField):
-            # Regular Pydantic model field
+            # Regular Pydantic model field. Every built-in field has a native
+            # schema, so its metadata (length bounds, sanitize) is
+            # intentionally left off the fact event field.
             finfo = model_field_info.get(key)
             if finfo:
-                # A custom field (built by ``Custom``) needs its Pydantic
-                # metadata and its kind marker carried onto the fact event
-                # field; ``custom_field_declaration`` builds both. Every
-                # built-in field has a native schema, so its metadata (length
-                # bounds, sanitize) is intentionally left off as before.
-                if value.field_kind == "custom":
-                    annotations[key], namespace[key] = custom_field_declaration(finfo)
-                else:
-                    annotations[key] = finfo.annotation
-                    if finfo.default is not PydanticUndefined:
-                        namespace[key] = finfo.default
-                    elif finfo.default_factory is not None:
-                        namespace[key] = PydanticField(
-                            default_factory=finfo.default_factory
-                        )
-                    # else: required field — no default needed
+                _project_resolved_field(key, value, finfo, annotations, namespace)
 
     ns = {"__annotations__": annotations, **namespace}
     event_cls = type(
@@ -747,6 +735,45 @@ def _pydantic_element_to_fact_event(element_cls: type[Any]) -> Any:
     return event_cls
 
 
+def _fact_event_association(
+    key: str,
+    value: HasOne | HasMany,
+    annotations: dict[str, Any],
+    namespace: dict[str, Any],
+) -> ValueObject | ValueObjectList:
+    """Add a fact event field for a ``HasOne`` or ``HasMany`` association.
+
+    The associated entity becomes a value object. Adds the field's annotation
+    and default to ``annotations`` and ``namespace`` and returns the
+    descriptor the fact event records for it.
+    """
+    # ``to_cls`` is typed ``str | type`` because associations carry a string
+    # reference during registration; by the time fact events are built
+    # (domain init, post-resolution) it is always the resolved target class.
+    assert not isinstance(value.to_cls, str)
+    result = element_to_fact_event(value.to_cls)
+    vo_descriptor = (
+        result
+        if isinstance(result, ValueObject)
+        else ValueObject(value_object_cls=result)
+    )
+    vo_cls = vo_descriptor.value_object_cls
+    # The descriptor was built from a resolved class, never a string reference.
+    assert not isinstance(vo_cls, str)
+
+    if isinstance(value, HasOne):
+        annotations[key] = vo_cls | None
+        namespace[key] = None
+        return vo_descriptor
+
+    list_descriptor = ValueObjectList(content_type=vo_descriptor)
+    # Dynamic generic alias built from a runtime-derived VO class for
+    # Pydantic's annotations; mypy cannot treat a variable as a type here.
+    annotations[key] = list[vo_cls]  # type: ignore[valid-type]
+    namespace[key] = PydanticField(default_factory=list)
+    return list_descriptor
+
+
 _T = TypeVar("_T")
 
 
@@ -754,6 +781,48 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
     """Factory method to create an aggregate class.
 
     This method is used to create an aggregate class. It is called during domain registration.
+    """
+    alias_used = _normalize_aggregate_opts(opts)
+
+    # Always route to Pydantic base
+    base_cls = BaseAggregate
+
+    # Derive the aggregate class from the base aggregate class
+    element_cls = _derive_element_class(element_cls, base_cls, **opts)
+
+    # The derived class is always a ``BaseAggregate`` subclass at runtime;
+    # narrow the unbound ``type[_T]`` typevar so the injected class attributes
+    # (``_invariants``, ``meta_``, ``_projections``, ``_events_cls_map``) are
+    # visible to both type checkers.
+    aggregate_cls = cast("type[BaseAggregate]", element_cls)
+
+    # Record the deprecated alias usage for the `DEPRECATED_OPTION` check
+    # diagnostic. Set on the derived class (which `derive_element_class` may
+    # have rebuilt) so the IR builder can read it off the registry. Always
+    # assign — the same class object can be re-registered (e.g. shared across
+    # bounded contexts) with the canonical spelling, and a stale marker would
+    # make `check()` falsely flag already-migrated code.
+    aggregate_cls._deprecated_options_used = ("is_event_sourced",) if alias_used else ()
+
+    _normalize_reserved_names(aggregate_cls)
+
+    _register_invariants(aggregate_cls)
+
+    # Set stream category to be `domain_name::aggregate_name`
+    aggregate_cls.meta_.stream_category = (
+        f"{domain.normalized_name}::{aggregate_cls.meta_.stream_category}"
+    )
+
+    # Event-Sourcing Functionality
+    _register_apply_handlers(aggregate_cls)
+
+    return element_cls
+
+
+def _normalize_aggregate_opts(opts: dict[str, Any]) -> bool:
+    """Normalize the ``limit`` and ``event_sourced`` options in place.
+
+    Returns whether the deprecated ``is_event_sourced`` alias was used.
     """
     # If opts has a `limit` key and it is negative, set it to None
     if "limit" in opts and opts["limit"] is not None and opts["limit"] < 0:
@@ -779,26 +848,16 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
         # not leak onto `meta_`/the IR wire node (and suppress the default).
         opts["is_event_sourced"] = bool(opts["is_event_sourced"])
 
-    # Always route to Pydantic base
-    base_cls = BaseAggregate
+    return alias_used
 
-    # Derive the aggregate class from the base aggregate class
-    element_cls = _derive_element_class(element_cls, base_cls, **opts)
 
-    # The derived class is always a ``BaseAggregate`` subclass at runtime;
-    # narrow the unbound ``type[_T]`` typevar so the injected class attributes
-    # (``_invariants``, ``meta_``, ``_projections``, ``_events_cls_map``) are
-    # visible to both type checkers.
-    aggregate_cls = cast("type[BaseAggregate]", element_cls)
+def _normalize_reserved_names(aggregate_cls: type["BaseAggregate"]) -> None:
+    """Store the aggregate's ``reserved`` option as a tuple of field names.
 
-    # Record the deprecated alias usage for the `DEPRECATED_OPTION` check
-    # diagnostic. Set on the derived class (which `derive_element_class` may
-    # have rebuilt) so the IR builder can read it off the registry. Always
-    # assign — the same class object can be re-registered (e.g. shared across
-    # bounded contexts) with the canonical spelling, and a stale marker would
-    # make `check()` falsely flag already-migrated code.
-    aggregate_cls._deprecated_options_used = ("is_event_sourced",) if alias_used else ()
-
+    Raises:
+        IncorrectUsageError: When a reserved name is not a string, cannot be a
+            field name, or is declared as a live field.
+    """
     # Normalize the `reserved` option to a tuple of field names and forbid
     # reusing any of them for a live field. `reserved` names fields that once
     # existed and must never be declared again; replay drops assignments to
@@ -850,7 +909,9 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
             f"can never be declared again as a field"
         )
 
-    # Iterate through methods marked as `@invariant` and record them for later use
+
+def _register_invariants(aggregate_cls: type["BaseAggregate"]) -> None:
+    """Record every method marked ``@invariant`` in the aggregate's MRO."""
     for klass in aggregate_cls.__mro__:
         for method_name, method in vars(klass).items():
             if (
@@ -860,13 +921,9 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
             ):
                 aggregate_cls._invariants[method._invariant][method_name] = method
 
-    # Set stream category to be `domain_name::aggregate_name`
-    aggregate_cls.meta_.stream_category = (
-        f"{domain.normalized_name}::{aggregate_cls.meta_.stream_category}"
-    )
 
-    # Event-Sourcing Functionality
-    # Iterate through methods marked as `@apply` and construct a projections map
+def _register_apply_handlers(aggregate_cls: type["BaseAggregate"]) -> None:
+    """Map each event class to the aggregate's ``@apply`` methods for it."""
     for klass in aggregate_cls.__mro__:
         for method_name, method in vars(klass).items():
             if (
@@ -877,8 +934,6 @@ def aggregate_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[_
                 event_cls = method._event_cls
                 aggregate_cls._projections[fqn(event_cls)].add(method)
                 aggregate_cls._events_cls_map[fqn(event_cls)] = event_cls
-
-    return element_cls
 
 
 class atomic_change:
