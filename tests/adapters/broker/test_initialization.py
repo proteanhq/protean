@@ -10,6 +10,7 @@ from protean.port.broker import BrokerPort
 
 
 class TestBrokerInitialization:
+    @pytest.mark.no_test_domain
     def test_that_broker_port_cannot_be_instantiated(self):
         with pytest.raises(
             TypeError, match="Can.t instantiate abstract class BrokerPort"
