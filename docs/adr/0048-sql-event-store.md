@@ -214,8 +214,9 @@ On the shared `default` SQLite provider, or on the store's own engine:
 The store starts its writes with `BEGIN IMMEDIATE`, which takes the write lock
 at the start. Its reads start with a plain `BEGIN`, so under WAL they run while
 another connection writes. Other SQLite databases keep their settings
-unchanged. A test runs two processes against one file. Writers on more
-than one machine require PostgreSQL.
+unchanged. The tests race writer threads on two store objects, each with
+its own engine, against one file. Writers on more than one machine require
+PostgreSQL.
 
 ### 11. Idle subscriptions back off exponentially
 

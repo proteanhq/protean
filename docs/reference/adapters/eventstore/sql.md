@@ -79,7 +79,8 @@ The store raises `ConfigurationError` when it is built with:
   Each connection to an in-memory database sees a different, empty database,
   so the store needs a file.
 - `execution_options` that is not a table
-- on PostgreSQL, a `schema` that is not a non-empty string
+- on PostgreSQL, a `schema` that is not a string, or is empty or only
+  whitespace
 - an isolation level other than the ones the store accepts, set with
   `isolation_level` or `execution_options.isolation_level`. PostgreSQL accepts
   `READ COMMITTED` and `READ UNCOMMITTED`, and SQLite accepts `SERIALIZABLE`
@@ -143,8 +144,9 @@ replaces that row on each write. The row's `position` counts the writes from
 row, with `global_position` 0. Category reads and whole-store reads leave
 snapshots out, and a snapshot write takes no global position.
 
-`protean eventstore verify` reads the snapshot of each aggregate stream
-separately, so it checks the snapshots this store keeps apart from its events.
+`protean eventstore verify` also reads the snapshot of every stream with a `-`
+in its name, other than snapshot streams, so it checks the snapshots this store
+keeps apart from its events.
 
 ## Limitations
 

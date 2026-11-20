@@ -169,7 +169,8 @@ def verify(adapter: EventStorePort) -> IntegrityReport:
     """Check the store's internal invariants and report every violation.
 
     Reads the whole store through ``$all``, then reads the snapshot of each
-    aggregate stream whose snapshot ``$all`` did not return. It changes
+    stream with a ``-`` in its name, other than ``:snapshot-`` streams,
+    whose snapshot ``$all`` did not return. It changes
     nothing. It checks that:
 
     - every row carries ``id``, ``stream_name`` and ``position``,
@@ -359,7 +360,10 @@ def _unscanned_snapshot_violations(
     stream_head: dict[str, int],
     snapshot_version: dict[str, int],
 ) -> list[IntegrityViolation]:
-    """Check the snapshot of each aggregate stream the scan saw without one.
+    """Check the snapshot of each stream the scan saw without one.
+
+    Streams with no ``-`` in their name and ``:snapshot-`` streams are
+    skipped.
 
     A store that keeps snapshots apart from its events, such as the sql event
     store, leaves them out of ``$all``. A well-formed snapshot read here is

@@ -190,8 +190,8 @@ def _schema(name: str, backend: str, config: Mapping[str, Any]) -> str | None:
     """Return the store's schema: ``schema``, or ``public`` on PostgreSQL.
 
     Raises:
-        ConfigurationError: When ``schema`` is set on SQLite, or is not a
-            non-empty string on PostgreSQL.
+        ConfigurationError: When ``schema`` is set on SQLite, or on
+            PostgreSQL is not a string, or is empty or only whitespace.
     """
     if backend == "sqlite":
         if "schema" in config:
@@ -360,7 +360,8 @@ class SqlEventStore(EventStorePort):
         ConfigurationError: At construction, when ``database_uri`` is missing
             or unparseable, names a database other than SQLite or PostgreSQL,
             or is an in-memory SQLite database; when ``schema`` is set on
-            SQLite, or is not a non-empty string on PostgreSQL; when
+            SQLite, or on PostgreSQL is not a string, or is empty or only
+            whitespace; when
             ``execution_options`` is not a table; when the isolation level is
             unsafe for the database; or when the PostgreSQL driver cannot be
             imported.
