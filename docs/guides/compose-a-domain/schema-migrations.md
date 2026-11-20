@@ -126,8 +126,10 @@ with one of three codes:
 | `2` | The command could not compare, for example the database is unreachable. The message is on stderr. |
 
 On exit 1, run `protean db migrate` on the dev box and commit the file. A
-project from `protean new` already has this CI step. It runs after the tests,
-on the test database, once the test fixtures have dropped their tables; see
+project that `protean new` created on the `postgresql`, `sqlite` or `mssql`
+database already has this CI step. The step runs once `migrations/versions/`
+holds a file. It runs after the tests, on the test database, once the test
+fixtures have dropped their tables; see
 [Schema migrations](../../reference/cli/project/new.md#schema-migrations).
 
 ---
