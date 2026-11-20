@@ -141,6 +141,7 @@ names the `EventStoreCapabilities` flag it needs:
 
 The memory event store skips the `CONSUMER_GROUPS`, `DURABLE` and
 `SCHEMA_MANAGEMENT` tests. Message DB skips the `SCHEMA_MANAGEMENT` tests.
+The SQL event store skips the `CONSUMER_GROUPS` tests.
 [Write an Event-Store Adapter](../../guides/write-an-adapter/event-store.md)
 runs this suite against a worked example adapter.
 

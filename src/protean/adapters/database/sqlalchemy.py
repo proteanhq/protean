@@ -2748,7 +2748,7 @@ class SADAO(
 
 
 def queue_pool_stats(engine: Engine) -> PoolStats | None:
-    """The counters of ``engine``'s pool, or ``None`` when it is not a ``QueuePool``."""
+    """Return the counters of ``engine``'s pool, or ``None`` without a ``QueuePool``."""
     # Only ``QueuePool`` keeps these counters. ``SingletonThreadPool`` has
     # an int ``size`` attribute, so calling ``size()`` on it would raise.
     pool = engine.pool
@@ -3324,6 +3324,14 @@ class SADatabase(BaseDatabase, RawQueryDatabasePort):
 # The PostgreSQL drivers the provider supports, each with the extra that installs
 # it. A ``database_uri`` without a driver (``postgresql://``) takes the first one
 # that imports, so psycopg 3 is the default and psycopg2 the fallback.
+# The engine arguments a PostgreSQL engine starts from. The config overlays them.
+POSTGRESQL_ENGINE_DEFAULTS: dict[str, typing.Any] = {
+    "pool_size": 5,
+    "max_overflow": 10,
+    "pool_pre_ping": True,
+    "pool_recycle": 1800,
+}
+
 _POSTGRESQL_DRIVERS: dict[str, str] = {
     "psycopg": "protean[postgresql]",
     "psycopg2": "protean[postgresql-psycopg2]",
@@ -3443,12 +3451,7 @@ class PostgresqlDatabase(SADatabase):
 
         Return: a dictionary with database-specific SQLAlchemy Engine arguments.
         """
-        return {
-            "pool_size": 5,
-            "max_overflow": 10,
-            "pool_pre_ping": True,
-            "pool_recycle": 1800,
-        }
+        return dict(POSTGRESQL_ENGINE_DEFAULTS)
 
     def _get_database_specific_session_args(self) -> dict[str, typing.Any]:
         """Set Database specific session parameters.

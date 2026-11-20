@@ -15,9 +15,11 @@ the conceptual background, see
 |----------|----------|:-------------------:|
 | `memory` | Development, testing, prototyping | None |
 | `message_db` | Production, durable storage | PostgreSQL + Message DB |
+| `sql` | Production, durable storage without a database extension | A SQLite file or PostgreSQL |
 
-Both providers implement the same interface. Your domain code is identical
-regardless of provider.
+All three providers implement the same interface. Your domain code is
+identical regardless of provider. The `sql` provider does not support consumer
+groups.
 
 ---
 
@@ -56,6 +58,20 @@ Use environment variable substitution for production:
 provider = "message_db"
 database_uri = "${MESSAGEDB_URL}"
 ```
+
+### SQL (SQLite or PostgreSQL)
+
+The `sql` event store needs the `sqlite` or `postgresql` extra and a
+`database_uri`:
+
+```toml
+[event_store]
+provider = "sql"
+database_uri = "postgresql://postgres:postgres@localhost:5432/events"
+```
+
+Run `protean db setup` once to create its tables. See
+[SQL event store](../../reference/adapters/eventstore/sql.md) for the options.
 
 ---
 

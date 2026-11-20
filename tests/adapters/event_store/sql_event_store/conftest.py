@@ -1,3 +1,4 @@
+import os
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -10,8 +11,9 @@ from protean.adapters.event_store.sql.store import SqlEventStore
 from tests.shared import POSTGRES_URI
 
 # The PostgreSQL tests use their own schema, so they never touch the tables
-# of the conformance run on the same database.
-PG_SCHEMA = "protean_sql_store_tests"
+# of the conformance run on the same database. The name holds the process id,
+# so two test runs on one database do not drop each other's tables.
+PG_SCHEMA = f"protean_sql_store_tests_{os.getpid()}"
 
 BACKENDS = [
     pytest.param("sqlite", marks=pytest.mark.sqlite),
@@ -49,6 +51,10 @@ def make_store(
 
     if stores:
         stores[0].drop_schema()
+        schema = stores[0].config.get("schema")
+        if schema:
+            with stores[0].get_connection().begin() as conn:
+                conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}"'))
     for store in stores:
         store.close()
 

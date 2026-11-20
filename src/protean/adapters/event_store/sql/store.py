@@ -6,8 +6,9 @@ A write to category ``<category>`` in schema ``<schema>`` takes
 ``pg_advisory_xact_lock(<key>)``, where ``<key>`` is Message DB's ``hash_64``
 of ``"<schema>.messages:<category>"``: the first 16 hex digits of the text's
 MD5 digest, read as a signed 64-bit integer. The key format is a stable
-contract. Writers of two Protean versions run side by side during a rolling
-deploy, and they serialize their writes only when they compute the same key.
+contract. During a rolling deploy, writers of two Protean versions run at
+once, and their writes to one category wait for each other only when both
+compute the same key.
 """
 
 from __future__ import annotations
@@ -44,6 +45,7 @@ except ImportError as exc:
     ) from exc
 
 from protean.adapters.database.sqlalchemy import (
+    POSTGRESQL_ENGINE_DEFAULTS,
     _custom_json_dumps,
     queue_pool_stats,
     resolve_postgresql_url,
@@ -76,10 +78,15 @@ _BACKENDS = ("sqlite", "postgresql")
 # other key goes to ``create_engine``, as on the SQLAlchemy database provider.
 _NON_ENGINE_KEYS = frozenset({"provider", "database_uri", "schema"})
 
-# SQLite's engine uses no pool these keys configure, as on the database provider.
-_SQLITE_IGNORED_KEYS = ("pool_size", "max_overflow", "pool_recycle")
+# The isolation levels each database accepts. The PostgreSQL engine runs READ
+# COMMITTED unless the config names READ UNCOMMITTED, which PostgreSQL runs as
+# READ COMMITTED.
+_SAFE_ISOLATION_LEVELS: dict[str, frozenset[str]] = {
+    "postgresql": frozenset({"READ COMMITTED", "READ UNCOMMITTED"}),
+    "sqlite": frozenset({"SERIALIZABLE", "READ UNCOMMITTED"}),
+}
 
-# The isolation levels each database refuses, with the reason. Under the two
+# The isolation levels each database refuses with a reason. Under the two
 # stricter PostgreSQL levels the transaction's snapshot is taken by the lock
 # statement before the lock is granted, so the version check would read stale
 # data. On SQLite, ``BEGIN IMMEDIATE`` takes the write lock before any read, so
@@ -103,6 +110,10 @@ _UNSAFE_ISOLATION_LEVELS: dict[str, dict[str, str]] = {
 
 # A stream name that holds this text is a snapshot stream.
 _SNAPSHOT_MARKER = ":snapshot-"
+
+# The execution option that makes a SQLite transaction start with
+# ``BEGIN IMMEDIATE``. Only writes set it.
+_BEGIN_IMMEDIATE = "sqlite_begin_immediate"
 
 # The text SQLite gives a violation of ``uq_messages_stream_position``.
 _SQLITE_STREAM_POSITION_VIOLATION = (
@@ -179,7 +190,8 @@ def _schema(name: str, backend: str, config: Mapping[str, Any]) -> str | None:
     """Return the store's schema: ``schema``, or ``public`` on PostgreSQL.
 
     Raises:
-        ConfigurationError: When ``schema`` is set on SQLite.
+        ConfigurationError: When ``schema`` is set on SQLite, or is not a
+            non-empty string on PostgreSQL.
     """
     if backend == "sqlite":
         if "schema" in config:
@@ -188,45 +200,68 @@ def _schema(name: str, backend: str, config: Mapping[str, Any]) -> str | None:
                 "schemas. Remove the schema key."
             )
         return None
-    schema: str = config.get("schema") or "public"
+    if "schema" not in config:
+        return "public"
+    schema = config["schema"]
+    if not isinstance(schema, str) or not schema.strip():
+        raise ConfigurationError(
+            f"Event store '{name}' has schema {schema!r}. Set schema to the "
+            "name of a PostgreSQL schema, or remove it to use public."
+        )
     return schema
 
 
 def _check_isolation_level(name: str, backend: str, config: Mapping[str, Any]) -> None:
-    """Raise ``ConfigurationError`` when the config sets an unsafe isolation level.
+    """Raise ``ConfigurationError`` unless the config's isolation level is safe.
 
     The level is read from ``isolation_level`` and from
-    ``execution_options.isolation_level``.
+    ``execution_options.isolation_level``. ``execution_options`` must be a
+    table.
     """
     execution_options = config.get("execution_options") or {}
+    if not isinstance(execution_options, Mapping):
+        raise ConfigurationError(
+            f"Event store '{name}' has execution_options "
+            f"{execution_options!r}. Set execution_options to a table."
+        )
     levels = [config.get("isolation_level"), execution_options.get("isolation_level")]
-    unsafe = _UNSAFE_ISOLATION_LEVELS[backend]
     for level in levels:
         if level is None:
             continue
         normalized = str(level).upper().replace("_", " ")
-        reason = unsafe.get(normalized)
-        if reason is not None:
-            raise ConfigurationError(
-                f"Event store '{name}' sets isolation level {level!r} on "
-                f"{backend}, which the sql event store refuses: {reason}."
-            )
+        if normalized in _SAFE_ISOLATION_LEVELS[backend]:
+            continue
+        reason = _UNSAFE_ISOLATION_LEVELS[backend].get(
+            normalized, f"{backend} does not run this level"
+        )
+        raise ConfigurationError(
+            f"Event store '{name}' sets isolation level {level!r} on "
+            f"{backend}, which the sql event store refuses: {reason}."
+        )
 
 
 def _engine_args(backend: str, config: Mapping[str, Any]) -> dict[str, Any]:
-    args = {key: value for key, value in config.items() if key not in _NON_ENGINE_KEYS}
-    if backend == "sqlite":
-        for key in _SQLITE_IGNORED_KEYS:
-            args.pop(key, None)
+    args: dict[str, Any] = {}
+    if backend == "postgresql":
+        args.update(POSTGRESQL_ENGINE_DEFAULTS)
+        # Set on the engine, the level is applied to every new connection, so
+        # a server, role or connect_args default can never change it.
+        args["isolation_level"] = "READ COMMITTED"
+    args.update(
+        (key, value) for key, value in config.items() if key not in _NON_ENGINE_KEYS
+    )
     return args
 
 
 def _install_sqlite_settings(engine: Engine) -> None:
-    """Set WAL, the busy timeout and ``BEGIN IMMEDIATE`` on ``engine``.
+    """Set WAL and the busy timeout, and start writes with ``BEGIN IMMEDIATE``.
 
     SQLAlchemy's documented recipe for pysqlite: the driver's own transaction
     handling is turned off on connect, and the ``begin`` event emits the
-    ``BEGIN``.
+    ``BEGIN``. A transaction on a connection with the ``_BEGIN_IMMEDIATE``
+    execution option takes the write lock at its start. Any other transaction
+    starts with a plain ``BEGIN``, so under WAL a read runs while another
+    connection writes.
     """
 
     @event.listens_for(engine, "connect")
@@ -241,7 +276,10 @@ def _install_sqlite_settings(engine: Engine) -> None:
 
     @event.listens_for(engine, "begin")
     def _on_begin(conn: Connection) -> None:
-        conn.exec_driver_sql("BEGIN IMMEDIATE")
+        if conn.get_execution_options().get(_BEGIN_IMMEDIATE):
+            conn.exec_driver_sql("BEGIN IMMEDIATE")
+        else:
+            conn.exec_driver_sql("BEGIN")
 
 
 def _is_stream_position_violation(exc: IntegrityError) -> bool:
@@ -264,6 +302,13 @@ def _check_expected_version(
             f"Wrong expected version: {expected_version} "
             f"(Stream: {stream_name}, Stream Version: {stream_version})"
         )
+
+
+def _check_limit(limit: int) -> None:
+    # SQLite reads a negative LIMIT as no limit and PostgreSQL refuses it, so
+    # the store refuses it on both.
+    if limit < 0:
+        raise ValueError(f"limit must be 0 or more, not {limit}")
 
 
 def _now() -> datetime:
@@ -317,6 +362,7 @@ class SqlEventStore(EventStorePort):
             in-memory SQLite database; when ``schema`` is set on SQLite; when
             the isolation level is unsafe for the database; or when the
             PostgreSQL driver cannot be imported.
+        ValueError: On a read with a negative ``limit``.
     """
 
     def __init__(self, name: str, domain: Domain, config: Mapping[str, Any]) -> None:
@@ -338,6 +384,9 @@ class SqlEventStore(EventStorePort):
         )
         if self._backend == "sqlite":
             _install_sqlite_settings(self._engine)
+        # Writes go through this engine. It shares the pool and listeners of
+        # ``_engine``; on SQLite its transactions start with BEGIN IMMEDIATE.
+        self._write_engine = self._engine.execution_options(**{_BEGIN_IMMEDIATE: True})
 
         self._metadata = MetaData(schema=self._schema)
         self._messages, self._snapshots = build_tables(self._metadata)
@@ -365,7 +414,7 @@ class SqlEventStore(EventStorePort):
         if _SNAPSHOT_MARKER in stream_name:
             return self._write_snapshot(stream_name, message_type, data, metadata)
         try:
-            with self._engine.begin() as conn:
+            with self._write_engine.begin() as conn:
                 return self._append(
                     conn, stream_name, message_type, data, metadata, expected_version
                 )
@@ -436,7 +485,8 @@ class SqlEventStore(EventStorePort):
         """Upsert the snapshot stream's one row and return its position.
 
         The position counts the writes to the stream from 0. No category lock
-        is taken: ``ON CONFLICT`` makes two first writes safe.
+        is taken: ``ON CONFLICT`` makes two first writes safe. The row's
+        ``metadata`` is always NULL, whatever the caller passes.
         """
         table = self._snapshots
         insert = postgresql_insert if self._backend == "postgresql" else sqlite_insert
@@ -444,7 +494,7 @@ class SqlEventStore(EventStorePort):
             "id": str(uuid4()),
             "type": message_type,
             "data": dict(data),
-            "metadata": dict(metadata) if metadata is not None else None,
+            "metadata": None,
             "time": _now(),
         }
         statement = insert(table).values(stream_name=stream_name, position=0, **values)
@@ -452,7 +502,7 @@ class SqlEventStore(EventStorePort):
             index_elements=[table.c.stream_name],
             set_={"position": table.c.position + 1, **values},
         )
-        with self._engine.begin() as conn:
+        with self._write_engine.begin() as conn:
             conn.execute(statement)
             position: int = conn.execute(
                 select(table.c.position).where(table.c.stream_name == stream_name)
@@ -466,6 +516,7 @@ class SqlEventStore(EventStorePort):
     def get_stream_messages(
         self, stream_name: str, position: int = 0, limit: int = 1000
     ) -> list[RawMessage]:
+        _check_limit(limit)
         if _SNAPSHOT_MARKER in stream_name:
             snapshot = self._snapshot(stream_name)
             if snapshot is None or snapshot["position"] < position or limit < 1:
@@ -493,6 +544,7 @@ class SqlEventStore(EventStorePort):
             raise NotSupportedError(
                 "The sql event store does not support consumer groups"
             )
+        _check_limit(limit)
         messages = self._messages
         # ``category`` is filled at insert, so this is an exact match: a read
         # of ``user`` returns no ``users`` streams. Snapshots live in their own
@@ -508,6 +560,7 @@ class SqlEventStore(EventStorePort):
     def get_all_messages(
         self, position: int = 0, limit: int = 1000
     ) -> list[RawMessage]:
+        _check_limit(limit)
         messages = self._messages
         return self._fetch(
             self._select_messages()
@@ -618,7 +671,7 @@ class SqlEventStore(EventStorePort):
 
     def clear(self) -> None:
         """Delete every row and restart the global position at 1. Test use only."""
-        with self._engine.begin() as conn:
+        with self._write_engine.begin() as conn:
             if self._backend == "postgresql":
                 preparer = self._engine.dialect.identifier_preparer
                 tables = ", ".join(

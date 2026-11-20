@@ -29,9 +29,9 @@ from protean.port.event_store import EventStoreCapabilities, EventStorePort
 class _ListStore(EventStorePort):
     """An ``EventStorePort`` backed by a preloaded list of raw dicts.
 
-    Only ``$all`` reads are implemented (that is all ``verify`` uses), and they
-    page by ``global_position`` exactly like the real adapters, so the iterator's
-    paging is genuinely exercised.
+    Only the reads ``verify`` uses are implemented: ``$all`` reads, which page
+    by ``global_position`` exactly like the real adapters, so the iterator's
+    paging is genuinely exercised, and the last message of a stream.
     """
 
     def __init__(self, messages: list[dict[str, Any]]) -> None:
@@ -59,9 +59,10 @@ class _ListStore(EventStorePort):
         raise NotImplementedError
 
     def get_last_stream_message(
-        self, *args: Any, **kwargs: Any
-    ) -> Any:  # pragma: no cover
-        raise NotImplementedError
+        self, stream_name: str, *args: Any, **kwargs: Any
+    ) -> dict[str, Any] | None:
+        rows = [m for m in self._messages if m.get("stream_name") == stream_name]
+        return rows[-1] if rows else None
 
     def get_last_category_message(
         self, *args: Any, **kwargs: Any

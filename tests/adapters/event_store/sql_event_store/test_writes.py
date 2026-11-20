@@ -62,6 +62,21 @@ class TestExpectedVersionUnderConcurrency:
         assert all(isinstance(o, ExpectedVersionError) for o in outcomes if o != 0)
         assert len(stores[0].get_stream_messages("user-1")) == 1
 
+    def test_two_stores_writing_after_one_message_append_once(self, make_store, config):
+        stores = [make_store(config), make_store(config)]
+        stores[0].write_message("user-1", "Registered", {})
+
+        outcomes = race(
+            lambda i: stores[i].write_message("user-1", "Renamed", {}, None, 0),
+            count=2,
+        )
+
+        assert outcomes.count(1) == 1
+        errors = [o for o in outcomes if o != 1]
+        assert len(errors) == 1 and isinstance(errors[0], ExpectedVersionError)
+        rows = stores[1].get_stream_messages("user-1")
+        assert [row["position"] for row in rows] == [0, 1]
+
     def test_writers_without_a_version_get_every_position_once(self, store):
         outcomes = race(lambda i: store.write_message("user-1", "Counted", {"i": i}))
 
@@ -80,21 +95,25 @@ class TestExpectedVersionUnderConcurrency:
 
 
 class TestInterruptedWrite:
-    def test_a_write_that_fails_under_the_lock_releases_it(self, store, monkeypatch):
+    def test_a_write_that_fails_under_the_lock_releases_it(
+        self, make_store, config, monkeypatch
+    ):
+        failing, other = make_store(config), make_store(config)
+
         def fail():
             raise RuntimeError("interrupted")
 
-        monkeypatch.setattr(store, "_on_lock_taken", fail)
+        monkeypatch.setattr(failing, "_on_lock_taken", fail)
         with pytest.raises(RuntimeError, match="interrupted"):
-            store.write_message("user-1", "Registered", {})
-        monkeypatch.undo()
+            failing.write_message("user-1", "Registered", {})
+        assert other.get_stream_messages("user-1") == []
 
         started = time.monotonic()
-        position = store.write_message("user-1", "Registered", {"n": 1})
+        position = other.write_message("user-1", "Registered", {"n": 1})
 
         assert time.monotonic() - started < 1.0
         assert position == 0
-        assert [row["data"] for row in store.get_stream_messages("user-1")] == [
+        assert [row["data"] for row in other.get_stream_messages("user-1")] == [
             {"n": 1}
         ]
 

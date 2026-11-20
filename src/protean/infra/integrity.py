@@ -168,8 +168,9 @@ def _check_body(
 def verify(adapter: EventStorePort) -> IntegrityReport:
     """Check the store's internal invariants and report every violation.
 
-    Reads the whole store through ``$all`` and changes nothing. It checks
-    that:
+    Reads the whole store through ``$all``, then reads the snapshot of each
+    aggregate stream whose snapshot ``$all`` did not return. It changes
+    nothing. It checks that:
 
     - every row carries ``id``, ``stream_name`` and ``position``,
     - each stream's ``position`` runs from 0 with no gaps,
@@ -254,6 +255,9 @@ def verify(adapter: EventStorePort) -> IntegrityReport:
         if violation is not None:
             violations.append(violation)
 
+    violations.extend(
+        _unscanned_snapshot_violations(adapter, stream_head, snapshot_version)
+    )
     violations.extend(_snapshot_violations(snapshot_version, stream_head))
 
     return IntegrityReport(
@@ -347,6 +351,34 @@ def _identity_and_position_violations(
     last_position[stream] = position
     stream_head[stream] = max(stream_head.get(stream, -1), position)
 
+    return violations
+
+
+def _unscanned_snapshot_violations(
+    adapter: EventStorePort,
+    stream_head: dict[str, int],
+    snapshot_version: dict[str, int],
+) -> list[IntegrityViolation]:
+    """Check the snapshot of each aggregate stream the scan saw without one.
+
+    A store that keeps snapshots apart from its events, such as the sql event
+    store, leaves them out of ``$all``. A well-formed snapshot read here is
+    recorded in ``snapshot_version`` for the head check.
+    """
+    violations: list[IntegrityViolation] = []
+    for stream in list(stream_head):
+        category, dash, identifier = stream.partition("-")
+        if _SNAPSHOT_MARKER in stream or not dash:
+            continue
+        snapshot_stream = f"{category}{_SNAPSHOT_MARKER}{identifier}"
+        if snapshot_stream in stream_head:
+            continue
+        row = adapter.get_last_stream_message(snapshot_stream)
+        if row is None:
+            continue
+        violation = _check_body(row, snapshot_stream, row["position"], snapshot_version)
+        if violation is not None:
+            violations.append(violation)
     return violations
 
 

@@ -44,12 +44,12 @@ durable event storage with SQL-based stream operations.
 
 ### SQL
 
-The [SQL event store](./sql.md) keeps events in two tables on a SQLite file or
-a PostgreSQL database, through SQLAlchemy.
+The [SQL event store](./sql.md) keeps events and snapshots in tables on a
+SQLite file or a PostgreSQL database, through SQLAlchemy.
 
 - **Requires**: the `sqlite` or `postgresql` extra
 - Persistent, durable storage
-- Creates its own tables with `create_schema()`
+- `protean db setup` creates its tables
 - No consumer groups
 
 ## What each event store guarantees

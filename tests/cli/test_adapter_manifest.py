@@ -317,6 +317,40 @@ class TestLoadAdapterManifest:
         with pytest.raises(ValueError, match=f"Adapter 'store'.*{message}"):
             load_adapter_manifest(path)
 
+    def test_two_runs_with_one_suite_name_are_rejected(self, tmp_path):
+        path = self.write(
+            tmp_path,
+            '[{ port = "event_store", adapter = "sql", config = { a = 1 } }, '
+            '{ port = "event_store", adapter = "sql", config = { a = 2 } }]',
+        )
+        with pytest.raises(
+            ValueError,
+            match=r"Adapter 'store' lists two conformance runs named "
+            r"\['Conformance: event_store/sql \(store\)'\]",
+        ):
+            load_adapter_manifest(path)
+
+    def test_a_pair_and_a_table_of_one_adapter_are_both_kept(self, tmp_path):
+        path = self.write(
+            tmp_path, '["event_store:sql", { port = "event_store", adapter = "sql" }]'
+        )
+        (entry,) = load_adapter_manifest(path).adapters
+        assert [run.name for run in entry.conformance] == [
+            "Conformance: event_store/sql",
+            "Conformance: event_store/sql (store)",
+        ]
+
+    def test_a_conformance_config_json_cannot_write_is_rejected(self, tmp_path):
+        path = self.write(
+            tmp_path,
+            '[{ port = "event_store", adapter = "sql", '
+            "config = { at = 2031-03-04T12:30:00Z } }]",
+        )
+        with pytest.raises(
+            ValueError, match=r"Adapter 'store' has conformance config .* JSON cannot"
+        ):
+            load_adapter_manifest(path)
+
     def test_an_entry_without_conformance_lists_none(self, tmp_path):
         path = tmp_path / "adapters.toml"
         path.write_text('[adapters.solo]\nlane = "touched"\n')

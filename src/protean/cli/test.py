@@ -784,9 +784,10 @@ def _conformance_runs(name: str, entries: object) -> list[ConformanceRun]:
 
     Raises ``ValueError`` naming the entry when the value is not a list, when a
     pair is not ``"<port>:<adapter>"``, when a table has a key other than those
-    three or a ``config`` that is not a table, or when a run names an unknown
-    port, the port's default adapter, or an adapter that is not registered in
-    the port's entry-point group. No adapter module is imported.
+    three or a ``config`` that is not a table or holds a value JSON cannot
+    write, when a run names an unknown port, the port's default adapter, or an
+    adapter that is not registered in the port's entry-point group, or when two
+    runs of the entry share a suite name. No adapter module is imported.
     """
     if not isinstance(entries, list):
         # A wrong type gets the same ValueError naming the entry as every
@@ -796,7 +797,17 @@ def _conformance_runs(name: str, entries: object) -> list[ConformanceRun]:
             "use a list of '<port>:<adapter>' pairs or "
             "{ port, adapter, config } tables"
         )
-    return [_conformance_run(name, item) for item in entries]
+    runs = [_conformance_run(name, item) for item in entries]
+    names = [run.name for run in runs]
+    repeated = sorted({run_name for run_name in names if names.count(run_name) > 1})
+    if repeated:
+        # Suites dedupe by name, so a second run with the same name would
+        # never run.
+        raise ValueError(
+            f"Adapter '{name}' lists two conformance runs named {repeated}; "
+            "list each port and adapter once"
+        )
+    return runs
 
 
 def _conformance_run(name: str, item: object) -> ConformanceRun:
@@ -822,9 +833,21 @@ def _conformance_run(name: str, item: object) -> ConformanceRun:
     return ConformanceRun(
         port=item["port"],
         adapter=item["adapter"],
-        config=json.dumps(config, sort_keys=True) if config is not None else None,
+        config=_config_json(name, config) if config is not None else None,
         label=name,
     )
+
+
+def _config_json(name: str, config: dict[str, object]) -> str:
+    """Return ``config`` as JSON, or raise ``ValueError`` naming the entry."""
+    try:
+        return json.dumps(config, sort_keys=True)
+    # TOML dates and times have no JSON form.
+    except TypeError as exc:
+        raise ValueError(
+            f"Adapter '{name}' has conformance config {config!r} that JSON "
+            f"cannot write: {exc}"
+        ) from exc
 
 
 def _check_conformance_pair(name: str, pair: object) -> None:
