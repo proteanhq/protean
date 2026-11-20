@@ -62,7 +62,9 @@ provider = "sql"                 # shares the "default" database provider
 
 - Without `database_uri`, the store shares the `default` provider. With it, the
   store uses a separate database. A domain whose SQL database provider is not
-  `default` makes it `default` or sets `database_uri`.
+  `default` makes it `default` or sets `database_uri`. Until
+  [#2141](https://github.com/proteanhq/protean/issues/2141) adds the shared
+  mode, a store without `database_uri` raises `ConfigurationError` at start-up.
 - The database type comes from the `default` provider or the URL scheme. Any
   type other than SQLite or PostgreSQL fails at start-up with an error that
   lists the supported types.
