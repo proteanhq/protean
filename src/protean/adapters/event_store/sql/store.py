@@ -424,7 +424,9 @@ class SqlEventStore(EventStorePort):
         expected_version: int | None = None,
     ) -> int:
         if _SNAPSHOT_MARKER in stream_name:
-            return self._write_snapshot(stream_name, message_type, data, metadata)
+            return self._write_snapshot(
+                stream_name, message_type, data, expected_version
+            )
         try:
             with self._write_engine.begin() as conn:
                 return self._append(
@@ -492,13 +494,14 @@ class SqlEventStore(EventStorePort):
         stream_name: str,
         message_type: str,
         data: Mapping[str, Any],
-        metadata: Mapping[str, Any] | None,
+        expected_version: int | None,
     ) -> int:
         """Upsert the snapshot stream's one row and return its position.
 
         The position counts the writes to the stream from 0. No category lock
-        is taken: ``ON CONFLICT`` makes two first writes safe. The row's
-        ``metadata`` is always NULL, whatever the caller passes.
+        is taken: ``ON CONFLICT`` makes two first writes safe, and a write with
+        ``expected_version`` changes the row only when it is at that position.
+        The row's ``metadata`` is always NULL, whatever the caller passes.
         """
         table = self._snapshots
         insert = postgresql_insert if self._backend == "postgresql" else sqlite_insert
@@ -509,17 +512,42 @@ class SqlEventStore(EventStorePort):
             "metadata": None,
             "time": _now(),
         }
-        statement = insert(table).values(stream_name=stream_name, position=0, **values)
-        statement = statement.on_conflict_do_update(
-            index_elements=[table.c.stream_name],
-            set_={"position": table.c.position + 1, **values},
-        )
+        first = insert(table).values(stream_name=stream_name, position=0, **values)
+        if expected_version is None:
+            statement: Any = first.on_conflict_do_update(
+                index_elements=[table.c.stream_name],
+                set_={"position": table.c.position + 1, **values},
+            )
+        elif expected_version == -1:
+            statement = first.on_conflict_do_nothing(
+                index_elements=[table.c.stream_name]
+            )
+        else:
+            statement = (
+                table.update()
+                .where(
+                    table.c.stream_name == stream_name,
+                    table.c.position == expected_version,
+                )
+                .values(position=table.c.position + 1, **values)
+            )
         with self._write_engine.begin() as conn:
-            conn.execute(statement)
-            position: int = conn.execute(
-                select(table.c.position).where(table.c.stream_name == stream_name)
-            ).scalar_one()
-        return position
+            # psycopg reports no row count for an upsert, so RETURNING tells
+            # whether the statement wrote the row.
+            position = conn.execute(
+                statement.returning(table.c.position)
+            ).scalar_one_or_none()
+            if position is None:
+                current = conn.execute(
+                    select(table.c.position).where(table.c.stream_name == stream_name)
+                ).scalar_one_or_none()
+        if position is None:
+            raise ExpectedVersionError(
+                f"Wrong expected version: {expected_version} "
+                f"(Stream: {stream_name}, Stream Version: "
+                f"{-1 if current is None else current})"
+            )
+        return int(position)
 
     # ------------------------------------------------------------------
     # Reads

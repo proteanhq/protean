@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import Engine, inspect
 
 from protean.adapters.event_store.sql.store import SqlEventStore
-from protean.exceptions import NotSupportedError
+from protean.exceptions import ExpectedVersionError, NotSupportedError
 from tests.shared import FrozenClock
 
 from .conftest import backend_config
@@ -57,6 +57,31 @@ class TestSnapshots:
         store.write_message(SNAPSHOT, "SNAPSHOT", {"_version": 3}, {"kind": "x"})
 
         assert store.get_last_stream_message(SNAPSHOT)["metadata"] is None
+
+    def test_a_snapshot_write_checks_the_expected_version(self, store):
+        assert store.write_message(SNAPSHOT, "SNAPSHOT", {"_version": 1}, None, -1) == 0
+        assert store.write_message(SNAPSHOT, "SNAPSHOT", {"_version": 2}, None, 0) == 1
+
+    @pytest.mark.parametrize("expected_version", [-1, 0, 2])
+    def test_a_snapshot_write_at_a_stale_version_changes_nothing(
+        self, store, expected_version
+    ):
+        store.write_message(SNAPSHOT, "SNAPSHOT", {"_version": 1})
+        store.write_message(SNAPSHOT, "SNAPSHOT", {"_version": 2})
+
+        with pytest.raises(ExpectedVersionError, match="Stream Version: 1"):
+            store.write_message(
+                SNAPSHOT, "SNAPSHOT", {"_version": 9}, None, expected_version
+            )
+
+        (row,) = store.get_stream_messages(SNAPSHOT)
+        assert (row["position"], row["data"]) == (1, {"_version": 2})
+
+    def test_a_first_snapshot_write_at_version_0_is_refused(self, store):
+        with pytest.raises(ExpectedVersionError, match="Stream Version: -1"):
+            store.write_message(SNAPSHOT, "SNAPSHOT", {"_version": 1}, None, 0)
+
+        assert store.get_last_stream_message(SNAPSHOT) is None
 
     def test_a_missing_snapshot_reads_as_none(self, store):
         assert store.get_stream_messages(SNAPSHOT) == []
