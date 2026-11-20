@@ -6,6 +6,7 @@ without using mocks, focusing on real message flow scenarios.
 
 import asyncio
 import contextlib
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -20,6 +21,7 @@ from protean.fields import Identifier, Integer, String
 from protean.server.engine import Engine
 from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils.eventing import Message
+from tests.shared import FrozenClock
 
 
 class Order(BaseAggregate):
@@ -451,9 +453,13 @@ async def test_exhaust_retries_workflow(test_domain, engine):
 
 
 # Test DLQ Message Format
+FAILED_AT = datetime(2026, 11, 19, 12, 0, tzinfo=UTC)
+
+
 @pytest.mark.redis
 def test_dlq_message_metadata(test_domain, engine):
     """Test that DLQ messages contain proper metadata."""
+    test_domain.clock = FrozenClock(FAILED_AT)
     with test_domain.domain_context():
         subscription = StreamSubscription(
             engine=engine,
@@ -481,7 +487,8 @@ def test_dlq_message_metadata(test_domain, engine):
         assert dlq_meta["original_id"] == "msg-dlq-test"
         assert dlq_meta["consumer_group"] == subscription.consumer_group
         assert dlq_meta["consumer"] == subscription.consumer_name
-        assert dlq_meta["failed_at"] == "2024-01-01T10:00:00Z"
+        # The failure time, not the event's raise time in ``headers.time``
+        assert dlq_meta["failed_at"] == FAILED_AT.isoformat()
         assert dlq_meta["retry_count"] == 2
 
         # Original payload should be preserved

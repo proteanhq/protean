@@ -175,7 +175,7 @@ def inspect(
 
         entry = None
         for dlq_stream in dlq_streams:
-            entry = broker.dlq_inspect(dlq_stream, dlq_id)
+            entry = broker.dlq_get(dlq_stream, dlq_id)
             if entry:
                 break
 
@@ -216,7 +216,7 @@ def replay(
         dlq_streams = _resolve_dlq_streams(derived_domain, subscription)
 
         for dlq_stream in dlq_streams:
-            entry = broker.dlq_inspect(dlq_stream, dlq_id)
+            entry = broker.dlq_get(dlq_stream, dlq_id)
             if entry:
                 target_stream = entry.stream
                 success = broker.dlq_replay(dlq_stream, dlq_id, target_stream)

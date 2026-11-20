@@ -8,7 +8,7 @@ import pytest
 from protean.adapters.broker.inline import InlineBroker
 from protean.core.subscriber import BaseSubscriber
 from protean.core.unit_of_work import UnitOfWork
-from protean.exceptions import NotSupportedError, ValidationError
+from protean.exceptions import ValidationError
 from protean.infra.broker import Broker, is_connection_error
 from protean.port.broker import (
     BrokerCapabilities,
@@ -398,11 +398,7 @@ class TestHealth:
         assert health["last_ping_ms"] is None
 
 
-class TestBaseBrokerForwarders:
-    def test_operation_missing_from_the_port_raises_not_supported(self, broker):
-        with pytest.raises(NotSupportedError, match="does not implement `dlq_list`"):
-            broker.dlq_list(["orders:dlq"])
-
+class TestForwarders:
     def test_framework_forwarders_reach_the_adapter(self, broker, adapter):
         broker._create_group("orders", "billing")
         broker.clear()

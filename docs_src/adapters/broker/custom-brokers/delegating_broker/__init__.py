@@ -1,6 +1,7 @@
 # --8<-- [start:full]
 # --8<-- [start:broker]
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any
 
 from protean import Domain
@@ -11,13 +12,13 @@ from protean.port.broker import (
     BrokerCapabilities,
     BrokerHealth,
     BrokerMessage,
-    BrokerPort,
     ConsumerGroupInfo,
+    DeadLetterQueuePort,
     DLQEntry,
 )
 
 
-class DelegatingBroker(BaseBroker, BrokerPort):
+class DelegatingBroker(BaseBroker, DeadLetterQueuePort):
     """A broker that hands every operation to an in-memory InlineBroker.
 
     Replace the delegate calls with calls to your messaging client.
@@ -105,20 +106,26 @@ class DelegatingBroker(BaseBroker, BrokerPort):
         )
 
     # Dead letter queue
-    def _dlq_list(self, dlq_streams: list[str], limit: int) -> list[DLQEntry]:
-        return self._delegate._dlq_list(dlq_streams, limit)
+    def dlq_list(self, dlq_streams: list[str], limit: int = 100) -> list[DLQEntry]:
+        return self._delegate.dlq_list(dlq_streams, limit)
 
-    def _dlq_inspect(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
-        return self._delegate._dlq_inspect(dlq_stream, dlq_id)
+    def dlq_get(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
+        return self._delegate.dlq_get(dlq_stream, dlq_id)
 
-    def _dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
-        return self._delegate._dlq_replay(dlq_stream, dlq_id, target_stream)
+    def dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
+        return self._delegate.dlq_replay(dlq_stream, dlq_id, target_stream)
 
-    def _dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
-        return self._delegate._dlq_replay_all(dlq_stream, target_stream)
+    def dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
+        return self._delegate.dlq_replay_all(dlq_stream, target_stream)
 
-    def _dlq_purge(self, dlq_stream: str) -> int:
-        return self._delegate._dlq_purge(dlq_stream)
+    def dlq_purge(self, dlq_stream: str) -> int:
+        return self._delegate.dlq_purge(dlq_stream)
+
+    def dlq_trim(self, dlq_stream: str, older_than: datetime) -> int:
+        return self._delegate.dlq_trim(dlq_stream, older_than)
+
+    def dlq_depth(self, dlq_stream: str) -> int:
+        return self._delegate.dlq_depth(dlq_stream)
 
 
 # Make the broker available as `provider = "delegating_inline"`

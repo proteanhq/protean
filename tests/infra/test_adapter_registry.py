@@ -23,7 +23,7 @@ from protean.infra.registry import (
     databases,
     event_stores,
 )
-from protean.port.broker import BaseBroker
+from protean.port.broker import BrokerPort
 from protean.port.cache import CachePort
 from protean.port.dao import REQUIRED_LOOKUPS
 from protean.port.database import BaseDatabase
@@ -71,7 +71,7 @@ PORTS = [
         brokers,
         "protean.brokers",
         "broker",
-        BaseBroker,
+        BrokerPort,
         InlineBroker,
         CustomBroker,
         lambda name: {"brokers": {"default": {"provider": name}}},

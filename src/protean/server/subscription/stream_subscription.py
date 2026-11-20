@@ -1041,7 +1041,7 @@ class StreamSubscription(BaseSubscription):
                 "original_id": identifier,
                 "consumer_group": self.consumer_group,
                 "consumer": self.consumer_name,
-                "failed_at": payload.get("metadata", {}).get("headers", {}).get("time"),
+                "failed_at": self.engine.domain.clock.now().isoformat(),
                 "retry_count": self.retry_counts.get(
                     self._retry_key(stream, identifier), self.max_retries
                 ),

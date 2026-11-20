@@ -101,7 +101,7 @@ _EXPECTED_ROUTES = [
     (
         "/dlq/{dlq_id}",
         "get",
-        "dlq_inspect_dlq__dlq_id__get",
+        "dlq_get_dlq__dlq_id__get",
         "Inspect a single DLQ message with full payload.",
     ),
     (
@@ -157,7 +157,7 @@ _EXPECTED_PARAMETERS: dict[str, list[tuple[str, str, bool, Any]]] = {
         ("limit", "query", False, 25),
         ("offset", "query", False, 0),
     ],
-    "dlq_inspect_dlq__dlq_id__get": [("dlq_id", "path", True, None)],
+    "dlq_get_dlq__dlq_id__get": [("dlq_id", "path", True, None)],
     "dlq_replay_dlq__dlq_id__replay_post": [("dlq_id", "path", True, None)],
     "dlq_replay_all_dlq_replay_all_post": [("subscription", "query", True, None)],
     "dlq_purge_dlq_delete": [("subscription", "query", True, None)],

@@ -1,10 +1,13 @@
 """Tests for the Redis broker DLQ management API.
 
-Backfills coverage for the DLQ methods (`dlq_list`, `dlq_inspect`, `dlq_replay`,
+Backfills coverage for the DLQ methods (`dlq_list`, `dlq_get`, `dlq_replay`,
 `dlq_replay_all`, `dlq_purge`, `dlq_trim`, `dlq_depth`), which had no Redis-side
 tests. Covers the core DLQ operations also tested in the inline broker's
 ``test_dlq_management.py``, though not all edge cases are replicated here.
 """
+
+import time
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 import redis
@@ -40,6 +43,12 @@ def _seed(
         },
     }
     return broker.publish(dlq_stream, message)
+
+
+def _at_millisecond_of(dlq_id: str) -> datetime:
+    """Return the aware time of the millisecond a stream ID starts with."""
+    milliseconds = int(dlq_id.split("-")[0])
+    return datetime(1970, 1, 1, tzinfo=UTC) + timedelta(milliseconds=milliseconds)
 
 
 @pytest.mark.redis
@@ -108,7 +117,7 @@ class TestRedisDLQManagement:
             )
         assert len(broker.dlq_list(["orders:dlq"], limit=3)) == 3
 
-    def test_dlq_inspect_found(self, test_domain):
+    def test_dlq_get_found(self, test_domain):
         broker = _broker(test_domain)
         dlq_id = _seed(
             broker,
@@ -119,7 +128,7 @@ class TestRedisDLQManagement:
             consumer_group="g1",
         )
 
-        entry = broker.dlq_inspect("orders:dlq", dlq_id)
+        entry = broker.dlq_get("orders:dlq", dlq_id)
         assert entry is not None
         assert entry.dlq_id == dlq_id
         assert entry.original_id == "o1"
@@ -127,12 +136,12 @@ class TestRedisDLQManagement:
         assert entry.consumer_group == "g1"
         assert entry.payload["key"] == "value"
 
-    def test_dlq_inspect_not_found(self, test_domain):
+    def test_dlq_get_not_found(self, test_domain):
         broker = _broker(test_domain)
         _seed(
             broker, "orders:dlq", {"k": "v"}, original_stream="orders", original_id="o1"
         )
-        assert broker.dlq_inspect("orders:dlq", "9999999999999-0") is None
+        assert broker.dlq_get("orders:dlq", "9999999999999-0") is None
 
     def test_dlq_replay_moves_message_to_target(self, test_domain):
         broker = _broker(test_domain)
@@ -146,7 +155,7 @@ class TestRedisDLQManagement:
 
         assert broker.dlq_replay("orders:dlq", dlq_id, "orders") is True
         # Removed from the DLQ...
-        assert broker.dlq_inspect("orders:dlq", dlq_id) is None
+        assert broker.dlq_get("orders:dlq", dlq_id) is None
         # ...and republished (without DLQ metadata) to the target stream.
         messages = broker.read("orders", "replay-group", limit=10)
         assert len(messages) == 1
@@ -212,19 +221,78 @@ class TestRedisDLQManagement:
             )
         assert broker.dlq_depth("orders:dlq") == 3
 
-        # dlq_trim uses an approximate XTRIM MINID (whole-node trimming). A
-        # far-future cutoff makes every entry eligible, so all are removed.
-        assert broker.dlq_trim("orders:dlq", "9999999999999-0") == 3
+        cutoff = datetime.now(UTC) + timedelta(hours=1)
+        assert broker.dlq_trim("orders:dlq", cutoff) == 3
         assert broker.dlq_depth("orders:dlq") == 0
 
-    def test_dlq_inspect_finds_an_entry_by_its_millisecond_id(self, test_domain):
+    def test_dlq_trim_removes_only_the_entry_before_the_cutoff(self, test_domain):
+        broker = _broker(test_domain)
+        _seed(
+            broker, "orders:dlq", {"i": 0}, original_stream="orders", original_id="o0"
+        )
+        time.sleep(0.005)  # The second entry gets a later millisecond.
+        newer_id = _seed(
+            broker, "orders:dlq", {"i": 1}, original_stream="orders", original_id="o1"
+        )
+
+        assert broker.dlq_trim("orders:dlq", _at_millisecond_of(newer_id)) == 1
+
+        [entry] = broker.dlq_list(["orders:dlq"])
+        assert entry.dlq_id == newer_id
+
+    def test_an_entry_added_in_the_cutoff_millisecond_is_kept(self, test_domain):
+        broker = _broker(test_domain)
+        dlq_id = _seed(
+            broker, "orders:dlq", {"i": 0}, original_stream="orders", original_id="o0"
+        )
+        cutoff = _at_millisecond_of(dlq_id)
+
+        assert broker.dlq_trim("orders:dlq", cutoff + timedelta(microseconds=999)) == 0
+        assert broker.dlq_trim("orders:dlq", cutoff + timedelta(milliseconds=1)) == 1
+
+    def test_dlq_trim_compares_the_instant_in_any_time_zone(self, test_domain):
+        broker = _broker(test_domain)
+        dlq_id = _seed(
+            broker, "orders:dlq", {"i": 0}, original_stream="orders", original_id="o0"
+        )
+        later = _at_millisecond_of(dlq_id) + timedelta(milliseconds=1)
+        elsewhere = later.astimezone(timezone(timedelta(hours=-5)))
+
+        assert broker.dlq_trim("orders:dlq", elsewhere) == 1
+
+    def test_dlq_trim_rejects_a_naive_cutoff(self, test_domain):
+        broker = _broker(test_domain)
+
+        with pytest.raises(ValueError, match="timezone-aware"):
+            broker.dlq_trim("orders:dlq", datetime(2026, 1, 1))
+
+    def test_dlq_trim_rejects_a_stream_id_cutoff(self, test_domain):
+        broker = _broker(test_domain)
+
+        with pytest.raises(TypeError, match="older_than must be a timezone-aware"):
+            broker.dlq_trim("orders:dlq", "1767225600000-0")
+
+    def test_dlq_list_reads_an_entry_whose_metadata_is_not_a_dict(self, test_domain):
+        broker = _broker(test_domain)
+        dlq_id = broker.publish("orders:dlq", {"k": "v", "_dlq_metadata": "broken"})
+        _seed(
+            broker, "orders:dlq", {"i": 0}, original_stream="orders", original_id="o0"
+        )
+
+        entries = broker.dlq_list(["orders:dlq"])
+
+        assert [e.original_id for e in entries] == ["o0", dlq_id]
+        assert entries[1].stream == "orders"
+        assert entries[1].failed_at is None
+
+    def test_dlq_get_finds_an_entry_by_its_millisecond_id(self, test_domain):
         broker = _broker(test_domain)
         dlq_id = _seed(
             broker, "orders:dlq", {"k": "v"}, original_stream="orders", original_id="o1"
         )
         millisecond_id = dlq_id.split("-")[0]
 
-        entry = broker.dlq_inspect("orders:dlq", millisecond_id)
+        entry = broker.dlq_get("orders:dlq", millisecond_id)
         assert entry is not None
         assert entry.dlq_id == dlq_id
 
@@ -288,9 +356,9 @@ class TestRedisDLQErrors:
         broker._client.set("orders:dlq", "not-a-stream")
         return broker
 
-    def test_dlq_inspect_raises(self, broker):
+    def test_dlq_get_raises(self, broker):
         with pytest.raises(redis.ResponseError, match="WRONGTYPE"):
-            broker.dlq_inspect("orders:dlq", "1-0")
+            broker.dlq_get("orders:dlq", "1-0")
 
     def test_dlq_replay_raises(self, broker):
         with pytest.raises(redis.ResponseError, match="WRONGTYPE"):
@@ -312,8 +380,8 @@ class TestRedisDLQErrors:
     # The key is not a stream, so any call that reached Redis would raise
     # WRONGTYPE. A plain return proves the ID check ran first.
     @pytest.mark.parametrize("bad_id", MALFORMED_IDS)
-    def test_dlq_inspect_of_a_malformed_id_returns_none(self, broker, bad_id):
-        assert broker.dlq_inspect("orders:dlq", bad_id) is None
+    def test_dlq_get_of_a_malformed_id_returns_none(self, broker, bad_id):
+        assert broker.dlq_get("orders:dlq", bad_id) is None
 
     @pytest.mark.parametrize("bad_id", MALFORMED_IDS)
     def test_dlq_replay_of_a_malformed_id_returns_false(self, broker, bad_id):
@@ -329,4 +397,4 @@ class TestRedisDLQErrors:
     )
     def test_an_id_at_the_64_bit_limit_reaches_redis(self, broker, max_id):
         with pytest.raises(redis.ResponseError, match="WRONGTYPE"):
-            broker.dlq_inspect("orders:dlq", max_id)
+            broker.dlq_get("orders:dlq", max_id)

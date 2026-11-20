@@ -408,9 +408,10 @@ a single subscription:
     `[server.dlq]` values to every handler.
 
 The maintenance task only runs when a broker that advertises the
-`DEAD_LETTER_QUEUE` capability is configured. Redis Streams implements
-time-based trimming via `XTRIM MINID`; other brokers fall back to a
-no-op `dlq_trim()`.
+`DEAD_LETTER_QUEUE` capability is configured. Every such broker trims
+by retention: `dlq_trim()` removes the entries that failed before the
+retention cutoff. The Redis broker trims with `XTRIM MINID`. The inline
+broker reads the failure time stored on each entry.
 
 ## Subscription profiles
 

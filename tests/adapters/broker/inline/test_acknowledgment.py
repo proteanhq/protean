@@ -261,13 +261,12 @@ def test_nack_max_retries_exceeded(broker):
     assert nack_result is True
 
     # Message should be in DLQ now
-    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
-    assert stream in dlq_messages
-    assert len(dlq_messages[stream]) == 1
-    dlq_id, dlq_msg, dlq_reason, _ = dlq_messages[stream][0]
-    assert dlq_id == identifier
-    assert dlq_msg == message
-    assert dlq_reason == "max_retries_exceeded"
+    [entry] = broker.dlq_list([f"{stream}:dlq"])
+    assert entry.original_id == identifier
+    assert entry.consumer_group == consumer_group
+    assert entry.payload["foo"] == "bar"
+    assert entry.failure_reason == "max_retries_exceeded"
+    assert entry.retry_count == 3
 
 
 def test_nack_removes_from_in_flight_tracking(broker):

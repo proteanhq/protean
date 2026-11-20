@@ -1,345 +1,507 @@
-"""Tests for Dead Letter Queue (DLQ) functionality in InlineBroker."""
+"""Tests for the dead-letter queue of InlineBroker.
 
-import logging
-import time
-from unittest.mock import patch
+The broker keeps a dead-lettered message as an ordinary message on
+``{stream}:dlq`` with a ``_dlq_metadata`` record, the same shape the engine
+writes, so every ``DeadLetterQueuePort`` member reads and changes that stream.
+"""
+
+from datetime import UTC, datetime, timedelta, timezone
+
+import pytest
+
+from tests.shared import FrozenClock
+
+STREAM = "test_stream"
+DLQ_STREAM = f"{STREAM}:dlq"
+GROUP = "test_consumer_group"
+START = datetime(2026, 11, 19, 12, 0, tzinfo=UTC)
 
 
-def test_dlq_message_inspection(broker):
-    """Test that messages in DLQ can be inspected."""
-    stream = "test_stream"
-    consumer_group = "test_consumer_group"
-    message = {"foo": "bar"}
+@pytest.fixture
+def clock(test_domain):
+    frozen = FrozenClock(START)
+    test_domain.clock = frozen
+    return frozen
 
-    # Configure broker with no retries to send straight to DLQ
+
+def _dead_letter(broker, payload, group=GROUP, stream=STREAM):
+    """Publish ``payload`` and nack it past a zero retry ceiling."""
     broker._adapter._max_retries = 0
-
-    # Publish and get message
-    identifier = broker.publish(stream, message)
-    retrieved = broker.get_next(stream, consumer_group)
-    assert retrieved is not None
-
-    # NACK message - should go straight to DLQ
-    nack_result = broker.nack(stream, identifier, consumer_group)
-    assert nack_result is True
-
-    # Inspect DLQ messages
-    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
-    assert stream in dlq_messages
-    assert len(dlq_messages[stream]) == 1
-
-    dlq_entry = dlq_messages[stream][0]
-    assert dlq_entry[0] == identifier  # Message ID
-    assert dlq_entry[1] == message  # Message content
-    assert dlq_entry[2] == "max_retries_exceeded"  # Failure reason
-    assert isinstance(dlq_entry[3], float)  # Timestamp
+    identifier = broker.publish(stream, payload)
+    assert broker.get_next(stream, group) is not None
+    assert broker.nack(stream, identifier, group) is True
+    return identifier
 
 
-def test_dlq_message_reprocessing(broker):
-    """Test that messages can be moved from DLQ back to main queue."""
-    stream = "test_stream"
-    consumer_group = "test_consumer_group"
-    message = {"foo": "bar"}
+def _engine_entry(original_id, failed_at, **metadata):
+    """Build a DLQ message in the shape the engine's subscription writes.
 
-    # Configure broker with no retries
-    broker._adapter._max_retries = 0
+    The engine's record has no ``failure_reason`` key.
+    """
+    return {
+        "data": original_id,
+        "_dlq_metadata": {
+            "original_stream": STREAM,
+            "original_id": original_id,
+            "consumer_group": "app.Handler",
+            "consumer": "app.Handler-1",
+            "failed_at": failed_at,
+            "retry_count": 3,
+            **metadata,
+        },
+    }
 
-    # Publish, get, and NACK message to send to DLQ
-    identifier = broker.publish(stream, message)
-    retrieved = broker.get_next(stream, consumer_group)
-    assert retrieved is not None
-    broker.nack(stream, identifier, consumer_group)
 
-    # Verify message is in DLQ
-    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
-    assert len(dlq_messages[stream]) == 1
+class TestTheRetryCeilingDeadLetters:
+    def test_the_entry_is_a_message_on_the_dlq_stream(self, broker, clock):
+        identifier = _dead_letter(broker, {"foo": "bar"})
 
-    # Reprocess message from DLQ
-    reprocess_result = broker._adapter.reprocess_dlq_message(
-        identifier, consumer_group, stream
+        [(dlq_id, message)] = broker._adapter._messages[DLQ_STREAM]
+        assert message == {
+            "foo": "bar",
+            "_dlq_metadata": {
+                "original_stream": STREAM,
+                "original_id": identifier,
+                "consumer_group": GROUP,
+                "failure_reason": "max_retries_exceeded",
+                "failed_at": START.isoformat(),
+                "retry_count": 1,
+            },
+        }
+        assert dlq_id != identifier
+
+    def test_dlq_list_reads_the_entry(self, broker, clock):
+        identifier = _dead_letter(broker, {"foo": "bar"})
+
+        [entry] = broker.dlq_list([DLQ_STREAM])
+
+        assert entry.original_id == identifier
+        assert entry.stream == STREAM
+        assert entry.consumer_group == GROUP
+        assert entry.failure_reason == "max_retries_exceeded"
+        assert entry.failed_at == START.isoformat()
+        assert entry.retry_count == 1
+        assert entry.dlq_stream == DLQ_STREAM
+
+    def test_the_dead_lettered_message_is_not_redelivered(self, broker):
+        _dead_letter(broker, {"foo": "bar"})
+
+        assert broker.get_next(STREAM, GROUP) is None
+
+    def test_every_exhausted_message_is_kept(self, broker):
+        identifiers = [_dead_letter(broker, {"n": n}) for n in range(5)]
+
+        entries = broker.dlq_list([DLQ_STREAM])
+
+        assert sorted(e.original_id for e in entries) == sorted(identifiers)
+
+    def test_each_entry_names_the_group_that_failed_it(self, broker):
+        broker._adapter._max_retries = 0
+        identifier = broker.publish(STREAM, {"foo": "bar"})
+        assert broker.get_next(STREAM, "group1") is not None
+        assert broker.get_next(STREAM, "group2") is not None
+
+        broker.nack(STREAM, identifier, "group1")
+        broker.ack(STREAM, identifier, "group2")
+
+        [entry] = broker.dlq_list([DLQ_STREAM])
+        assert entry.consumer_group == "group1"
+
+    def test_a_disabled_dlq_discards_the_message(self, broker):
+        broker._adapter._enable_dlq = False
+
+        _dead_letter(broker, {"foo": "bar"})
+
+        assert broker.dlq_depth(DLQ_STREAM) == 0
+        assert DLQ_STREAM not in broker._adapter._messages
+
+    def test_a_failed_dlq_write_keeps_the_message_in_flight(
+        self, broker, clock, monkeypatch
+    ):
+        broker._adapter._max_retries = 0
+        identifier = broker.publish(STREAM, {"foo": "bar"})
+        assert broker.get_next(STREAM, GROUP) is not None
+        _fail_dlq_writes(broker, monkeypatch)
+
+        assert broker.nack(STREAM, identifier, GROUP) is False
+
+        assert identifier in broker._adapter._in_flight[f"{STREAM}:{GROUP}"]
+        monkeypatch.undo()
+        broker._adapter._cleanup_stale_messages(GROUP, -1.0)
+        [entry] = broker.dlq_list([DLQ_STREAM])
+        assert entry.original_id == identifier
+
+
+def _fail_dlq_writes(broker, monkeypatch):
+    """Make every publication to a DLQ stream raise."""
+    real_publish = broker._adapter.publish
+
+    def publish(stream, message):
+        if stream.endswith(":dlq"):
+            raise RuntimeError("publish failed")
+        return real_publish(stream, message)
+
+    monkeypatch.setattr(broker._adapter, "publish", publish)
+
+
+class TestTheTimeoutDeadLetters:
+    def test_a_stale_message_is_dead_lettered_as_timeout(self, broker, clock):
+        broker._adapter._message_timeout = 0.0
+        identifier = broker.publish(STREAM, {"foo": "bar"})
+        assert broker.get_next(STREAM, GROUP) is not None
+
+        broker._adapter._cleanup_stale_messages(GROUP, -1.0)
+
+        [entry] = broker.dlq_list([DLQ_STREAM])
+        assert entry.original_id == identifier
+        assert entry.failure_reason == "timeout"
+        assert entry.failed_at == START.isoformat()
+
+    def test_a_failed_dlq_write_keeps_the_stale_message_in_flight(
+        self, broker, clock, monkeypatch
+    ):
+        identifier = broker.publish(STREAM, {"foo": "bar"})
+        assert broker.get_next(STREAM, GROUP) is not None
+        _fail_dlq_writes(broker, monkeypatch)
+
+        with pytest.raises(RuntimeError, match="publish failed"):
+            broker._adapter._cleanup_stale_messages(GROUP, -1.0)
+
+        assert identifier in broker._adapter._in_flight[f"{STREAM}:{GROUP}"]
+        monkeypatch.undo()
+        broker._adapter._cleanup_stale_messages(GROUP, -1.0)
+        [entry] = broker.dlq_list([DLQ_STREAM])
+        assert entry.failure_reason == "timeout"
+
+
+class TestDepth:
+    def test_depth_counts_the_entries(self, broker):
+        for n in range(3):
+            _dead_letter(broker, {"n": n})
+
+        assert broker.dlq_depth(DLQ_STREAM) == 3
+
+    def test_depth_counts_engine_written_entries(self, broker):
+        broker.publish(DLQ_STREAM, _engine_entry("a", START.isoformat()))
+        broker.publish(DLQ_STREAM, _engine_entry("b", START.isoformat()))
+
+        assert broker.dlq_depth(DLQ_STREAM) == 2
+
+    def test_depth_of_an_unknown_stream_is_zero(self, broker):
+        assert broker.dlq_depth("missing:dlq") == 0
+
+
+class TestEngineWrittenEntries:
+    def test_an_entry_without_a_failure_reason_parses_as_unknown(self, broker):
+        broker.publish(DLQ_STREAM, _engine_entry("orig-1", START.isoformat()))
+
+        [entry] = broker.dlq_list([DLQ_STREAM])
+
+        assert entry.original_id == "orig-1"
+        assert entry.consumer_group == "app.Handler"
+        assert entry.failure_reason == "unknown"
+        assert entry.retry_count == 3
+
+
+class TestEntriesWithAMalformedRecord:
+    @pytest.mark.parametrize(
+        "metadata", [None, "broken", ["a"]], ids=["none", "string", "list"]
     )
-    assert reprocess_result is True
-
-    # Verify message is no longer in DLQ
-    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
-    assert len(dlq_messages[stream]) == 0
-
-    # Message should be available for consumption again
-    retrieved = broker.get_next(stream, consumer_group)
-    assert retrieved is not None
-    retrieved_id, retrieved_msg = retrieved
-    assert retrieved_id == identifier
-    assert retrieved_msg == message
-
-
-def test_dlq_multiple_messages(broker):
-    """Test DLQ can handle multiple messages."""
-    stream = "test_stream"
-    consumer_group = "test_consumer_group"
-    messages = [{"id": i} for i in range(5)]
-
-    # Configure broker with no retries
-    broker._adapter._max_retries = 0
-
-    # Publish all messages
-    identifiers = [broker.publish(stream, msg) for msg in messages]
-
-    # Get and NACK all messages
-    for _ in messages:
-        retrieved = broker.get_next(stream, consumer_group)
-        assert retrieved is not None
-        msg_id, _ = retrieved
-        broker.nack(stream, msg_id, consumer_group)
-
-    # All messages should be in DLQ
-    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
-    assert len(dlq_messages[stream]) == 5
-
-    # Verify all messages are present
-    dlq_ids = [entry[0] for entry in dlq_messages[stream]]
-    for identifier in identifiers:
-        assert identifier in dlq_ids
-
-
-def test_dlq_cross_consumer_group_isolation(broker):
-    """Test that DLQ messages are isolated per consumer group."""
-    stream = "test_stream"
-    consumer_group1 = "group1"
-    consumer_group2 = "group2"
-    message = {"foo": "bar"}
-
-    # Configure broker with no retries
-    broker._adapter._max_retries = 0
-
-    # Publish message
-    identifier = broker.publish(stream, message)
-
-    # Group 1: Get and NACK message
-    retrieved = broker.get_next(stream, consumer_group1)
-    assert retrieved is not None
-    broker.nack(stream, identifier, consumer_group1)
-
-    # Group 2: Get and ACK message
-    retrieved = broker.get_next(stream, consumer_group2)
-    assert retrieved is not None
-    broker.ack(stream, identifier, consumer_group2)
-
-    # Only group1 should have message in DLQ
-    dlq_messages1 = broker._adapter.get_dlq_messages(consumer_group1, stream)
-    assert len(dlq_messages1[stream]) == 1
-
-    dlq_messages2 = broker._adapter.get_dlq_messages(consumer_group2, stream)
-    assert stream not in dlq_messages2 or len(dlq_messages2.get(stream, [])) == 0
-
-
-def test_dlq_info_tracking(broker):
-    """Test that DLQ messages are tracked per consumer group."""
-    stream = "test_stream"
-    consumer_group = "test_consumer_group"
-    message = {"foo": "bar"}
-
-    # Configure broker with no retries
-    broker._adapter._max_retries = 0
-
-    # Publish, get, and NACK message
-    identifier = broker.publish(stream, message)
-    retrieved = broker.get_next(stream, consumer_group)
-    assert retrieved is not None
-    broker.nack(stream, identifier, consumer_group)
-
-    # Check the group and its dead-letter queue for the stream
-    assert consumer_group in broker._consumer_groups()
-    assert len(broker._adapter._dead_letter_queue[f"{stream}:{consumer_group}"]) == 1
-
-
-def test_get_dlq_messages_no_messages(broker):
-    """Test getting DLQ messages when there are none."""
-    consumer_group = "test_consumer_group"
-    stream = "test_stream"
-
-    # Get all DLQ messages (without specifying stream) first
-    # This should return empty dict when no DLQ entries exist
-    dlq_messages = broker._adapter.get_dlq_messages(consumer_group)
-    assert dlq_messages == {}
-
-    # Get DLQ messages for specific stream
-    # This creates an entry with empty list for the stream
-    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
-    assert stream in dlq_messages
-    assert dlq_messages[stream] == []
-
-
-def test_get_dlq_messages_specific_stream(broker):
-    """Test getting DLQ messages for a specific stream."""
-    stream1 = "stream1"
-    stream2 = "stream2"
-    consumer_group = "test_consumer_group"
-
-    # Configure broker with no retries
-    broker._adapter._max_retries = 0
-
-    # Publish to both streams
-    id1 = broker.publish(stream1, {"stream": 1})
-    id2 = broker.publish(stream2, {"stream": 2})
-
-    # Get and NACK from both streams
-    broker.get_next(stream1, consumer_group)
-    broker.nack(stream1, id1, consumer_group)
-
-    broker.get_next(stream2, consumer_group)
-    broker.nack(stream2, id2, consumer_group)
-
-    # Get DLQ messages for specific stream
-    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream1)
-    assert stream1 in dlq_messages
-    assert len(dlq_messages[stream1]) == 1
-    assert stream2 not in dlq_messages
-
-
-def test_get_dlq_messages_all_streams(broker):
-    """Test getting DLQ messages for all streams."""
-    stream1 = "stream1"
-    stream2 = "stream2"
-    consumer_group = "test_consumer_group"
-
-    # Configure broker with no retries
-    broker._adapter._max_retries = 0
-
-    # Publish to both streams
-    id1 = broker.publish(stream1, {"stream": 1})
-    id2 = broker.publish(stream2, {"stream": 2})
-
-    # Get and NACK from both streams
-    broker.get_next(stream1, consumer_group)
-    broker.nack(stream1, id1, consumer_group)
-
-    broker.get_next(stream2, consumer_group)
-    broker.nack(stream2, id2, consumer_group)
-
-    # Get all DLQ messages
-    dlq_messages = broker._adapter.get_dlq_messages(consumer_group)
-    assert stream1 in dlq_messages
-    assert stream2 in dlq_messages
-    assert len(dlq_messages[stream1]) == 1
-    assert len(dlq_messages[stream2]) == 1
-
-
-def test_reprocess_dlq_message_not_found(broker):
-    """Test reprocessing a DLQ message that doesn't exist."""
-    stream = "test_stream"
-    consumer_group = "test_consumer_group"
-
-    # Try to reprocess non-existent message
-    result = broker._adapter.reprocess_dlq_message(
-        "non_existent", consumer_group, stream
-    )
-    assert result is False
-
-
-def test_max_retries_exceeded_dlq_disabled(broker):
-    """Test behavior when max retries exceeded but DLQ is disabled."""
-    stream = "test_stream"
-    consumer_group = "test_consumer_group"
-    message = {"foo": "bar"}
-
-    # Configure broker with DLQ disabled
-    broker._adapter._max_retries = 0
-    broker._adapter._enable_dlq = False
-
-    # Publish and get message
-    identifier = broker.publish(stream, message)
-    retrieved = broker.get_next(stream, consumer_group)
-    assert retrieved is not None
-
-    # NACK message - should be discarded, not moved to DLQ
-    nack_result = broker.nack(stream, identifier, consumer_group)
-    assert nack_result is True
-
-    # Verify no message in DLQ
-    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
-    assert stream not in dlq_messages or len(dlq_messages.get(stream, [])) == 0
-
-    # Message should not be available for consumption
-    retrieved = broker.get_next(stream, consumer_group)
-    assert retrieved is None
-
-
-def test_get_dlq_messages_consumer_group_not_found(broker):
-    """Test getting DLQ messages for non-existent consumer group."""
-    consumer_group = "non_existent_group"
-    stream = "test_stream"
-
-    # Get all DLQ messages for consumer group (should be empty)
-    result = broker._adapter._get_dlq_messages(consumer_group)
-    assert result == {}
-
-    # Add some DLQ messages for a different group
-    other_group = "other_group"
-    group_key = f"{stream}:{other_group}"
-    broker._adapter._dead_letter_queue[group_key].append(
-        ("msg1", {"data": "test"}, "timeout", time.time())
-    )
-
-    # Should still return empty for non_existent_group
-    result = broker._adapter._get_dlq_messages(consumer_group)
-    assert result == {}
-
-    # But should return data for other_group
-    result = broker._adapter._get_dlq_messages(other_group)
-    assert stream in result
-    assert len(result[stream]) == 1
-
-
-def test_reprocess_dlq_message_position_adjustment(broker):
-    """Test DLQ message reprocessing with position adjustments."""
-    stream = "test_stream"
-    consumer_group1 = "group1"
-    consumer_group2 = "group2"
-
-    # Setup initial messages
-    broker._adapter._messages[stream] = [
-        ("msg1", {"data": "1"}),
-        ("msg2", {"data": "2"}),
-    ]
-
-    # Set positions for multiple consumer groups
-    group_key1 = f"{stream}:{consumer_group1}"
-    group_key2 = f"{stream}:{consumer_group2}"
-    broker._adapter._consumer_positions[group_key1] = 1
-    broker._adapter._consumer_positions[group_key2] = 1
-
-    # Add message to DLQ
-    dlq_msg_id = "dlq_msg"
-    dlq_msg_data = {"data": "dlq"}
-    broker._adapter._dead_letter_queue[group_key1].append(
-        (dlq_msg_id, dlq_msg_data, "timeout", time.time())
-    )
-
-    # Reprocess the message
-    result = broker._adapter._reprocess_dlq_message(dlq_msg_id, consumer_group1, stream)
-    assert result is True
-
-    # Verify message was inserted at correct position
-    assert broker._adapter._messages[stream][1] == (dlq_msg_id, dlq_msg_data)
-
-    # Verify other consumer group position was adjusted
-    assert broker._adapter._consumer_positions[group_key2] == 2
-    # Group1 position should not change (it's at the insertion point)
-    assert broker._adapter._consumer_positions[group_key1] == 1
-
-
-def test_reprocess_dlq_message_error_handling(broker):
-    """Test reprocessing DLQ message with error conditions."""
-    stream = "test_stream"
-    consumer_group = "test_consumer_group"
-    identifier = "test_msg"
-
-    # Test with exception during processing
-    group_key = f"{stream}:{consumer_group}"
-    broker._adapter._dead_letter_queue[group_key] = None  # Invalid data to cause error
-
-    with patch.object(logging.getLogger("protean.adapters.broker.inline"), "error"):
-        result = broker._adapter._reprocess_dlq_message(
-            identifier, consumer_group, stream
+    def test_a_record_that_is_not_a_dict_takes_the_defaults(self, broker, metadata):
+        dlq_id = broker.publish(DLQ_STREAM, {"k": "v", "_dlq_metadata": metadata})
+
+        [entry] = broker.dlq_list([DLQ_STREAM])
+
+        assert entry.dlq_id == dlq_id
+        assert entry.original_id == dlq_id
+        assert entry.stream == STREAM
+        assert entry.consumer_group == ""
+        assert entry.failure_reason == "unknown"
+        assert entry.failed_at is None
+        assert entry.retry_count == 0
+        assert broker.dlq_trim(DLQ_STREAM, START) == 0
+        assert broker.dlq_depth(DLQ_STREAM) == 1
+
+    def test_a_retry_count_that_is_not_a_number_reads_as_zero(self, broker):
+        broker.publish(
+            DLQ_STREAM, _engine_entry("orig-1", START.isoformat(), retry_count="abc")
         )
-        assert result is False
+
+        [entry] = broker.dlq_list([DLQ_STREAM])
+
+        assert entry.retry_count == 0
+
+    def test_a_failed_at_that_is_not_a_string_sorts_last(self, broker):
+        broker.publish(DLQ_STREAM, _engine_entry("orig-int", 12345))
+        broker.publish(DLQ_STREAM, _engine_entry("orig-str", START.isoformat()))
+
+        entries = broker.dlq_list([DLQ_STREAM])
+
+        assert [e.original_id for e in entries] == ["orig-str", "orig-int"]
+        assert entries[1].failed_at is None
+
+    def test_failure_times_in_different_offsets_sort_by_the_instant(self, broker):
+        earlier = START.astimezone(timezone(timedelta(hours=5)))
+        later = (START + timedelta(hours=1)).astimezone(timezone(timedelta(hours=-5)))
+        broker.publish(DLQ_STREAM, _engine_entry("orig-later", later.isoformat()))
+        broker.publish(DLQ_STREAM, _engine_entry("orig-earlier", earlier.isoformat()))
+
+        entries = broker.dlq_list([DLQ_STREAM])
+
+        assert [e.original_id for e in entries] == ["orig-later", "orig-earlier"]
+
+
+class TestTrim:
+    def _two_entries(self, broker, clock):
+        """Dead-letter one message at ``START`` and one an hour later."""
+        _dead_letter(broker, {"n": "old"})
+        clock.advance(timedelta(hours=1))
+        _dead_letter(broker, {"n": "new"})
+
+    def test_a_cutoff_before_every_entry_removes_nothing(self, broker, clock):
+        self._two_entries(broker, clock)
+
+        removed = broker.dlq_trim(DLQ_STREAM, START - timedelta(seconds=1))
+
+        assert removed == 0
+        assert broker.dlq_depth(DLQ_STREAM) == 2
+
+    def test_a_cutoff_between_entries_removes_the_older(self, broker, clock):
+        self._two_entries(broker, clock)
+
+        removed = broker.dlq_trim(DLQ_STREAM, START + timedelta(minutes=30))
+
+        assert removed == 1
+        [entry] = broker.dlq_list([DLQ_STREAM])
+        assert entry.payload["n"] == "new"
+
+    def test_a_cutoff_after_every_entry_removes_all(self, broker, clock):
+        self._two_entries(broker, clock)
+
+        removed = broker.dlq_trim(DLQ_STREAM, START + timedelta(hours=2))
+
+        assert removed == 2
+        assert broker.dlq_depth(DLQ_STREAM) == 0
+
+    def test_an_entry_failed_at_the_cutoff_is_kept(self, broker, clock):
+        _dead_letter(broker, {"n": 1})
+
+        assert broker.dlq_trim(DLQ_STREAM, START) == 0
+        assert broker.dlq_depth(DLQ_STREAM) == 1
+
+    def test_a_cutoff_in_another_time_zone_compares_the_instant(self, broker, clock):
+        _dead_letter(broker, {"n": 1})
+        later = (START + timedelta(minutes=1)).astimezone(timezone(timedelta(hours=-5)))
+
+        assert broker.dlq_trim(DLQ_STREAM, later) == 1
+
+    @pytest.mark.parametrize(
+        "failed_at",
+        [None, 12345, "not a time", "2026-01-01T00:00:00"],
+        ids=["missing", "not-a-string", "unparseable", "naive"],
+    )
+    def test_an_entry_without_a_usable_failed_at_is_kept(self, broker, failed_at):
+        message = _engine_entry("orig-1", failed_at)
+        if failed_at is None:
+            del message["_dlq_metadata"]["failed_at"]
+        broker.publish(DLQ_STREAM, message)
+        broker.publish(DLQ_STREAM, _engine_entry("orig-2", "2026-01-01T00:00:00+00:00"))
+
+        removed = broker.dlq_trim(DLQ_STREAM, START)
+
+        assert removed == 1
+        [entry] = broker.dlq_list([DLQ_STREAM])
+        assert entry.original_id == "orig-1"
+
+    def test_a_naive_cutoff_is_rejected(self, broker):
+        with pytest.raises(ValueError, match="timezone-aware"):
+            broker.dlq_trim(DLQ_STREAM, datetime(2026, 1, 1))
+
+    def test_a_stream_id_cutoff_is_rejected(self, broker):
+        with pytest.raises(TypeError, match="older_than must be a timezone-aware"):
+            broker._adapter.dlq_trim(DLQ_STREAM, "1767225600000-0")
+
+    def test_trimming_an_unknown_stream_removes_nothing(self, broker):
+        assert broker.dlq_trim("missing:dlq", START) == 0
+
+
+class TestReplay:
+    def test_replay_republishes_without_the_metadata(self, broker):
+        _dead_letter(broker, {"foo": "bar"})
+        [entry] = broker.dlq_list([DLQ_STREAM])
+
+        assert broker.dlq_replay(DLQ_STREAM, entry.dlq_id, STREAM) is True
+
+        assert broker.dlq_depth(DLQ_STREAM) == 0
+        retrieved = broker.get_next(STREAM, GROUP)
+        assert retrieved is not None
+        assert retrieved[1] == {"foo": "bar"}
+
+    def test_replaying_an_unknown_id_returns_false(self, broker):
+        _dead_letter(broker, {"foo": "bar"})
+
+        assert broker.dlq_replay(DLQ_STREAM, "missing", STREAM) is False
+        assert broker.dlq_depth(DLQ_STREAM) == 1
+
+    def test_replay_all_republishes_every_entry(self, broker):
+        for n in range(3):
+            _dead_letter(broker, {"n": n})
+
+        assert broker.dlq_replay_all(DLQ_STREAM, "target") == 3
+
+        assert broker.dlq_depth(DLQ_STREAM) == 0
+        replayed = [broker.get_next("target", GROUP) for _ in range(3)]
+        assert [message for _, message in replayed] == [{"n": 0}, {"n": 1}, {"n": 2}]
+
+    def test_a_replayed_message_is_not_dead_lettered_again_by_the_replay(self, broker):
+        _dead_letter(broker, {"foo": "bar"})
+
+        broker.dlq_replay_all(DLQ_STREAM, STREAM)
+
+        assert broker.dlq_depth(DLQ_STREAM) == 0
+
+
+class TestPurge:
+    def test_purge_removes_every_entry(self, broker):
+        for n in range(4):
+            _dead_letter(broker, {"n": n})
+
+        assert broker.dlq_purge(DLQ_STREAM) == 4
+        assert broker.dlq_depth(DLQ_STREAM) == 0
+
+    def test_purging_an_unknown_stream_removes_nothing(self, broker):
+        assert broker.dlq_purge("missing:dlq") == 0
+
+
+class TestAGroupReadingTheDLQStream:
+    """A consumer group can read ``{stream}:dlq`` like any stream. Removing
+    entries before its position must not make it skip an unread entry."""
+
+    READER = "dlq-reader"
+
+    def _three_entries_one_read(self, broker, clock):
+        for n in range(3):
+            _dead_letter(broker, {"n": n})
+            clock.advance(timedelta(hours=1))
+        first = broker.get_next(DLQ_STREAM, self.READER)
+        assert first is not None
+        broker.ack(DLQ_STREAM, first[0], self.READER)
+
+    def _next_n(self, broker):
+        retrieved = broker.get_next(DLQ_STREAM, self.READER)
+        return None if retrieved is None else retrieved[1]["n"]
+
+    def test_trim_keeps_the_next_unread_entry(self, broker, clock):
+        self._three_entries_one_read(broker, clock)
+
+        assert broker.dlq_trim(DLQ_STREAM, START + timedelta(minutes=30)) == 1
+
+        assert self._next_n(broker) == 1
+
+    def test_replay_keeps_the_next_unread_entry(self, broker, clock):
+        self._three_entries_one_read(broker, clock)
+        [first] = [e for e in broker.dlq_list([DLQ_STREAM]) if e.payload["n"] == 0]
+
+        assert broker.dlq_replay(DLQ_STREAM, first.dlq_id, "target") is True
+
+        assert self._next_n(broker) == 1
+
+    def test_removing_an_unread_entry_leaves_the_position(self, broker, clock):
+        self._three_entries_one_read(broker, clock)
+        [second] = [e for e in broker.dlq_list([DLQ_STREAM]) if e.payload["n"] == 1]
+
+        assert broker.dlq_replay(DLQ_STREAM, second.dlq_id, "target") is True
+
+        assert self._next_n(broker) == 2
+
+    def test_purge_moves_the_position_to_the_start(self, broker, clock):
+        self._three_entries_one_read(broker, clock)
+        broker.dlq_purge(DLQ_STREAM)
+
+        _dead_letter(broker, {"n": 3})
+
+        assert self._next_n(broker) == 3
+
+    def test_a_group_on_the_dlq_of_the_dlq_keeps_its_position(self, broker, clock):
+        self._three_entries_one_read(broker, clock)
+        nested = f"{DLQ_STREAM}:dlq"
+        broker.publish(nested, {"n": "nested"})
+        assert broker.get_next(nested, self.READER) is not None
+        position_key = f"{nested}:{self.READER}"
+        before = broker._adapter._consumer_positions[position_key]
+
+        broker.dlq_purge(DLQ_STREAM)
+
+        assert broker._adapter._consumer_positions[position_key] == before
+
+    def test_a_replayed_entry_in_flight_cannot_be_nacked_back(self, broker, clock):
+        for n in range(2):
+            _dead_letter(broker, {"n": n})
+        first = broker.get_next(DLQ_STREAM, self.READER)
+        assert broker.get_next(DLQ_STREAM, self.READER) is not None
+
+        assert broker.dlq_replay(DLQ_STREAM, first[0], "target") is True
+
+        assert broker.nack(DLQ_STREAM, first[0], self.READER) is False
+        assert broker.get_next(DLQ_STREAM, self.READER) is None
+        assert [e.payload["n"] for e in broker.dlq_list([DLQ_STREAM])] == [1]
+
+    def test_a_purged_entry_waiting_for_retry_is_not_redelivered(self, broker, clock):
+        _dead_letter(broker, {"n": 0})
+        broker._adapter._max_retries = 3
+        broker._adapter._retry_delay = 0
+        retrieved = broker.get_next(DLQ_STREAM, self.READER)
+        assert broker.nack(DLQ_STREAM, retrieved[0], self.READER) is True
+
+        assert broker.dlq_purge(DLQ_STREAM) == 1
+
+        assert broker.get_next(DLQ_STREAM, self.READER) is None
+        assert broker.dlq_depth(DLQ_STREAM) == 0
+
+    def test_a_redelivered_entry_is_listed_and_replayed_once(self, broker, clock):
+        _dead_letter(broker, {"n": 0})
+        broker._adapter._max_retries = 3
+        broker._adapter._retry_delay = 0
+        retrieved = broker.get_next(DLQ_STREAM, self.READER)
+        assert broker.nack(DLQ_STREAM, retrieved[0], self.READER) is True
+
+        redelivered = broker.get_next(DLQ_STREAM, self.READER)
+
+        assert redelivered[0] == retrieved[0]
+        assert broker.dlq_depth(DLQ_STREAM) == 1
+        assert len(broker.dlq_list([DLQ_STREAM])) == 1
+        assert broker.dlq_replay(DLQ_STREAM, retrieved[0], "target") is True
+        assert broker.dlq_depth(DLQ_STREAM) == 0
+        assert len(broker._adapter._messages["target"]) == 1
+
+    def test_a_purged_entry_queued_for_redelivery_is_not_redelivered(
+        self, broker, clock
+    ):
+        for n in range(2):
+            _dead_letter(broker, {"n": n})
+        broker._adapter._max_retries = 3
+        broker._adapter._retry_delay = 0
+        retrieved = [broker.get_next(DLQ_STREAM, self.READER) for _ in range(2)]
+        for identifier, _message in retrieved:
+            assert broker.nack(DLQ_STREAM, identifier, self.READER) is True
+        assert broker.get_next(DLQ_STREAM, self.READER) is not None
+        group_key = f"{DLQ_STREAM}:{self.READER}"
+        assert len(broker._adapter._redeliveries[group_key]) == 1
+
+        assert broker.dlq_purge(DLQ_STREAM) == 2
+
+        assert broker.get_next(DLQ_STREAM, self.READER) is None
+
+    def test_a_group_name_with_a_colon_keeps_its_position(self, broker, clock):
+        reader = "app:reader"
+        for n in range(3):
+            _dead_letter(broker, {"n": n})
+        first = broker.get_next(DLQ_STREAM, reader)
+        broker.ack(DLQ_STREAM, first[0], reader)
+
+        broker.dlq_purge(DLQ_STREAM)
+        _dead_letter(broker, {"n": 3})
+
+        retrieved = broker.get_next(DLQ_STREAM, reader)
+        assert retrieved is not None
+        assert retrieved[1]["n"] == 3

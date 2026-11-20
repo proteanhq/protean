@@ -9,7 +9,7 @@ from protean.adapters.cache.memory import MemoryCache
 from protean.adapters.database.memory import MemoryDatabase
 from protean.adapters.event_store.memory import MemoryEventStore
 from protean.infra.registry import brokers, caches, databases, event_stores
-from protean.port.broker import BaseBroker
+from protean.port.broker import BrokerPort
 from protean.port.cache import CachePort
 from protean.port.dao import REQUIRED_LOOKUPS, LookupPort
 from protean.port.database import BaseDatabase
@@ -36,7 +36,7 @@ class IncompleteDatabase(BaseDatabase):
     pass
 
 
-class IncompleteBroker(BaseBroker):
+class IncompleteBroker(BrokerPort):
     pass
 
 

@@ -377,7 +377,7 @@ Read more in [Server → Configuration](../server/configuration.md) section.
 The `[server.dlq]` section configures a periodic maintenance task that
 trims old DLQ entries and alerts when DLQ streams grow deep. It is
 **disabled by default**, set `enabled = true` to activate it. Requires a broker that
-implements the DLQ contract (currently Redis Streams).
+implements the DLQ contract (the inline and Redis Streams brokers).
 
 | Key | Type | Default | Description |
 |---|---|---|---|

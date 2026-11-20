@@ -637,7 +637,6 @@ events rely on the traceback rather than per-record `extra` fields.
 | `broker.inline.ack_failed` | ERROR (exc) |
 | `broker.inline.nack_failed` | ERROR (exc) |
 | `broker.inline.nack_handle_failed` | ERROR (exc) |
-| `broker.inline.dlq_reprocess_failed` | ERROR (exc) |
 
 ### `protean.adapters.broker.redis_pubsub`
 

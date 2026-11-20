@@ -213,8 +213,8 @@ alert_threshold = 100         # Warn when a DLQ stream reaches 100 entries
 check_interval_seconds = 60   # Maintenance cycle cadence
 ```
 
-When `enabled = true` and a DLQ-capable broker is configured (Redis
-Streams today), the Engine runs a background task that:
+When `enabled = true` and a DLQ-capable broker is configured (the
+inline or Redis Streams broker), the Engine runs a background task that:
 
 1. Trims entries older than `retention_hours` from every DLQ stream.
 2. Measures each stream's depth every `check_interval_seconds`.

@@ -1,7 +1,7 @@
-import logging
 from abc import ABCMeta, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum, Flag, auto
 from typing import (
     TYPE_CHECKING,
@@ -17,8 +17,6 @@ from protean.exceptions import ProteanException
 
 if TYPE_CHECKING:
     from protean.domain import Domain
-
-logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 RETRY_DELAY = 1.0
@@ -38,6 +36,10 @@ class LeaseLostError(ProteanException):
     or acking the partition. The partitioned consumer catches it and gives up
     the partition rather than treating it as a transient broker error.
     """
+
+
+DLQ_SUFFIX = ":dlq"
+"""The suffix of a dead-letter queue stream's name: ``{stream}:dlq``."""
 
 
 @dataclass
@@ -177,12 +179,11 @@ class BrokerPort(Protocol):
     """The operations a broker adapter implements.
 
     An adapter subclasses this Protocol explicitly, and also subclasses
-    ``BaseBroker``, which holds the dead-letter queue. The ``Broker`` service
-    raises ``NotSupportedError`` for those operations on an adapter that is
-    not a ``BaseBroker``. An adapter that declares a flag listed in
-    `CAPABILITY_PORTS` subclasses the sub-protocol the flag maps to, such as
-    ``BlockingReadPort`` for ``BrokerCapabilities.BLOCKING_READ``. Each
-    sub-protocol extends ``BrokerPort``.
+    ``BaseBroker``, which stores ``name``, ``domain`` and ``config``. An
+    adapter that declares a flag listed in `CAPABILITY_PORTS` subclasses the
+    sub-protocol the flag maps to, such as ``BlockingReadPort`` for
+    ``BrokerCapabilities.BLOCKING_READ``. Each sub-protocol extends
+    ``BrokerPort``.
 
     The ``Broker`` service in ``protean.infra.broker`` wraps the adapter and
     adds unit-of-work recording, the retry after a connection error,
@@ -567,8 +568,174 @@ class StreamRetentionPort(BrokerPort, Protocol):
         """
 
 
+def require_aware_cutoff(older_than: datetime) -> None:
+    """Raise when the trim cutoff ``older_than`` is not a timezone-aware ``datetime``.
+
+    A naive time cannot be compared with the aware failure times the engine
+    records.
+
+    Raises:
+        TypeError: ``older_than`` is not a ``datetime``, such as a stream ID
+            string passed where ``dlq_trim`` once took ``min_id``.
+        ValueError: ``older_than`` has no time zone.
+    """
+    if not isinstance(older_than, datetime):
+        raise TypeError(
+            "older_than must be a timezone-aware datetime, "
+            f"got {type(older_than).__name__} {older_than!r}"
+        )
+    if older_than.utcoffset() is None:
+        raise ValueError(
+            f"older_than must be timezone-aware, got naive datetime {older_than!r}"
+        )
+
+
+def dlq_metadata(message: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return the ``_dlq_metadata`` record of a DLQ message.
+
+    Returns an empty mapping when the record is missing or is not a mapping.
+    """
+    metadata = message.get("_dlq_metadata")
+    return metadata if isinstance(metadata, Mapping) else {}
+
+
+def failure_time(failed_at: object) -> datetime | None:
+    """Return a ``_dlq_metadata`` record's ``failed_at`` value as an aware time.
+
+    Returns ``None`` when ``failed_at`` is not a string, cannot be parsed, or
+    has no time zone.
+    """
+    if not isinstance(failed_at, str):
+        return None
+    try:
+        failed_time = datetime.fromisoformat(failed_at)
+    except ValueError:
+        return None
+    return failed_time if failed_time.utcoffset() is not None else None
+
+
+def parse_dlq_entry(dlq_stream: str, dlq_id: str, message: dict[str, Any]) -> DLQEntry:
+    """Build a ``DLQEntry`` from a message on ``dlq_stream`` and its metadata.
+
+    A field the record lacks, or holds in a form that does not fit, takes a
+    default: the DLQ stream's source stream, ``dlq_id`` as ``original_id``,
+    ``""`` as the group, ``"unknown"`` as the reason, ``None`` as
+    ``failed_at`` and ``0`` retries.
+    """
+    metadata = dlq_metadata(message)
+    failed_at = metadata.get("failed_at")
+    retry_count = metadata.get("retry_count", 0)
+    try:
+        retries = int(retry_count)
+    except (TypeError, ValueError):
+        retries = 0
+    return DLQEntry(
+        dlq_id=dlq_id,
+        original_id=str(metadata.get("original_id", dlq_id)),
+        stream=str(
+            metadata.get("original_stream", dlq_stream.removesuffix(DLQ_SUFFIX))
+        ),
+        consumer_group=str(metadata.get("consumer_group", "")),
+        payload=message,
+        failure_reason=str(metadata.get("failure_reason", "unknown")),
+        failed_at=failed_at if isinstance(failed_at, str) else None,
+        retry_count=retries,
+        dlq_stream=dlq_stream,
+    )
+
+
+def newest_failure_first(entries: list[DLQEntry]) -> list[DLQEntry]:
+    """Return ``entries`` sorted by failure time, newest first.
+
+    Compares the instants, so times in different UTC offsets sort correctly.
+    Entries without a usable failure time (see ``failure_time``) come last,
+    in their original order.
+    """
+    timed: list[tuple[datetime, DLQEntry]] = []
+    untimed: list[DLQEntry] = []
+    for entry in entries:
+        failed_time = failure_time(entry.failed_at)
+        if failed_time is None:
+            untimed.append(entry)
+        else:
+            timed.append((failed_time, entry))
+    timed.sort(key=lambda pair: pair[0], reverse=True)
+    return [entry for _, entry in timed] + untimed
+
+
+class DeadLetterQueuePort(BrokerPort, Protocol):
+    """The dead-letter queue of a broker that declares ``DEAD_LETTER_QUEUE``.
+
+    A broker that declares ``BrokerCapabilities.DEAD_LETTER_QUEUE`` subclasses
+    this Protocol and implements every member. The ``Broker`` service
+    calls them when the broker declares the flag, and returns an empty answer
+    when it does not.
+
+    A dead-letter queue stream is named ``{stream}:dlq``. Each entry carries a
+    ``_dlq_metadata`` record that says where the message came from and why it
+    failed.
+    """
+
+    @abstractmethod
+    def dlq_list(self, dlq_streams: list[str], limit: int = 100) -> list[DLQEntry]:
+        """Return up to ``limit`` entries from ``dlq_streams``, newest failure first.
+
+        An entry without a usable ``failed_at`` comes after every entry that
+        has one. A stream that does not exist adds no entries.
+        """
+
+    @abstractmethod
+    def dlq_get(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
+        """Return the entry ``dlq_id`` in ``dlq_stream``, or ``None`` if there is none."""
+
+    @abstractmethod
+    def dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
+        """Publish the entry ``dlq_id`` to ``target_stream`` and remove it.
+
+        Returns:
+            ``True`` when the entry was replayed, ``False`` when there is no
+            such entry.
+        """
+
+    @abstractmethod
+    def dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
+        """Publish every entry in ``dlq_stream`` to ``target_stream`` and remove it.
+
+        Returns:
+            The number of entries replayed.
+        """
+
+    @abstractmethod
+    def dlq_purge(self, dlq_stream: str) -> int:
+        """Remove every entry in ``dlq_stream``.
+
+        Returns:
+            The number of entries removed.
+        """
+
+    @abstractmethod
+    def dlq_trim(self, dlq_stream: str, older_than: datetime) -> int:
+        """Remove the entries in ``dlq_stream`` that failed before ``older_than``.
+
+        Raises:
+            TypeError: ``older_than`` is not a ``datetime``.
+            ValueError: ``older_than`` has no time zone.
+
+        Returns:
+            The number of entries removed.
+        """
+
+    @abstractmethod
+    def dlq_depth(self, dlq_stream: str) -> int:
+        """Return the number of entries in ``dlq_stream``.
+
+        A stream that does not exist has ``0``.
+        """
+
+
 CAPABILITY_PORTS: dict[BrokerCapabilities, type[object]] = {
     BrokerCapabilities.BLOCKING_READ: BlockingReadPort,
+    BrokerCapabilities.DEAD_LETTER_QUEUE: DeadLetterQueuePort,
     BrokerCapabilities.STREAM_PARTITIONING: PartitioningPort,
     BrokerCapabilities.STREAM_RETENTION: StreamRetentionPort,
 }
@@ -580,12 +747,12 @@ abstract members where `type[BrokerPort]` is expected.
 
 
 class BaseBroker(metaclass=ABCMeta):
-    """Dead letters for broker adapters.
+    """The shared set-up for broker adapters.
 
     A broker adapter subclasses this class and ``BrokerPort``, in that order.
-    The core operations are on ``BrokerPort``. This class holds the
-    dead-letter operations until they move into a sub-protocol of the Port,
-    and it is removed when they do.
+    The operations are on ``BrokerPort`` and the sub-protocols in
+    `CAPABILITY_PORTS`. This class stores ``name``, ``domain`` and
+    ``config``.
 
     Each adapter sets ``broker_type`` to the name it is known by, such as
     ``"inline"``, ``"redis"`` or ``"redis_pubsub"``.
@@ -593,148 +760,8 @@ class BaseBroker(metaclass=ABCMeta):
 
     broker_type: ClassVar[str]
 
-    if TYPE_CHECKING:
-        # The Port member that the DLQ wrappers below call. Each adapter
-        # defines it through ``BrokerPort``.
-        @property
-        def capabilities(self) -> BrokerCapabilities: ...
-
     def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
         self.name = name
         self.domain = domain
         # A copy: the broker never writes to the configuration it was given.
         self.config: Mapping[str, Any] = dict(config)
-
-    # ------------------------------------------------------------------
-    # Dead Letter Queue Management
-    # ------------------------------------------------------------------
-
-    def dlq_list(self, dlq_streams: list[str], limit: int = 100) -> list[DLQEntry]:
-        """List DLQ messages across specified DLQ streams.
-
-        Args:
-            dlq_streams: List of DLQ stream names to query.
-            limit: Maximum total messages to return.
-
-        Returns:
-            List of DLQEntry objects sorted by failure time (newest first).
-        """
-        if BrokerCapabilities.DEAD_LETTER_QUEUE not in self.capabilities:
-            logger.warning(f"Broker {self.name} does not support DLQ management")
-            return []
-        return self._dlq_list(dlq_streams, limit)
-
-    def dlq_inspect(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
-        """Inspect a specific DLQ message by its DLQ entry ID.
-
-        Args:
-            dlq_stream: The DLQ stream to look in.
-            dlq_id: The entry identifier within the DLQ stream.
-
-        Returns:
-            DLQEntry if found, None otherwise.
-        """
-        if BrokerCapabilities.DEAD_LETTER_QUEUE not in self.capabilities:
-            logger.warning(f"Broker {self.name} does not support DLQ management")
-            return None
-        return self._dlq_inspect(dlq_stream, dlq_id)
-
-    def dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
-        """Replay a single DLQ message back to its original stream.
-
-        Args:
-            dlq_stream: The DLQ stream the message is in.
-            dlq_id: The entry identifier within the DLQ stream.
-            target_stream: The stream to re-publish the message to.
-
-        Returns:
-            True if replayed successfully, False otherwise.
-        """
-        if BrokerCapabilities.DEAD_LETTER_QUEUE not in self.capabilities:
-            logger.warning(f"Broker {self.name} does not support DLQ management")
-            return False
-        return self._dlq_replay(dlq_stream, dlq_id, target_stream)
-
-    def dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
-        """Replay all DLQ messages from a stream back to the original stream.
-
-        Args:
-            dlq_stream: The DLQ stream to drain.
-            target_stream: The stream to re-publish messages to.
-
-        Returns:
-            Number of messages replayed.
-        """
-        if BrokerCapabilities.DEAD_LETTER_QUEUE not in self.capabilities:
-            logger.warning(f"Broker {self.name} does not support DLQ management")
-            return 0
-        return self._dlq_replay_all(dlq_stream, target_stream)
-
-    def dlq_purge(self, dlq_stream: str) -> int:
-        """Purge all messages from a DLQ stream.
-
-        Args:
-            dlq_stream: The DLQ stream to purge.
-
-        Returns:
-            Number of messages purged.
-        """
-        if BrokerCapabilities.DEAD_LETTER_QUEUE not in self.capabilities:
-            logger.warning(f"Broker {self.name} does not support DLQ management")
-            return 0
-        return self._dlq_purge(dlq_stream)
-
-    @abstractmethod
-    def _dlq_list(self, dlq_streams: list[str], limit: int) -> list[DLQEntry]:
-        """List DLQ messages across specified DLQ streams."""
-
-    @abstractmethod
-    def _dlq_inspect(self, dlq_stream: str, dlq_id: str) -> DLQEntry | None:
-        """Inspect a specific DLQ message."""
-
-    @abstractmethod
-    def _dlq_replay(self, dlq_stream: str, dlq_id: str, target_stream: str) -> bool:
-        """Replay a single DLQ message back to its original stream."""
-
-    @abstractmethod
-    def _dlq_replay_all(self, dlq_stream: str, target_stream: str) -> int:
-        """Replay all DLQ messages from a stream."""
-
-    @abstractmethod
-    def _dlq_purge(self, dlq_stream: str) -> int:
-        """Purge all messages from a DLQ stream."""
-
-    # ------------------------------------------------------------------
-    # DLQ Maintenance
-    # ------------------------------------------------------------------
-
-    def dlq_trim(self, dlq_stream: str, min_id: str) -> int:
-        """Trim DLQ messages older than *min_id* (time-based trimming).
-
-        This is an optional method used by the DLQ maintenance task to
-        remove messages that have exceeded their retention period.
-        Brokers that don't support time-based trimming can leave the
-        default implementation which returns 0.
-
-        Args:
-            dlq_stream: The DLQ stream to trim.
-            min_id: Cutoff identifier (format varies by broker).
-                Messages older than this cutoff will be removed.
-
-        Returns:
-            Number of messages trimmed.
-        """
-        return 0
-
-    def dlq_depth(self, dlq_stream: str) -> int:
-        """Return the current number of messages in a DLQ stream.
-
-        Brokers that don't support depth queries return 0.
-
-        Args:
-            dlq_stream: The DLQ stream to query.
-
-        Returns:
-            Number of messages in the DLQ stream.
-        """
-        return 0

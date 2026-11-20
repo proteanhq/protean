@@ -120,9 +120,9 @@ def test_max_retries_enforcement(broker):
         broker.nack(stream, identifier, consumer_group)
 
     # Message should be in DLQ
-    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
-    assert len(dlq_messages[stream]) == 1
-    assert dlq_messages[stream][0][0] == identifier
+    [entry] = broker.dlq_list([f"{stream}:dlq"])
+    assert entry.original_id == identifier
+    assert entry.consumer_group == consumer_group
 
     # Message should not be available for retry
     time.sleep(0.1)

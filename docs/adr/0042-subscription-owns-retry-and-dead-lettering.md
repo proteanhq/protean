@@ -46,3 +46,7 @@ The old behavior was observable from the public CLI. On the InlineBroker, `_dlq_
 We take the silent-correctness-bug exception in ADR-0004 and skip the three-version flag rollout. No correct program should have depended on the old path, where two retry authorities counted the same failure. A user has nothing to migrate. A flag that kept the old path would keep the bug: the broker would still dead-letter messages without the subscription knowing. The exception's "loud and immediate failure" criterion does not apply here, since the new behavior fails by holding a message rather than by raising. We accept that gap because the exposure is small: the InlineBroker is an in-process, non-durable test double, and reaching the old path needed a `{stream}:dlq` publish to keep failing inside that same process.
 
 The decision renames, removes and re-types no existing method. It adds one hook, `mark_subscription_owned`, to the broker port. The hook is concrete and does nothing by default, so an existing custom broker adapter keeps working without defining it.
+
+## Amendment (November 2026): the inline DLQ is a stream
+
+The InlineBroker now stores its native DLQ entries as messages on the `{stream}:dlq` stream, as the Redis broker does, and its DLQ operations are the public `DeadLetterQueuePort` methods. The decision above is unchanged. The Consequences and Compatibility sections describe the broker before this change: the native DLQ they name is now the same `{stream}:dlq` stream, and `_dlq_list` is now `dlq_list`.

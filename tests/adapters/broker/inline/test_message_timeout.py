@@ -6,6 +6,15 @@ def _in_flight_count(broker, consumer_group, stream):
     return len(broker._adapter._in_flight[f"{stream}:{consumer_group}"])
 
 
+def _dead_lettered(broker, consumer_group, stream):
+    """Return the DLQ entries of ``stream`` that ``consumer_group`` failed."""
+    return [
+        entry
+        for entry in broker.dlq_list([f"{stream}:dlq"])
+        if entry.consumer_group == consumer_group
+    ]
+
+
 def test_message_timeout_cleanup(broker):
     """Test that messages are cleaned up after timeout"""
     stream = "test_stream"
@@ -34,13 +43,10 @@ def test_message_timeout_cleanup(broker):
     broker.get_next(stream, consumer_group)
 
     # Check that the timed-out message was moved to DLQ
-    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
-    if stream in dlq_messages:
-        assert len(dlq_messages[stream]) == 1
-        dlq_entry = dlq_messages[stream][0]
-        assert dlq_entry[0] == identifier
-        assert dlq_entry[1] == message
-        assert dlq_entry[2] == "timeout"
+    [entry] = _dead_lettered(broker, consumer_group, stream)
+    assert entry.original_id == identifier
+    assert entry.payload["foo"] == "bar"
+    assert entry.failure_reason == "timeout"
 
     # Verify message is no longer in-flight
     assert _in_flight_count(broker, consumer_group, stream) == 0
@@ -71,9 +77,7 @@ def test_message_timeout_without_dlq(broker):
     broker.get_next(stream, consumer_group)
 
     # Verify no DLQ messages exist
-    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
-    if stream in dlq_messages:
-        assert len(dlq_messages[stream]) == 0
+    assert broker.dlq_depth(f"{stream}:dlq") == 0
 
     # Verify message is no longer in-flight (discarded)
     assert _in_flight_count(broker, consumer_group, stream) == 0
@@ -111,12 +115,8 @@ def test_message_timeout_multiple_messages(broker):
     broker.get_next(stream, consumer_group)
 
     # Check that all timed-out messages were moved to DLQ
-    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
-    if stream in dlq_messages:
-        assert len(dlq_messages[stream]) == 3
-        dlq_identifiers = [entry[0] for entry in dlq_messages[stream]]
-        for identifier in identifiers:
-            assert identifier in dlq_identifiers
+    entries = _dead_lettered(broker, consumer_group, stream)
+    assert sorted(entry.original_id for entry in entries) == sorted(identifiers)
 
     # Verify no messages are in-flight
     assert _in_flight_count(broker, consumer_group, stream) == 0
@@ -157,17 +157,12 @@ def test_message_timeout_cross_consumer_group_isolation(broker):
     broker.get_next(stream, consumer_group_2)
 
     # Check DLQ isolation
-    dlq_messages_1 = broker._adapter.get_dlq_messages(consumer_group_1, stream)
-    dlq_messages_2 = broker._adapter.get_dlq_messages(consumer_group_2, stream)
-
     # Each group should have only its own timed-out message
-    if stream in dlq_messages_1:
-        assert len(dlq_messages_1[stream]) == 1
-        assert dlq_messages_1[stream][0][0] == id1
+    [entry_1] = _dead_lettered(broker, consumer_group_1, stream)
+    assert entry_1.original_id == id1
 
-    if stream in dlq_messages_2:
-        assert len(dlq_messages_2[stream]) == 1
-        assert dlq_messages_2[stream][0][0] == message_id_for_group2
+    [entry_2] = _dead_lettered(broker, consumer_group_2, stream)
+    assert entry_2.original_id == message_id_for_group2
 
 
 def test_message_timeout_does_not_affect_acked_messages(broker):
@@ -203,10 +198,8 @@ def test_message_timeout_does_not_affect_acked_messages(broker):
     broker.get_next(stream, consumer_group)
 
     # Check that only the second message went to DLQ
-    dlq_messages = broker._adapter.get_dlq_messages(consumer_group, stream)
-    if stream in dlq_messages:
-        assert len(dlq_messages[stream]) == 1
-        assert dlq_messages[stream][0][0] == id2  # Only second message
+    [entry] = _dead_lettered(broker, consumer_group, stream)
+    assert entry.original_id == id2  # Only second message
 
     # Verify only one message is counted as in-flight initially, then zero after timeout
     assert _in_flight_count(broker, consumer_group, stream) == 0  # After cleanup
