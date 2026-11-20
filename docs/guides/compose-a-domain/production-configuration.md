@@ -239,6 +239,8 @@ complete setup and CI configuration.
 - [ ] Create and change tables with schema migrations, as
       [Run Schema Migrations](schema-migrations.md) shows.
       `protean db setup` never changes a table that exists.
+      Elasticsearch has no migrations: run `protean db setup` to create its
+      indexes.
 - [ ] Configure server subscription type and worker count
 
 For deployment patterns, see

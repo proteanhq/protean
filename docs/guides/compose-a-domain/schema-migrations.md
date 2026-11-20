@@ -136,7 +136,8 @@ fixtures have dropped their tables; see
 
 ## Apply migrations to production
 
-Pick one of three paths. Each one applies the same committed files.
+Pick one of three paths. The first two apply the committed migration files.
+The third hands the table definitions to another tool.
 
 ### Print the SQL and run it by hand
 
@@ -144,8 +145,11 @@ Use this path when a database administrator reviews and runs every change.
 Print the SQL from the revision production is at to the latest one:
 
 ```bash
-protean db upgrade <current>:head --sql > upgrade.sql
+PROTEAN_ENV=production protean db upgrade <current>:head --sql > upgrade.sql
 ```
+
+The command writes the SQL for the database that the current environment
+configures, so set `PROTEAN_ENV` to select the production overlay.
 
 `<current>` is the revision production is at, the value in its
 `alembic_version` table. With `--sql`, the command does not connect to the
@@ -188,6 +192,9 @@ does, so the database must be reachable. Read the property after
 [database adapters reference](../../reference/adapters/database/index.md#read-the-tables-a-sql-provider-owns)
 lists which tables it holds.
 
+The tool does not run the committed migration files. A data migration or a
+backfill written in one of them has to be written again in the tool.
+
 ---
 
 ## Adopt migrations on an existing database
@@ -210,7 +217,12 @@ history. Bring it under migrations in two steps:
 
 Protean has no `stamp` command of its own. Alembic's `stamp` reads the same
 `migrations/alembic.ini`. From then on, run `protean db upgrade` on that database.
-Run `protean db check` after the stamp to confirm the tables match the model.
+
+`stamp` does not compare the tables with the migration. Before the stamp,
+compare the existing tables with the ones the initial migration creates, and
+fix every difference by hand. After the stamp, `protean db check` reports
+the differences autogenerate detects. It does not compare server defaults or
+partial-index conditions.
 
 Do not mix `protean db setup` and migrations on one database. `setup` creates
 tables without recording a revision, so a later `protean db upgrade` tries to
