@@ -118,6 +118,7 @@ need by what you're trying to accomplish.
 | Register domain elements                        | [Register Elements](./guides/compose-a-domain/register-elements.md) |
 | Initialize and activate a domain                | [Initialize Domain](./guides/compose-a-domain/initialize-domain.md) |
 | Configure for production with environment overlays | [Configure for Production](./guides/compose-a-domain/production-configuration.md) |
+| Change database tables with migrations, from the dev box to production | [Run Schema Migrations](./guides/compose-a-domain/schema-migrations.md) |
 | Choose a database, broker, cache, or event store adapter | [Choosing Adapters](./guides/compose-a-domain/choosing-adapters.md) |
 | Configure databases, brokers, and caches        | [Configuration](./reference/configuration/index.md) |
 | Understand identity and ID generation           | [Identity](./guides/domain-definition/identity.md) |

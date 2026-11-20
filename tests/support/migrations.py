@@ -237,9 +237,31 @@ class MigrationsProject:
 
     def run(self, *args: str) -> Result:
         """Run ``protean db <args> --domain domain.py`` and return the result."""
+        return self.invoke("db", *args, "--domain", "domain.py")
+
+    def invoke(self, *args: str) -> Result:
+        """Run ``protean <args>`` as given and return the result."""
         self.forget_modules()
         try:
-            return runner.invoke(app, ["db", *args, "--domain", "domain.py"])
+            return runner.invoke(app, list(args))
+        finally:
+            self._close_loaded_domain()
+            self.forget_modules()
+
+    def alembic(self, *args: str) -> None:
+        """Run ``alembic <args>`` in this process, as Alembic's own CLI does.
+
+        Raises ``AssertionError`` when Alembic rejects the arguments or reports
+        a command error.
+        """
+        import alembic.config  # Alembic is an optional extra.
+
+        self.forget_modules()
+        try:
+            alembic.config.main(argv=list(args))
+        except SystemExit as exc:
+            # Alembic's CLI exits on an error; a SystemExit would end pytest.
+            raise AssertionError(f"alembic {list(args)} exited {exc.code}") from exc
         finally:
             self._close_loaded_domain()
             self.forget_modules()

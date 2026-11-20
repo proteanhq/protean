@@ -65,6 +65,10 @@ scripts, and the Protean server.
 Environment overlays, environment variable substitution, adapter
 selection, and dual-mode testing configuration.
 
+### [Run Schema Migrations](./schema-migrations.md)
+
+Change tables with migrations from the dev box, through CI, to production.
+
 ### [Choosing Adapters](./choosing-adapters.md)
 
 Decide which database, broker, event store, and cache to use for each

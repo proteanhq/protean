@@ -1,0 +1,7 @@
+[databases.default]
+provider = "sqlite"
+database_uri = "${DATABASE_URL|sqlite:///shop.db}"
+
+[databases.reporting]
+provider = "sqlite"
+database_uri = "${REPORTING_DATABASE_URL|sqlite:///reporting.db}"

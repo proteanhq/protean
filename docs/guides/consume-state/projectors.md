@@ -171,7 +171,9 @@ Keep three boundaries in mind:
 - **Adding the option to an existing deployment needs a schema change**: The
   marker table appears only once a projector or a subscriber sets
   `idempotent=True`; run
-  `protean db setup` (or your migration tool) before deploying, or the first
+  `protean db setup` (or, on a database under
+  [schema migrations](../compose-a-domain/schema-migrations.md),
+  `protean db migrate` and `protean db upgrade`) before deploying, or the first
   delivery fails querying a missing table.
 - **Markers accumulate**: One row is written per `(message_id, handler)`. Prune
   markers older than your redelivery/recovery window by running

@@ -170,6 +170,9 @@ paths = [
     "tests/docs/reference/adapters/database/test_sqlite.py",
     "docs_src/adapters/database/index/002.py",
     "tests/docs/reference/adapters/database/test_index.py",
+    "docs_src/guides/compose-a-domain/schema-migrations/",
+    "tests/docs/guides/compose_a_domain/test_schema_migrations.py",
+    "docs/guides/compose-a-domain/schema-migrations.md",
 ]
 markers = ["sqlite"]
 databases = ["SQLITE"]

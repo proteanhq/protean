@@ -72,6 +72,7 @@ PAGES = (
     "guides/compose-a-domain/production-configuration.md",
     "guides/compose-a-domain/register-elements.md",
     "guides/compose-a-domain/schema-generation.md",
+    "guides/compose-a-domain/schema-migrations.md",
     "guides/compose-a-domain/when-to-compose.md",
     "guides/consume-state/cloudevents.md",
     "guides/consume-state/event-handlers.md",
@@ -406,6 +407,9 @@ GUIDE_TOML_INCLUDES = {
     "guides/compose-a-domain/production-configuration.md": [
         "guides/compose-a-domain/production-configuration/elasticsearch.toml",
         "guides/compose-a-domain/production-configuration/multiple_databases.toml",
+    ],
+    "guides/compose-a-domain/schema-migrations.md": [
+        "guides/compose-a-domain/schema-migrations/two_providers.toml",
     ],
     "guides/multi-domain-applications.md": [
         "guides/multi-domain-applications/catalogue.toml",

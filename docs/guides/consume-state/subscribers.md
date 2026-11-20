@@ -153,9 +153,10 @@ subscriber: Protean logs it, does not call
 raises it.
 
 Protean registers the marker table only when a projector or subscriber sets
-`idempotent=True`. Run `protean db setup` (or your migration tool) to create it
-before you deploy, or the first delivery fails when it queries the missing
-table. `protean idempotency cleanup` removes old markers, as it does for
+`idempotent=True`. Run `protean db setup` to create it before you deploy, or on
+a database under [schema migrations](../compose-a-domain/schema-migrations.md)
+run `protean db migrate` and `protean db upgrade`. Without the table, the first
+delivery fails when it queries the missing table. `protean idempotency cleanup` removes old markers, as it does for
 projectors.
 
 On the in-memory provider, Protean skips a message whose marker it finds, but

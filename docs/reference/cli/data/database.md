@@ -4,6 +4,9 @@ The `protean db` command group manages database schema and data for a Protean
 domain. All commands accept a `--domain` option to specify the domain module
 path (defaults to the current directory).
 
+To change tables with migrations from the dev box to production, follow
+[Run Schema Migrations](../../../guides/compose-a-domain/schema-migrations.md).
+
 ## Commands
 
 | Command | Description | Confirmation |

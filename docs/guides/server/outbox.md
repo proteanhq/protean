@@ -62,6 +62,11 @@ outbox table without touching the rest of the schema:
 $ protean db setup-outbox --domain=my_domain
 ```
 
+On a database under schema migrations, run `protean db migrate` and
+`protean db upgrade` instead. The outbox table is part of the provider's tables
+when the outbox is enabled, so the migration creates it; see
+[Run Schema Migrations](../compose-a-domain/schema-migrations.md).
+
 Multiple database providers produce one outbox per provider. Each provider owns
 its own outbox table. The Engine runs an `OutboxProcessor` only for a managed
 provider that an aggregate is stored in, since no other provider receives

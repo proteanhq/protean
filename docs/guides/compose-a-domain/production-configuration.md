@@ -236,7 +236,12 @@ complete setup and CI configuration.
 - [ ] Configure real database, broker, event store, and cache providers
 - [ ] Use environment variables for all connection strings and secrets
 - [ ] Set `event_processing = "async"` and `command_processing = "async"`
-- [ ] Run `protean db setup --domain=my_domain` to create tables
+- [ ] Create and change tables with schema migrations, as
+      [Run Schema Migrations](schema-migrations.md) shows.
+      `protean db setup` never changes a table that exists.
+      Elasticsearch has no migrations. `protean db setup` creates its
+      indexes, but it acts on every provider, so run it only after
+      `protean db upgrade` has run for every SQL provider.
 - [ ] Configure server subscription type and worker count
 
 For deployment patterns, see
