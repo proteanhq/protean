@@ -14,12 +14,14 @@ an earlier assignment, such as ``cfg = self._domain.config`` or
 ``derived_domain``, ``current_domain``, any attribute named ``domain`` or
 ``_domain``, and ``self`` inside the domain package.
 
-A bound name follows Python's scopes. A function, lambda or comprehension sees
-the names bound in the scopes around it, unless it binds the same name itself,
-for example as a parameter. A class body's bindings stay in the class body.
-Another binding of the name, such as a ``for`` target, ``with ... as``, an
-import or ``del``, ends it. The scan does not follow branches: a name bound
-in one ``if`` arm counts for the rest of its scope.
+A bound name follows Python's scopes. A function or lambda sees the names
+bound in the scopes around it before its definition, unless it binds the same
+name itself, for example as a parameter. A comprehension sees the names bound
+before it, and its first iterable is read in the scope around it. A class
+body's bindings stay in the class body. Another binding of the name, such as a
+``for`` target, ``with ... as``, an import, ``del`` or a ``match`` capture,
+ends it. The scan does not follow branches: it reads the arms of an ``if`` in
+source order, so the last binding of a name in the source wins.
 
 A bare ``config`` that no assignment binds is often a nested section
 (``telemetry``, a subscription config), whose keys are not top-level, so the
@@ -120,6 +122,10 @@ def _bound_names(node: ast.AST) -> set[str]:
         return {node.asname or node.name.split(".")[0]}
     if isinstance(node, ast.ExceptHandler) and node.name:
         return {node.name}
+    if isinstance(node, ast.MatchAs | ast.MatchStar) and node.name:
+        return {node.name}
+    if isinstance(node, ast.MatchMapping) and node.rest:
+        return {node.rest}
     return set()
 
 
@@ -163,7 +169,7 @@ class _Reads:
             elif isinstance(node, ast.ClassDef):
                 self.class_body(node, aliases)
             elif isinstance(node, _Comprehension):
-                self.comprehension(node, aliases)
+                self.comprehension(node, aliases, enclosing)
             else:
                 self.scope(_children(node), aliases, enclosing)
                 self.check(node, aliases)
@@ -190,11 +196,16 @@ class _Reads:
         self.scope(node.body, set(aliases), aliases)
         aliases.discard(node.name)
 
-    def comprehension(self, node: _Comprehension, aliases: set[str]) -> None:
-        generators = node.generators
+    def comprehension(
+        self, node: _Comprehension, aliases: set[str], enclosing: set[str]
+    ) -> None:
+        first, *generators = node.generators
+        # Python evaluates the first iterable in the enclosing scope, before
+        # the comprehension binds its targets.
+        self.scope([first.iter], aliases, enclosing)
         targets = {
             n.id
-            for g in generators
+            for g in node.generators
             for n in ast.walk(g.target)
             if isinstance(n, ast.Name)
         }
@@ -204,7 +215,7 @@ class _Reads:
             for c in ast.iter_child_nodes(node)
             if not isinstance(c, ast.comprehension)
         ]
-        self.scope([*generators, *results], inner, inner)
+        self.scope([first.target, *first.ifs, *generators, *results], inner, inner)
 
     def check(self, node: ast.AST, aliases: set[str]) -> None:
         read = _read(node)
@@ -512,3 +523,72 @@ def test_scan_reads_a_module_with_a_byte_order_mark(tmp_path, monkeypatch):
     monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
 
     assert _scan() == {"bom_key": [f"{tmp_path.name}/bom.py:1"]}
+
+
+def test_scan_ends_an_alias_at_an_import_or_del(tmp_path, monkeypatch):
+    (tmp_path / "unbind.py").write_text(
+        "def imported():\n"
+        "    cfg = domain.config\n"
+        "    import cfg\n"
+        '    cfg["import_key"]\n'
+        "\n"
+        "def deleted():\n"
+        "    cfg = domain.config\n"
+        "    del cfg\n"
+        '    cfg["del_key"]\n'
+    )
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {}
+
+
+def test_scan_ends_an_alias_at_a_match_capture(tmp_path, monkeypatch):
+    (tmp_path / "capture.py").write_text(
+        "def pick(value):\n"
+        "    cfg = domain.config\n"
+        "    match value:\n"
+        "        case cfg:\n"
+        '            cfg["as_key"]\n'
+        "\n"
+        "def star(value):\n"
+        "    cfg = domain.config\n"
+        "    match value:\n"
+        "        case [*cfg]:\n"
+        '            cfg["star_key"]\n'
+        "\n"
+        "def rest(value):\n"
+        "    cfg = domain.config\n"
+        "    match value:\n"
+        "        case {**cfg}:\n"
+        '            cfg["rest_key"]\n'
+    )
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {}
+
+
+def test_scan_reads_a_comprehension_first_iterable_in_the_enclosing_scope(
+    tmp_path, monkeypatch
+):
+    (tmp_path / "iterable.py").write_text(
+        "def build():\n"
+        "    cfg = domain.config\n"
+        '    return [cfg for cfg in cfg["iter_key"]]\n'
+    )
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {"iter_key": [f"{tmp_path.name}/iterable.py:3"]}
+
+
+def test_scan_keeps_the_last_binding_across_if_arms(tmp_path, monkeypatch):
+    (tmp_path / "arms.py").write_text(
+        "def build(flag, section):\n"
+        "    if flag:\n"
+        "        cfg = section\n"
+        "    else:\n"
+        "        cfg = domain.config\n"
+        '    return cfg["arm_key"]\n'
+    )
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {"arm_key": [f"{tmp_path.name}/arms.py:6"]}
