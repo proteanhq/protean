@@ -8,17 +8,26 @@ module in ``src/protean`` and checks the key of every read on a domain's config
 against the defaults.
 
 A read is ``<config>["key"]`` or ``<config>.get("key", ...)`` with a string
-literal key. ``<config>`` is ``<receiver>.config``, or a local name bound to
-one earlier in the same function, such as ``cfg = self._domain.config``. The
-receiver is ``domain``, ``derived_domain``, ``current_domain``, any attribute
-named ``domain`` or ``_domain``, and ``self`` inside the domain package. A
-bare ``config`` that no assignment binds is often a nested section
+literal key. ``<config>`` is ``<receiver>.config``, or a name bound to one by
+an earlier assignment, such as ``cfg = self._domain.config`` or
+``cfg: Config = domain.config``. The receiver is ``domain``,
+``derived_domain``, ``current_domain``, any attribute named ``domain`` or
+``_domain``, and ``self`` inside the domain package.
+
+A bound name follows Python's scopes. A function, lambda or comprehension sees
+the names bound in the scopes around it, unless it binds the same name itself,
+for example as a parameter. A class body's bindings stay in the class body.
+Another binding of the name, such as a ``for`` target, ``with ... as``, an
+import or ``del``, ends it. The scan does not follow branches: a name bound
+in one ``if`` arm counts for the rest of its scope.
+
+A bare ``config`` that no assignment binds is often a nested section
 (``telemetry``, a subscription config), whose keys are not top-level, so the
 scan skips it. Docstrings and comments hold no reads.
 """
 
 import ast
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 import protean
@@ -37,7 +46,10 @@ _DOMAIN_PACKAGE = _SRC / "domain"
 _DOMAIN_NAMES = frozenset({"domain", "derived_domain", "current_domain"})
 _DOMAIN_ATTRIBUTES = frozenset({"domain", "_domain"})
 
-_Function = ast.FunctionDef | ast.AsyncFunctionDef
+_Function = ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
+_Comprehension = ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
+_Binding = ast.Assign | ast.AnnAssign | ast.AugAssign | ast.NamedExpr
+_AliasBinding = ast.Assign | ast.AnnAssign | ast.NamedExpr
 
 
 def _is_domain(node: ast.expr, in_domain_package: bool) -> bool:
@@ -49,7 +61,7 @@ def _is_domain(node: ast.expr, in_domain_package: bool) -> bool:
     return isinstance(node, ast.Attribute) and node.attr in _DOMAIN_ATTRIBUTES
 
 
-def _is_domain_config(node: ast.expr, in_domain_package: bool) -> bool:
+def _is_domain_config(node: ast.expr | None, in_domain_package: bool) -> bool:
     """Return whether ``node`` is ``<domain>.config``."""
     return (
         isinstance(node, ast.Attribute)
@@ -64,11 +76,11 @@ def _string(node: ast.expr) -> str | None:
     return None
 
 
-def _read(node: ast.AST) -> tuple[ast.expr, str] | None:
-    """Return the config expression and key of a read, or ``None``."""
+def _read(node: ast.AST) -> tuple[ast.expr, str, int] | None:
+    """Return the config expression, key and line of a read, or ``None``."""
     if isinstance(node, ast.Subscript):
         key = _string(node.slice)
-        return (node.value, key) if key is not None else None
+        return (node.value, key, node.lineno) if key is not None else None
     if (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
@@ -76,61 +88,154 @@ def _read(node: ast.AST) -> tuple[ast.expr, str] | None:
         and node.args
     ):
         key = _string(node.args[0])
-        return (node.func.value, key) if key is not None else None
+        return (node.func.value, key, node.lineno) if key is not None else None
     return None
 
 
-def _scope_nodes(node: ast.AST) -> Iterator[ast.AST]:
-    """Yield the nodes under ``node`` in source order, stopping at nested functions."""
-    for child in ast.iter_child_nodes(node):
-        yield child
-        if not isinstance(child, _Function):
-            yield from _scope_nodes(child)
+def _targets(node: _AliasBinding) -> list[ast.expr]:
+    return node.targets if isinstance(node, ast.Assign) else [node.target]
 
 
-def _bind(node: ast.AST, aliases: set[str], in_domain_package: bool) -> None:
-    """Record or end an alias when ``node`` assigns a single name."""
-    if not (isinstance(node, ast.Assign) and len(node.targets) == 1):
-        return
-    target = node.targets[0]
-    if not isinstance(target, ast.Name):
-        return
-    # A rebinding to anything else ends the alias.
-    if _is_domain_config(node.value, in_domain_package):
-        aliases.add(target.id)
-    else:
-        aliases.discard(target.id)
+def _children(node: ast.AST) -> list[ast.AST]:
+    """Return the children of ``node`` in the order Python evaluates them.
 
-
-def _scope_reads(scope: ast.AST, in_domain_package: bool) -> Iterator[tuple[int, str]]:
-    """Yield ``(line, key)`` for each read in one function or module scope.
-
-    Aliases bound in the scope are visible only inside it, so a parameter
-    named ``config`` in another function is not taken for the domain's config.
+    The value of an assignment and the iterable of a ``for`` loop run before
+    their targets are bound, so ``cfg = cfg["section"]`` reads the alias first.
     """
-    aliases: set[str] = set()
-    for node in _scope_nodes(scope):
-        _bind(node, aliases, in_domain_package)
+    if isinstance(node, _Binding) and node.value is not None:
+        rest = [c for c in ast.iter_child_nodes(node) if c is not node.value]
+        return [node.value, *rest]
+    if isinstance(node, ast.For | ast.AsyncFor):
+        return [node.iter, node.target, *node.body, *node.orelse]
+    return list(ast.iter_child_nodes(node))
+
+
+def _bound_names(node: ast.AST) -> set[str]:
+    """Return the names ``node`` itself binds in its scope."""
+    if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store | ast.Del):
+        return {node.id}
+    if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+        return {node.name}
+    if isinstance(node, ast.alias):
+        return {node.asname or node.name.split(".")[0]}
+    if isinstance(node, ast.ExceptHandler) and node.name:
+        return {node.name}
+    return set()
+
+
+def _scope_walk(nodes: Iterable[ast.AST]) -> Iterator[ast.AST]:
+    """Yield ``nodes`` and the nodes under them, stopping at nested scopes."""
+    for node in nodes:
+        yield node
+        if not isinstance(node, _Function | _Comprehension | ast.ClassDef):
+            yield from _scope_walk(ast.iter_child_nodes(node))
+
+
+def _local_names(node: _Function) -> set[str]:
+    """Return the parameters of ``node`` and the names its body binds."""
+    args = node.args
+    params = [*args.posonlyargs, *args.args, *args.kwonlyargs]
+    params += [a for a in (args.vararg, args.kwarg) if a is not None]
+    body = node.body if isinstance(node.body, list) else [node.body]
+    bound = {name for n in _scope_walk(body) for name in _bound_names(n)}
+    return {a.arg for a in params} | bound
+
+
+class _Reads:
+    """Collect the reads of a domain's config in one module."""
+
+    def __init__(self, in_domain_package: bool) -> None:
+        self.in_domain_package = in_domain_package
+        self.found: list[tuple[int, str]] = []
+
+    def scope(
+        self, nodes: Iterable[ast.AST], aliases: set[str], enclosing: set[str]
+    ) -> None:
+        """Walk ``nodes`` with ``aliases`` live.
+
+        ``enclosing`` is the alias set a nested function starts from. It is
+        ``aliases`` itself, except in a class body, whose bindings a method
+        does not see.
+        """
+        for node in nodes:
+            if isinstance(node, _Function):
+                self.function(node, aliases, enclosing)
+            elif isinstance(node, ast.ClassDef):
+                self.class_body(node, aliases)
+            elif isinstance(node, _Comprehension):
+                self.comprehension(node, aliases)
+            else:
+                self.scope(_children(node), aliases, enclosing)
+                self.check(node, aliases)
+                self.bind(node, aliases)
+
+    def function(self, node: _Function, aliases: set[str], enclosing: set[str]) -> None:
+        # Decorators and defaults run in the enclosing scope, when the
+        # function is defined.
+        args = node.args
+        outer = [*args.defaults, *(d for d in args.kw_defaults if d is not None)]
+        if not isinstance(node, ast.Lambda):
+            outer = [*node.decorator_list, *outer]
+        self.scope(outer, aliases, enclosing)
+        inner = enclosing - _local_names(node)
+        body = node.body if isinstance(node.body, list) else [node.body]
+        self.scope(body, inner, inner)
+        if not isinstance(node, ast.Lambda):
+            aliases.discard(node.name)
+
+    def class_body(self, node: ast.ClassDef, aliases: set[str]) -> None:
+        self.scope(
+            [*node.decorator_list, *node.bases, *node.keywords], aliases, aliases
+        )
+        self.scope(node.body, set(aliases), aliases)
+        aliases.discard(node.name)
+
+    def comprehension(self, node: _Comprehension, aliases: set[str]) -> None:
+        generators = node.generators
+        targets = {
+            n.id
+            for g in generators
+            for n in ast.walk(g.target)
+            if isinstance(n, ast.Name)
+        }
+        inner = aliases - targets
+        results = [
+            c
+            for c in ast.iter_child_nodes(node)
+            if not isinstance(c, ast.comprehension)
+        ]
+        self.scope([*generators, *results], inner, inner)
+
+    def check(self, node: ast.AST, aliases: set[str]) -> None:
         read = _read(node)
         if read is None:
-            continue
-        config, key = read
+            return
+        config, key, lineno = read
         if isinstance(config, ast.Name):
             is_config = config.id in aliases
         else:
-            is_config = _is_domain_config(config, in_domain_package)
+            is_config = _is_domain_config(config, self.in_domain_package)
         if is_config:
-            yield node.lineno, key
+            self.found.append((lineno, key))
+
+    def bind(self, node: ast.AST, aliases: set[str]) -> None:
+        """Record an alias, or end one when ``node`` binds its name to anything else."""
+        if isinstance(node, _AliasBinding) and _is_domain_config(
+            node.value, self.in_domain_package
+        ):
+            aliases.update(t.id for t in _targets(node) if isinstance(t, ast.Name))
+        else:
+            aliases.difference_update(_bound_names(node))
 
 
 def _file_reads(path: Path) -> list[tuple[int, str]]:
     """Return ``(line, key)`` for each read in the module at ``path``, by line."""
-    tree = ast.parse(path.read_text(), filename=str(path))
-    in_domain_package = path.is_relative_to(_DOMAIN_PACKAGE)
-    scopes = [tree, *(n for n in ast.walk(tree) if isinstance(n, _Function))]
-    return sorted(
-        read for scope in scopes for read in _scope_reads(scope, in_domain_package)
-    )
+    # Bytes let ``ast`` honour a BOM and a coding header.
+    tree = ast.parse(path.read_bytes(), filename=str(path))
+    reads = _Reads(path.is_relative_to(_DOMAIN_PACKAGE))
+    aliases: set[str] = set()
+    reads.scope(tree.body, aliases, aliases)
+    return sorted(reads.found)
 
 
 def _scan() -> dict[str, list[str]]:
@@ -149,8 +254,15 @@ def test_scan_finds_known_reads():
     found = _scan()
 
     # ``snapshot_threshold`` is read only by subscript, so it pins the ``[``
-    # branch of the scan.
-    assert {"lint", "observatory", "databases", "snapshot_threshold"} <= found.keys()
+    # branch of the scan. ``source_uri`` is read only through
+    # ``current_domain.config``, so it pins that receiver.
+    assert {
+        "lint",
+        "observatory",
+        "databases",
+        "snapshot_threshold",
+        "source_uri",
+    } <= found.keys()
     # ``sqlalchemy.py`` reads ``identity_strategy`` only through a local alias
     # (``config = provider.domain.config``), so it pins the alias branch.
     assert any(
@@ -271,3 +383,132 @@ def test_scan_skips_a_self_config_alias_outside_the_domain_package(
     monkeypatch.setattr(f"{__name__}._DOMAIN_PACKAGE", tmp_path / "domain")
 
     assert _scan() == {}
+
+
+def test_scan_reads_an_alias_on_the_right_of_its_own_rebinding(tmp_path, monkeypatch):
+    (tmp_path / "narrow.py").write_text(
+        "def build():\n"
+        "    cfg = domain.config\n"
+        '    cfg = cfg["databases"]\n'
+        '    return cfg.get("default")\n'
+    )
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {"databases": [f"{tmp_path.name}/narrow.py:3"]}
+
+
+def test_scan_finds_a_read_through_an_annotated_alias(tmp_path, monkeypatch):
+    (tmp_path / "annotated.py").write_text(
+        "def build(self):\n"
+        "    cfg: dict = self._domain.config\n"
+        '    return cfg["annotated_key"]\n'
+    )
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {"annotated_key": [f"{tmp_path.name}/annotated.py:3"]}
+
+
+def test_scan_reads_current_and_derived_domain_config(tmp_path, monkeypatch):
+    (tmp_path / "receivers.py").write_text(
+        'a = current_domain.config["current_key"]\n'
+        'b = derived_domain.config.get("derived_key")\n'
+    )
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {
+        "current_key": [f"{tmp_path.name}/receivers.py:1"],
+        "derived_key": [f"{tmp_path.name}/receivers.py:2"],
+    }
+
+
+def test_scan_ends_an_alias_at_a_for_or_with_target(tmp_path, monkeypatch):
+    (tmp_path / "targets.py").write_text(
+        "def loop(sections):\n"
+        "    cfg = domain.config\n"
+        "    for cfg in sections:\n"
+        '        cfg["for_key"]\n'
+        "\n"
+        "def open_it(section):\n"
+        "    cfg = domain.config\n"
+        "    with section as cfg:\n"
+        '        cfg["with_key"]\n'
+    )
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {}
+
+
+def test_scan_skips_a_comprehension_or_lambda_that_rebinds_the_alias(
+    tmp_path, monkeypatch
+):
+    (tmp_path / "inner.py").write_text(
+        "def build(sections):\n"
+        "    cfg = domain.config\n"
+        '    names = [cfg["comp_key"] for cfg in sections]\n'
+        '    pick = lambda cfg: cfg["lambda_key"]\n'
+        '    return cfg["outer_key"]\n'
+    )
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {"outer_key": [f"{tmp_path.name}/inner.py:5"]}
+
+
+def test_scan_keeps_class_body_aliases_in_the_class(tmp_path, monkeypatch):
+    (tmp_path / "klass.py").write_text(
+        "def outer(cfg):\n"
+        "    class K:\n"
+        "        cfg = domain.config\n"
+        '        inside = cfg["inside_key"]\n'
+        "\n"
+        "        def method(self):\n"
+        '            return cfg["method_key"]\n'
+        '    return cfg["outside_key"]\n'
+    )
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {"inside_key": [f"{tmp_path.name}/klass.py:4"]}
+
+
+def test_scan_follows_an_alias_into_nested_functions(tmp_path, monkeypatch):
+    (tmp_path / "closure.py").write_text(
+        "def outer():\n"
+        "    cfg = domain.config\n"
+        "\n"
+        '    @register(cfg["decorator_key"])\n'
+        '    def inner(flag=cfg.get("default_key")):\n'
+        '        return cfg["closure_key"]\n'
+        "\n"
+        "    def shadow(cfg):\n"
+        '        return cfg["param_key"]\n'
+    )
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {
+        "decorator_key": [f"{tmp_path.name}/closure.py:4"],
+        "default_key": [f"{tmp_path.name}/closure.py:5"],
+        "closure_key": [f"{tmp_path.name}/closure.py:6"],
+    }
+
+
+def test_scan_lists_sites_by_line(tmp_path, monkeypatch):
+    # ``ast`` puts the test of a conditional expression before its body, so the
+    # read on line 3 is walked before the one on line 2.
+    (tmp_path / "order.py").write_text(
+        "value = (\n"
+        '    domain.config["k"]\n'
+        '    if domain.config["k"]\n'
+        "    else None\n"
+        ")\n"
+    )
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {
+        "k": [f"{tmp_path.name}/order.py:2", f"{tmp_path.name}/order.py:3"]
+    }
+
+
+def test_scan_reads_a_module_with_a_byte_order_mark(tmp_path, monkeypatch):
+    (tmp_path / "bom.py").write_bytes(b'\xef\xbb\xbfvalue = domain.config["bom_key"]\n')
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {"bom_key": [f"{tmp_path.name}/bom.py:1"]}
