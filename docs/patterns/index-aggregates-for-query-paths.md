@@ -158,7 +158,7 @@ backend understands.
 | How do I back a filter + sort? | A composite `Index` with `desc=` matching the sort. |
 | How do I keep a hot-set index small? | A partial index with `where=Q(...)`. |
 | What about GIN/BRIN/expression indexes? | `Index.from_sql(dialect, ddl)`. |
-| How do I apply them? | `protean db setup`, or render with `protean schema render --indexes`. |
+| How do I apply them? | `protean db setup` for new tables, a [schema migration](../guides/compose-a-domain/schema-migrations.md) for existing ones, or render with `protean schema render --indexes`. |
 
 ---
 

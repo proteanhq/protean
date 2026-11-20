@@ -248,6 +248,24 @@ class MigrationsProject:
             self._close_loaded_domain()
             self.forget_modules()
 
+    def alembic(self, *args: str) -> None:
+        """Run ``alembic <args>`` in this process, as Alembic's own CLI does.
+
+        Raises ``AssertionError`` when Alembic rejects the arguments or reports
+        a command error.
+        """
+        import alembic.config  # Alembic is an optional extra.
+
+        self.forget_modules()
+        try:
+            alembic.config.main(argv=list(args))
+        except SystemExit as exc:
+            # Alembic's CLI exits on an error; a SystemExit would end pytest.
+            raise AssertionError(f"alembic {list(args)} exited {exc.code}") from exc
+        finally:
+            self._close_loaded_domain()
+            self.forget_modules()
+
     def run_ok(self, *args: str) -> Result:
         """Run a command and fail the test when it does not exit 0."""
         result = self.run(*args)

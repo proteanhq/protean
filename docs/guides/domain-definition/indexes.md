@@ -132,6 +132,11 @@ On SQLAlchemy providers, declared indexes are created together with the table:
 protean db setup
 ```
 
+`protean db setup` never changes a table that exists, so it does not add a new
+index to a live table. On a database that holds data, write a migration for the
+index instead; see
+[Run Schema Migrations](../compose-a-domain/schema-migrations.md).
+
 To review the DDL first, or to apply it through your own migration tooling,
 render per-dialect `.sql` files instead of executing anything:
 
