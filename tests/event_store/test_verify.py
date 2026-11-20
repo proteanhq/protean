@@ -612,3 +612,39 @@ def test_report_json_writes_the_kind_as_its_plain_string():
     payload = json.loads(json.dumps(report.as_dict()))
 
     assert payload["violations"][0]["kind"] == "position_gap"
+
+
+class _SnapshotsApartStore(_ListStore):
+    """A store that keeps snapshots out of ``$all``, like the sql event store."""
+
+    def __init__(
+        self, messages: list[dict[str, Any]], snapshots: dict[str, dict[str, Any]]
+    ) -> None:
+        super().__init__(messages)
+        self._snapshots = snapshots
+
+    def get_last_stream_message(
+        self, stream_name: str, *args: Any, **kwargs: Any
+    ) -> dict[str, Any] | None:
+        return self._snapshots.get(stream_name)
+
+
+@pytest.mark.parametrize("field", ["id", "stream_name", "position"])
+def test_a_snapshot_read_apart_from_all_without_a_required_field_is_flagged(field):
+    snapshot = {
+        "id": "snap-1",
+        "stream_name": "test::user:snapshot-abc",
+        "position": 0,
+        "data": {"_version": 0},
+    }
+    del snapshot[field]
+    store = _SnapshotsApartStore(
+        [_msg(1, "test::user-abc", 0)], {"test::user:snapshot-abc": snapshot}
+    )
+
+    report = verify(store)
+
+    assert [(v.kind, v.stream) for v in report.violations] == [
+        (ViolationKind.MALFORMED_MESSAGE, "test::user:snapshot-abc")
+    ]
+    assert field in report.violations[0].detail

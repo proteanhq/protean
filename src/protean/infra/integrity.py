@@ -380,7 +380,11 @@ def _unscanned_snapshot_violations(
         row = adapter.get_last_stream_message(snapshot_stream)
         if row is None:
             continue
-        violation = _check_body(row, snapshot_stream, row["position"], snapshot_version)
+        violation = _missing_fields_violation(row, snapshot_stream, row.get("position"))
+        if violation is None:
+            violation = _check_body(
+                row, snapshot_stream, row["position"], snapshot_version
+            )
         if violation is not None:
             violations.append(violation)
     return violations

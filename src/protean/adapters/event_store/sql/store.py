@@ -247,9 +247,18 @@ def _engine_args(backend: str, config: Mapping[str, Any]) -> dict[str, Any]:
         # Set on the engine, the level is applied to every new connection, so
         # a server, role or connect_args default can never change it.
         args["isolation_level"] = "READ COMMITTED"
-    args.update(
-        (key, value) for key, value in config.items() if key not in _NON_ENGINE_KEYS
-    )
+    # An explicit ``None`` level means "unset". Passed on, it would replace the
+    # READ COMMITTED default and leave the driver or server level in effect.
+    for key, value in config.items():
+        if key in _NON_ENGINE_KEYS or (key == "isolation_level" and value is None):
+            continue
+        if key == "execution_options":
+            value = {
+                option: setting
+                for option, setting in value.items()
+                if not (option == "isolation_level" and setting is None)
+            }
+        args[key] = value
     return args
 
 

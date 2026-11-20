@@ -123,10 +123,21 @@ class TestPostgresqlEngineDefaults:
         finally:
             store.close()
 
-    def test_a_server_default_level_does_not_change_read_committed(self, test_domain):
+    @pytest.mark.parametrize(
+        "unset",
+        [
+            {"isolation_level": None},
+            {"execution_options": {"isolation_level": None}},
+            {},
+        ],
+    )
+    def test_a_server_default_level_does_not_change_read_committed(
+        self, test_domain, unset
+    ):
         store = build(
             test_domain,
             database_uri=POSTGRES_URI,
+            **unset,
             connect_args={
                 "options": "-c default_transaction_isolation=repeatable\\ read"
             },

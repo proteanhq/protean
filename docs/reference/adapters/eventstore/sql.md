@@ -2,8 +2,11 @@
 
 The `sql` event store keeps events and snapshots in tables on a SQLite file or
 a PostgreSQL database. It talks to the database through SQLAlchemy and needs no
-database extension. It uses its own `database_uri`, which can name the same
-database as your application or a different one.
+database extension. It uses its own `database_uri`. On PostgreSQL the URI can
+name the same database as your application or a different one. On SQLite it
+must name a different file from the application's: SQLite allows one writer
+per file, so an append on the store's connection waits for the Unit of Work's
+write lock and fails with `database is locked`.
 
 [ADR-0048](../../../adr/0048-sql-event-store.md) records the design decisions.
 
