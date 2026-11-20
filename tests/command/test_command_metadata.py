@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -427,7 +428,15 @@ class TestHeadersKeptForTraceparent:
     def test_incoming_headers_without_a_type_get_the_command_type(self):
         trace_id = "a" * 32
         traceparent = TraceParent(trace_id=trace_id, parent_id="b" * 16, sampled=True)
-        incoming = Metadata(headers=MessageHeaders(id="msg-1", traceparent=traceparent))
+        deadline = datetime(2099, 1, 1, tzinfo=UTC)
+        incoming = Metadata(
+            headers=MessageHeaders(
+                id="msg-1",
+                traceparent=traceparent,
+                idempotency_key="idem-1",
+                deadline=deadline,
+            )
+        )
 
         command = Login(user_id=str(uuid4()), _metadata=incoming)
 
@@ -436,3 +445,5 @@ class TestHeadersKeptForTraceparent:
         assert headers.id == "msg-1"
         assert headers.traceparent.trace_id == trace_id
         assert headers.time is not None
+        assert headers.idempotency_key == "idem-1"
+        assert headers.deadline == deadline
