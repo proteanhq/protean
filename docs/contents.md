@@ -79,6 +79,7 @@ in detail.
 - [Activate the Domain](./guides/compose-a-domain/activate-domain.md): Bind the domain to a context for use.
 - [When to Compose](./guides/compose-a-domain/when-to-compose.md): Lifecycle and timing of domain composition.
 - [Configure for Production](./guides/compose-a-domain/production-configuration.md): Environment overlays, env var substitution, adapter selection.
+- [Run Schema Migrations](./guides/compose-a-domain/schema-migrations.md): Change tables with migrations from the dev box, through CI, to production.
 - [Choosing Adapters](./guides/compose-a-domain/choosing-adapters.md): Pick the right database, broker, event store, and cache for each workload.
 - [Inspecting the IR](./guides/compose-a-domain/inspecting-the-ir.md): Generate and explore the domain's Intermediate Representation.
 - [Schema Generation](./guides/compose-a-domain/schema-generation.md): Generate JSON Schema files for domain elements.

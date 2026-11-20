@@ -237,9 +237,13 @@ class MigrationsProject:
 
     def run(self, *args: str) -> Result:
         """Run ``protean db <args> --domain domain.py`` and return the result."""
+        return self.invoke("db", *args, "--domain", "domain.py")
+
+    def invoke(self, *args: str) -> Result:
+        """Run ``protean <args>`` as given and return the result."""
         self.forget_modules()
         try:
-            return runner.invoke(app, ["db", *args, "--domain", "domain.py"])
+            return runner.invoke(app, list(args))
         finally:
             self._close_loaded_domain()
             self.forget_modules()

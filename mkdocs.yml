@@ -227,6 +227,7 @@ nav:
       - guides/compose-a-domain/activate-domain.md
       - guides/compose-a-domain/when-to-compose.md
       - guides/compose-a-domain/production-configuration.md
+      - guides/compose-a-domain/schema-migrations.md
       - guides/compose-a-domain/choosing-adapters.md
     - Model Your Domain:
       - guides/domain-definition/index.md
