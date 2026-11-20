@@ -75,7 +75,6 @@ def test_projection_profile_dict_matches_the_profile_defaults():
     assert shown == {key: defaults[key] for key in shown}
     assert shown["subscription_type"] == "event_store"
     assert shown["enable_dlq"] is False
-    assert shown["retention_maxlen"] is None
 
 
 def test_custom_profile_inherits_fast_and_overrides_one_field(tmp_path):
@@ -184,7 +183,6 @@ def test_decorator_options_combine_profile_and_config():
     assert resolved["enable_dlq"] is True
     # The rest comes from the `production` profile
     assert resolved["blocking_timeout_ms"] == 5000
-    assert resolved["retention_maxlen"] == 100_000
 
 
 def test_server_toml_sets_the_defaults_and_handler_overrides(tmp_path):
@@ -354,24 +352,43 @@ def test_debug_as_default_subscription_profile_changes_nothing():
     assert resolve(with_debug, handler) == resolve(without, handler)
 
 
-def test_debug_as_default_profile_caps_stream_retention_on_stream_type():
+def _fields_changed_by_default_profile(server: dict) -> dict:
     handler = bare_handler("OrderEventHandler")
     stream = {"default_subscription_type": "stream"}
-    with_debug = resolve(
-        Domain(
-            name="Shop",
-            config={"server": {**stream, "default_subscription_profile": "debug"}},
-        ),
-        handler,
+    with_profile = resolve(
+        Domain(name="Shop", config={"server": {**stream, **server}}), handler
     )
     without = resolve(Domain(name="Shop", config={"server": stream}), handler)
-
-    differing = {
-        k: (with_debug[k], without[k])
-        for k in with_debug
-        if with_debug[k] != without[k]
+    return {
+        k: (with_profile[k], without[k])
+        for k in with_profile
+        if with_profile[k] != without[k]
     }
-    assert differing == {"retention_maxlen": (1_000, None)}
+
+
+@pytest.mark.parametrize("profile", sorted(p.value for p in SubscriptionProfile))
+def test_a_built_in_default_profile_changes_no_field(profile):
+    assert (
+        _fields_changed_by_default_profile({"default_subscription_profile": profile})
+        == {}
+    )
+
+
+def test_a_default_custom_profile_sets_only_fields_the_server_defaults_leave_unset():
+    changed = _fields_changed_by_default_profile(
+        {
+            "default_subscription_profile": "careful",
+            "profiles": {
+                "careful": {
+                    "inherits": "debug",
+                    "circuit_breaker_threshold": 3,
+                    "messages_per_tick": 1,
+                }
+            },
+        }
+    )
+
+    assert changed == {"circuit_breaker_threshold": (3, 10)}
 
 
 def test_option_tables_show_the_defaults_a_bare_domain_resolves_to():
@@ -387,7 +404,6 @@ def test_option_tables_show_the_defaults_a_bare_domain_resolves_to():
     assert resolved["enable_dlq"] is False
     assert resolved["circuit_breaker_threshold"] == 10
     assert resolved["circuit_breaker_reset_seconds"] == 60
-    assert resolved["retention_maxlen"] is None
     assert resolved["position_update_interval"] == 10
     assert resolved["origin_stream"] is None
 

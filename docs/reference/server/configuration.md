@@ -92,29 +92,6 @@ Optimized for building read models:
 --8<-- "reference/server/configuration/001.py:projection"
 ```
 
-### Stream retention defaults {#stream-retention-defaults}
-
-`retention_maxlen` bounds a StreamSubscription's broker stream so processed
-messages don't accumulate forever. The stream is trimmed after each batch. How
-tight the bound is depends on the consumer topology. See [Stream
-retention](subscription-types.md#stream-retention) for the multi-group and
-single-group behavior and their caveats. Each profile carries a default cap:
-
-| Profile | `retention_maxlen` |
-| ------- | ------------------ |
-| `production` | 100,000 |
-| `fast` | 100,000 |
-| `batch` | 500,000 |
-| `debug` | 1,000 |
-| `projection` | none (event-store, no stream to trim) |
-
-The framework-wide default (when no profile applies) is `none`, which leaves
-trimming off. Set `retention_maxlen` on a profile, a per-handler config, or a
-custom profile to enable it. This is size-based retention only. There is no
-time-based TTL. Trimming needs a broker that declares `STREAM_RETENTION`, such
-as Redis Streams. On any other broker the cap, including a profile default, is
-skipped without a log line.
-
 ### Custom Profiles
 
 When the built-in profiles don't match your workload, define your own named
@@ -140,8 +117,8 @@ the profile starts from the framework's hardcoded defaults.
 **Allowed fields.** A custom profile may set `inherits` plus any of the standard
 profile fields: `subscription_type`, `messages_per_tick`, `tick_interval`,
 `blocking_timeout_ms`, `max_retries`, `retry_delay_seconds`, `enable_dlq`,
-`position_update_interval`, `origin_stream`, `retention_maxlen`,
-`circuit_breaker_threshold`, `circuit_breaker_reset_seconds`.
+`position_update_interval`, `origin_stream`, `circuit_breaker_threshold`,
+`circuit_breaker_reset_seconds`.
 
 **Validation** is fail-fast, a `ConfigurationError` is raised when the profiles are first
 resolved if a custom profile:
@@ -163,7 +140,10 @@ priority 6, which is *below* the server-level defaults at priority 5
 When a server-level default sets a field, it overwrites the profile's value.
 Protean's built-in configuration sets most of these fields even when
 `domain.toml` does not. As a result, `default_subscription_profile` sets only
-the fields the server-level defaults leave unset, such as `retention_maxlen`.
+the fields the server-level defaults leave unset, such as
+`circuit_breaker_threshold`. Every built-in profile has the same values as the
+hardcoded defaults for those fields, so a built-in profile named there changes
+nothing.
 To apply a whole profile, name it at a higher level: a per-handler `profile`
 (priority 4) or a handler's Meta `subscription_profile` (priority 3). Built-in
 and custom profiles behave the same way here.
@@ -195,7 +175,6 @@ a domain resolves to the `event_store` subscription type, and the engine turns
 | `dlq_alert_threshold` | int \| None | inherit | Override `[server.dlq] alert_threshold` (default 100) for this subscription's DLQ stream only |
 | `circuit_breaker_threshold` | int | 10 | Consecutive handler failures that trip the circuit breaker OPEN |
 | `circuit_breaker_reset_seconds` | float | 60 | Seconds an OPEN breaker waits before a single HALF_OPEN probe. Must be > 0 and finite (`inf`/`nan` are rejected) |
-| `retention_maxlen` | int | none | Cap the stream at this many entries ([stream retention](subscription-types.md#stream-retention)) |
 
 !!! warning "Known issue: per-handler DLQ overrides have no effect yet"
     Protean builds the subscription config for a handler without
@@ -466,14 +445,10 @@ Name the `debug` profile on the handlers you are working on:
 --8<-- "reference/server/configuration/development.toml"
 ```
 
-`default_subscription_profile = "debug"` sets far less. Protean's built-in
-server-level defaults set most fields that the `debug` profile sets. The
+`default_subscription_profile = "debug"` changes nothing. Protean's built-in
+server-level defaults set the fields that the `debug` profile changes, and the
 resolver applies those defaults after the profile, as the
-[caveat](#custom-profiles) explains. Only `retention_maxlen` comes from the
-profile, because the built-in `[server.stream_subscription]` block does not set
-it. So with `default_subscription_type = "stream"`, a stream subscription whose
-handler names no profile caps its stream at 1000 entries. A handler that names
-its own profile keeps that profile's cap.
+[caveat](#custom-profiles) explains.
 
 ### 4. Monitor and Adjust
 

@@ -1,21 +1,22 @@
-"""Tests for progress-safe stream retention (XTRIM) on the Redis broker.
+"""Tests for trimming a Redis stream by consumer progress (XTRIM MINID).
 
-``RedisBroker.trim`` caps a subscription's stream without dropping anything a
-consumer group still needs:
-
-- With more than one consumer group it trims by MINID at the slowest group's
-  ``last-delivered-id``, so an entry a slow group has not read is never removed.
-- With zero or one group it trims by MAXLEN, since there is at most one reader
-  whose progress could be outrun.
-
-Both use ``approximate=True``, so the stream may settle slightly above the
-target but never below it.
+``RedisBroker.trim`` removes only entries that every consumer group has read
+and acknowledged. Each group's bound is its oldest pending entry when it has
+pending entries, else its ``last-delivered-id``; the stream is trimmed at the
+smallest bound. The trim is approximate (``~``), so Redis removes whole
+macro-nodes of up to 100 entries and the stream can stay a little above the
+bound. The tests publish 1,000 entries so a whole node falls below the bound.
 """
+
+import json
 
 import pytest
 
-from protean.adapters.broker.redis import RedisBroker
+from protean.adapters.broker.redis import DATA_FIELD, RedisBroker
 from tests.shared import REDIS_URI
+
+STREAM = "orders"
+TOTAL = 1000
 
 
 def _broker(test_domain) -> RedisBroker:
@@ -24,108 +25,147 @@ def _broker(test_domain) -> RedisBroker:
     return broker
 
 
-def _read_group(broker: RedisBroker, group: str, stream: str, count: int) -> list[str]:
-    """XREADGROUP new messages for *group* and return their decoded ids."""
+def _publish(broker: RedisBroker, count: int = TOTAL) -> list[str]:
+    return [broker.publish(STREAM, {"n": i}) for i in range(count)]
+
+
+def _read(broker: RedisBroker, group: str, count: int) -> list[str]:
+    """XREADGROUP ``count`` new entries for ``group`` and return their ids."""
     response = broker._client.xreadgroup(
-        group, f"{group}-c", {stream: ">"}, count=count
+        group, f"{group}-c", {STREAM: ">"}, count=count
     )
-    ids: list[str] = []
-    for _stream_name, messages in response or []:
-        for message_id, _fields in messages:
-            ids.append(broker._decode_if_bytes(message_id))
+    return [
+        broker._decode_if_bytes(message_id)
+        for _stream, messages in response or []
+        for message_id, _fields in messages
+    ]
+
+
+def _read_and_ack(broker: RedisBroker, group: str, count: int) -> list[str]:
+    ids = _read(broker, group, count)
+    broker._client.xack(STREAM, group, *ids)
     return ids
 
 
+def _remaining_ids(broker: RedisBroker) -> list[str]:
+    return [
+        broker._decode_if_bytes(message_id)
+        for message_id, _fields in broker._client.xrange(STREAM)
+    ]
+
+
 @pytest.mark.redis
-class TestRedisStreamRetention:
-    def test_multi_group_keeps_entries_the_slow_group_has_not_read(self, test_domain):
-        """AC1: a slow consumer group keeps every entry it has not yet delivered.
-
-        Group A drains the whole stream; group B reads only the first three.
-        A MINID trim at group B's position must leave every unread entry (4..10)
-        in place so group B can still read them.
-        """
+class TestTrimByConsumerProgress:
+    def test_single_group_keeps_every_unread_entry(self, test_domain):
         broker = _broker(test_domain)
-        stream = "orders"
+        ids = _publish(broker)
+        broker.create_group(STREAM, "solo")
+        assert _read_and_ack(broker, "solo", 10) == ids[:10]
 
-        ids = [broker.publish(stream, {"n": i}) for i in range(10)]
+        broker.trim(STREAM)
 
-        broker.create_group(stream, "groupA")
-        broker.create_group(stream, "groupB")
+        remaining = _remaining_ids(broker)
+        assert remaining[-(TOTAL - 10) :] == ids[10:]
 
-        # Group A consumes everything; group B only the first three.
-        assert _read_group(broker, "groupA", stream, 10) == ids
-        assert _read_group(broker, "groupB", stream, 3) == ids[:3]
-
-        # maxlen=1 would obliterate the stream under a plain MAXLEN trim, but the
-        # multi-group branch ignores it and trims by the slow group's position.
-        removed = broker.trim(stream, 1)
-        assert isinstance(removed, int)
-
-        # Group B can still read every entry it had not yet delivered.
-        assert _read_group(broker, "groupB", stream, 100) == ids[3:]
-
-    def test_never_read_group_keeps_whole_stream(self, test_domain):
-        """A group parked at ``0-0`` (never read) makes MINID keep everything.
-
-        With two groups both at ``last-delivered-id == 0-0``, the minimum floor
-        is ``0-0``; no real entry is below it, so nothing is trimmed.
-        """
+    def test_two_groups_keep_entries_from_the_slower_groups_position(self, test_domain):
         broker = _broker(test_domain)
-        stream = "orders"
+        ids = _publish(broker)
+        broker.create_group(STREAM, "groupA")
+        broker.create_group(STREAM, "groupB")
+        assert _read_and_ack(broker, "groupA", 500) == ids[:500]
+        assert _read_and_ack(broker, "groupB", 200) == ids[:200]
 
-        broker.create_group(stream, "groupA")
-        broker.create_group(stream, "groupB")
-        for i in range(10):
-            broker.publish(stream, {"n": i})
+        removed = broker.trim(STREAM)
 
-        removed = broker.trim(stream, 1)
-
-        assert removed == 0
-        assert broker._client.xlen(stream) == 10
-
-    def test_single_group_bounds_stream_by_maxlen(self, test_domain):
-        """AC2: with a single group, MAXLEN caps the stream near the target.
-
-        Approximate trimming keeps at least ``maxlen`` entries and settles near
-        it (whole macro-nodes at a time), well below the published total.
-        """
-        broker = _broker(test_domain)
-        stream = "orders"
-
-        published = 1000
-        maxlen = 100
-        for i in range(published):
-            broker.publish(stream, {"n": i})
-        broker.create_group(stream, "solo")
-
-        removed = broker.trim(stream, maxlen)
-        xlen = broker._client.xlen(stream)
-
-        assert isinstance(removed, int)
-        assert removed > 0  # trimming actually removed entries
-        assert xlen < published  # the stream is bounded below the total
-        assert xlen >= maxlen  # approximate never drops below the cap
-        assert xlen <= maxlen * 3  # settled near the cap (macro-node slack)
-
-    def test_zero_group_stream_is_trimmed_by_maxlen(self, test_domain):
-        """A stream with no consumer group still trims by MAXLEN."""
-        broker = _broker(test_domain)
-        stream = "orders"
-
-        published = 1000
-        maxlen = 100
-        for i in range(published):
-            broker.publish(stream, {"n": i})
-
-        removed = broker.trim(stream, maxlen)
-        xlen = broker._client.xlen(stream)
-
+        remaining = _remaining_ids(broker)
+        # B's last-delivered id is ids[199]; MINID keeps it and everything after.
         assert removed > 0
-        assert maxlen <= xlen < published
+        assert remaining[-(TOTAL - 199) :] == ids[199:]
+        assert ids[0] not in remaining
+        assert len(remaining) == TOTAL - removed
 
-    def test_trim_missing_stream_returns_zero(self, test_domain):
-        """Trimming a stream that does not exist is a no-op, not an error."""
+    def test_oldest_pending_entry_survives_and_can_be_claimed(self, test_domain):
+        broker = _broker(test_domain)
+        ids = _publish(broker)
+        broker.create_group(STREAM, "g")
+        # The group reads every entry and acknowledges all but ids[500], so its
+        # last-delivered id (ids[999]) is far above its oldest pending entry.
+        assert _read(broker, "g", TOTAL) == ids
+        broker._client.xack(STREAM, "g", *ids[:500], *ids[501:])
+
+        removed = broker.trim(STREAM)
+
+        remaining = _remaining_ids(broker)
+        assert removed > 0
+        assert ids[0] not in remaining
+        assert remaining[-(TOTAL - 500) :] == ids[500:]
+        claimed = broker._client.xclaim(STREAM, "g", "other-c", 0, [ids[500]])
+        assert len(claimed) == 1
+        claimed_id, fields = claimed[0]
+        assert broker._decode_if_bytes(claimed_id) == ids[500]
+        assert json.loads(fields[DATA_FIELD.encode()]) == {"n": 500}
+
+    def test_pending_bound_wins_over_a_fully_acked_group(self, test_domain):
+        broker = _broker(test_domain)
+        ids = _publish(broker)
+        broker.create_group(STREAM, "done")
+        broker.create_group(STREAM, "busy")
+        assert _read_and_ack(broker, "done", TOTAL) == ids
+        assert _read(broker, "busy", 600) == ids[:600]
+        broker._client.xack(STREAM, "busy", *ids[:300], *ids[301:600])
+
+        broker.trim(STREAM)
+
+        remaining = _remaining_ids(broker)
+        assert ids[0] not in remaining
+        assert remaining[-(TOTAL - 300) :] == ids[300:]
+
+    def test_never_read_group_blocks_the_trim(self, test_domain):
+        broker = _broker(test_domain)
+        _publish(broker)
+        broker.create_group(STREAM, "reader")
+        broker.create_group(STREAM, "idle")
+        _read_and_ack(broker, "reader", TOTAL)
+
+        assert broker.trim(STREAM) == 0
+        assert broker._client.xlen(STREAM) == TOTAL
+
+    def test_stream_without_a_group_is_not_trimmed(self, test_domain):
+        broker = _broker(test_domain)
+        _publish(broker)
+
+        assert broker.trim(STREAM) == 0
+        assert broker._client.xlen(STREAM) == TOTAL
+
+    def test_missing_stream_returns_zero(self, test_domain):
         broker = _broker(test_domain)
 
-        assert broker.trim("no-such-stream", 100) == 0
+        assert broker.trim("no-such-stream") == 0
+
+    def test_key_of_another_type_logs_the_error(self, test_domain, caplog):
+        broker = _broker(test_domain)
+        broker._client.set(STREAM, "not a stream")
+
+        assert broker.trim(STREAM) == 0
+        assert f"Failed to trim stream {STREAM}" in caplog.text
+        assert "WRONGTYPE" in caplog.text
+
+    def test_ids_above_2_pow_53_compare_exactly(self, test_domain):
+        # Both millisecond parts round to 2**53 as Lua numbers. Compared that
+        # way, group B's bound looks lower than group A's pending entry and the
+        # trim removes the entry group A has not acknowledged.
+        broker = _broker(test_domain)
+        low, high = 2**53, 2**53 + 1
+        ids = [
+            broker._client.xadd(STREAM, {"n": seq}, id=f"{ms}-{seq}").decode()
+            for ms in (low, high)
+            for seq in range(200)
+        ]
+        broker.create_group(STREAM, "groupA")
+        broker.create_group(STREAM, "groupB")
+        assert _read(broker, "groupA", 6) == ids[:6]
+        broker._client.xack(STREAM, "groupA", *ids[:5])
+        assert _read_and_ack(broker, "groupB", 201) == ids[:201]
+
+        assert broker.trim(STREAM) == 0
+        assert _remaining_ids(broker) == ids

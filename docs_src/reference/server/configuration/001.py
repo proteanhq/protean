@@ -14,7 +14,6 @@
     "position_update_interval": 10,
     "circuit_breaker_threshold": 10,
     "circuit_breaker_reset_seconds": 60,
-    "retention_maxlen": 100_000,
 }
 # --8<-- [end:production]
 
@@ -30,7 +29,6 @@
     "position_update_interval": 5,
     "circuit_breaker_threshold": 10,
     "circuit_breaker_reset_seconds": 60,
-    "retention_maxlen": 100_000,
 }
 # --8<-- [end:fast]
 
@@ -46,7 +44,6 @@
     "position_update_interval": 50,
     "circuit_breaker_threshold": 10,
     "circuit_breaker_reset_seconds": 60,
-    "retention_maxlen": 500_000,
 }
 # --8<-- [end:batch]
 
@@ -62,7 +59,6 @@
     "position_update_interval": 1,
     "circuit_breaker_threshold": 10,
     "circuit_breaker_reset_seconds": 60,
-    "retention_maxlen": 1_000,
 }
 # --8<-- [end:debug]
 
@@ -73,6 +69,5 @@
     "tick_interval": 0,
     "position_update_interval": 10,
     "enable_dlq": False,  # Not supported for event_store
-    "retention_maxlen": None,  # Reads the event store, not a broker stream
 }
 # --8<-- [end:projection]

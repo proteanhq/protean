@@ -96,7 +96,7 @@ class BrokerCapabilities(Flag):
     DEAD_LETTER_QUEUE = auto()  # Handle failed messages (depends on ACK_NACK)
     REPLAY = auto()  # Re-read historical messages (depends on PERSISTENCE)
     STREAM_PARTITIONING = auto()  # Partition streams for scalability
-    STREAM_RETENTION = auto()  # Trim a stream to bound its size
+    STREAM_RETENTION = auto()  # Trim stream entries every consumer group acknowledged
 
     # Convenience Capability Sets
     BASIC_PUBSUB = PUBLISH | SUBSCRIBE
@@ -553,15 +553,13 @@ class StreamRetentionPort(BrokerPort, Protocol):
     """
 
     @abstractmethod
-    def trim(self, stream: str, maxlen: int) -> int:
-        """Trim ``stream`` toward ``maxlen`` entries.
+    def trim(self, stream: str) -> int:
+        """Remove the entries of ``stream`` that every consumer group has acknowledged.
 
-        The stream subscription calls it after each processed batch when the
-        subscription sets ``retention_maxlen``. The trim need not be exact,
-        and an adapter may use a different rule, such as the read position
-        of its consumer groups. Each adapter's docstring states its rule and
-        which entries it may remove when a consumer group has not read them
-        yet.
+        The stream subscription calls it after each processed batch. The trim
+        removes only entries that every consumer group on ``stream`` has read
+        and acknowledged when it runs, so no existing group loses a message it
+        still needs. It need not remove all of them.
 
         Returns:
             The number of entries removed.

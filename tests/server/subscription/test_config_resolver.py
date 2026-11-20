@@ -159,66 +159,6 @@ class TestConfigResolverServerDefaults:
             == PROFILE_DEFAULTS[SubscriptionProfile.FAST]["blocking_timeout_ms"]
         )
 
-    def test_applies_server_retention_maxlen(self, test_domain):
-        """`retention_maxlen` resolves from `[server.stream_subscription]`.
-
-        The reference docs list it in that section's options table alongside
-        keys that did work, but the resolver never read it there, so setting it
-        was silently ignored and no stream was ever trimmed.
-
-        The handler has to be a stream subscription: retention is meaningless
-        for an event-store one, where an inherited value is deliberately cleared
-        (see below).
-        """
-        test_domain.config["server"]["default_subscription_type"] = "stream"
-        test_domain.config["server"]["stream_subscription"]["retention_maxlen"] = 50_000
-
-        @test_domain.event_handler(part_of=Order)
-        class RetentionHandler(BaseEventHandler):
-            pass
-
-        resolver = ConfigResolver(test_domain)
-        config = resolver.resolve(RetentionHandler)
-
-        assert config.retention_maxlen == 50_000
-
-    def test_handler_level_retention_maxlen_wins_over_server_default(self, test_domain):
-        """A server-wide default must not override a per-handler setting."""
-        test_domain.config["server"]["default_subscription_type"] = "stream"
-        test_domain.config["server"]["stream_subscription"]["retention_maxlen"] = 50_000
-        test_domain.config["server"]["subscriptions"] = {
-            "OverridingHandler": {"retention_maxlen": 900}
-        }
-
-        @test_domain.event_handler(part_of=Order)
-        class OverridingHandler(BaseEventHandler):
-            pass
-
-        resolver = ConfigResolver(test_domain)
-        config = resolver.resolve(OverridingHandler)
-
-        assert config.retention_maxlen == 900
-
-    def test_server_retention_is_cleared_for_event_store_subscriptions(
-        self, test_domain
-    ):
-        """A stream-wide default must not leak onto an event-store subscription.
-
-        It is inherited rather than chosen for this handler, so it is dropped
-        quietly instead of raising, which is what an explicit setting would do.
-        """
-        test_domain.config["server"]["default_subscription_type"] = "event_store"
-        test_domain.config["server"]["stream_subscription"]["retention_maxlen"] = 50_000
-
-        @test_domain.event_handler(part_of=Order)
-        class EventStoreRetentionHandler(BaseEventHandler):
-            pass
-
-        resolver = ConfigResolver(test_domain)
-        config = resolver.resolve(EventStoreRetentionHandler)
-
-        assert config.retention_maxlen is None
-
 
 class TestConfigResolverHandlerServerConfig:
     """Tests for handler-specific server configuration."""
@@ -755,8 +695,6 @@ class TestConfigResolverCustomProfiles:
 
     def test_undefined_profile_name_raises(self, test_domain):
         """Referencing a name that is neither built-in nor custom raises."""
-        from protean.exceptions import ConfigurationError
-
         test_domain.config["server"]["default_subscription_profile"] = "ghost"
 
         @test_domain.event_handler(part_of=Order)
@@ -768,8 +706,6 @@ class TestConfigResolverCustomProfiles:
 
     def test_invalid_profiles_section_fails_fast_on_resolve(self, test_domain):
         """An invalid [server.profiles] section raises even if the handler names no profile."""
-        from protean.exceptions import ConfigurationError
-
         test_domain.config["server"]["profiles"]["production"] = {
             "messages_per_tick": 1,
         }
@@ -823,91 +759,31 @@ class TestConfigResolverCustomProfiles:
         assert config.enable_dlq is False
 
 
-class TestConfigResolverRetention:
-    """Resolution of the retention_maxlen field through the resolver.
+class TestUnknownSubscriptionKeysAreDropped:
+    """A key that is not a SubscriptionConfig field never reaches its constructor.
 
-    These tests guard the config_resolver `known_fields` filter: retention_maxlen
-    is dropped before it reaches SubscriptionConfig if the filter omits it.
+    A key removed from SubscriptionConfig can stay in a project's domain.toml or
+    in a handler's subscription_config; resolution ignores it instead of raising
+    TypeError.
     """
 
-    @pytest.mark.parametrize(
-        "profile, expected",
-        [
-            (None, None),
-            ("production", 100_000),
-            ("myret", 42),
-        ],
-    )
-    def test_profile_retention_survives_resolution(
-        self, test_domain, profile, expected
-    ):
-        """A profile's retention_maxlen reaches the resolved config. A handler
-        that names no profile resolves with retention_maxlen None.
-
-        The custom `myret` profile sets 42, which differs from every built-in
-        default, so a resolved 42 can only come from that profile.
-        """
-        test_domain.config["server"]["profiles"]["myret"] = {
-            "inherits": "production",
-            "retention_maxlen": 42,
-        }
-        if profile is not None:
-            test_domain.config["server"]["subscriptions"]["RetHandler"] = {
-                "profile": profile,
-            }
-
-        @test_domain.event_handler(part_of=Order)
-        class RetHandler(BaseEventHandler):
-            pass
-
-        config = ConfigResolver(test_domain).resolve(RetHandler)
-
-        assert config.retention_maxlen == expected
-
-    def test_event_store_type_clears_inherited_retention(self, test_domain):
-        """An EVENT_STORE handler under a stream profile resolves with no cap.
-
-        The `production` profile carries retention_maxlen=100_000. When the
-        handler resolves to EVENT_STORE, the resolver sanitizes the field to
-        None (an event-store subscription has no broker stream to trim);
-        otherwise SubscriptionConfig.validate() would reject the combination.
-        """
-        test_domain.config["server"]["subscriptions"]["EventStoreRetHandler"] = {
-            "profile": "production",
+    def test_server_and_handler_level_unknown_keys_are_ignored(self, test_domain):
+        test_domain.config["server"]["default_subscription_type"] = "stream"
+        test_domain.config["server"]["stream_subscription"]["obsolete_option"] = 5
+        test_domain.config["server"]["subscriptions"]["LegacyHandler"] = {
+            "obsolete_option": 5,
+            "messages_per_tick": 7,
         }
 
         @test_domain.event_handler(
-            stream_category="$all",
-            subscription_type=SubscriptionType.EVENT_STORE,
+            part_of=Order, subscription_config={"obsolete_option": 5}
         )
-        class EventStoreRetHandler(BaseEventHandler):
+        class LegacyHandler(BaseEventHandler):
             pass
 
-        config = ConfigResolver(test_domain).resolve(EventStoreRetHandler)
+        config = ConfigResolver(test_domain).resolve(LegacyHandler)
 
-        assert config.subscription_type == SubscriptionType.EVENT_STORE
-        assert config.retention_maxlen is None
-
-    def test_event_store_type_rejects_explicit_retention(self, test_domain):
-        """An explicit retention_maxlen on an EVENT_STORE handler is rejected.
-
-        Unlike a value inherited from a stream profile (cleared silently, see
-        test_event_store_type_clears_inherited_retention), a retention_maxlen
-        the handler sets directly is a config mistake and must surface via
-        SubscriptionConfig.validate() rather than being dropped.
-        """
-        test_domain.config["server"]["subscriptions"]["ExplicitRetHandler"] = {
-            "retention_maxlen": 1_000,
-        }
-
-        @test_domain.event_handler(
-            stream_category="$all",
-            subscription_type=SubscriptionType.EVENT_STORE,
-        )
-        class ExplicitRetHandler(BaseEventHandler):
-            pass
-
-        with pytest.raises(ConfigurationError) as exc:
-            ConfigResolver(test_domain).resolve(ExplicitRetHandler)
-
-        assert "retention_maxlen is not supported for EVENT_STORE" in str(exc.value)
+        # Reaching this line is the proof: an unknown key passed through to
+        # SubscriptionConfig would have raised TypeError in resolve().
+        assert config.messages_per_tick == 7
+        assert "obsolete_option" not in config.to_dict()
