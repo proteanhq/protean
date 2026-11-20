@@ -257,6 +257,21 @@ def test_setup_then_upgrade_on_one_database_fails(tmp_path, monkeypatch):
 
 
 @pytest.mark.sqlite
+def test_setup_after_upgrade_leaves_the_migrated_tables(tmp_path, monkeypatch):
+    """The production checklist runs ``setup`` for Elasticsearch after ``upgrade``."""
+    project = make_project(tmp_path, monkeypatch, {"default": sqlite_db("shop.db")})
+    project.write(PRODUCT)
+    project.run_ok("init")
+    project.run_ok("migrate", "-m", "initial")
+    project.run_ok("upgrade")
+
+    project.run_ok("setup")
+
+    project.run_ok("check")
+    project.run_ok("upgrade")
+
+
+@pytest.mark.sqlite
 def test_second_provider_commands_run_in_order(tmp_path, monkeypatch):
     commands = [
         protean_args(tokens)
@@ -296,6 +311,34 @@ class DailySales:
     assert set(shown) == {"protean_domain", "protean_provider", "protean_root"}
     for key, value in shown.items():
         assert written.get("alembic", key) == value
+
+
+@pytest.mark.sqlite
+def test_two_providers_on_one_database_overwrite_the_revision(tmp_path, monkeypatch):
+    assert "two\nproviders on one schema overwrite each other's revision" in TEXT
+    project = make_project(
+        tmp_path,
+        monkeypatch,
+        {"default": sqlite_db("shop.db"), "reporting": sqlite_db("shop.db")},
+    )
+    project.write(
+        PRODUCT
+        + """
+@domain.aggregate(database="reporting")
+class DailySales:
+    total = Integer()
+"""
+    )
+    project.run_ok("init")
+    project.run_ok("migrate", "-m", "create product")
+    project.run_ok("upgrade")
+    reporting = "--directory=migrations/reporting"
+    project.run_ok("init", "--provider=reporting", reporting)
+
+    result = project.run("migrate", "-m", "create report tables", reporting)
+
+    assert result.exit_code != 0
+    assert "Can't locate revision" in result.output, result.output
 
 
 def ini_keys(text: str) -> dict[str, str]:

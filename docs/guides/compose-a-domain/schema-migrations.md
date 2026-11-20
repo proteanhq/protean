@@ -272,6 +272,10 @@ protean_provider = reporting
 protean_root = %(here)s/../..
 ```
 
+Point each provider at its own database or schema. Alembic records the
+revision in an `alembic_version` table in that database or schema, so two
+providers on one schema overwrite each other's revision.
+
 ---
 
 ## Drop tables by hand
@@ -330,7 +334,9 @@ enabled. A change to their columns or indexes arrives in your next
 schema change. When a change needs existing rows filled first, such as
 `OUTBOX_TARGET_BROKER_NULLABLE`, copy the backfill SQL that
 `protean upgrade-check` prints into the migration's `upgrade()`, before the
-schema change. `protean upgrade-check` also stays for teams that do not use
+schema change. On SQLite, `protean upgrade-check` prints no SQL for that
+change, so write the `UPDATE` that fills the NULL rows yourself, before the
+`batch_alter_table` block. `protean upgrade-check` also stays for teams that do not use
 migrations, and its other checks apply to every team.
 
 ---
