@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.18.2] - 2026-11-20
+
+### Upgrade Notes
+
+Read the [0.18 migration guide](https://docs.proteanhq.com/reference/migration/v0-18/) before you upgrade. These changes can need action, in the order the guide covers them:
+
+- [A stream subscription keeps one retry count per stream](https://docs.proteanhq.com/reference/migration/v0-18/#a-stream-subscription-keeps-one-retry-count-per-stream) (#2113)
+- [A negated `Q` excludes the whole expression](https://docs.proteanhq.com/reference/migration/v0-18/#a-negated-q-excludes-the-whole-expression) (#2020)
+- [A failing after-commit callback no longer fails the commit](https://docs.proteanhq.com/reference/migration/v0-18/#a-failing-after-commit-callback-no-longer-fails-the-commit) (#2035)
+
+### Changed
+
+- [Database] **Breaking.** A negated `Q` that combines conditions with `|` or `&`, and `exclude()` given a positional `Q`, now leave out the records that match the whole expression on the memory, SQL and Elasticsearch providers. (#2020)
+- [Handlers] **Breaking.** A failing after-commit callback, such as an idempotency store that cannot serialize a command's result, is now logged and no longer fails a commit whose writes are already durable. (#2035)
+
+### Fixed
+
+- [Handlers] A command processed with `priority=` or inside `processing_priority()` now keeps that priority in the event store, where it was stored as 0. (#1826)
+- [Server] **Breaking.** `StreamSubscription` now keeps one retry count per stream and entry id, so an entry that shares a Redis id across the primary and backfill streams reaches the dead-letter queue after its own `max_retries` failures. (#2113)
+- [Database] An OR filter on the Elasticsearch adapter no longer matches every document, so `delete_all()` with an OR filter no longer deletes the whole index. (#2181)
+- [Broker] On the in-memory provider, `reconcile_outbox` no longer counts an outbox row that its commit dropped. (#2045)
+- [Docs] The payload-validation example in the subscribers guide now rejects a boolean `amount`. (#1762)
+- [Docs] The inventory examples on the thin-handlers and application-service pattern pages now reject a zero, negative or over-stock reservation in `Inventory.reserve()`. (#1857)
+- [Docs] The concurrent-event-processing examples declare `Client.hubspot_id` unique, so a redelivered creation message writes no second `Client`. (#1861)
+
 ## [0.18.1] - 2026-11-09
 
 ### Upgrade Notes
@@ -1119,7 +1144,8 @@ Read the [0.15 migration guide](https://docs.proteanhq.com/reference/migration/v
 - Derive SQLAlchemy field types correctly for embedded value object fields
 - Elasticsearch adapter bugfixes and model enhancements
 
-[Unreleased]: https://github.com/proteanhq/protean/compare/v0.18.1...HEAD
+[Unreleased]: https://github.com/proteanhq/protean/compare/v0.18.2...HEAD
+[0.18.2]: https://github.com/proteanhq/protean/compare/v0.18.1...v0.18.2
 [0.18.1]: https://github.com/proteanhq/protean/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/proteanhq/protean/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/proteanhq/protean/compare/v0.17.0...v0.17.1
