@@ -648,3 +648,21 @@ def test_a_snapshot_read_apart_from_all_without_a_required_field_is_flagged(fiel
         (ViolationKind.MALFORMED_MESSAGE, "test::user:snapshot-abc")
     ]
     assert field in report.violations[0].detail
+
+
+def test_a_snapshot_read_apart_from_all_with_an_event_id_is_flagged():
+    snapshot = {
+        "id": "id-1",
+        "stream_name": "test::user:snapshot-abc",
+        "position": 0,
+        "data": {"_version": 0},
+    }
+    store = _SnapshotsApartStore(
+        [_msg(1, "test::user-abc", 0)], {"test::user:snapshot-abc": snapshot}
+    )
+
+    report = verify(store)
+
+    assert [(v.kind, v.stream) for v in report.violations] == [
+        (ViolationKind.DUPLICATE_MESSAGE_ID, "test::user:snapshot-abc")
+    ]

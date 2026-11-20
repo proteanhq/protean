@@ -257,7 +257,7 @@ def verify(adapter: EventStorePort) -> IntegrityReport:
             violations.append(violation)
 
     violations.extend(
-        _unscanned_snapshot_violations(adapter, stream_head, snapshot_version)
+        _unscanned_snapshot_violations(adapter, stream_head, snapshot_version, seen_ids)
     )
     violations.extend(_snapshot_violations(snapshot_version, stream_head))
 
@@ -323,17 +323,9 @@ def _identity_and_position_violations(
     """
     violations: list[IntegrityViolation] = []
 
-    # Duplicate message id (the store's own message identity)
-    if message_id in seen_ids:
-        violations.append(
-            IntegrityViolation(
-                kind=ViolationKind.DUPLICATE_MESSAGE_ID,
-                stream=stream,
-                position=position,
-                detail=f"Message id '{message_id}' appears more than once.",
-            )
-        )
-    seen_ids.add(message_id)
+    violation = _duplicate_id_violation(message_id, stream, position, seen_ids)
+    if violation is not None:
+        violations.append(violation)
 
     # Per-stream gapless position from base 0
     expected = last_position.get(stream, -1) + 1
@@ -355,10 +347,27 @@ def _identity_and_position_violations(
     return violations
 
 
+def _duplicate_id_violation(
+    message_id: str, stream: str, position: int, seen_ids: set[str]
+) -> IntegrityViolation | None:
+    """Return a violation when ``message_id`` is in ``seen_ids``, and record it."""
+    duplicate = message_id in seen_ids
+    seen_ids.add(message_id)
+    if not duplicate:
+        return None
+    return IntegrityViolation(
+        kind=ViolationKind.DUPLICATE_MESSAGE_ID,
+        stream=stream,
+        position=position,
+        detail=f"Message id '{message_id}' appears more than once.",
+    )
+
+
 def _unscanned_snapshot_violations(
     adapter: EventStorePort,
     stream_head: dict[str, int],
     snapshot_version: dict[str, int],
+    seen_ids: set[str],
 ) -> list[IntegrityViolation]:
     """Check the snapshot of each stream the scan saw without one.
 
@@ -381,10 +390,15 @@ def _unscanned_snapshot_violations(
         if row is None:
             continue
         violation = _missing_fields_violation(row, snapshot_stream, row.get("position"))
-        if violation is None:
-            violation = _check_body(
-                row, snapshot_stream, row["position"], snapshot_version
-            )
+        if violation is not None:
+            violations.append(violation)
+            continue
+        violation = _duplicate_id_violation(
+            row["id"], snapshot_stream, row["position"], seen_ids
+        )
+        if violation is not None:
+            violations.append(violation)
+        violation = _check_body(row, snapshot_stream, row["position"], snapshot_version)
         if violation is not None:
             violations.append(violation)
     return violations
