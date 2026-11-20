@@ -155,7 +155,7 @@ your domain elements to the database, broker, and event store you configure.
 |------|-------------------|
 | Database | Memory, PostgreSQL, SQLite, MSSQL, Elasticsearch |
 | Broker | Inline, Redis Streams, Redis PubSub |
-| Event Store | Memory, MessageDB |
+| Event Store | Memory, MessageDB, SQL (SQLite or PostgreSQL) |
 | Cache | Memory, Redis |
 
 The payoff goes beyond convenience. Your domain model tests run in memory in

@@ -106,8 +106,9 @@ class RunCategory(Enum):
 
 
 # Database and event-store suites that point at the same server and database,
-# keyed by the ``TEST_CONFIGS`` name. A conformance run looks up its adapter's
-# registry name in upper case. Suites that share a database cannot run at the
+# keyed by the ``TEST_CONFIGS`` name. A conformance run looks up its entry's
+# name in upper case when it has one, and its adapter's registry name
+# otherwise. Suites that share a database cannot run at the
 # same time: they create, drop or truncate the same tables.
 SHARED_DATABASES = {
     "POSTGRESQL": "postgresql",

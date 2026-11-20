@@ -209,9 +209,10 @@ On the shared `default` SQLite provider, or on the store's own engine:
   fail at once with `database is locked`, because SQLite cannot upgrade both to
   the write lock ([#2108](https://github.com/proteanhq/protean/issues/2108)).
 
-`BEGIN IMMEDIATE` makes every transaction on the file take the write lock at
-the start, read-only ones included, so other SQLite databases keep their
-settings unchanged. A test runs two processes against one file. Writers on more
+The store starts its writes with `BEGIN IMMEDIATE`, which takes the write lock
+at the start. Its reads start with a plain `BEGIN`, so under WAL they run while
+another connection writes. Other SQLite databases keep their settings
+unchanged. A test runs two processes against one file. Writers on more
 than one machine require PostgreSQL.
 
 ### 11. Idle subscriptions back off exponentially

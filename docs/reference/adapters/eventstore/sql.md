@@ -98,8 +98,9 @@ not change the level the store's writes run at.
 The store keeps events in `messages` and snapshots in `snapshots`.
 [`protean db setup`](../../cli/data/database.md#protean-db-setup) creates the
 tables that do not exist yet, and `protean db drop` drops them. In code,
-`domain.setup_database()` and `domain.drop_database()` do the same. The
-Protean pytest plugin calls `setup_database()` before a test session.
+`domain.setup_database()` and `domain.drop_database()` do the same.
+`DomainFixture.setup()` from `protean.integrations.pytest` calls
+`setup_database()`, and `DomainFixture.teardown()` calls `drop_database()`.
 
 Create the tables once before the first write. A write to a database without
 the tables fails.
