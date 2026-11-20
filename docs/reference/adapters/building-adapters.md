@@ -37,8 +37,9 @@ for a complete guide with a worked DynamoDB example, including:
 
 ## Broker Adapters
 
-Broker adapters subclass `BaseBroker` and `BrokerPort`, in that order, and
-declare their capabilities through the `BrokerCapabilities` tier system.
+Broker adapters subclass `BrokerPort`, set their name, domain and
+configuration in their own `__init__`, and declare their capabilities through
+the `BrokerCapabilities` tier system.
 
 See [Building Custom Brokers](./broker/custom-brokers.md)
 for a complete guide with a worked Kafka example, including:

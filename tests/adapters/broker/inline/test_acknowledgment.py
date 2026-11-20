@@ -4,7 +4,7 @@ import logging
 import time
 from unittest.mock import patch
 
-from protean.port.broker import OperationState
+from protean.adapters.broker.inline import OperationState
 from tests.adapters.broker.inline.retry_queue import make_retry_due
 
 # ============= ACK Tests =============

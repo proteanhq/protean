@@ -244,7 +244,7 @@ class TestReclaimIdleSetting:
         ]
 
 
-class TestBaseBrokerReclaimHook:
+class TestBrokerReclaimHook:
     def test_inline_broker_claims_nothing(self, test_domain):
         """A broker without consumer-owned pending entries has nothing to claim."""
         broker = test_domain.brokers["default"]

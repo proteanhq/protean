@@ -77,8 +77,9 @@ class FakeBroker:
         self._depths: dict[str, int] = {}
         self._trim_returns: dict[str, int] = {}
 
-    def has_capability(self, cap) -> bool:
-        return bool(self._capabilities & cap)
+    @property
+    def capabilities(self) -> BrokerCapabilities:
+        return self._capabilities
 
     def dlq_trim(self, dlq_stream: str, older_than: datetime) -> int:
         self._trim_calls.append((dlq_stream, older_than))
@@ -463,13 +464,14 @@ class TestDLQMaintenanceStartAndRun:
                 """Loses its connection on the first cycle; the engine starts
                 shutting down during the second."""
 
-                def has_capability(self, cap) -> bool:
+                @property
+                def capabilities(self) -> BrokerCapabilities:
                     nonlocal checks
                     checks += 1
                     if checks == 1:
                         raise ConnectionError("connection dropped")
                     engine.shutting_down = True
-                    return super().has_capability(cap)
+                    return super().capabilities
 
             domain.brokers._brokers = {"default": _DroppingBroker()}
 

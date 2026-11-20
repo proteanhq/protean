@@ -5,13 +5,28 @@ from protean.adapters.broker.inline import InlineBroker
 from protean.exceptions import ConfigurationError
 from protean.infra import broker as broker_module
 from protean.infra.broker import Broker
-from protean.port.broker import BaseBroker
+from protean.port import broker as port_module
+from protean.port.broker import BrokerPort
 
 
 class TestBrokerInitialization:
-    def test_that_base_broker_class_cannot_be_instantiated(self):
-        with pytest.raises(TypeError):
-            BaseBroker()
+    @pytest.mark.no_test_domain
+    def test_that_broker_port_cannot_be_instantiated(self):
+        with pytest.raises(
+            TypeError, match="Can.t instantiate abstract class BrokerPort"
+        ):
+            BrokerPort("default", Domain(name="Test"), {})
+
+    def test_inline_broker_stores_name_domain_and_a_copy_of_config(self, test_domain):
+        config = {"provider": "inline", "max_retries": 5}
+        broker = InlineBroker("primary", test_domain, config)
+
+        assert broker.name == "primary"
+        assert broker.domain is test_domain
+        assert broker.config == {"provider": "inline", "max_retries": 5}
+
+        config["max_retries"] = 9
+        assert broker.config["max_retries"] == 5
 
     def test_that_domain_initializes_broker_before_iteration(self, test_domain):
         brokers = list(test_domain.brokers)
@@ -267,3 +282,43 @@ class TestNonDestructiveReinitialization:
         # The exception propagated before the broker map was swapped, so the
         # pre-existing live broker is still in place and untouched.
         assert test_domain.brokers["default"] is original_default
+
+
+def test_port_module_defines_only_the_port_surface():
+    defined = {
+        name
+        for name, value in vars(port_module).items()
+        if not name.startswith("_")
+        and getattr(value, "__module__", None) == port_module.__name__
+    }
+
+    assert defined == {
+        "BlockingReadPort",
+        "BrokerCapabilities",
+        "BrokerHealth",
+        "BrokerMessage",
+        "BrokerPort",
+        "ConsumerGroupInfo",
+        "ConsumerInfo",
+        "DLQEntry",
+        "DeadLetterQueuePort",
+        "LeaseLostError",
+        "PartitioningPort",
+        "StreamRetentionPort",
+        "dlq_metadata",
+        "failure_time",
+        "newest_failure_first",
+        "parse_dlq_entry",
+        "require_aware_cutoff",
+    }
+
+
+def test_port_module_has_no_numeric_constants():
+    # ``TYPE_CHECKING`` is the imported typing flag, the one bool the module holds.
+    numeric = {
+        name
+        for name, value in vars(port_module).items()
+        if not name.startswith("_") and isinstance(value, (int, float))
+    }
+
+    assert numeric == {"TYPE_CHECKING"}

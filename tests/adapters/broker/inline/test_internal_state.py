@@ -3,7 +3,7 @@
 import time
 from datetime import datetime
 
-from protean.port.broker import OperationState
+from protean.adapters.broker.inline import OperationState
 
 
 class TestInlineBrokerInternalState:

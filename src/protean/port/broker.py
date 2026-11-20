@@ -1,12 +1,11 @@
-from abc import ABCMeta, abstractmethod
+from abc import abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum, Flag, auto
+from enum import Flag, auto
 from typing import (
     TYPE_CHECKING,
     Any,
-    ClassVar,
     NamedTuple,
     NotRequired,
     Protocol,
@@ -17,13 +16,6 @@ from protean.exceptions import ProteanException
 
 if TYPE_CHECKING:
     from protean.domain import Domain
-
-MAX_RETRIES = 3
-RETRY_DELAY = 1.0
-BACKOFF_MULTIPLIER = 2.0
-MESSAGE_TIMEOUT = 300.0
-ENABLE_DLQ = True
-OPERATION_STATE_TTL_MAX = 60.0
 
 
 class LeaseLostError(ProteanException):
@@ -67,15 +59,6 @@ class DLQEntry:
     failed_at: str | None
     retry_count: int
     dlq_stream: str
-
-
-class OperationState(Enum):
-    """Track the state of ack/nack operations for idempotency"""
-
-    PENDING = "pending"
-    ACKNOWLEDGED = "acknowledged"
-    NACKED = "nacked"
-    FAILED = "failed"
 
 
 class BrokerCapabilities(Flag):
@@ -178,12 +161,14 @@ class BrokerHealth:
 class BrokerPort(Protocol):
     """The operations a broker adapter implements.
 
-    An adapter subclasses this Protocol explicitly, and also subclasses
-    ``BaseBroker``, which stores ``name``, ``domain`` and ``config``. An
-    adapter that declares a flag listed in `CAPABILITY_PORTS` subclasses the
-    sub-protocol the flag maps to, such as ``BlockingReadPort`` for
-    ``BrokerCapabilities.BLOCKING_READ``. Each sub-protocol extends
-    ``BrokerPort``.
+    An adapter subclasses this Protocol explicitly and sets ``name``,
+    ``domain`` and ``config`` in its own ``__init__``: ``BrokerPort.__init__``
+    sets nothing. Each built-in adapter also sets the class attribute
+    ``broker_type`` to the name it is known by, such as ``"inline"``,
+    ``"redis"`` or ``"redis_pubsub"``. An adapter that declares a flag listed
+    in `CAPABILITY_PORTS` subclasses the sub-protocol the flag maps to, such
+    as ``BlockingReadPort`` for ``BrokerCapabilities.BLOCKING_READ``. Each
+    sub-protocol extends ``BrokerPort``.
 
     The ``Broker`` service in ``protean.infra.broker`` wraps the adapter and
     adds unit-of-work recording, the retry after a connection error,
@@ -742,24 +727,3 @@ CAPABILITY_PORTS: dict[BrokerCapabilities, type[object]] = {
 Typed `type[object]` because mypy in strict mode rejects a Protocol with
 abstract members where `type[BrokerPort]` is expected.
 """
-
-
-class BaseBroker(metaclass=ABCMeta):
-    """The shared set-up for broker adapters.
-
-    A broker adapter subclasses this class and ``BrokerPort``, in that order.
-    The operations are on ``BrokerPort`` and the sub-protocols in
-    `CAPABILITY_PORTS`. This class stores ``name``, ``domain`` and
-    ``config``.
-
-    Each adapter sets ``broker_type`` to the name it is known by, such as
-    ``"inline"``, ``"redis"`` or ``"redis_pubsub"``.
-    """
-
-    broker_type: ClassVar[str]
-
-    def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
-        self.name = name
-        self.domain = domain
-        # A copy: the broker never writes to the configuration it was given.
-        self.config: Mapping[str, Any] = dict(config)

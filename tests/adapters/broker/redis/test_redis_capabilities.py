@@ -22,30 +22,32 @@ class TestRedisBrokerCapabilities:
         )
         assert broker.capabilities == expected_caps
 
-        # Test has_all_capabilities
-        assert broker.has_all_capabilities(BrokerCapabilities.PUBLISH)
-        assert broker.has_all_capabilities(BrokerCapabilities.SUBSCRIBE)
-        assert broker.has_all_capabilities(BrokerCapabilities.CONSUMER_GROUPS)
-        assert broker.has_all_capabilities(BrokerCapabilities.ACK_NACK)
-        assert broker.has_all_capabilities(BrokerCapabilities.DELIVERY_GUARANTEES)
-        assert broker.has_all_capabilities(BrokerCapabilities.MESSAGE_ORDERING)
-        assert broker.has_all_capabilities(BrokerCapabilities.BLOCKING_READ)
-        assert broker.has_all_capabilities(BrokerCapabilities.DEAD_LETTER_QUEUE)
-        assert broker.has_all_capabilities(BrokerCapabilities.STREAM_PARTITIONING)
-        assert broker.has_all_capabilities(BrokerCapabilities.STREAM_RETENTION)
-        assert broker.has_all_capabilities(expected_caps)
+        # Every flag the broker declares
+        assert BrokerCapabilities.PUBLISH in broker.capabilities
+        assert BrokerCapabilities.SUBSCRIBE in broker.capabilities
+        assert BrokerCapabilities.CONSUMER_GROUPS in broker.capabilities
+        assert BrokerCapabilities.ACK_NACK in broker.capabilities
+        assert BrokerCapabilities.DELIVERY_GUARANTEES in broker.capabilities
+        assert BrokerCapabilities.MESSAGE_ORDERING in broker.capabilities
+        assert BrokerCapabilities.BLOCKING_READ in broker.capabilities
+        assert BrokerCapabilities.DEAD_LETTER_QUEUE in broker.capabilities
+        assert BrokerCapabilities.STREAM_PARTITIONING in broker.capabilities
+        assert BrokerCapabilities.STREAM_RETENTION in broker.capabilities
+        assert expected_caps in broker.capabilities
 
         # Should not have some advanced capabilities it does not implement.
-        assert not broker.has_all_capabilities(BrokerCapabilities.REPLAY)
-        assert not broker.has_all_capabilities(BrokerCapabilities.ENTERPRISE_STREAMING)
+        assert BrokerCapabilities.REPLAY not in broker.capabilities
+        assert BrokerCapabilities.ENTERPRISE_STREAMING not in broker.capabilities
 
-        # Test has_any_capability
-        assert broker.has_any_capability(BrokerCapabilities.MESSAGE_ORDERING)
-        assert broker.has_any_capability(
-            BrokerCapabilities.BLOCKING_READ | BrokerCapabilities.REPLAY
+        # At least one flag of a set
+        assert bool(broker.capabilities & BrokerCapabilities.MESSAGE_ORDERING)
+        assert bool(
+            broker.capabilities
+            & (BrokerCapabilities.BLOCKING_READ | BrokerCapabilities.REPLAY)
         )
         # Advertises STREAM_PARTITIONING but not REPLAY.
-        assert broker.has_any_capability(
-            BrokerCapabilities.REPLAY | BrokerCapabilities.STREAM_PARTITIONING
+        assert bool(
+            broker.capabilities
+            & (BrokerCapabilities.REPLAY | BrokerCapabilities.STREAM_PARTITIONING)
         )
-        assert not broker.has_any_capability(BrokerCapabilities.REPLAY)
+        assert not (broker.capabilities & BrokerCapabilities.REPLAY)

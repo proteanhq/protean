@@ -44,8 +44,7 @@ class FailingBroker:
         self.published: list[str] = []
         self.streams: list[str] = []
 
-    def has_capability(self, capability: BrokerCapabilities) -> bool:
-        return False
+    capabilities = BrokerCapabilities.BASIC_PUBSUB
 
     def publish(self, stream: str, message: dict) -> str:
         message_id = message["metadata"]["headers"]["id"]

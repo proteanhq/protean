@@ -266,8 +266,8 @@ class StreamSubscription(BaseSubscription):
                 f"No default broker configured for StreamSubscription {self.subscriber_name}"
             )
 
-        self._trims_stream = self.broker.has_capability(
-            BrokerCapabilities.STREAM_RETENTION
+        self._trims_stream = (
+            BrokerCapabilities.STREAM_RETENTION in self.broker.capabilities
         )
 
         # Ensure consumer group exists for primary stream

@@ -116,18 +116,6 @@ class Broker:
         """Return the adapter's capability flags."""
         return self._adapter.capabilities
 
-    def has_capability(self, capability: BrokerCapabilities) -> bool:
-        """Return ``True`` when the adapter has ``capability``."""
-        return capability in self.capabilities
-
-    def has_all_capabilities(self, capabilities: BrokerCapabilities) -> bool:
-        """Return ``True`` when the adapter has every flag in ``capabilities``."""
-        return (self.capabilities & capabilities) == capabilities
-
-    def has_any_capability(self, capabilities: BrokerCapabilities) -> bool:
-        """Return ``True`` when the adapter has at least one flag in ``capabilities``."""
-        return bool(self.capabilities & capabilities)
-
     def _retry_once(self, operation: str, call: Callable[[], T]) -> T:
         """Run ``call``, and run it again once after a connection error.
 

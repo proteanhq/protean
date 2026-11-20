@@ -34,3 +34,9 @@ def test_inline_broker_does_not_advertise_stream_partitioning():
 
 def test_lease_lost_error_is_a_protean_exception(example):
     assert issubclass(example.LeaseLostError, ProteanException)
+
+
+def test_broker_sets_its_own_attributes_in_init(example):
+    # The Protocol's ``__init__`` sets nothing, so the broker must define one.
+    assert "__init__" in vars(example.MyBroker)
+    assert example.MyBroker.__bases__ == (PartitioningPort,)

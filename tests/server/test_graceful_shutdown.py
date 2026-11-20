@@ -11,6 +11,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
+from protean.port.broker import BrokerPort
 from protean.server.engine import Engine
 from protean.utils.mixins import handle
 
@@ -272,16 +273,17 @@ class TestConfigurableDrainWindow:
 
 @pytest.mark.no_test_domain
 class TestBrokerClose:
-    """Test the broker service's close on the inline adapter."""
+    """Test the default no-op `BrokerPort.close()`."""
 
-    def test_base_broker_close_is_noop(self):
-        """Closing the inline broker does nothing (no error)."""
+    def test_broker_port_close_is_noop(self):
+        """The inline broker inherits the default close(), which does nothing."""
 
         domain = Domain(name="Test")
         domain.init(traverse=False)
 
         broker = domain.brokers["default"]
-        # Should not raise: the inline adapter's close() is a no-op
+        assert type(broker._adapter).close is BrokerPort.close
+        assert broker._adapter.close() is None
         broker._close()
 
 

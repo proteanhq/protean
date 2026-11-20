@@ -61,7 +61,7 @@ def _get_broker(domain: Domain) -> Broker:
     if broker is None:
         print("Error: No default broker configured in domain.")
         raise typer.Abort()
-    if not broker.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+    if BrokerCapabilities.DEAD_LETTER_QUEUE not in broker.capabilities:
         print("Error: Configured broker does not support dead letter queues.")
         raise typer.Abort()
     return broker

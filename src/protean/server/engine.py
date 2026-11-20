@@ -393,7 +393,7 @@ class Engine:
     def _has_dlq_capable_broker(self) -> bool:
         """Return True if any configured broker supports DLQ."""
         for broker in self.domain.brokers.values():
-            if broker.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+            if BrokerCapabilities.DEAD_LETTER_QUEUE in broker.capabilities:
                 return True
         return False
 

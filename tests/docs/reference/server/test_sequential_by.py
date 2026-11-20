@@ -145,7 +145,7 @@ def test_the_redis_broker_builds_partitioned_subscriptions():
 
     with example.domain.domain_context():
         broker = example.domain.brokers["default"]
-        assert broker.has_capability(BrokerCapabilities.STREAM_PARTITIONING)
+        assert BrokerCapabilities.STREAM_PARTITIONING in broker.capabilities
         engine = Engine(example.domain, test_mode=True)
 
     module = example.OrderEventHandler.__module__

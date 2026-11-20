@@ -8,7 +8,6 @@ from protean import Domain
 from protean.adapters.broker.inline import InlineBroker
 from protean.infra.registry import brokers
 from protean.port.broker import (
-    BaseBroker,
     BrokerCapabilities,
     BrokerHealth,
     BrokerMessage,
@@ -18,14 +17,16 @@ from protean.port.broker import (
 )
 
 
-class DelegatingBroker(BaseBroker, DeadLetterQueuePort):
+class DelegatingBroker(DeadLetterQueuePort):
     """A broker that hands every operation to an in-memory InlineBroker.
 
     Replace the delegate calls with calls to your messaging client.
     """
 
     def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
-        super().__init__(name, domain, config)
+        self.name = name
+        self.domain = domain
+        self.config = dict(config)
         # Initialize your broker connection here
         self._delegate = InlineBroker(name, domain, config)
 

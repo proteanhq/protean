@@ -16,7 +16,6 @@ import redis
 from protean.infra.broker import is_connection_error
 from protean.infra.registry import brokers
 from protean.port.broker import (
-    BaseBroker,
     BlockingReadPort,
     BrokerCapabilities,
     BrokerHealth,
@@ -266,7 +265,6 @@ return redis.call('XTRIM', KEYS[1], 'MINID', '~', bound)
 
 
 class RedisBroker(
-    BaseBroker,
     BlockingReadPort,
     DeadLetterQueuePort,
     PartitioningPort,
@@ -297,7 +295,10 @@ class RedisBroker(
     )
 
     def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
-        super().__init__(name, domain, config)
+        self.name = name
+        self.domain = domain
+        # A copy: the broker never writes to the configuration it was given.
+        self.config: Mapping[str, Any] = dict(config)
 
         # Values are heterogeneous (int timeouts, int max_connections, bool
         # retry_on_timeout) and forwarded verbatim to the Redis connection pool.

@@ -523,3 +523,16 @@ class TestRedisConsumerGroupInfo:
         assert "consumers" in unique_group_info
         assert "created_at" in unique_group_info
         assert "consumer_count" in unique_group_info
+
+
+@pytest.mark.redis
+def test_redis_pubsub_broker_stores_name_domain_and_a_copy_of_config(test_domain):
+    config = {"provider": "redis_pubsub", "URI": REDIS_URI}
+    broker = RedisPubSubBroker("primary", test_domain, config)
+
+    assert broker.name == "primary"
+    assert broker.domain is test_domain
+    assert broker.config == {"provider": "redis_pubsub", "URI": REDIS_URI}
+
+    config["URI"] = "redis://elsewhere:6379/0"
+    assert broker.config["URI"] == REDIS_URI

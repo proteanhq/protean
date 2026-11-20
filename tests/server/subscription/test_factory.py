@@ -4,6 +4,8 @@ This module contains comprehensive tests for the SubscriptionFactory class
 which creates subscription instances with automatic type selection.
 """
 
+from types import SimpleNamespace
+
 import pytest
 
 from protean.core.aggregate import BaseAggregate
@@ -12,9 +14,13 @@ from protean.core.command_handler import BaseCommandHandler
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.fields import Identifier, String
+from protean.port.broker import BrokerCapabilities
 from protean.server import Engine
 from protean.server.subscription.event_store_subscription import EventStoreSubscription
-from protean.server.subscription.factory import SubscriptionFactory
+from protean.server.subscription.factory import (
+    SubscriptionFactory,
+    broker_supports_partitioning,
+)
 from protean.server.subscription.profiles import SubscriptionProfile, SubscriptionType
 from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils.mixins import handle
@@ -446,3 +452,27 @@ class TestSubscriptionFactoryConfigResolution:
         # Handler Meta (50) should override server handler config (300)
         # which would override server default profile BATCH (500)
         assert subscription.messages_per_tick == 50
+
+
+class TestBrokerSupportsPartitioning:
+    """Tests for broker_supports_partitioning."""
+
+    def test_no_default_broker_does_not_partition(self):
+        domain = SimpleNamespace(brokers={})
+
+        assert broker_supports_partitioning(domain) is False
+
+    def test_broker_without_stream_partitioning_does_not_partition(self):
+        broker = SimpleNamespace(capabilities=BrokerCapabilities.PUBLISH)
+        domain = SimpleNamespace(brokers={"default": broker})
+
+        assert broker_supports_partitioning(domain) is False
+
+    def test_broker_with_stream_partitioning_partitions(self):
+        broker = SimpleNamespace(
+            capabilities=BrokerCapabilities.PUBLISH
+            | BrokerCapabilities.STREAM_PARTITIONING
+        )
+        domain = SimpleNamespace(brokers={"default": broker})
+
+        assert broker_supports_partitioning(domain) is True

@@ -77,3 +77,17 @@ def test_get_next_on_an_empty_stream_returns_none():
         broker = delegating_broker.domain.brokers["default"]
 
         assert broker.get_next("empty-stream", "billing") is None
+
+
+def test_broker_subclasses_only_the_port():
+    assert delegating_broker.DelegatingBroker.__bases__ == (DeadLetterQueuePort,)
+    assert BrokerPort in DeadLetterQueuePort.__mro__
+
+
+def test_broker_stores_its_name_domain_and_config():
+    with delegating_broker.domain.domain_context():
+        adapter = delegating_broker.domain.brokers["default"]._adapter
+
+        assert adapter.name == "default"
+        assert adapter.domain is delegating_broker.domain
+        assert adapter.config["provider"] == "delegating_inline"

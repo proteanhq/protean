@@ -1211,3 +1211,17 @@ def test_clear_leaves_other_databases_alone(redis_broker):
     finally:
         other_db.delete(other_key)
         other_db.close()
+
+
+@pytest.mark.redis
+def test_redis_broker_stores_name_domain_and_a_copy_of_config(test_domain):
+    config = {"provider": "redis", "URI": REDIS_URI, "socket_timeout": 5}
+    broker = RedisBroker("primary", test_domain, config)
+
+    assert broker.name == "primary"
+    assert broker.domain is test_domain
+    assert broker.config == {"provider": "redis", "URI": REDIS_URI, "socket_timeout": 5}
+
+    config["socket_timeout"] = 9
+    assert broker.config["socket_timeout"] == 5
+    broker.close()

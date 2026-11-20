@@ -204,7 +204,7 @@ def test_dlq_capability_flag(broker):
     """Test that InlineBroker reports DEAD_LETTER_QUEUE capability."""
     from protean.port.broker import BrokerCapabilities
 
-    assert broker.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE)
+    assert BrokerCapabilities.DEAD_LETTER_QUEUE in broker.capabilities
 
 
 def test_dlq_replay_all_keeps_unpublished_entries_when_publish_raises(

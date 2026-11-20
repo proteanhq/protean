@@ -11,7 +11,7 @@ import contextlib
 import json
 import logging
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 import redis
@@ -1409,8 +1409,9 @@ _WITHOUT_DLQ = pytest.mark.parametrize(
 def _failing_capability_check(domain: Domain):
     """Make the broker's DLQ capability check raise an unexpected error."""
     return patch.object(
-        domain.brokers["default"],
-        "has_capability",
+        type(domain.brokers["default"]),
+        "capabilities",
+        new_callable=PropertyMock,
         side_effect=RuntimeError("unexpected"),
     )
 
