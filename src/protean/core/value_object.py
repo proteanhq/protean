@@ -625,7 +625,7 @@ def _project_resolved_field(
 ) -> None:
     """Project a plain field with its annotation and default."""
     # A custom field (built by ``Custom``) needs its Pydantic metadata and its
-    # kind marker carried onto the projected VO field;
+    # kind marker carried onto the projected field;
     # ``custom_field_declaration`` builds both. Without the metadata the
     # projection fails at schema build time; without the marker the projected
     # field is classified ``standard`` and a live custom instance reaches the
@@ -655,7 +655,7 @@ def _make_identity_fields_optional(
         ):
             annotations[key] = annotations[key] | None
             # A unique custom field lands here too, and a bare ``None`` would
-            # discard the kind marker the declaration above just carried over.
+            # discard the kind marker ``_project_resolved_field`` carried over.
             namespace[key] = (
                 PydanticField(default=None, json_schema_extra={"field_kind": "custom"})
                 if field_obj.field_kind == "custom"
