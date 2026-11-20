@@ -19,9 +19,10 @@ bound in the scopes around it before its definition, unless it binds the same
 name itself, for example as a parameter. A comprehension sees the names bound
 before it, and its first iterable is read in the scope around it. A class
 body's bindings stay in the class body. Another binding of the name, such as a
-``for`` target, ``with ... as``, an import, ``del`` or a ``match`` capture,
-ends it. The scan does not follow branches: it reads the arms of an ``if`` in
-source order, so the last binding of a name in the source wins.
+``for`` target, ``with ... as``, ``except ... as``, an import, ``del`` or a
+``match`` capture, ends it. The scan does not follow branches: it reads the
+arms of an ``if`` in source order, so the last binding of a name in the source
+wins.
 
 A bare ``config`` that no assignment binds is often a nested section
 (``telemetry``, a subscription config), whose keys are not top-level, so the
@@ -104,6 +105,11 @@ def _children(node: ast.AST) -> list[ast.AST]:
     The value of an assignment and the iterable of a ``for`` loop run before
     their targets are bound, so ``cfg = cfg["section"]`` reads the alias first.
     """
+    if isinstance(node, ast.AnnAssign) and node.value is None:
+        # ``cfg: dict`` with no value binds nothing, so the alias stays live.
+        if isinstance(node.target, ast.Name):
+            return [node.annotation]
+        return [node.target, node.annotation]
     if isinstance(node, _Binding) and node.value is not None:
         rest = [c for c in ast.iter_child_nodes(node) if c is not node.value]
         return [node.value, *rest]
@@ -170,6 +176,14 @@ class _Reads:
                 self.class_body(node, aliases)
             elif isinstance(node, _Comprehension):
                 self.comprehension(node, aliases, enclosing)
+            elif isinstance(node, ast.ExceptHandler):
+                self.handler(node, aliases, enclosing)
+            elif isinstance(node, ast.Call):
+                # The receiver of ``cfg.get`` is fixed before the arguments
+                # run, so an argument that rebinds ``cfg`` does not change it.
+                self.scope([node.func], aliases, enclosing)
+                self.check(node, aliases)
+                self.scope([*node.args, *node.keywords], aliases, enclosing)
             else:
                 self.scope(_children(node), aliases, enclosing)
                 self.check(node, aliases)
@@ -195,6 +209,17 @@ class _Reads:
         )
         self.scope(node.body, set(aliases), aliases)
         aliases.discard(node.name)
+
+    def handler(
+        self, node: ast.ExceptHandler, aliases: set[str], enclosing: set[str]
+    ) -> None:
+        if node.type is not None:
+            self.scope([node.type], aliases, enclosing)
+        # ``except ... as cfg`` binds ``cfg`` before the body and deletes it
+        # after.
+        aliases.discard(node.name or "")
+        self.scope(node.body, aliases, enclosing)
+        aliases.discard(node.name or "")
 
     def comprehension(
         self, node: _Comprehension, aliases: set[str], enclosing: set[str]
@@ -464,6 +489,57 @@ def test_scan_skips_a_comprehension_or_lambda_that_rebinds_the_alias(
     assert _scan() == {"outer_key": [f"{tmp_path.name}/inner.py:5"]}
 
 
+def test_scan_keeps_an_alias_through_an_annotation_without_a_value(
+    tmp_path, monkeypatch
+):
+    (tmp_path / "declared.py").write_text(
+        "def build():\n"
+        "    cfg = domain.config\n"
+        "    cfg: dict\n"
+        '    return cfg["annotated_key"]\n'
+    )
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {"annotated_key": [f"{tmp_path.name}/declared.py:4"]}
+
+
+def test_scan_ends_an_alias_at_an_except_target(tmp_path, monkeypatch):
+    (tmp_path / "handler.py").write_text(
+        "def build():\n"
+        "    cfg = domain.config\n"
+        "    try:\n"
+        "        pass\n"
+        "    except KeyError as cfg:\n"
+        '        cfg["handler_key"]\n'
+        '    return cfg["after_key"]\n'
+    )
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {}
+
+
+def test_scan_classifies_a_get_receiver_before_its_arguments(tmp_path, monkeypatch):
+    (tmp_path / "walrus.py").write_text(
+        'def build():\n    cfg = domain.config\n    return cfg.get("get_key", (cfg := {}))\n'
+    )
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {"get_key": [f"{tmp_path.name}/walrus.py:3"]}
+
+
+def test_scan_reads_a_comprehension_first_iterable_in_the_enclosing_scope(
+    tmp_path, monkeypatch
+):
+    (tmp_path / "iterable.py").write_text(
+        "def build():\n"
+        "    cfg = domain.config\n"
+        '    return [cfg["section_key"] for cfg in cfg["alias_key"]]\n'
+    )
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {"alias_key": [f"{tmp_path.name}/iterable.py:3"]}
+
+
 def test_scan_keeps_class_body_aliases_in_the_class(tmp_path, monkeypatch):
     (tmp_path / "klass.py").write_text(
         "def outer(cfg):\n"
@@ -565,19 +641,6 @@ def test_scan_ends_an_alias_at_a_match_capture(tmp_path, monkeypatch):
     monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
 
     assert _scan() == {}
-
-
-def test_scan_reads_a_comprehension_first_iterable_in_the_enclosing_scope(
-    tmp_path, monkeypatch
-):
-    (tmp_path / "iterable.py").write_text(
-        "def build():\n"
-        "    cfg = domain.config\n"
-        '    return [cfg for cfg in cfg["iter_key"]]\n'
-    )
-    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
-
-    assert _scan() == {"iter_key": [f"{tmp_path.name}/iterable.py:3"]}
 
 
 def test_scan_keeps_the_last_binding_across_if_arms(tmp_path, monkeypatch):
