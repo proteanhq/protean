@@ -71,7 +71,9 @@ The full resolution order is in the
 
 Stream subscriptions read from Redis streams, which keep every message until
 something trims them. Protean trims them for you, and no setting controls it.
-After each batch, the subscription asks the broker to trim the stream it read.
+After each batch, a stream subscription asks the broker to trim the stream it
+read. The one exception is a handler that uses `sequential_by`: Protean does
+not trim its per-key partition streams.
 The broker removes only the entries that every consumer group on the stream has
 read and acknowledged, so the trim never deletes an event a handler still
 needs. An entry that was delivered and not yet acknowledged stays until it is

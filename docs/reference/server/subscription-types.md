@@ -175,6 +175,10 @@ stay a little above the bound. There is no time-based TTL.
 Only a broker that declares `STREAM_RETENTION`, such as Redis Streams, trims.
 On any other broker the subscription does not call the trim.
 
+A handler that uses [`sequential_by`](sequential-by.md) runs on a partitioned
+subscription that reads per-key partition streams. That subscription does not
+trim them.
+
 ### When to Use {#stream-when-to-use}
 
 Use StreamSubscription when you need:
