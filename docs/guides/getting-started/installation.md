@@ -79,7 +79,7 @@ Use the ``protean`` CLI to verify the installation:
 
 ```shell
 $ protean --version
-Protean 0.18.1
+Protean 0.18.2
 ```
 
 To verify that Protean can be seen by your current installation of Python,
@@ -89,7 +89,7 @@ try importing Protean from a ``python`` shell:
 $ python
 >>> import protean
 >>> protean.get_version()
-'0.18.1'
+'0.18.2'
 ```
 
 ## Upgrading an existing project?
