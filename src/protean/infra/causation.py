@@ -84,7 +84,7 @@ def load_correlation_group(
 
     Reads the first 1,000,000 rows of ``$all`` with
     ``adapter.get_all_messages`` and keeps the adapter's order, which is
-    ``global_position`` order on the memory and Message DB stores. The list
+    ``global_position`` order on the memory, Message DB and sql stores. The list
     is new on each call, so a caller may sort or change it.
     """
     all_messages = adapter.get_all_messages(limit=1_000_000)
