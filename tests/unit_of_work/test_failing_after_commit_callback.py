@@ -2,8 +2,11 @@
 
 The callback runs once the writes are durable, so its failure is logged and the
 commit returns normally: the other callbacks, broker publishing and sync event
-dispatch still run. A keyed nested command whose result
-``json.dumps`` rejects is the case that reaches this path in practice.
+dispatch still run.
+
+A keyed nested command whose result ``json.dumps`` rejects records its key in
+an after-commit callback. The idempotency store catches that failure itself and
+logs a warning, so it does not reach the callback-failure path above.
 """
 
 import logging
