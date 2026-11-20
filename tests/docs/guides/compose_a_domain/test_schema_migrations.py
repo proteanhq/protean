@@ -15,6 +15,7 @@ import re
 import shlex
 import tomllib
 
+import click
 import pytest
 from typer.testing import CliRunner
 
@@ -389,8 +390,11 @@ def test_command_help_lists_the_option(command, option):
     result = CliRunner().invoke(app, [*command.split(), "--help"])
 
     assert result.exit_code == 0, result.output
+    # Rich colors the help when CI forces color, and the color codes split an
+    # option name such as ``--directory``.
+    output = click.unstyle(result.output)
     # A whole-word match, so ``--dir`` does not pass on ``--directory``.
-    assert re.search(rf"(?<![\w-]){re.escape(option)}(?![\w-])", result.output)
+    assert re.search(rf"(?<![\w-]){re.escape(option)}(?![\w-])", output)
 
 
 @pytest.mark.sqlite
