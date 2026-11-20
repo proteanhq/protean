@@ -162,6 +162,7 @@ PAGES = (
     "guides/testing/fixtures-and-patterns.md",
     "guides/testing/integration-tests.md",
     "guides/testing/query-shape-tests.md",
+    "guides/write-an-adapter/event-store.md",
     "index.md",
     "patterns/aggregate-state-machines.md",
     "patterns/application-service-vs-command-handler.md",
@@ -408,6 +409,10 @@ GUIDE_TOML_INCLUDES = {
     ],
     "guides/multi-domain-applications.md": [
         "guides/multi-domain-applications/catalogue.toml",
+    ],
+    "guides/write-an-adapter/event-store.md": [
+        "guides/write-an-adapter/event-store/domain.toml",
+        "guides/write-an-adapter/event-store/entry-points.toml",
     ],
     "patterns/eventual-consistency-in-uis.md": [
         "patterns/eventual-consistency-in-uis/sync.toml",

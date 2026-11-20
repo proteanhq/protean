@@ -311,6 +311,7 @@ need by what you're trying to accomplish.
 | Use SQLite                                      | [SQLite Adapter](./reference/adapters/database/sqlite.md) |
 | Use Redis as a cache                            | [Redis Cache](./reference/adapters/cache/redis.md) |
 | Use Message DB as an event store                | [Message DB](./reference/adapters/eventstore/message-db.md) |
+| Write an event-store adapter                    | [Write an Event-Store Adapter](./guides/write-an-adapter/event-store.md) |
 | Build a custom database adapter                 | [Custom Databases](./reference/adapters/database/custom-databases.md) |
 | Build a custom broker adapter                   | [Custom Brokers](./reference/adapters/broker/custom-brokers.md) |
 | Check what capabilities a database supports     | [Database Capabilities](./reference/adapters/database/index.md#database-capabilities) |

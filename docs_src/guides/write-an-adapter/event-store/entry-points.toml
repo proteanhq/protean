@@ -1,0 +1,2 @@
+[project.entry-points."protean.event_stores"]
+delegating_memory = "delegating_event_store:register"

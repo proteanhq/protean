@@ -309,6 +309,9 @@ nav:
       - guides/testing/integration-tests.md
       - guides/testing/query-shape-tests.md
       - guides/testing/fixtures-and-patterns.md
+    - Write an Adapter:
+      - guides/write-an-adapter/index.md
+      - guides/write-an-adapter/event-store.md
 
   - Reference:
     - reference/index.md

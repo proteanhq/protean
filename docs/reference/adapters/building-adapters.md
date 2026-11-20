@@ -58,6 +58,12 @@ protocol's members:
 matching last-message reads, `stream_ids`, `ping`, `health`, `get_connection`
 and `clear`. It declares the guarantees it makes on a `capabilities` property.
 See [What each event store guarantees](./eventstore/index.md#what-each-event-store-guarantees).
+[Write an Event-Store Adapter](../../guides/write-an-adapter/event-store.md)
+shows a complete event-store adapter added to Protean itself, from the class
+to the conformance run. A separate package registers its adapter the same
+way, with the entry point in its own `pyproject.toml`, as shown below.
+[Write an Adapter](../../guides/write-an-adapter/index.md) lists the guides
+for each port.
 Cache adapters subclass the `CachePort` protocol, implement its key-value
 operations, and declare their capabilities through `CacheCapabilities`. An
 adapter that declares `TTL` also subclasses `CacheTTLPort`, and one that declares

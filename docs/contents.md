@@ -220,6 +220,11 @@ in detail.
 - [Fixtures and Patterns](./guides/testing/fixtures-and-patterns.md): Reusable pytest fixtures and conftest recipes.
 - [Pytest Plugin Reference](./reference/testing/pytest-plugin.md): `--protean-env`, `--update-snapshots`, and the registered markers.
 
+### Write an Adapter
+
+- [Write an Adapter](./guides/write-an-adapter/index.md): Add an adapter to Protean itself. The section has a guide for event stores.
+- [Write an Event-Store Adapter](./guides/write-an-adapter/event-store.md): Implement `EventStorePort`, register the adapter, and run the event-store conformance suite.
+
 ---
 
 ## Python API Reference
