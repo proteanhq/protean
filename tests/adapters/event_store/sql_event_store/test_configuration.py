@@ -196,7 +196,7 @@ class TestIsolationLevel:
             build(test_domain, database_uri=sqlite_uri(tmp_path), isolation_level=level)
 
     @pytest.mark.sqlite
-    @pytest.mark.parametrize("options", ["x", ["isolation_level"]])
+    @pytest.mark.parametrize("options", ["x", ["isolation_level"], "", [], None])
     def test_execution_options_that_are_not_a_table_are_refused(
         self, test_domain, tmp_path, options
     ):

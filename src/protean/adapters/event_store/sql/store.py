@@ -218,7 +218,7 @@ def _check_isolation_level(name: str, backend: str, config: Mapping[str, Any]) -
     ``execution_options.isolation_level``. ``execution_options`` must be a
     table.
     """
-    execution_options = config.get("execution_options") or {}
+    execution_options = config.get("execution_options", {})
     if not isinstance(execution_options, Mapping):
         raise ConfigurationError(
             f"Event store '{name}' has execution_options "

@@ -3321,9 +3321,6 @@ class SADatabase(BaseDatabase, RawQueryDatabasePort):
                 conn.close()
 
 
-# The PostgreSQL drivers the provider supports, each with the extra that installs
-# it. A ``database_uri`` without a driver (``postgresql://``) takes the first one
-# that imports, so psycopg 3 is the default and psycopg2 the fallback.
 # The engine arguments a PostgreSQL engine starts from. The config overlays them.
 POSTGRESQL_ENGINE_DEFAULTS: dict[str, typing.Any] = {
     "pool_size": 5,
@@ -3332,6 +3329,9 @@ POSTGRESQL_ENGINE_DEFAULTS: dict[str, typing.Any] = {
     "pool_recycle": 1800,
 }
 
+# The PostgreSQL drivers the provider supports, each with the extra that installs
+# it. A ``database_uri`` without a driver (``postgresql://``) takes the first one
+# that imports, so psycopg 3 is the default and psycopg2 the fallback.
 _POSTGRESQL_DRIVERS: dict[str, str] = {
     "psycopg": "protean[postgresql]",
     "psycopg2": "protean[postgresql-psycopg2]",
