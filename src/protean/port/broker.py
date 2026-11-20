@@ -163,12 +163,12 @@ class BrokerPort(Protocol):
 
     An adapter subclasses this Protocol explicitly and sets ``name``,
     ``domain`` and ``config`` in its own ``__init__``: ``BrokerPort.__init__``
-    sets nothing. Each adapter also sets the class attribute ``broker_type``
-    to the name it is known by, such as ``"inline"``, ``"redis"`` or
-    ``"redis_pubsub"``. An adapter that declares a flag listed in `CAPABILITY_PORTS` subclasses the
-    sub-protocol the flag maps to, such as ``BlockingReadPort`` for
-    ``BrokerCapabilities.BLOCKING_READ``. Each sub-protocol extends
-    ``BrokerPort``.
+    sets nothing. Each built-in adapter also sets the class attribute
+    ``broker_type`` to the name it is known by, such as ``"inline"``,
+    ``"redis"`` or ``"redis_pubsub"``. An adapter that declares a flag listed
+    in `CAPABILITY_PORTS` subclasses the sub-protocol the flag maps to, such
+    as ``BlockingReadPort`` for ``BrokerCapabilities.BLOCKING_READ``. Each
+    sub-protocol extends ``BrokerPort``.
 
     The ``Broker`` service in ``protean.infra.broker`` wraps the adapter and
     adds unit-of-work recording, the retry after a connection error,

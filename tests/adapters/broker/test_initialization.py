@@ -283,6 +283,41 @@ class TestNonDestructiveReinitialization:
         assert test_domain.brokers["default"] is original_default
 
 
-def test_port_module_no_longer_defines_base_broker_or_operation_state():
-    for name in ("BaseBroker", "OperationState", "MAX_RETRIES", "MESSAGE_TIMEOUT"):
-        assert not hasattr(port_module, name), name
+def test_port_module_defines_only_the_port_surface():
+    defined = {
+        name
+        for name, value in vars(port_module).items()
+        if not name.startswith("_")
+        and getattr(value, "__module__", None) == port_module.__name__
+    }
+
+    assert defined == {
+        "BlockingReadPort",
+        "BrokerCapabilities",
+        "BrokerHealth",
+        "BrokerMessage",
+        "BrokerPort",
+        "ConsumerGroupInfo",
+        "ConsumerInfo",
+        "DLQEntry",
+        "DeadLetterQueuePort",
+        "LeaseLostError",
+        "PartitioningPort",
+        "StreamRetentionPort",
+        "dlq_metadata",
+        "failure_time",
+        "newest_failure_first",
+        "parse_dlq_entry",
+        "require_aware_cutoff",
+    }
+
+
+def test_port_module_has_no_numeric_constants():
+    # ``TYPE_CHECKING`` is the imported typing flag, the one bool the module holds.
+    numeric = {
+        name
+        for name, value in vars(port_module).items()
+        if not name.startswith("_") and isinstance(value, (int, float))
+    }
+
+    assert numeric == {"TYPE_CHECKING"}

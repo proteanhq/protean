@@ -320,8 +320,7 @@ class TestCapabilityChecks:
     """Callers check ``capabilities`` with ``in`` and ``&``."""
 
     def test_service_has_no_capability_helpers(self):
-        for name in ("has_capability", "has_all_capabilities", "has_any_capability"):
-            assert not hasattr(Broker, name), name
+        assert [name for name in dir(Broker) if name.startswith("has_")] == []
 
 
 class TestReads:
