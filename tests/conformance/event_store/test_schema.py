@@ -1,7 +1,9 @@
 """An adapter that manages its own schema creates and drops its tables.
 
-Neither built-in event store declares ``SCHEMA_MANAGEMENT``, so these tests run
-only against an adapter that does.
+These tests run only against an adapter that declares ``SCHEMA_MANAGEMENT``,
+such as the SQL event store. The conformance plugin creates that adapter's
+tables before each test, so each test here creates the schema again on tables
+that exist.
 """
 
 import pytest

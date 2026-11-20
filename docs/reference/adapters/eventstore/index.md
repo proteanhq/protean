@@ -42,6 +42,16 @@ durable event storage with SQL-based stream operations.
 - Persistent, durable storage
 - Suitable for production use
 
+### SQL
+
+The [SQL event store](./sql.md) keeps events in two tables on a SQLite file or
+a PostgreSQL database, through SQLAlchemy.
+
+- **Requires**: the `sqlite` or `postgresql` extra
+- Persistent, durable storage
+- Creates its own tables with `create_schema()`
+- No consumer groups
+
 ## What each event store guarantees
 
 Each event store declares the guarantees it makes as an `EventStoreCapabilities`
@@ -77,6 +87,9 @@ The built-in stores declare:
 - **Message DB**: `PRODUCTION | CONSUMER_GROUPS`. See
   [Message DB](./message-db.md#what-message-db-guarantees) for the flag it
   leaves out.
+- **SQL**: `PRODUCTION | SCHEMA_MANAGEMENT`. See
+  [SQL event store](./sql.md#what-the-sql-event-store-guarantees) for the
+  flag it leaves out.
 
 An event store written outside Protean must define `capabilities`. Creating an
 instance of a subclass that does not define it raises `TypeError`.
@@ -103,8 +116,8 @@ variable, and uses the value after `|` when it is not set.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `provider` | `"memory"` | Event store provider (`memory` or `message_db`) |
-| `database_uri` | —  | Connection string (required for Message DB) |
+| `provider` | `"memory"` | Event store provider (`memory`, `message_db` or `sql`) |
+| `database_uri` | —  | Connection string (required for Message DB and SQL) |
 
 ## Core Operations
 

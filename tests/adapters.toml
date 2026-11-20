@@ -29,6 +29,11 @@
 #   entry-point group. Add `tests/conformance/<port>/` to the entry's paths.
 #   No pair names a port's default adapter (`inline` for `broker`, `memory`
 #   for the others), because the core run already runs each suite on it.
+#   An item can instead be a table, `{ port = "...", adapter = "...",
+#   config = { ... } }`, whose config the run passes as `--adapter-config`.
+#   A table run is named after the entry, as in
+#   "Conformance: event_store/sql (postgresql)", so one adapter can run on two
+#   databases.
 #
 # Pushes to main and the nightly run still run every adapter (`-c FULL`).
 
@@ -86,11 +91,25 @@ paths = [
     "tests/support/migrations.py",
     "docs_src/adapters/database/index/multiple_databases.toml",
     "tests/docs/reference/adapters/database/test_index.py",
+    "src/protean/adapters/event_store/__init__.py",
+    "src/protean/adapters/event_store/sql/",
+    "src/protean/infra/event_store.py",
+    "src/protean/port/event_store.py",
+    "src/protean/port/health.py",
+    "tests/adapters/event_store/sql_event_store/",
+    "tests/conformance/event_store/",
+    "docs/reference/adapters/eventstore/sql.md",
+    "docs_src/adapters/eventstore/sql/",
+    "tests/docs/reference/adapters/eventstore/test_sql.py",
 ]
 markers = ["postgresql"]
 # POSTGRESQL runs on psycopg 3, the default driver. POSTGRESQL_PSYCOPG2 runs
 # the same capability suite on psycopg2, the fallback.
 databases = ["POSTGRESQL", "POSTGRESQL_PSYCOPG2"]
+# The SQL event store on PostgreSQL. The sqlite entry runs it on SQLite.
+conformance = [
+    { port = "event_store", adapter = "sql", config = { database_uri = "postgresql://postgres:postgres@localhost:55432/postgres" } },
+]
 
 [adapters.redis-broker]
 lane = "pr"
@@ -173,9 +192,20 @@ paths = [
     "docs_src/guides/compose-a-domain/schema-migrations/",
     "tests/docs/guides/compose_a_domain/test_schema_migrations.py",
     "docs/guides/compose-a-domain/schema-migrations.md",
+    "src/protean/adapters/event_store/__init__.py",
+    "src/protean/adapters/event_store/sql/",
+    "src/protean/infra/event_store.py",
+    "src/protean/port/event_store.py",
+    "src/protean/port/health.py",
+    "tests/adapters/event_store/sql_event_store/",
+    "tests/conformance/event_store/",
+    "docs/reference/adapters/eventstore/sql.md",
+    "docs_src/adapters/eventstore/sql/",
+    "tests/docs/reference/adapters/eventstore/test_sql.py",
 ]
 markers = ["sqlite"]
 databases = ["SQLITE"]
+conformance = ["event_store:sql"]
 
 [adapters.mssql]
 lane = "touched"

@@ -511,11 +511,9 @@ class TestRunner:
         for store in TEST_CONFIGS["eventstores"]:
             if store == "MEMORY":
                 continue
-            name, cmd = conformance_run(
-                self, f"event_store:{EVENT_STORE_ADAPTERS[store]}"
-            )
-            print(f"Running tests for EVENTSTORE: {name}…")
-            self.track_exit_code(self.run_command(cmd))
+            run = ConformanceRun("event_store", EVENT_STORE_ADAPTERS[store])
+            print(f"Running tests for EVENTSTORE: {run.name}…")
+            self.track_exit_code(self.run_command(conformance_run(self, run)))
 
     def run_full_suite_with_matrix_first(self, suites: list[TestSuite]) -> int:
         """Run full matrix test first, then remaining suites in parallel."""
@@ -635,6 +633,35 @@ CONFORMANCE_DEFAULT_ADAPTERS = {
 }
 
 
+@dataclass(frozen=True)
+class ConformanceRun:
+    """One run of ``tests/conformance/<port>/`` against one adapter.
+
+    ``config`` is the JSON object the run passes as ``--adapter-config``, or
+    ``None`` for the adapter's built-in configuration. ``label`` tells apart two
+    runs of the same adapter, such as the SQL event store on SQLite and on
+    PostgreSQL. A labelled run shares the database ``SHARED_DATABASES`` lists
+    under its label.
+    """
+
+    __test__ = False  # Prevent pytest from collecting this as a test class
+
+    port: str
+    adapter: str
+    config: str | None = None
+    label: str | None = None
+
+    @property
+    def name(self) -> str:
+        """The suite name, such as ``Conformance: event_store/sql (postgresql)``."""
+        name = f"Conformance: {self.port}/{self.adapter}"
+        return f"{name} ({self.label})" if self.label else name
+
+    @property
+    def shared_database(self) -> str | None:
+        return SHARED_DATABASES.get((self.label or self.adapter).upper())
+
+
 @dataclass
 class AdapterEntry:
     """One adapter in tests/adapters.toml."""
@@ -650,8 +677,8 @@ class AdapterEntry:
     databases: list[str]
     brokers: list[str]
     stores: list[str]
-    # "<port>:<adapter>" pairs, each a run of tests/conformance/<port>/.
-    conformance: list[str] = field(default_factory=list)
+    # The runs of tests/conformance/<port>/ the entry's leg makes.
+    conformance: list[ConformanceRun] = field(default_factory=list)
 
     def matches(self, path: str) -> bool:
         """Whether a changed file is one of this adapter's paths."""
@@ -734,7 +761,7 @@ def load_adapter_manifest(path: Path = ADAPTER_MANIFEST) -> AdapterManifest:
                 databases=list(raw.get("databases", [])),
                 brokers=list(raw.get("brokers", [])),
                 stores=list(raw.get("stores", [])),
-                conformance=_conformance_pairs(name, raw.get("conformance", [])),
+                conformance=_conformance_runs(name, raw.get("conformance", [])),
             )
         )
     return AdapterManifest(
@@ -748,24 +775,56 @@ def _registered_adapters(group: str) -> set[str]:
     return {ep.name for ep in metadata.entry_points(group=group)}
 
 
-def _conformance_pairs(name: str, pairs: object) -> list[str]:
-    """Check an entry's ``conformance`` value and return its pairs.
+def _conformance_runs(name: str, entries: object) -> list[ConformanceRun]:
+    """Check an entry's ``conformance`` value and return its runs.
+
+    Each item is a ``"<port>:<adapter>"`` pair, or a table with ``port``,
+    ``adapter`` and an optional ``config`` table. A table run is labelled with
+    the entry's name.
 
     Raises ``ValueError`` naming the entry when the value is not a list, when a
-    pair is not ``"<port>:<adapter>"``, names an unknown port, names the port's
-    default adapter, or names an adapter that is not registered in the port's
-    entry-point group. No adapter module is imported.
+    pair is not ``"<port>:<adapter>"``, when a table has a key other than those
+    three or a ``config`` that is not a table, or when a run names an unknown
+    port, the port's default adapter, or an adapter that is not registered in
+    the port's entry-point group. No adapter module is imported.
     """
-    if not isinstance(pairs, list):
+    if not isinstance(entries, list):
         # A wrong type gets the same ValueError naming the entry as every
         # other bad conformance value.
         raise ValueError(  # noqa: TRY004
-            f"Adapter '{name}' has conformance {pairs!r}; "
-            "use a list of '<port>:<adapter>' pairs"
+            f"Adapter '{name}' has conformance {entries!r}; "
+            "use a list of '<port>:<adapter>' pairs or "
+            "{ port, adapter, config } tables"
         )
-    for pair in pairs:
-        _check_conformance_pair(name, pair)
-    return list(pairs)
+    return [_conformance_run(name, item) for item in entries]
+
+
+def _conformance_run(name: str, item: object) -> ConformanceRun:
+    """Return the run one ``conformance`` item describes, checked."""
+    if not isinstance(item, dict):
+        _check_conformance_pair(name, item)
+        port, _, adapter = str(item).partition(":")
+        return ConformanceRun(port, adapter)
+
+    unknown = sorted(set(item) - {"port", "adapter", "config"})
+    if unknown:
+        raise ValueError(
+            f"Adapter '{name}' has conformance table {item!r} with unknown keys "
+            f"{unknown}; use port, adapter and config"
+        )
+    config = item.get("config")
+    if config is not None and not isinstance(config, dict):
+        raise ValueError(
+            f"Adapter '{name}' has conformance config {config!r}; use a table"
+        )
+    pair = f"{item.get('port', '')}:{item.get('adapter', '')}"
+    _check_conformance_pair(name, pair)
+    return ConformanceRun(
+        port=item["port"],
+        adapter=item["adapter"],
+        config=json.dumps(config, sort_keys=True) if config is not None else None,
+        label=name,
+    )
 
 
 def _check_conformance_pair(name: str, pair: object) -> None:
@@ -800,35 +859,38 @@ def _check_conformance_pair(name: str, pair: object) -> None:
         )
 
 
-def conformance_run(runner: TestRunner, pair: str) -> tuple[str, list[str]]:
-    """The suite name and pytest command of one ``"<port>:<adapter>"`` pair.
+def conformance_run(runner: TestRunner, run: ConformanceRun) -> list[str]:
+    """The pytest command of one conformance run.
 
     The command runs ``tests/conformance/<port>/`` with ``--port`` and
-    ``--adapter``.
+    ``--adapter``, and with ``--adapter-config`` when the run has a config.
     """
-    port, _, adapter = pair.partition(":")
-    cmd = runner.build_test_command(
-        extra_flags=[f"tests/conformance/{port}", "--port", port, "--adapter", adapter]
-    )
-    return f"Conformance: {port}/{adapter}", cmd
+    flags = [f"tests/conformance/{run.port}", "--port", run.port]
+    flags += ["--adapter", run.adapter]
+    if run.config is not None:
+        flags += ["--adapter-config", run.config]
+    return runner.build_test_command(extra_flags=flags)
 
 
 def build_conformance_suites(
     runner: TestRunner, adapters: list[AdapterEntry]
 ) -> list[TestSuite]:
-    """The coverage-wrapped conformance runs these adapters list, without repeats."""
-    pairs = dict.fromkeys(pair for entry in adapters for pair in entry.conformance)
-    suites = []
-    for pair in pairs:
-        name, cmd = conformance_run(runner, pair)
-        suites.append(
-            TestSuite(
-                name,
-                runner.build_coverage_command(cmd),
-                shared_database=SHARED_DATABASES.get(pair.partition(":")[2].upper()),
-            )
+    """The coverage-wrapped conformance runs these adapters list, without repeats.
+
+    Two runs with the same suite name are one run.
+    """
+    runs: dict[str, ConformanceRun] = {}
+    for entry in adapters:
+        for run in entry.conformance:
+            runs.setdefault(run.name, run)
+    return [
+        TestSuite(
+            run.name,
+            runner.build_coverage_command(conformance_run(runner, run)),
+            shared_database=run.shared_database,
         )
-    return suites
+        for run in runs.values()
+    ]
 
 
 def build_full_conformance_suites(runner: TestRunner) -> list[TestSuite]:

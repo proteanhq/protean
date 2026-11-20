@@ -1,0 +1,3 @@
+[event_store]
+provider = "sql"
+database_uri = "${SQL_EVENT_STORE_URL|sqlite:///events.db}"
