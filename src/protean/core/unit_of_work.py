@@ -53,7 +53,10 @@ def run_after_commit(callback: Callable[[], None]) -> None:
 
     With no UnitOfWork active, the callback runs now. Otherwise it waits for the
     outermost UnitOfWork (a nested one is never on the stack) to commit, and is
-    dropped if that transaction rolls back.
+    dropped if that transaction rolls back. A callback registered while a
+    UnitOfWork is active that raises an ``Exception`` is logged and does not
+    fail the commit. With no UnitOfWork
+    active, its exception propagates to the caller.
     """
     outermost = _uow_stack.top
     if outermost is None:
@@ -406,8 +409,15 @@ class UnitOfWork:
             self._do_commit(span)
 
     def _run_after_commit(self) -> None:
+        """Run every after-commit callback, logging each ``Exception`` it raises."""
         for callback in self._after_commit:
-            callback()
+            # The writes are durable by now, so a raising callback cannot undo
+            # them. Failing the commit would only skip publishing and event
+            # dispatch for those writes.
+            try:
+                callback()
+            except Exception:
+                logger.exception("uow.after_commit_callback_failed")
 
     def _do_commit(self, span: Any) -> None:
         """Internal commit logic wrapped by the ``protean.uow.commit`` span."""
