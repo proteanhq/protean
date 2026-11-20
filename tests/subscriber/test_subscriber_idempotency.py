@@ -4,7 +4,7 @@ A subscriber registered with ``idempotent=True`` records a
 ``(metadata.headers.id, subscriber fqn)`` marker in its ``provider``, in the same
 UnitOfWork as its writes, so a redelivered payload is applied once. The engine
 path (``Engine.handle_broker_message``) and the sync path
-(``BaseBroker.publish``) behave the same.
+(``Broker.publish``) behave the same.
 """
 
 import asyncio

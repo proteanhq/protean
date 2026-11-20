@@ -1,11 +1,11 @@
 # BrokerPort
 
 Message broker interface. Every broker adapter (Inline, Redis Stream,
-Redis PubSub, or your own) subclasses `BaseBroker` and `BrokerPort`, in that
-order. `BrokerPort` lists the operations Protean calls on every broker.
-`BaseBroker` stores the adapter's name, domain and configuration. A broker
-that declares a capability with its own Port subclasses that Port in place of
-`BrokerPort`. Each of these Ports extends `BrokerPort`:
+Redis PubSub, or your own) subclasses `BrokerPort`, which lists the operations
+Protean calls on every broker. The adapter sets its name, domain and
+configuration in its own `__init__`. A broker that declares a capability with
+its own Port subclasses that Port in place of `BrokerPort`. Each of these Ports
+extends `BrokerPort`:
 
 - `BLOCKING_READ`: `BlockingReadPort`, the blocking reads.
 - `DEAD_LETTER_QUEUE`: `DeadLetterQueuePort`, the dead letter queue operations.
@@ -74,12 +74,6 @@ writing an adapter.
     options:
       show_root_heading: true
       heading_level: 3
-
-## BaseBroker
-
-::: protean.port.broker.BaseBroker
-    options:
-      show_root_heading: false
 
 ## Broker service
 

@@ -551,7 +551,7 @@ class OutboxProcessor(BaseSubscription):
                 not self.is_external
                 and stream_category
                 and message.partition_key
-                and self.broker.has_capability(BrokerCapabilities.STREAM_PARTITIONING)
+                and BrokerCapabilities.STREAM_PARTITIONING in self.broker.capabilities
             ):
                 # Record the key in the per-category partition index (an
                 # idempotent SADD) so the partitioned consumer can discover it —
@@ -722,8 +722,9 @@ def _abandon_invalid_partition_key(
     # can't get one — ``invalid_partition_key_reason`` blocks it at
     # creation) and must still hit the check below rather than being
     # treated the same as "no key".
-    if message.partition_key is None or not processor.broker.has_capability(
-        BrokerCapabilities.STREAM_PARTITIONING
+    if (
+        message.partition_key is None
+        or BrokerCapabilities.STREAM_PARTITIONING not in processor.broker.capabilities
     ):
         return False
     reason = invalid_partition_key_reason(

@@ -11,7 +11,7 @@ from typer.testing import CliRunner
 from protean.cli import app
 from protean.cli.dlq import _format_time
 from protean.exceptions import NoDomainException
-from protean.port.broker import DLQEntry
+from protean.port.broker import BrokerCapabilities, DLQEntry
 from tests.shared import change_working_directory_to
 
 runner = CliRunner()
@@ -46,10 +46,11 @@ def _mock_domain_with_broker(
     mock_domain = MagicMock()
     mock_broker = MagicMock()
 
-    if has_dlq:
-        mock_broker.has_capability.return_value = True
-    else:
-        mock_broker.has_capability.return_value = False
+    mock_broker.capabilities = (
+        BrokerCapabilities.RELIABLE_MESSAGING | BrokerCapabilities.DEAD_LETTER_QUEUE
+        if has_dlq
+        else BrokerCapabilities.RELIABLE_MESSAGING
+    )
 
     mock_broker.dlq_list.return_value = dlq_entries or []
     mock_broker.dlq_get.return_value = dlq_entries[0] if dlq_entries else None

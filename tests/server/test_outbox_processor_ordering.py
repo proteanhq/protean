@@ -31,8 +31,7 @@ class _SelectiveBroker:
     def __init__(self, fail_ids: set[str]) -> None:
         self.fail_ids = fail_ids
 
-    def has_capability(self, capability: BrokerCapabilities) -> bool:
-        return False
+    capabilities = BrokerCapabilities.BASIC_PUBSUB
 
     def publish(self, stream: str, message: dict) -> str:
         if message["metadata"]["headers"]["id"] in self.fail_ids:

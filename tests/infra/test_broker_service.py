@@ -20,10 +20,7 @@ from protean.port.broker import (
 
 
 class StubAdapter(BrokerPort):
-    """A broker adapter that records each call and fails on request.
-
-    It implements ``BrokerPort`` only, not ``BaseBroker``.
-    """
+    """A broker adapter that records each call and fails on request."""
 
     def __init__(
         self,
@@ -317,6 +314,14 @@ class TestCapabilityGates:
 
         assert broker.read("orders", "billing", 5) == [BrokerMessage("msg-1", {"n": 1})]
         assert broker.get_next("orders", "billing") == BrokerMessage("msg-1", {"n": 1})
+
+
+class TestCapabilityChecks:
+    """Callers check ``capabilities`` with ``in`` and ``&``."""
+
+    def test_service_has_no_capability_helpers(self):
+        for name in ("has_capability", "has_all_capabilities", "has_any_capability"):
+            assert not hasattr(Broker, name), name
 
 
 class TestReads:

@@ -1,8 +1,17 @@
 # --8<-- [start:declare]
-from protean.port.broker import BaseBroker, BrokerCapabilities, PartitioningPort
+from collections.abc import Mapping
+from typing import Any
+
+from protean import Domain
+from protean.port.broker import BrokerCapabilities, PartitioningPort
 
 
-class MyBroker(BaseBroker, PartitioningPort):
+class MyBroker(PartitioningPort):
+    def __init__(self, name: str, domain: Domain, config: Mapping[str, Any]) -> None:
+        self.name = name
+        self.domain = domain
+        self.config = dict(config)
+
     @property
     def capabilities(self) -> BrokerCapabilities:
         return (

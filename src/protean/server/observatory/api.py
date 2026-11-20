@@ -1106,8 +1106,9 @@ def _no_subscription(subscription: str) -> JSONResponse:
 def _dlq_broker(domain: Domain) -> "Broker | None":
     """Return the default broker when it supports dead-letter queues, else None."""
     broker = domain.brokers.get("default")
-    if broker is None or not broker.has_capability(
-        BrokerCapabilities.DEAD_LETTER_QUEUE
+    if (
+        broker is None
+        or BrokerCapabilities.DEAD_LETTER_QUEUE not in broker.capabilities
     ):
         return None
     return broker
@@ -1148,7 +1149,7 @@ def _dlq_list(
                     content={"error": "No default broker configured"},
                     status_code=503,
                 )
-            if not broker.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+            if BrokerCapabilities.DEAD_LETTER_QUEUE not in broker.capabilities:
                 return JSONResponse(
                     content={"error": "Broker does not support DLQ"},
                     status_code=501,

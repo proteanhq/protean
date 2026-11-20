@@ -213,7 +213,7 @@ class DLQMaintenanceTask:
     def _get_broker(self) -> Broker | None:
         """Return the first broker that supports DLQ, or None."""
         for broker in self.domain.brokers.values():
-            if broker.has_capability(BrokerCapabilities.DEAD_LETTER_QUEUE):
+            if BrokerCapabilities.DEAD_LETTER_QUEUE in broker.capabilities:
                 return broker
         return None
 

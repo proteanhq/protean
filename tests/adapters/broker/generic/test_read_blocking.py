@@ -19,7 +19,7 @@ def test_read_blocking_fallback_for_unsupported_brokers(broker, monkeypatch):
     # For brokers that support blocking reads, we can temporarily disable the capability
     # to test the fallback behavior
     original_capabilities = broker.capabilities
-    had_blocking_read = broker.has_capability(BrokerCapabilities.BLOCKING_READ)
+    had_blocking_read = BrokerCapabilities.BLOCKING_READ in broker.capabilities
 
     # If broker supports blocking reads, temporarily remove that capability.
     # The Broker service reads the flag from the adapter, so the patch goes on
@@ -65,7 +65,7 @@ def test_read_blocking_with_supported_broker(broker):
         broker.publish(stream, msg)
 
     # Check if broker supports blocking reads
-    if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
+    if BrokerCapabilities.BLOCKING_READ in broker.capabilities:
         # Test with blocking read
         result = broker.read_blocking(
             stream=stream,
@@ -108,7 +108,7 @@ def test_read_blocking_with_connection_error_recovery(broker):
     broker.publish(stream, {"test": "data"})
 
     # For brokers that support blocking reads, we need to test connection error handling
-    if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
+    if BrokerCapabilities.BLOCKING_READ in broker.capabilities:
         # Store original method
         original_read_blocking = broker._adapter.read_blocking
 
@@ -168,7 +168,7 @@ def test_read_blocking_with_non_connection_error(broker):
     consumer_name = "test_consumer"
 
     # Test with an error that's not connection-related
-    if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
+    if BrokerCapabilities.BLOCKING_READ in broker.capabilities:
         original_read_blocking = broker._adapter.read_blocking
 
         def mock_read_blocking_error(*args, **kwargs):
@@ -227,7 +227,7 @@ def test_read_blocking_connection_recovery_failure(broker):
     broker._adapter.reconnect = mock_ensure_connection_fail
 
     try:
-        if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
+        if BrokerCapabilities.BLOCKING_READ in broker.capabilities:
             # For brokers with blocking read support
             original_read_blocking = broker._adapter.read_blocking
 
@@ -309,7 +309,7 @@ def test_read_blocking_successful_retry_after_connection_error(broker):
     broker.publish(stream, {"id": 1, "data": "message_1"})
     broker.publish(stream, {"id": 2, "data": "message_2"})
 
-    if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
+    if BrokerCapabilities.BLOCKING_READ in broker.capabilities:
         # Store original methods
         original_read_blocking = broker._adapter.read_blocking
         original_ensure_connection = broker._adapter.reconnect
@@ -367,7 +367,7 @@ def test_read_blocking_connection_error_without_recovery(broker):
     consumer_group = "test_consumer_group"
     consumer_name = "test_consumer"
 
-    if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
+    if BrokerCapabilities.BLOCKING_READ in broker.capabilities:
         # Store original methods
         original_read_blocking = broker._adapter.read_blocking
         original_ensure_connection = broker._adapter.reconnect
@@ -415,7 +415,7 @@ def test_read_blocking_with_various_connection_errors(broker):
     # Publish a message
     broker.publish(stream, {"test": "data"})
 
-    if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
+    if BrokerCapabilities.BLOCKING_READ in broker.capabilities:
         # Store original methods
         original_read_blocking = broker._adapter.read_blocking
         original_ensure_connection = broker._adapter.reconnect
@@ -474,7 +474,7 @@ def test_read_blocking_connection_error_logging(broker, caplog):
     consumer_group = "test_consumer_group"
     consumer_name = "test_consumer"
 
-    if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
+    if BrokerCapabilities.BLOCKING_READ in broker.capabilities:
         original_read_blocking = broker._adapter.read_blocking
         original_ensure_connection = broker._adapter.reconnect
 
@@ -528,7 +528,7 @@ def test_read_blocking_retry_after_successful_recovery(broker):
     # Publish test messages
     broker.publish(stream, {"id": 1, "data": "message_1"})
 
-    if broker.has_capability(BrokerCapabilities.BLOCKING_READ):
+    if BrokerCapabilities.BLOCKING_READ in broker.capabilities:
         original_read_blocking = broker._adapter.read_blocking
         original_ensure_connection = broker._adapter.reconnect
 

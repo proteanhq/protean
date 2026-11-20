@@ -13,25 +13,29 @@ class TestRedisPubSubBrokerCapabilities:
         """RedisPubSubBroker should have SIMPLE_QUEUING capabilities."""
         expected_caps = BrokerCapabilities.SIMPLE_QUEUING
 
-        # Test has_all_capabilities
-        assert broker.has_all_capabilities(BrokerCapabilities.PUBLISH)
-        assert broker.has_all_capabilities(BrokerCapabilities.SUBSCRIBE)
-        assert broker.has_all_capabilities(BrokerCapabilities.CONSUMER_GROUPS)
-        assert broker.has_all_capabilities(expected_caps)
+        # Every flag the broker declares
+        assert BrokerCapabilities.PUBLISH in broker.capabilities
+        assert BrokerCapabilities.SUBSCRIBE in broker.capabilities
+        assert BrokerCapabilities.CONSUMER_GROUPS in broker.capabilities
+        assert expected_caps in broker.capabilities
 
         # Should not have advanced capabilities
-        assert not broker.has_all_capabilities(BrokerCapabilities.ACK_NACK)
-        assert not broker.has_all_capabilities(BrokerCapabilities.MESSAGE_ORDERING)
-        assert not broker.has_all_capabilities(BrokerCapabilities.BLOCKING_READ)
-        assert not broker.has_all_capabilities(BrokerCapabilities.RELIABLE_MESSAGING)
+        assert BrokerCapabilities.ACK_NACK not in broker.capabilities
+        assert BrokerCapabilities.MESSAGE_ORDERING not in broker.capabilities
+        assert BrokerCapabilities.BLOCKING_READ not in broker.capabilities
+        assert BrokerCapabilities.RELIABLE_MESSAGING not in broker.capabilities
 
-        # Test has_any_capability
-        assert broker.has_any_capability(BrokerCapabilities.CONSUMER_GROUPS)
-        assert broker.has_any_capability(
-            BrokerCapabilities.CONSUMER_GROUPS | BrokerCapabilities.ACK_NACK
+        # At least one flag of a set
+        assert bool(broker.capabilities & BrokerCapabilities.CONSUMER_GROUPS)
+        assert bool(
+            broker.capabilities
+            & (BrokerCapabilities.CONSUMER_GROUPS | BrokerCapabilities.ACK_NACK)
         )
-        assert not broker.has_any_capability(
-            BrokerCapabilities.ACK_NACK
-            | BrokerCapabilities.MESSAGE_ORDERING
-            | BrokerCapabilities.REPLAY
+        assert not (
+            broker.capabilities
+            & (
+                BrokerCapabilities.ACK_NACK
+                | BrokerCapabilities.MESSAGE_ORDERING
+                | BrokerCapabilities.REPLAY
+            )
         )

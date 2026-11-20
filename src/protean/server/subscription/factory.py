@@ -80,8 +80,9 @@ def broker_supports_partitioning(domain: "Domain") -> bool:
     broker) ``sequential_by`` is a no-op and neither path partitions.
     """
     broker = domain.brokers.get("default")
-    return broker is not None and broker.has_capability(
-        BrokerCapabilities.STREAM_PARTITIONING
+    return (
+        broker is not None
+        and BrokerCapabilities.STREAM_PARTITIONING in broker.capabilities
     )
 
 

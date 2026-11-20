@@ -9,7 +9,6 @@ import redis
 
 from protean.infra.registry import brokers
 from protean.port.broker import (
-    BaseBroker,
     BrokerCapabilities,
     BrokerHealth,
     BrokerMessage,
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
 CONSUMER_GROUP_SEPARATOR = ":"
 
 
-class RedisPubSubBroker(BaseBroker, BrokerPort):
+class RedisPubSubBroker(BrokerPort):
     """Redis as the Message Broker for simple queuing.
 
     This broker supports basic publish/subscribe with consumer groups
@@ -36,7 +35,10 @@ class RedisPubSubBroker(BaseBroker, BrokerPort):
     broker_type = "redis_pubsub"
 
     def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
-        super().__init__(name, domain, config)
+        self.name = name
+        self.domain = domain
+        # A copy: the broker never writes to the configuration it was given.
+        self.config: Mapping[str, Any] = dict(config)
 
         self.redis_instance = redis.Redis.from_url(str(self.config["URI"]))
 

@@ -511,7 +511,7 @@ class HandlerConfigurator:
 
         if isinstance(broker._adapter, InlineBroker):
             return
-        if broker.has_capability(BrokerCapabilities.STREAM_PARTITIONING):
+        if BrokerCapabilities.STREAM_PARTITIONING in broker.capabilities:
             return
 
         categories = ", ".join(sorted(self._domain._partition_keys))

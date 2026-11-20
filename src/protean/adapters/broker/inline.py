@@ -4,12 +4,12 @@ import uuid
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import datetime
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from protean.infra.registry import brokers
 from protean.port.broker import (
     DLQ_SUFFIX,
-    BaseBroker,
     BrokerCapabilities,
     BrokerHealth,
     BrokerMessage,
@@ -17,7 +17,6 @@ from protean.port.broker import (
     ConsumerGroupInfo,
     DeadLetterQueuePort,
     DLQEntry,
-    OperationState,
     dlq_metadata,
     failure_time,
     newest_failure_first,
@@ -45,11 +44,23 @@ ENABLE_DLQ = True
 OPERATION_STATE_TTL_MAX = 60.0
 
 
-class InlineBroker(BaseBroker, DeadLetterQueuePort):
+class OperationState(Enum):
+    """Track the state of ack/nack operations for idempotency"""
+
+    PENDING = "pending"
+    ACKNOWLEDGED = "acknowledged"
+    NACKED = "nacked"
+    FAILED = "failed"
+
+
+class InlineBroker(DeadLetterQueuePort):
     broker_type = "inline"
 
     def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
-        super().__init__(name, domain, config)
+        self.name = name
+        self.domain = domain
+        # A copy: the broker never writes to the configuration it was given.
+        self.config: Mapping[str, Any] = dict(config)
 
         # The inline broker always delivers in the publishing process.
         self.is_async = False

@@ -33,12 +33,9 @@ class RecordingBroker:
 
     def __init__(self, name: str, capabilities: BrokerCapabilities) -> None:
         self.name = name
-        self._capabilities = capabilities
+        self.capabilities = capabilities
         self.published: list[tuple[str, dict]] = []
         self.recorded_partitions: list[tuple[str, str]] = []
-
-    def has_capability(self, capability: BrokerCapabilities) -> bool:
-        return capability in self._capabilities
 
     def publish(self, stream: str, message: dict) -> str:
         self.published.append((stream, message))

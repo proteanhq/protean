@@ -12,11 +12,11 @@ Custom brokers allow you to:
 
 ## Architecture
 
-A broker adapter subclasses `BaseBroker` and `BrokerPort`, in that order.
-`BrokerPort` holds the operations Protean calls on every broker. `BaseBroker`
-stores the adapter's name, domain and configuration. Four capabilities have
-their own Port, and each Port extends `BrokerPort`. A broker that advertises
-one of them subclasses `BaseBroker` and that Port in place of `BrokerPort`:
+A broker adapter subclasses `BrokerPort`, which holds the operations Protean
+calls on every broker. The adapter sets `name`, `domain` and `config` in its
+own `__init__`, because `BrokerPort.__init__` sets nothing. Four capabilities
+have their own Port, and each Port extends `BrokerPort`. A broker that
+advertises one of them subclasses that Port in place of `BrokerPort`:
 
 | Capability | Port | Methods |
 |------------|------|---------|
@@ -143,7 +143,6 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 import kafka
 from protean.port.broker import (
-    BaseBroker,
     BrokerCapabilities,
     BrokerHealth,
     BrokerMessage,
@@ -154,13 +153,15 @@ if TYPE_CHECKING:
     from protean.domain import Domain
 
 
-class KafkaBroker(BaseBroker, BrokerPort):
+class KafkaBroker(BrokerPort):
     """Kafka broker implementation for Protean."""
 
     broker_type = "kafka"
 
     def __init__(self, name: str, domain: "Domain", config: Mapping[str, Any]) -> None:
-        super().__init__(name, domain, config)
+        self.name = name
+        self.domain = domain
+        self.config = dict(config)
 
         # Initialize Kafka connection
         self.producer = kafka.KafkaProducer(
@@ -341,7 +342,7 @@ returns `{}`.
 
 ```python
 # fragment
-class MyBroker(BaseBroker, BlockingReadPort):
+class MyBroker(BlockingReadPort):
     def read_blocking(
         self,
         stream: str,
@@ -382,7 +383,7 @@ and `TypeError` for a value that is not a `datetime`.
 
 ```python
 # fragment
-class MyBroker(BaseBroker, DeadLetterQueuePort):
+class MyBroker(DeadLetterQueuePort):
     def dlq_list(self, dlq_streams: list[str], limit: int = 100) -> list[DLQEntry]:
         ...
 
@@ -406,8 +407,7 @@ class MyBroker(BaseBroker, DeadLetterQueuePort):
 ```
 
 A broker that declares both `BLOCKING_READ` and `DEAD_LETTER_QUEUE` subclasses
-both sub-protocols, as `class MyBroker(BaseBroker, BlockingReadPort,
-DeadLetterQueuePort)`.
+both sub-protocols, as `class MyBroker(BlockingReadPort, DeadLetterQueuePort)`.
 
 ## Testing Your Broker
 
