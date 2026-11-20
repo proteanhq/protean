@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, Self
 from protean._deprecation import warn_from_registry
 from protean.exceptions import NotSupportedError
 from protean.fields.resolved import serialize_custom_value
-from protean.port.database import DatabaseCapabilities
 from protean.utils.globals import _find_uow
 from protean.utils.query import Q, split_lookup_key
 from protean.utils.reflection import attributes, fields, id_field
@@ -352,43 +351,15 @@ class QuerySet:
         # Destroy any cached results
         self._result_cache = None
 
-        # Call the read method of the dao
-        dao = self._owner_dao
-        results = dao._filter(
+        results = self._owner_dao.fetch(
             self._criteria,
-            self._offset,
-            self._limit,
-            self._order_by,
+            offset=self._offset,
+            limit=self._limit,
+            order_by=self._order_by,
             with_total=with_total,
             fields=self._only_fields,
         )
-
-        if self._only_fields is not None:
-            # Projection path: build inert, read-only Record objects. These are
-            # not domain entities, so they are deliberately not retrieved-
-            # marked, event-synced, or tracked in the Unit of Work.
-            results.items = self._owner_dao.database_model_cls.to_records(
-                results.items, self._only_fields
-            )
-            self._cache(results, lambda: self.all(with_total=with_total))
-            return results
-
-        # Convert the returned results to entity and return it
-        entity_items = []
-        for item in results.items:
-            entity = self._owner_dao.database_model_cls.to_entity(item)
-            entity.state_.mark_retrieved()
-
-            # Sync event position and register in UoW identity map, or take
-            # the instance the UoW already tracks
-            entity = self._owner_dao._track_in_uow(entity)
-
-            entity_items.append(entity)
-
-        results.items = entity_items
-
         self._cache(results, lambda: self.all(with_total=with_total))
-
         return results
 
     def count(self) -> int:
@@ -398,8 +369,7 @@ class QuerySet:
         projecting columns or materializing entities. Ignores ``offset``,
         ``limit``, and ``order_by`` since they do not affect the row count.
         """
-        dao = self._owner_dao
-        return dao._count(self._criteria)
+        return self._owner_dao.count(self._criteria)
 
     def update(self, *data: Any, apply_hooks: bool = True, **kwargs: Any) -> int:
         """Update every matching aggregate and return how many matched.
@@ -454,39 +424,16 @@ class QuerySet:
         Raises:
             NotSupportedError: The provider does not support raw queries.
         """
-        provider = self._owner_dao.provider
-        if DatabaseCapabilities.RAW_QUERIES not in provider.capabilities:
-            raise NotSupportedError(
-                f"Provider '{provider.name}' ({provider.__class__.__name__}) "
-                "does not support raw queries"
-            )
-
         logger.debug(
             f"Query `{self.__class__.__name__}` objects with raw query {query}"
         )
 
-        # Destroy any cached results
+        results = self._owner_dao.raw(query, data)
+
+        # Reset the cache only once the read succeeds, so a raise leaves it as
+        # it was.
         self._result_cache = None
-
-        # Call the raw method of the repository
-        dao = self._owner_dao
-        results = dao._raw(query, data)
-
-        # Convert the returned results to entity and return it
-        entity_items = []
-        for item in results.items:
-            entity = self._owner_dao.database_model_cls.to_entity(item)
-            entity.state_.mark_retrieved()
-
-            # Sync event position and register in UoW identity map, or take
-            # the instance the UoW already tracks
-            entity = self._owner_dao._track_in_uow(entity)
-
-            entity_items.append(entity)
-        results.items = entity_items
-
         self._cache(results, lambda: self.raw(query, data))
-
         return results
 
     def delete(self) -> int:

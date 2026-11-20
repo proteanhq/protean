@@ -55,7 +55,8 @@ once.
 The repository exposes methods named in domain terms (`add`, `get`, `query`,
 `find_by`, and custom methods). The adapter DAO exposes methods named in
 database terms (`filter`, `count`, `insert`, `update`, `delete`). The `DAO`
-service calls them from its own `_filter`, `_count` and save methods. Custom repository
+service's `fetch` calls the adapter's `filter`, its `count` calls `count`, and
+its save methods call `insert`, `update` and `delete`. Custom repository
 methods use `self.query` and `self.find_by` (which delegate to the internal
 `_dao`) to build queries.
 
@@ -65,6 +66,8 @@ methods use `self.query` and `self.find_by` (which delegate to the internal
   `_dao` property, and `_sync_children()` for cascading child entities.
 - `src/protean/infra/dao.py`: the `DAO` service with lifecycle methods
   (`get`, `find_by`, `exists`, `create`, `save`, `update`, `delete`).
+- `src/protean/infra/dao_read.py`: the service's read path (`fetch`,
+  `count`, `raw`, `get`, `find_by`, `exists`).
 - `src/protean/port/dao.py`: `DAOPort`, with the methods concrete adapters
   implement (`filter`, `count`, `insert`, `update`, `delete`), and the
   optional ports such as `RawQueryDAOPort`.
@@ -98,16 +101,21 @@ children = base.filter(age__lt=18)           # QuerySet 3 (clone of 1)
 ### QuerySet → Provider → Database
 
 When a QuerySet is evaluated (via `.all()`, iteration, `len()`, etc.), it
-calls the `DAO` service's `_filter`, which opens a session and calls the
-adapter's `filter`:
+calls the `DAO` service's `fetch`. `fetch` calls the adapter's `filter` in the
+session `session_scope` picks: the Unit of Work's session inside a Unit of
+Work, or a new session it commits and closes outside one. After the
+`session_scope` block exits, `fetch` turns each row into an entity and, inside
+a Unit of Work, tracks each aggregate in it:
 
 ```python
 # fragment
-results = dao._filter(
-    self._criteria,     # Q object tree
-    self._offset,       # int
-    self._limit,        # int or None
-    self._order_by      # list of strings
+results = dao.fetch(
+    self._criteria,                 # Q object tree
+    offset=self._offset,            # int
+    limit=self._limit,              # int or None
+    order_by=self._order_by,        # list of strings
+    with_total=with_total,          # bool
+    fields=self._only_fields,       # list of strings, or None
 )
 ```
 
@@ -124,7 +132,7 @@ total for free (memory, Elasticsearch) may continue to populate it.
 `filter` also accepts an optional `fields` argument (a list of attribute
 names) set via `QuerySet.only()`. When `fields` is present, the adapter fetches
 only those columns (SQLAlchemy `load_only`, Elasticsearch `_source` filtering;
-the memory store selects when building the result). The QuerySet then builds
+the memory store selects when building the result). `fetch` then builds
 read-only `Record` objects through the model's `to_records` instead of
 materializing entities. A `Record` never enters the entity layer, so the
 field-selection path runs no invariants and does no event-position sync or Unit
@@ -132,8 +140,8 @@ of Work tracking. Skipping that work keeps the field-selection path cheap and
 leaves the domain model uncompromised.
 
 Counting takes a lighter path that bypasses `filter` entirely. `count()` on a
-QuerySet calls the `DAO` service's `_count`, which opens a session and calls
-the adapter's `count` with only the Q object tree. The
+QuerySet calls the `DAO` service's `count`, which calls the adapter's `count`
+in the session `session_scope` picks, with only the Q object tree. The
 concrete DAO issues a single `SELECT COUNT(*)` (SQLAlchemy `func.count()`,
 memory `len` over the filtered set, Elasticsearch's `_count` API) with no
 projection wrapper and no entity materialization. `offset`, `limit`, and
@@ -477,12 +485,12 @@ class ResultSet:
     total_pages → int    # math.ceil(total / limit), 0 when empty
 ```
 
-The `all()` method on QuerySet converts raw database results (dicts or model
-objects) into domain entity objects via `DatabaseModel.to_entity()`. It then
-marks each entity as retrieved (`entity.state_.mark_retrieved()`) and adds each
-aggregate to the active Unit of Work's identity map. When the identity map
-already holds an aggregate, `all()` returns that instance in place of the copy
-it just loaded.
+The `DAO` service's `fetch` and `raw`, which `all()` and `raw()` on QuerySet
+call, convert raw database results (dicts or model objects) into domain entity
+objects via `DatabaseModel.to_entity()`. They then mark each entity as
+retrieved (`entity.state_.mark_retrieved()`) and add each aggregate to the
+active Unit of Work's identity map. When the identity map already holds an
+aggregate, they return that instance in place of the copy they just loaded.
 
 When you read a QuerySet without calling `all()` (iterating it, indexing it, or
 reading `first`, `last` or `items`), the QuerySet returns a deep copy of the

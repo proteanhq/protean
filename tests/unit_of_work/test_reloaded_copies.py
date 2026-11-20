@@ -435,7 +435,7 @@ def test_a_raw_query_that_failed_to_run_again_retries_as_the_raw_query(
     query.raw('{"name": "t"}')
 
     dao = repo._dao
-    original_raw = dao._raw
+    original_raw = dao.raw
     calls = []
 
     def failing_once(query_string, data=None):
@@ -444,7 +444,7 @@ def test_a_raw_query_that_failed_to_run_again_retries_as_the_raw_query(
             raise RuntimeError("database unavailable")
         return original_raw(query_string, data)
 
-    monkeypatch.setattr(dao, "_raw", failing_once)
+    monkeypatch.setattr(dao, "raw", failing_once)
 
     with UnitOfWork():
         with pytest.raises(RuntimeError):

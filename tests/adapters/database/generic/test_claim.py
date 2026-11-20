@@ -572,10 +572,17 @@ class TestClaimHoldBack:
         # Checking each row of a key against the rows of that key claimed
         # before it must not read those rows back, or one key's batch of N
         # rows reads about N * N / 2 of them.
+        dao = test_domain.repository_for(KeyedJob)._dao
+        adapter_reads = (
+            DatabaseCapabilities.NATIVE_CLAIM
+            | DatabaseCapabilities.FILTERED_CLAIM_CANDIDATES
+        )
+        if adapter_reads & dao.provider.capabilities:
+            pytest.skip("the adapter reads the candidates, not DAO.fetch")
         # Patched on the class: each repository_for call builds a new DAO.
-        dao_cls = type(test_domain.repository_for(KeyedJob)._dao)
+        dao_cls = type(dao)
         _keyed(test_domain, *_key_rows("k1", range(150)))
-        filter_rows = dao_cls._filter
+        filter_rows = dao_cls.fetch
         rows_read: list[int] = []
 
         def counting_filter(self, *args, **kwargs):
@@ -583,11 +590,12 @@ class TestClaimHoldBack:
             rows_read.append(len(result.items))
             return result
 
-        monkeypatch.setattr(dao_cls, "_filter", counting_filter)
+        monkeypatch.setattr(dao_cls, "fetch", counting_filter)
 
         claimed = _claim_keyed(test_domain, limit=150)
 
         assert claimed == [f"k1-{n}" for n in range(150)]
+        assert rows_read
         assert sum(rows_read) <= 2 * 150
 
     def test_a_lost_claim_on_an_earlier_row_holds_the_rest_of_its_key(

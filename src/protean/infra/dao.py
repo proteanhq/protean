@@ -32,9 +32,9 @@ from protean.core.queryset import QuerySet, ResultSet
 from protean.exceptions import (
     ConfigurationError,
     ObjectNotFoundError,
-    TooManyObjectsError,
     ValidationError,
 )
+from protean.infra import dao_read
 from protean.port.dao import (
     _FLAG_PORTS,
     BoundedDeletePort,
@@ -43,7 +43,6 @@ from protean.port.dao import (
     HoldBack,
     InsertIfAbsentPort,
     NativeClaimPort,
-    RawQueryDAOPort,
 )
 from protean.port.database import DatabaseCapabilities, DatabaseModelPort
 from protean.utils import DomainObjects, _callable_qualname
@@ -294,7 +293,7 @@ def _try_claim_in_group(
     # this row and still hold, so a larger count means an earlier
     # row this call did not claim. One count per row binds the same
     # parameters however large the batch is.
-    held = dao._count(earlier) > claimed_in_group[group]
+    held = dao.count(earlier) > claimed_in_group[group]
     if held or not try_claim(entity):
         return False
 
@@ -307,8 +306,6 @@ def _read_claim_candidates(
 ) -> list[Any]:
     """Read one page of claim candidates: up to ``limit`` entities matching
     ``criteria`` in ``order_by`` order, skipping the first ``offset``."""
-    # The entity-level query API returns entities; the low-level ``_filter``
-    # returns raw model objects.
     candidate_qs = dao.query.filter(criteria)
     if order_by:
         candidate_qs = candidate_qs.order_by(list(order_by))
@@ -692,47 +689,48 @@ class DAO:
     # Operations on many records #
     ##############################
 
-    def _filter(
+    def fetch(
         self,
         criteria: Q,
+        *,
         offset: int = 0,
         limit: int = 10,
         order_by: Sequence[str] = (),
         with_total: bool = True,
         fields: list[str] | None = None,
     ) -> ResultSet:
-        """Return one page of the rows that match ``criteria``, read through
-        the adapter's ``filter`` in the session :meth:`session_scope` picks.
+        """Return one page of the entities that match ``criteria``, read in
+        the session :meth:`session_scope` picks.
 
-        ``QuerySet`` calls this. The ``ResultSet``'s ``items`` are raw storage
-        records.
+        Each entity is marked retrieved. Inside a Unit of Work, each aggregate
+        is tracked in it, or swapped for the instance it already tracks.
+        With ``fields`` set, ``items`` holds read-only ``Record`` objects with
+        those fields, and nothing is tracked. An empty ``fields`` selects
+        nothing and returns full entities. With ``with_total`` set to
+        ``False``, the adapter may skip computing ``total``.
         """
-        with self.session_scope() as session:
-            return self._adapter.filter(
-                session,
-                criteria,
-                offset=offset,
-                limit=limit,
-                order_by=order_by,
-                with_total=with_total,
-                fields=fields,
-            )
+        return dao_read.fetch(
+            self,
+            criteria,
+            offset=offset,
+            limit=limit,
+            order_by=order_by,
+            with_total=with_total,
+            fields=fields,
+        )
 
-    def _count(self, criteria: Q) -> int:
-        """The number of rows that match ``criteria``, counted through the
-        adapter's ``count``."""
-        with self.session_scope() as session:
-            return self._adapter.count(session, criteria)
+    def count(self, criteria: Q) -> int:
+        """Return the number of rows that match ``criteria``."""
+        return dao_read.count(self, criteria)
 
-    def _raw(self, query: Any, data: Any = None) -> ResultSet:
-        """Run ``query`` through the adapter's ``raw``.
+    def raw(self, query: Any, data: Any = None) -> ResultSet:
+        """Run ``query`` through the adapter's ``raw`` and return the
+        entities, tracked in the Unit of Work as :meth:`fetch` tracks them.
 
-        ``QuerySet.raw()`` calls this after it checks that the provider
-        declares ``RAW_QUERIES``, so the adapter subclasses
-        :class:`RawQueryDAOPort`.
+        Raises:
+            NotSupportedError: The provider does not declare ``RAW_QUERIES``.
         """
-        with self.session_scope() as session:
-            return cast(RawQueryDAOPort, self._adapter).raw(session, query, data)
+        return dao_read.raw(self, query, data)
 
     def has_table(self) -> bool:
         """Whether the adapter's table, collection or index exists."""
@@ -874,95 +872,27 @@ class DAO:
     ######################
 
     def get(self, identifier: Any) -> BaseEntity:
-        """Retrieve a specific Record from the Repository by its `identifier`.
+        """Return the one entity whose identity is ``identifier``.
 
-        This method internally uses the `filter` method to fetch records.
-
-        Returns exactly one record that matches the identifier.
-
-        Throws `ObjectNotFoundError` if no record was found for the identifier.
-
-        Throws `TooManyObjectsError` if multiple records were found for the identifier.
-
-        :param identifier: id of the record to be fetched from the data store.
+        Raises:
+            ObjectNotFoundError: No entity has the identifier.
+            TooManyObjectsError: More than one entity has the identifier.
         """
-        logger.debug(
-            f"Lookup `{self.entity_cls.__name__}` object with identifier {identifier}"
-        )
-
-        # Filter on the ID field of the entity
-        entity_id_field = id_field(self.entity_cls)
-        assert entity_id_field is not None, (
-            f"`{self.entity_cls.__name__}` does not have an identity field"
-        )
-        assert entity_id_field.field_name is not None
-        filters = {
-            entity_id_field.field_name: identifier,
-        }
-
-        results = self.query.filter(**filters).all()
-        if not results:
-            raise ObjectNotFoundError(
-                f"`{self.entity_cls.__name__}` object with identifier {identifier} "
-                f"does not exist."
-            )
-
-        if len(results) > 1:
-            raise TooManyObjectsError(
-                f"More than one object of `{self.entity_cls.__name__}` exist with identifier {identifier}",
-            )
-
-        # Return the first result, because `filter` would have returned an array
-        result: BaseEntity | None = results.first
-        assert result is not None
-        return result
+        return dao_read.get(self, identifier)
 
     def find_by(self, **kwargs: Any) -> BaseEntity:
-        """Find a specific entity record that matches one or more criteria.
+        """Return the one entity whose attributes equal ``kwargs``.
 
-        This method internally uses the `filter` method to fetch records.
-
-        Returns exactly one record that matches the identifier.
-
-        Throws `ObjectNotFoundError` if no record was found for the identifier.
-        Throws `TooManyObjectsError` if multiple records were found for the identifier.
-
-        :param kwargs: named arguments of attribute names and values to filter on.
+        Raises:
+            ObjectNotFoundError: No entity matches.
+            TooManyObjectsError: More than one entity matches.
         """
-        logger.debug(f"Lookup `{self.entity_cls.__name__}` object with values {kwargs}")
-
-        # Filter for item in the data store
-        results = self.query.filter(**kwargs).all()
-
-        if not results:
-            raise ObjectNotFoundError(
-                f"`{self.entity_cls.__name__}` object with values {list(kwargs.items())} "
-                f"does not exist."
-            )
-
-        if len(results) > 1:
-            raise TooManyObjectsError(
-                f"More than one object of `{self.entity_cls.__name__}` exist "
-                f"with values {list(kwargs.items())}",
-            )
-
-        # Return the first result, because `filter` would have returned an array
-        result: BaseEntity | None = results.first
-        assert result is not None
-        return result
+        return dao_read.find_by(self, **kwargs)
 
     def exists(self, excludes_: dict[str, Any], **filters: Any) -> bool:
-        """Returns `True` if objects matching the provided filters were found. Else, returns False.
-
-        This method fetches records through the `filter` method.
-
-        :param filters: criteria to match records against
-        :param excludes_: criteria that records should not satisfy
-        """
-        results = self.query.filter(**filters).exclude(**excludes_)
-
-        # Invokes the __bool__ method on `ResultSet`.
-        return bool(results)
+        """Return whether any entity matches ``filters`` and none of
+        ``excludes_``."""
+        return dao_read.exists(self, excludes_, **filters)
 
     @staticmethod
     def _is_pending_auto_field(
@@ -1340,7 +1270,7 @@ class DAO:
             self.database_model_cls,
             self.database_model_cls.from_entity(entity_obj),
         )
-        return criteria is not None and self._count(criteria) > 0
+        return criteria is not None and self.count(criteria) > 0
 
     @deprecated_from_registry("dao_update")
     def update(
