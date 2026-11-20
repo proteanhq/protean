@@ -146,7 +146,7 @@ def on_order_placed(self, event: OrderPlaced) -> None:
     )
 ```
 
-If the handler fails after issuing a command, the process manager's own state change rolls back. Both built-in event stores write the command at once, outside the Unit of Work, so the command survives while the transition does not. Keep issued commands idempotent so re-issuing one is safe.
+If the handler fails after issuing a command, the process manager's own state change rolls back. Every built-in event store writes the command at once, outside the Unit of Work, so the command survives while the transition does not. Keep issued commands idempotent so re-issuing one is safe.
 
 ## Process manager vs event handler
 

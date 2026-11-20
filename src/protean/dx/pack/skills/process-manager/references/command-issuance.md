@@ -17,7 +17,7 @@ Each PM handler runs inside a Unit of Work:
 1. Handler runs, updating PM state and calling `current_domain.process()` to issue commands
 2. When the handler returns, the framework appends the PM's transition event to the PM's own stream
 
-If the handler raises after issuing a command, the Unit of Work rolls back the PM's state change. Both built-in event stores write the command at once, outside the Unit of Work, so the command survives while the transition does not. Keep issued commands idempotent so re-issuing one is safe.
+If the handler raises after issuing a command, the Unit of Work rolls back the PM's state change. Every built-in event store writes the command at once, outside the Unit of Work, so the command survives while the transition does not. Keep issued commands idempotent so re-issuing one is safe.
 
 ## The Coordinator Pattern
 
