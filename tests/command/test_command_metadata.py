@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -9,7 +10,13 @@ from protean.core.event import BaseEvent
 from protean.exceptions import IncorrectUsageError
 from protean.fields import Identifier, String
 from protean.utils import Processing, fqn
-from protean.utils.eventing import Message, MessageEnvelope
+from protean.utils.eventing import (
+    Message,
+    MessageEnvelope,
+    MessageHeaders,
+    Metadata,
+    TraceParent,
+)
 from protean.utils.globals import g
 
 
@@ -415,3 +422,28 @@ class TestStorePositions:
         copy = Login(user_id=identifier, _metadata=rebuilt._metadata)
 
         assert copy._metadata.event_store is None
+
+
+class TestHeadersKeptForTraceparent:
+    def test_incoming_headers_without_a_type_get_the_command_type(self):
+        trace_id = "a" * 32
+        traceparent = TraceParent(trace_id=trace_id, parent_id="b" * 16, sampled=True)
+        deadline = datetime(2099, 1, 1, tzinfo=UTC)
+        incoming = Metadata(
+            headers=MessageHeaders(
+                id="msg-1",
+                traceparent=traceparent,
+                idempotency_key="idem-1",
+                deadline=deadline,
+            )
+        )
+
+        command = Login(user_id=str(uuid4()), _metadata=incoming)
+
+        headers = command._metadata.headers
+        assert headers.type == Login.__type__
+        assert headers.id == "msg-1"
+        assert headers.traceparent.trace_id == trace_id
+        assert headers.time is not None
+        assert headers.idempotency_key == "idem-1"
+        assert headers.deadline == deadline

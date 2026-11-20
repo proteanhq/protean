@@ -31,6 +31,7 @@ from protean.utils import (
     _ensure_template_dict,
 )
 from protean.utils.container import Element, OptionsMixin
+from protean.utils.eventing import _annotate_value_object_fields
 from protean.utils.reflection import _FIELDS
 
 # TResult records the type a query's handler returns. It is a phantom type
@@ -137,32 +138,22 @@ class BaseQuery(Element, BaseModel, OptionsMixin, Generic[TResult]):
         ``email: Email | None = None``.
         """
         own_annots = inspect.get_annotations(cls)
-        names_to_remove: list[str] = []
-        defaults_to_set: dict[str, None] = {}
 
         # 1. Assignment style: ``budget = ValueObject(Money)``
-        for name, value in list(vars(cls).items()):
-            if isinstance(value, ValueObjectField):
-                vo_cls = value.value_object_cls
-                if value.required:
-                    own_annots[name] = vo_cls
-                else:
-                    own_annots[name] = vo_cls | None  # type: ignore[operator]
-                    defaults_to_set[name] = None
-                names_to_remove.append(name)
+        assigned = {
+            name: value
+            for name, value in vars(cls).items()
+            if isinstance(value, ValueObjectField)
+        }
+        defaults_to_set = _annotate_value_object_fields(own_annots, assigned)
 
         # 2. Annotation style: ``budget: ValueObject(Money)``
-        for name, annot_value in list(own_annots.items()):
-            if isinstance(annot_value, ValueObjectField):
-                vo_cls = annot_value.value_object_cls
-                if annot_value.required:
-                    own_annots[name] = vo_cls
-                else:
-                    own_annots[name] = vo_cls | None  # type: ignore[operator]
-                    defaults_to_set[name] = None
+        defaults_to_set.update(
+            _annotate_value_object_fields(own_annots, dict(own_annots))
+        )
 
         # Remove descriptors from namespace
-        for name in names_to_remove:
+        for name in assigned:
             # Already removed by a parent __init_subclass__
             with contextlib.suppress(AttributeError):
                 delattr(cls, name)

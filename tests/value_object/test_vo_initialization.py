@@ -4,7 +4,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.value_object import BaseValueObject
-from protean.exceptions import NotSupportedError
+from protean.exceptions import NotSupportedError, ValidationError
 from protean.fields import String, ValueObject
 
 
@@ -48,6 +48,22 @@ class TestRequiredValueObjectDescriptor:
         # Required VO - creating without it should raise or be enforced
         contact = Contact(name="Alice", email=Email(address="alice@example.com"))
         assert contact.email.address == "alice@example.com"
+
+    def test_required_vo_descriptor_inside_a_value_object(self):
+        """A value object's required nested value object must be supplied."""
+
+        class Contact(BaseValueObject):
+            email = ValueObject(Email, required=True)
+            phone = ValueObject(PhoneNumber)
+
+        with pytest.raises(ValidationError) as exc:
+            Contact()
+        assert "email" in exc.value.messages
+        assert "phone" not in exc.value.messages
+
+        contact = Contact(email=Email(address="alice@example.com"))
+        assert contact.email.address == "alice@example.com"
+        assert contact.phone is None
 
 
 # ---------------------------------------------------------------------------

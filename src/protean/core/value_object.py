@@ -18,6 +18,7 @@ from typing import (
 from pydantic import BaseModel, ConfigDict
 from pydantic import Field as PydanticField
 from pydantic import ValidationError as PydanticValidationError
+from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
 from protean.exceptions import (
@@ -99,29 +100,10 @@ def _schema_hashes_by_value(
     kind = schema["type"]
     if kind in _VALUE_HASHED_SCHEMA_TYPES:
         return True
-    if kind in ("nullable", "default", "function-before"):
-        return _schema_hashes_by_value(schema["schema"], definitions, resolving)
-    if kind == "function-after":
-        function = schema["function"]["function"]
-        return getattr(
-            function, "__module__", None
-        ) in _TYPE_PRESERVING_VALIDATOR_MODULES and _schema_hashes_by_value(
-            schema["schema"], definitions, resolving
-        )
-    if kind == "union":
-        return all(
-            _schema_hashes_by_value(
-                choice[0] if isinstance(choice, tuple) else choice,
-                definitions,
-                resolving,
-            )
-            for choice in schema["choices"]
-        )
-    if kind == "tagged-union":
-        return all(
-            _schema_hashes_by_value(choice, definitions, resolving)
-            for choice in schema["choices"].values()
-        )
+    if kind in ("nullable", "default", "function-before", "function-after"):
+        return _wrapper_schema_hashes_by_value(schema, definitions, resolving)
+    if kind in ("union", "tagged-union"):
+        return _union_schema_hashes_by_value(schema, definitions, resolving)
     if kind == "literal":
         return all(
             type(value) in _VALUE_HASHED_LITERAL_TYPES for value in schema["expected"]
@@ -135,6 +117,44 @@ def _schema_hashes_by_value(
             return False
         return _schema_hashes_by_value(definitions[ref], definitions, resolving | {ref})
     return False
+
+
+def _wrapper_schema_hashes_by_value(
+    schema: Mapping[str, Any],
+    definitions: Mapping[str, Mapping[str, Any]],
+    resolving: frozenset[str],
+) -> bool:
+    """``_schema_hashes_by_value`` for a schema that wraps one inner schema.
+
+    An after-validator bounds its output only when its module is in
+    ``_TYPE_PRESERVING_VALIDATOR_MODULES``.
+    """
+    if schema["type"] == "function-after":
+        function = schema["function"]["function"]
+        if (
+            getattr(function, "__module__", None)
+            not in _TYPE_PRESERVING_VALIDATOR_MODULES
+        ):
+            return False
+    return _schema_hashes_by_value(schema["schema"], definitions, resolving)
+
+
+def _union_schema_hashes_by_value(
+    schema: Mapping[str, Any],
+    definitions: Mapping[str, Mapping[str, Any]],
+    resolving: frozenset[str],
+) -> bool:
+    """``_schema_hashes_by_value`` for a union: true when every choice is."""
+    if schema["type"] == "tagged-union":
+        choices = list(schema["choices"].values())
+    else:
+        choices = [
+            choice[0] if isinstance(choice, tuple) else choice
+            for choice in schema["choices"]
+        ]
+    return all(
+        _schema_hashes_by_value(choice, definitions, resolving) for choice in choices
+    )
 
 
 def _value_hashed_field_names(model_schema: Mapping[str, Any]) -> frozenset[str]:
@@ -156,6 +176,58 @@ def _value_hashed_field_names(model_schema: Mapping[str, Any]) -> frozenset[str]
         for name, field in node["fields"].items()
         if _schema_hashes_by_value(field["schema"], definitions)
     )
+
+
+def _validate_vo_fieldspec(name: str, value: FieldSpec) -> None:
+    """Raise ``IncorrectUsageError`` when a value object field is unique, an
+    identifier, or a status field with transitions."""
+    if value.unique:
+        raise IncorrectUsageError(
+            f"Value Objects cannot contain fields marked 'unique' (field '{name}')"
+        )
+    if value.identifier:
+        raise IncorrectUsageError(
+            f"Value Objects cannot contain fields marked 'identifier' (field '{name}')"
+        )
+    if getattr(value, "transitions", None) is not None:
+        raise IncorrectUsageError(
+            f"Value Objects are immutable and cannot have status "
+            f"fields with transitions (field '{name}')"
+        )
+
+
+def _reject_vo_field_constraints(cls: type) -> None:
+    """Raise ``IncorrectUsageError`` when ``cls`` declares a field a value
+    object cannot hold.
+
+    Checks both assignment-style declarations in ``vars(cls)`` and
+    annotation-style ones. An association or reference is rejected too.
+    """
+    for name, value in list(vars(cls).items()):
+        if isinstance(value, FieldSpec):
+            _validate_vo_fieldspec(name, value)
+        elif isinstance(value, (HasOne, HasMany, Reference)):
+            raise IncorrectUsageError(
+                f"Value Objects cannot have associations. "
+                f"Remove {name} ({type(value).__name__}) from class {cls.__name__}"
+            )
+
+    for name, value in inspect.get_annotations(cls).items():
+        if isinstance(value, FieldSpec):
+            _validate_vo_fieldspec(name, value)
+
+
+def _vo_descriptor_annotation(descriptor: ValueObjectDescriptor) -> Any:
+    """The Pydantic annotation for a ``ValueObject()`` descriptor.
+
+    A descriptor is optional unless it sets ``required``; an optional one
+    becomes ``VO | None`` with a ``None`` default.
+    """
+    vo_cls = descriptor.value_object_cls
+    if getattr(descriptor, "required", False):
+        return vo_cls
+    pf = PydanticField(default=None)
+    return Annotated[cast(Any, vo_cls) | None, pf]
 
 
 # ---------------------------------------------------------------------------
@@ -237,37 +309,7 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
     @classmethod
     def _resolve_fieldspecs(cls) -> None:
         # Validate VO constraints BEFORE resolving FieldSpecs
-        # Check both vars(cls) (assignment style) and __annotations__ (annotation style)
-        def _validate_fieldspec(name: str, value: FieldSpec) -> None:
-            if value.unique:
-                raise IncorrectUsageError(
-                    f"Value Objects cannot contain fields marked 'unique' "
-                    f"(field '{name}')"
-                )
-            if value.identifier:
-                raise IncorrectUsageError(
-                    f"Value Objects cannot contain fields marked 'identifier' "
-                    f"(field '{name}')"
-                )
-            if getattr(value, "transitions", None) is not None:
-                raise IncorrectUsageError(
-                    f"Value Objects are immutable and cannot have status "
-                    f"fields with transitions (field '{name}')"
-                )
-
-        for name, value in list(vars(cls).items()):
-            if isinstance(value, FieldSpec):
-                _validate_fieldspec(name, value)
-            elif isinstance(value, (HasOne, HasMany, Reference)):
-                raise IncorrectUsageError(
-                    f"Value Objects cannot have associations. "
-                    f"Remove {name} ({type(value).__name__}) from class {cls.__name__}"
-                )
-
-        # Also check annotation-style FieldSpecs
-        for name, value in inspect.get_annotations(cls).items():
-            if isinstance(value, FieldSpec):
-                _validate_fieldspec(name, value)
+        _reject_vo_field_constraints(cls)
 
         # Handle ValueObject() descriptors — convert to Pydantic annotations
         own_annots = inspect.get_annotations(cls)
@@ -276,29 +318,16 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         # 1. Assignment style: descriptor in vars(cls)
         for name, value in list(vars(cls).items()):
             if isinstance(value, ValueObjectDescriptor):
-                vo_cls = value.value_object_cls
                 # Remove the descriptor from the class namespace
                 with contextlib.suppress(AttributeError):
                     delattr(cls, name)
-                # Add as a typed Pydantic annotation (optional by default)
-                required = getattr(value, "required", False)
-                if required:
-                    own_annots[name] = vo_cls
-                else:
-                    pf = PydanticField(default=None)
-                    own_annots[name] = Annotated[vo_cls | None, pf]  # type: ignore[operator]
+                own_annots[name] = _vo_descriptor_annotation(value)
                 processed.add(name)
 
         # 2. Annotation style: descriptor in __annotations__
         for name, value in list(own_annots.items()):
             if name not in processed and isinstance(value, ValueObjectDescriptor):
-                vo_cls = value.value_object_cls
-                required = getattr(value, "required", False)
-                if required:
-                    own_annots[name] = vo_cls
-                else:
-                    pf = PydanticField(default=None)
-                    own_annots[name] = Annotated[vo_cls | None, pf]  # type: ignore[operator]
+                own_annots[name] = _vo_descriptor_annotation(value)
 
         cls.__annotations__ = own_annots
 
@@ -532,6 +561,108 @@ def value_object_factory(element_cls: type[_T], domain: Any, **opts: Any) -> typ
 # ---------------------------------------------------------------------------
 # Entity → Value Object projection
 # ---------------------------------------------------------------------------
+def _project_association(
+    key: str,
+    value: HasOne | HasMany,
+    annotations: dict[str, Any],
+    namespace: dict[str, Any],
+) -> Any:
+    """Project a ``HasOne`` or ``HasMany`` field onto a value object field.
+
+    The associated entity becomes a value object of its own. Adds the field's
+    annotation and default to ``annotations`` and ``namespace`` and returns the
+    descriptor the projected class records for it.
+    """
+    # ``to_cls`` is ``str | type`` (lazy string ref or resolved class), but by
+    # the time an entity is projected into a VO the target is a resolved class.
+    child_vo_cls = value_object_from_entity(cast("type[Any]", value.to_cls))
+    # The Protean mypy plugin types ``ValueObject(X)`` as ``X | None``, which
+    # holds for a field declared in a class body. Here the call builds the
+    # descriptor itself.
+    vo_descriptor = cast(
+        "ValueObjectField", ValueObjectField(value_object_cls=child_vo_cls)
+    )
+
+    if isinstance(value, HasOne):
+        annotations[key] = child_vo_cls | None
+        namespace[key] = None
+        return vo_descriptor
+
+    # ``ValueObjectList.__init__`` has an untyped ``content_type``
+    # parameter that defaults to ``str``, so pyright infers ``type[str]``.
+    # A ValueObject descriptor is a documented, runtime-accepted value
+    # for lists of value objects; the constructor validates it explicitly.
+    list_descriptor = ValueObjectList(content_type=vo_descriptor)  # pyright: ignore[reportArgumentType]
+    # ``child_vo_cls`` is a runtime-built VO class; mypy cannot model a
+    # generic subscripted by a local variable (treats it as a type-alias
+    # attempt). The runtime construction is valid.
+    annotations[key] = list[child_vo_cls]  # type: ignore[valid-type]
+    namespace[key] = PydanticField(default_factory=list)
+    return list_descriptor
+
+
+def _project_value_object_field(
+    key: str,
+    value: ValueObjectField,
+    annotations: dict[str, Any],
+    namespace: dict[str, Any],
+) -> None:
+    """Project a ``ValueObject`` field, keeping its ``required`` flag."""
+    vo_cls = value.value_object_cls
+    if getattr(value, "required", False):
+        annotations[key] = vo_cls
+    else:
+        annotations[key] = cast(Any, vo_cls) | None
+        namespace[key] = None
+
+
+def _project_resolved_field(
+    key: str,
+    value: ResolvedField,
+    finfo: FieldInfo,
+    annotations: dict[str, Any],
+    namespace: dict[str, Any],
+) -> None:
+    """Project a plain field with its annotation and default."""
+    # A custom field (built by ``Custom``) needs its Pydantic metadata and its
+    # kind marker carried onto the projected field;
+    # ``custom_field_declaration`` builds both. Without the metadata the
+    # projection fails at schema build time; without the marker the projected
+    # field is classified ``standard`` and a live custom instance reaches the
+    # adapter.
+    if value.field_kind == "custom":
+        annotations[key], namespace[key] = custom_field_declaration(finfo)
+        return
+    annotations[key] = finfo.annotation
+    if finfo.default is not PydanticUndefined:
+        namespace[key] = finfo.default
+    elif finfo.default_factory is not None:
+        namespace[key] = PydanticField(default_factory=finfo.default_factory)
+
+
+def _make_identity_fields_optional(
+    entity_cls: type[Any],
+    annotations: dict[str, Any],
+    namespace: dict[str, Any],
+) -> None:
+    """Make projected identifier and unique fields optional with a ``None``
+    default, because they are identity concerns, not value concerns."""
+    container_fields = get_fields(entity_cls)
+    for key in list(annotations.keys()):
+        field_obj = container_fields.get(key)
+        if isinstance(field_obj, ResolvedField) and (
+            field_obj.identifier or field_obj.unique
+        ):
+            annotations[key] = annotations[key] | None
+            # A unique custom field lands here too, and a bare ``None`` would
+            # discard the kind marker ``_project_resolved_field`` carried over.
+            namespace[key] = (
+                PydanticField(default=None, json_schema_extra={"field_kind": "custom"})
+                if field_obj.field_kind == "custom"
+                else None
+            )
+
+
 def value_object_from_entity(
     entity_cls: type[Any],
     name: str | None = None,
@@ -561,87 +692,22 @@ def value_object_from_entity(
     model_field_info = getattr(entity_cls, "model_fields", {})
 
     for key, value in get_fields(entity_cls).items():
-        if key in exclude:
-            continue
-        if isinstance(value, Reference):
-            continue
-        if key.startswith("_"):
+        if key in exclude or isinstance(value, Reference) or key.startswith("_"):
             continue
 
-        if isinstance(value, HasOne):
-            # Recursively convert associated entity to VO. ``to_cls`` is
-            # ``str | type`` (lazy string ref or resolved class), but by the
-            # time an entity is projected into a VO the target is a resolved
-            # class.
-            child_vo_cls = value_object_from_entity(cast("type[Any]", value.to_cls))
-            vo_descriptor = ValueObjectField(value_object_cls=child_vo_cls)
-            annotations[key] = child_vo_cls | None
-            namespace[key] = None
-            association_descriptors[key] = vo_descriptor
-
-        elif isinstance(value, HasMany):
-            # Recursively convert to list of VOs. See ``to_cls`` narrowing note
-            # above.
-            child_vo_cls = value_object_from_entity(cast("type[Any]", value.to_cls))
-            vo_descriptor = ValueObjectField(value_object_cls=child_vo_cls)
-            # ``ValueObjectList.__init__`` has an untyped ``content_type``
-            # parameter that defaults to ``str``, so pyright infers ``type[str]``.
-            # A ValueObject descriptor is a documented, runtime-accepted value
-            # for lists of value objects; the constructor validates it explicitly.
-            list_descriptor = ValueObjectList(content_type=vo_descriptor)  # pyright: ignore[reportArgumentType]
-            # ``child_vo_cls`` is a runtime-built VO class; mypy cannot model a
-            # generic subscripted by a local variable (treats it as a type-alias
-            # attempt). The runtime construction is valid.
-            annotations[key] = list[child_vo_cls]  # type: ignore[valid-type]
-            namespace[key] = PydanticField(default_factory=list)
-            association_descriptors[key] = list_descriptor
-
+        if isinstance(value, (HasOne, HasMany)):
+            association_descriptors[key] = _project_association(
+                key, value, annotations, namespace
+            )
         elif isinstance(value, ValueObjectField):
-            vo_cls = value.value_object_cls
-            # Preserve the required flag from the original descriptor
-            if getattr(value, "required", False):
-                annotations[key] = vo_cls
-            else:
-                annotations[key] = vo_cls | None  # type: ignore[operator]
-                namespace[key] = None
+            _project_value_object_field(key, value, annotations, namespace)
             association_descriptors[key] = value
-
         elif isinstance(value, ResolvedField):
             finfo = model_field_info.get(key)
             if finfo:
-                # A custom field (built by ``Custom``) needs its Pydantic
-                # metadata and its kind marker carried onto the projected VO
-                # field; ``custom_field_declaration`` builds both. Without the
-                # metadata the projection fails at schema build time; without
-                # the marker the projected field is classified ``standard`` and
-                # a live custom instance reaches the adapter.
-                if value.field_kind == "custom":
-                    annotations[key], namespace[key] = custom_field_declaration(finfo)
-                else:
-                    annotations[key] = finfo.annotation
-                    if finfo.default is not PydanticUndefined:
-                        namespace[key] = finfo.default
-                    elif finfo.default_factory is not None:
-                        namespace[key] = PydanticField(
-                            default_factory=finfo.default_factory
-                        )
+                _project_resolved_field(key, value, finfo, annotations, namespace)
 
-    # Make identifier/unique fields optional (they are identity concerns,
-    # not value concerns).
-    container_fields = get_fields(entity_cls)
-    for key in list(annotations.keys()):
-        field_obj = container_fields.get(key)
-        if isinstance(field_obj, ResolvedField) and (
-            field_obj.identifier or field_obj.unique
-        ):
-            annotations[key] = annotations[key] | None
-            # A unique custom field lands here too, and a bare ``None`` would
-            # discard the kind marker the declaration above just carried over.
-            namespace[key] = (
-                PydanticField(default=None, json_schema_extra={"field_kind": "custom"})
-                if field_obj.field_kind == "custom"
-                else None
-            )
+    _make_identity_fields_optional(entity_cls, annotations, namespace)
 
     ns = {"__annotations__": annotations, **namespace}
     value_object_cls = type(vo_name, (BaseValueObject,), ns)

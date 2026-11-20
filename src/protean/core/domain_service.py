@@ -80,6 +80,29 @@ class BaseDomainService(Element, OptionsMixin):
         self._aggregates = aggregates
 
 
+def _run_invariants(
+    service: "BaseDomainService",
+    stage: str,
+    errors: dict[str, list[str]],
+    codes: list[str],
+) -> None:
+    """Run the service's ``stage`` invariants and collect their failures.
+
+    Each failing invariant adds its code to ``codes`` and its messages to
+    ``errors``, keyed by field name.
+    """
+    for invariant_method in service._invariants[stage].values():
+        try:
+            invariant_method(service)
+        except ValidationError as err:
+            codes.append(_invariant_code(invariant_method, stage))
+            err_messages = cast("dict[str, list[str]]", err.messages)
+            for field_name in err_messages:
+                if field_name not in errors:
+                    errors[field_name] = []
+                errors[field_name].extend(err_messages[field_name])
+
+
 def _make_invariant_wrapper(
     original_method: Callable[..., Any],
 ) -> Callable[..., Any]:
@@ -94,33 +117,13 @@ def _make_invariant_wrapper(
         errors: dict[str, list[str]] = {}
         codes: list[str] = []
 
-        for invariant_method in self._invariants["pre"].values():
-            try:
-                invariant_method(self)
-            except ValidationError as err:
-                codes.append(_invariant_code(invariant_method, "pre"))
-                err_messages = cast("dict[str, list[str]]", err.messages)
-                for field_name in err_messages:
-                    if field_name not in errors:
-                        errors[field_name] = []
-                    errors[field_name].extend(err_messages[field_name])
-
+        _run_invariants(self, "pre", errors, codes)
         if errors:
             raise ValidationError(errors, codes=codes, location=type(self).__qualname__)
 
         result = original_method(self, *args, **kwargs)
 
-        for invariant_method in self._invariants["post"].values():
-            try:
-                invariant_method(self)
-            except ValidationError as err:
-                codes.append(_invariant_code(invariant_method, "post"))
-                err_messages = cast("dict[str, list[str]]", err.messages)
-                for field_name in err_messages:
-                    if field_name not in errors:
-                        errors[field_name] = []
-                    errors[field_name].extend(err_messages[field_name])
-
+        _run_invariants(self, "post", errors, codes)
         if errors:
             raise ValidationError(errors, codes=codes, location=type(self).__qualname__)
 

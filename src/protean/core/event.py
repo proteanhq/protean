@@ -22,6 +22,8 @@ from protean.utils.eventing import (
     DomainMeta,
     MessageHeaders,
     Metadata,
+    _assemble_message_metadata,
+    _resolve_message_lineage,
 )
 from protean.utils.globals import _domain_now, g
 from protean.utils.telemetry import inject_traceparent_from_context
@@ -136,40 +138,7 @@ class BaseEvent(BaseMessageType):
         self, incoming: Metadata | None, *, rebuild: bool = False
     ) -> None:
         """Build metadata for the event from incoming metadata or defaults."""
-        origin_stream = None
-        correlation_id = None
-        causation_id = None
-        if hasattr(g, "message_in_context"):
-            msg_ctx = g.message_in_context
-            if (
-                msg_ctx.metadata.domain.kind == "COMMAND"
-                and msg_ctx.metadata.domain.origin_stream is not None
-            ):
-                origin_stream = msg_ctx.metadata.domain.origin_stream
-            # Inherit correlation_id from the command being processed
-            if msg_ctx.metadata.domain:
-                correlation_id = msg_ctx.metadata.domain.correlation_id
-            # causation_id = the command's message ID
-            if msg_ctx.metadata.headers:
-                causation_id = msg_ctx.metadata.headers.id
-
-        # Use existing headers if they exist, but ensure type is set
-        if incoming and hasattr(incoming, "headers") and incoming.headers:
-            headers = MessageHeaders(
-                id=incoming.headers.id,
-                time=incoming.headers.time,
-                type=incoming.headers.type or self.__class__.__type__,
-                traceparent=incoming.headers.traceparent,
-            )
-        else:
-            # Inject the current OTEL span context as traceparent so that
-            # events raised during handler execution carry the trace forward.
-            traceparent = inject_traceparent_from_context()
-            headers = MessageHeaders(
-                type=self.__class__.__type__,
-                time=_domain_now(),
-                traceparent=traceparent,
-            )
+        headers = _event_headers(self.__class__.__type__, incoming)
 
         # If metadata already has domain with sequence_id and asynchronous set (from raise_),
         # preserve those values
@@ -177,71 +146,83 @@ class BaseEvent(BaseMessageType):
             incoming.domain if incoming and hasattr(incoming, "domain") else None
         )
 
-        # On a rebuild, copy the stored IDs and origin stream, including
-        # `None`. `g.message_in_context` holds the message being handled now,
-        # which did not cause the stored one.
-        if rebuild and existing_domain:
-            correlation_id = existing_domain.correlation_id
-            causation_id = existing_domain.causation_id
-            origin_stream = existing_domain.origin_stream
-        else:
-            if existing_domain and existing_domain.correlation_id:
-                correlation_id = existing_domain.correlation_id
-            if existing_domain and existing_domain.causation_id:
-                causation_id = existing_domain.causation_id
+        origin_stream, correlation_id, causation_id = _resolve_message_lineage(
+            existing_domain, _parent_event_lineage(), rebuild=rebuild
+        )
 
         # Build domain metadata
         domain_meta = DomainMeta(
             kind="EVENT",
             fqn=fqn(self.__class__),
             origin_stream=origin_stream,
-            stream_category=existing_domain.stream_category
-            if existing_domain and existing_domain.stream_category is not None
-            else None,
             version=self.__class__.__version__,  # Resolved at registration
-            sequence_id=existing_domain.sequence_id
-            if existing_domain and existing_domain.sequence_id is not None
-            else None,
-            asynchronous=existing_domain.asynchronous
-            if existing_domain and hasattr(existing_domain, "asynchronous")
-            else True,
             correlation_id=correlation_id,
             causation_id=causation_id,
+            **_raised_domain_fields(existing_domain),
         )
 
-        # Also preserve envelope if it exists
-        existing_envelope = (
-            incoming.envelope if incoming and hasattr(incoming, "envelope") else None
+        self._metadata = _assemble_message_metadata(
+            incoming, headers, domain_meta, rebuild=rebuild
         )
 
-        # Preserve stream in headers if it exists
-        existing_stream = None
+
+def _parent_event_lineage() -> tuple[str | None, str | None, str | None]:
+    """Return the ``(origin_stream, correlation_id, causation_id)`` a new
+    event takes from the message being handled now, if any.
+
+    The origin stream carries over only from a command that has one.
+    """
+    origin_stream = None
+    correlation_id = None
+    causation_id = None
+    if hasattr(g, "message_in_context"):
+        msg_ctx = g.message_in_context
         if (
-            incoming
-            and hasattr(incoming, "headers")
-            and incoming.headers
-            and hasattr(incoming.headers, "stream")
+            msg_ctx.metadata.domain.kind == "COMMAND"
+            and msg_ctx.metadata.domain.origin_stream is not None
         ):
-            existing_stream = incoming.headers.stream
+            origin_stream = msg_ctx.metadata.domain.origin_stream
+        # Inherit correlation_id from the command being processed
+        if msg_ctx.metadata.domain:
+            correlation_id = msg_ctx.metadata.domain.correlation_id
+        # causation_id = the command's message ID
+        if msg_ctx.metadata.headers:
+            causation_id = msg_ctx.metadata.headers.id
+    return origin_stream, correlation_id, causation_id
 
-        # Create new headers with stream if needed
-        if existing_stream:
-            headers = MessageHeaders(**{**headers.to_dict(), "stream": existing_stream})
 
-        metadata_kwargs: dict[str, Any] = {"headers": headers, "domain": domain_meta}
-        if existing_envelope is not None:
-            metadata_kwargs["envelope"] = existing_envelope
-        # Preserve extensions from incoming metadata (set by event enrichers,
-        # and lenient-deserialization dropped-field records).
-        if incoming and hasattr(incoming, "extensions") and incoming.extensions:
-            metadata_kwargs["extensions"] = incoming.extensions
-        # Keep the store positions of a message read back from the store, so
-        # a handler can see where it sits in its stream and in the store. A
-        # new message built from another's metadata was never stored, so it
-        # takes no positions.
-        if rebuild and incoming and getattr(incoming, "event_store", None) is not None:
-            metadata_kwargs["event_store"] = incoming.event_store
-        self._metadata = Metadata(**metadata_kwargs)
+def _event_headers(type_: str, incoming: Metadata | None) -> MessageHeaders:
+    """Return headers built from the incoming ones, with ``type_`` filled in
+    if missing, or new headers of type ``type_`` that carry the current trace
+    context."""
+    # Use existing headers if they exist, but ensure type is set
+    if incoming and hasattr(incoming, "headers") and incoming.headers:
+        return MessageHeaders(
+            id=incoming.headers.id,
+            time=incoming.headers.time,
+            type=incoming.headers.type or type_,
+            traceparent=incoming.headers.traceparent,
+        )
+
+    # Inject the current OTEL span context as traceparent so that
+    # events raised during handler execution carry the trace forward.
+    traceparent = inject_traceparent_from_context()
+    return MessageHeaders(type=type_, time=_domain_now(), traceparent=traceparent)
+
+
+def _raised_domain_fields(existing_domain: DomainMeta | None) -> dict[str, Any]:
+    """Return the domain fields ``raise_()`` set, or their defaults."""
+    return {
+        "stream_category": existing_domain.stream_category
+        if existing_domain and existing_domain.stream_category is not None
+        else None,
+        "sequence_id": existing_domain.sequence_id
+        if existing_domain and existing_domain.sequence_id is not None
+        else None,
+        "asynchronous": existing_domain.asynchronous
+        if existing_domain and hasattr(existing_domain, "asynchronous")
+        else True,
+    }
 
 
 # ---------------------------------------------------------------------------

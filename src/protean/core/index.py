@@ -191,39 +191,51 @@ def validate_indexes(element_cls: type) -> None:
 
     for index in indexes:
         if isinstance(index, RawIndex):
-            if index.dialect not in RENDERED_INDEX_DIALECTS:
-                identifier = index.name or index.ddl
-                raise IncorrectUsageError(
-                    f"RawIndex '{identifier}' on '{element_cls.__name__}' "
-                    f"targets unknown dialect '{index.dialect}'. The framework "
-                    f"renders index DDL only for "
-                    f"{sorted(RENDERED_INDEX_DIALECTS)}."
-                )
+            _validate_raw_index(element_cls, index)
             continue
         if not isinstance(index, Index):
             raise IncorrectUsageError(
                 f"`indexes` on '{element_cls.__name__}' must contain Index "
                 f"instances, got {type(index).__name__}."
             )
+        _validate_index_fields(element_cls, index, known)
 
-        unknown = [f for f in index.fields if f not in known]
-        if unknown:
-            raise IncorrectUsageError(
-                f"Index on '{element_cls.__name__}' references unknown "
-                f"field(s) {unknown}. Declared fields: {sorted(known)}."
-            )
 
-        bad_desc = [f for f in index.desc if f not in index.fields]
-        if bad_desc:
-            raise IncorrectUsageError(
-                f"Index on '{element_cls.__name__}' lists desc field(s) "
-                f"{bad_desc} that are not in the index fields "
-                f"{list(index.fields)}."
-            )
+def _validate_raw_index(element_cls: type, index: RawIndex) -> None:
+    """Raise ``IncorrectUsageError`` when ``index`` targets an unrendered dialect."""
+    if index.dialect not in RENDERED_INDEX_DIALECTS:
+        identifier = index.name or index.ddl
+        raise IncorrectUsageError(
+            f"RawIndex '{identifier}' on '{element_cls.__name__}' "
+            f"targets unknown dialect '{index.dialect}'. The framework "
+            f"renders index DDL only for "
+            f"{sorted(RENDERED_INDEX_DIALECTS)}."
+        )
 
-        unknown_include = [f for f in index.include if f not in known]
-        if unknown_include:
-            raise IncorrectUsageError(
-                f"Index on '{element_cls.__name__}' references unknown "
-                f"include field(s) {unknown_include}."
-            )
+
+def _validate_index_fields(element_cls: type, index: Index, known: set[str]) -> None:
+    """Raise ``IncorrectUsageError`` when ``index`` names a field it cannot use.
+
+    ``known`` holds the element's field and attribute names.
+    """
+    unknown = [f for f in index.fields if f not in known]
+    if unknown:
+        raise IncorrectUsageError(
+            f"Index on '{element_cls.__name__}' references unknown "
+            f"field(s) {unknown}. Declared fields: {sorted(known)}."
+        )
+
+    bad_desc = [f for f in index.desc if f not in index.fields]
+    if bad_desc:
+        raise IncorrectUsageError(
+            f"Index on '{element_cls.__name__}' lists desc field(s) "
+            f"{bad_desc} that are not in the index fields "
+            f"{list(index.fields)}."
+        )
+
+    unknown_include = [f for f in index.include if f not in known]
+    if unknown_include:
+        raise IncorrectUsageError(
+            f"Index on '{element_cls.__name__}' references unknown "
+            f"include field(s) {unknown_include}."
+        )

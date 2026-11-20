@@ -256,6 +256,81 @@ class Metadata(BaseValueObject):
     extensions: dict[str, Any] = PydanticField(default_factory=dict)
 
 
+def _resolve_message_lineage(
+    existing_domain: DomainMeta | None,
+    parent: tuple[str | None, str | None, str | None],
+    *,
+    rebuild: bool,
+) -> tuple[str | None, str | None, str | None]:
+    """Return a message's ``(origin_stream, correlation_id, causation_id)``.
+
+    ``parent`` holds the values read from the message being handled now. On a
+    rebuild, the stored values in ``existing_domain`` win, including ``None``,
+    because the message being handled now did not cause the stored one.
+    Otherwise a stored correlation or causation ID wins only when it is set.
+    """
+    if rebuild and existing_domain:
+        return (
+            existing_domain.origin_stream,
+            existing_domain.correlation_id,
+            existing_domain.causation_id,
+        )
+
+    origin_stream, correlation_id, causation_id = parent
+    if existing_domain and existing_domain.correlation_id:
+        correlation_id = existing_domain.correlation_id
+    if existing_domain and existing_domain.causation_id:
+        causation_id = existing_domain.causation_id
+    return origin_stream, correlation_id, causation_id
+
+
+def _assemble_message_metadata(
+    incoming: Metadata | None,
+    headers: MessageHeaders,
+    domain_meta: DomainMeta,
+    *,
+    rebuild: bool,
+) -> Metadata:
+    """Combine new headers and domain metadata with what ``incoming`` carries.
+
+    Keeps the incoming header stream, envelope and extensions. Keeps the
+    incoming store positions only on a rebuild.
+    """
+    # Also preserve envelope if it exists
+    existing_envelope = (
+        incoming.envelope if incoming and hasattr(incoming, "envelope") else None
+    )
+
+    # Preserve stream in headers if it exists
+    existing_stream = None
+    if (
+        incoming
+        and hasattr(incoming, "headers")
+        and incoming.headers
+        and hasattr(incoming.headers, "stream")
+    ):
+        existing_stream = incoming.headers.stream
+
+    # Create new headers with stream if needed
+    if existing_stream:
+        headers = MessageHeaders(**{**headers.to_dict(), "stream": existing_stream})
+
+    metadata_kwargs: dict[str, Any] = {"headers": headers, "domain": domain_meta}
+    if existing_envelope is not None:
+        metadata_kwargs["envelope"] = existing_envelope
+    # Preserve extensions from incoming metadata (set by message enrichers,
+    # and lenient-deserialization dropped-field records).
+    if incoming and hasattr(incoming, "extensions") and incoming.extensions:
+        metadata_kwargs["extensions"] = incoming.extensions
+    # Keep the store positions of a message read back from the store, so
+    # a handler can see where it sits in its stream and in the store. A
+    # new message built from another's metadata was never stored, so it
+    # takes no positions.
+    if rebuild and incoming and getattr(incoming, "event_store", None) is not None:
+        metadata_kwargs["event_store"] = incoming.event_store
+    return Metadata(**metadata_kwargs)
+
+
 def _validate_version(value: Any, descriptor: str) -> None:
     """Raise ``IncorrectUsageError`` unless ``value`` is a positive integer.
 
