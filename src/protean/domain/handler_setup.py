@@ -458,9 +458,11 @@ class HandlerConfigurator:
         if not key:
             return
         for _, method in _discover_handler_methods(pm_cls):
-            # ``_setup_process_managers`` runs earlier in ``_prepare`` and has
-            # already rejected a handler whose target is not an event.
-            target = cast("type[BaseEvent]", method._target_cls)
+            target = method._target_cls
+            # A retried ``init()`` after a failed one skips handler wiring,
+            # which is where a non-event target is rejected.
+            if not (inspect.isclass(target) and issubclass(target, BaseEvent)):
+                continue
             field = self._correlate_field(getattr(method, "_correlate", None))
             if field is None:
                 raise IncorrectUsageError(

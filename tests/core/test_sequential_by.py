@@ -287,6 +287,35 @@ class TestFieldExistenceValidation:
         assert "has no usable `correlate` field" in str(exc.value)
         assert "ListCorrelatePM" in str(exc.value)
 
+    def test_retried_init_adds_no_key_for_a_pm_handler_on_a_command(self, test_domain):
+        # The first init wires the event handler, then rejects the command
+        # handler. A retry finds the handler map filled and skips the wiring.
+        class CreateWidget(BaseCommand):
+            widget_id: Identifier()
+
+        class MixedPM(BaseProcessManager):
+            order_id = Identifier(identifier=True)
+
+            @handle(OrderPlaced, start=True, correlate="order_id")
+            def a_on_placed(self, event):
+                pass
+
+            @handle(CreateWidget, correlate="widget_id")
+            def b_on_create(self, command):
+                pass
+
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.register(Widget)
+        test_domain.register(CreateWidget, part_of=Widget)
+        test_domain.register(MixedPM, sequential_by=True)
+
+        with pytest.raises(IncorrectUsageError, match="not associated with an event"):
+            test_domain.init(traverse=False)
+        test_domain.init(traverse=False)
+
+        assert test_domain._partition_keys == {"test::order": "order_id"}
+
     def test_pm_partitions_by_correlate_field(self, test_domain):
         class OrderPM(BaseProcessManager):
             order_id = Identifier(identifier=True)
