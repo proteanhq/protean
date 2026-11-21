@@ -173,9 +173,11 @@ def init(
     typer.echo(f"Created migrations for provider '{provider}' in {directory}.")
 
 
-def _require_message(value: str) -> str:
-    # A blank message would name the migration file by its hash alone.
-    if not value.strip():
+def _require_message(value: str | None) -> str:
+    # A blank message would name the migration file by its hash alone. Older
+    # Typer releases do not stop on a missing required option: they pass
+    # ``None`` to this callback and then run the command with it.
+    if value is None or not value.strip():
         raise typer.BadParameter("describe what the migration changes")
     return value
 
