@@ -7,7 +7,10 @@ A Python block is a fence opened with ``python`` or ``py``, optionally followed
 by attributes such as ``hl_lines="2"`` or ``title="x.py"``, using backticks or
 tildes. ``pycon``, ``ipython`` and every other language are not Python blocks.
 A block indented under a list item, a tab (``=== "Tab"``) or an admonition has
-its fence indent removed and is then dedented.
+its fence indent removed and is then dedented. A fence in any other language
+is skipped through its closing fence, so a fence written inside another fence
+is content of the outer fence and is never a block. Indented code blocks
+without a fence are not read.
 
 The blocks of one file run top to bottom in one namespace, because most blocks
 build on an earlier block or name an element a later block defines
@@ -76,6 +79,8 @@ FILE_TIMEOUT = 30.0
 _FENCE_OPEN = r"^(?P<indent>[ \t]*)(?P<fence>`{{3,}}|~{{3,}})[ \t]*{language}(?:[ \t]+[^`]*)?[ \t]*$"
 _PYTHON_FENCE = re.compile(_FENCE_OPEN.format(language="(?:python|py)"))
 _TOML_FENCE = re.compile(_FENCE_OPEN.format(language=r"(?i:toml)(?:\{[^`]*\})?"))
+# Any fence opener. A backtick fence's info string holds no backtick.
+_ANY_FENCE = re.compile(r"^[ \t]*(?P<fence>`{3,}(?=[^`]*$)|~{3,})")
 _FRAGMENT = re.compile(r"^# fragment\b")
 
 
@@ -115,26 +120,37 @@ def _extract_fenced(text: str, fence_open: re.Pattern[str]) -> list[Block]:
     lines = text.splitlines()
     index = 0
     while index < len(lines):
-        match = fence_open.match(lines[index])
-        if not match:
+        target = fence_open.match(lines[index])
+        opener = target or _ANY_FENCE.match(lines[index])
+        if not opener:
             index += 1
             continue
-        indent = match.group("indent")
-        fence = match.group("fence")
-        close = re.compile(
-            r"^[ \t]*" + re.escape(fence[0]) + "{" + str(len(fence)) + r",}[ \t]*$"
-        )
         start = index + 1
-        end = start
-        while end < len(lines) and not close.match(lines[end]):
-            end += 1
-        body = [
-            line[len(indent) :] if line.startswith(indent) else line.lstrip()
-            for line in lines[start:end]
-        ]
-        blocks.append(make_block(start + 1, "\n".join(body) + "\n"))
+        end = _close_index(lines, start, opener.group("fence"))
+        if target:
+            indent = target.group("indent")
+            body = [
+                line[len(indent) :] if line.startswith(indent) else line.lstrip()
+                for line in lines[start:end]
+            ]
+            blocks.append(make_block(start + 1, "\n".join(body) + "\n"))
         index = end + 1
     return blocks
+
+
+def _close_index(lines: list[str], start: int, fence: str) -> int:
+    """Return the index of the line that closes ``fence``, or ``len(lines)``.
+
+    A close is a line of the fence's character, at least as many of them as
+    the fence has, and no info string.
+    """
+    close = re.compile(
+        r"^[ \t]*" + re.escape(fence[0]) + "{" + str(len(fence)) + r",}[ \t]*$"
+    )
+    end = start
+    while end < len(lines) and not close.match(lines[end]):
+        end += 1
+    return end
 
 
 def make_block(line: int, source: str) -> Block:

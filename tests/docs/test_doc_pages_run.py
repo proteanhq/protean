@@ -129,22 +129,59 @@ _ANY_PY_FENCE = re.compile(
     r"^\s*(`{3,}|~{3,})\s*(python3?|py3?|\{\s*\.py(thon)?\b[^}]*\})(\s.*)?$",
     re.IGNORECASE,
 )
+_ANY_FENCE_OPEN = re.compile(r"^\s*(`{3,}(?=[^`]*$)|~{3,})")
+
+
+def count_python_fences(text: str) -> int:
+    """Count the lines in ``text`` that open a Python fence outside any fence.
+
+    Every fence, Python ones included, is tracked through its closing fence,
+    so a Python opener written inside another fence is not counted.
+    """
+    count = 0
+    close = None
+    for line in text.splitlines():
+        if close:
+            if close.match(line):
+                close = None
+            continue
+        opener = _ANY_FENCE_OPEN.match(line)
+        if opener:
+            count += bool(_ANY_PY_FENCE.match(line))
+            fence = opener.group(1)
+            close = re.compile(rf"^\s*{re.escape(fence[0])}{{{len(fence)},}}\s*$")
+    return count
 
 
 def test_page_discovery_is_not_vacuous():
     blocks = sum(len(extract_blocks(p.read_text(encoding="utf-8"))) for p in PAGES)
-    # Count every line that opens a Python fence in any form, so a variant
-    # the extractor skips breaks the count.
+    # Count every Python fence opener outside another fence, in any form, so
+    # a variant the extractor skips breaks the count.
     independent = sum(
-        1
+        count_python_fences(path.read_text(encoding="utf-8"))
         for path in DOCS.rglob("*.md")
         if in_scope(path)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if _ANY_PY_FENCE.match(line)
     )
     assert blocks == independent
     assert len(PAGES) >= 200
     assert blocks >= 1400
+
+
+_NESTED_PYTHON_FENCE = (
+    "````markdown\n"
+    "```python\n"
+    'raise ValueError("shown")\n'
+    "```\n"
+    "````\n"
+    "\n"
+    "```python\n"
+    "x = 1\n"
+    "```\n"
+)
+
+
+def test_the_count_skips_a_python_fence_inside_a_longer_fence():
+    assert count_python_fences(_NESTED_PYTHON_FENCE) == 1
 
 
 class _MkDocsLoader(yaml.SafeLoader):

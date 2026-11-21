@@ -20,6 +20,7 @@ from tests.support.snippets import (
     SnippetError,
     evaluate_one,
     extract_blocks,
+    extract_toml_blocks,
     include_expander,
     parse_problems,
     read_include,
@@ -96,6 +97,54 @@ def test_py_and_attributed_fences_are_found_and_other_languages_are_not():
 def test_a_tilde_fence_is_closed_only_by_tildes():
     text = "~~~python\na = 1\n```\nb = 2\n~~~\n"
     assert [b.source for b in extract_blocks(text)] == ["a = 1\n```\nb = 2\n"]
+
+
+def test_a_python_fence_inside_a_longer_fence_is_not_a_block():
+    text = (
+        "````markdown\n"
+        "```python\n"
+        'raise ValueError("shown")\n'
+        "```\n"
+        "````\n"
+        "\n"
+        "```python\n"
+        "x = 1\n"
+        "```\n"
+    )
+    assert extract_blocks(text) == [Block(line=8, source="x = 1\n", fragment=False)]
+
+
+def test_a_python_opener_inside_a_text_fence_is_content():
+    text = "```text\n```python\nraise ValueError\n```\nraise ValueError\n"
+    # The ``python`` line is content, and the next bare fence closes ``text``.
+    assert extract_blocks(text) == []
+
+
+def test_a_toml_fence_inside_a_tilde_fence_is_not_a_block():
+    text = '~~~text\n```toml\nshown = "yes"\n```\n~~~\n```toml\nreal = "yes"\n```\n'
+    assert extract_toml_blocks(text) == [
+        Block(line=7, source='real = "yes"\n', fragment=False)
+    ]
+
+
+def test_a_python_opener_inside_a_bare_fence_is_content():
+    text = "```\n```python\nraise ValueError\n```\nraise ValueError\n"
+    assert extract_blocks(text) == []
+
+
+def test_a_shorter_fence_does_not_close_a_longer_skipped_fence():
+    text = "````text\n```\n```python\nraise ValueError\n```\n````\n"
+    assert extract_blocks(text) == []
+
+
+def test_a_tilde_line_does_not_close_a_backtick_skipped_fence():
+    text = "```text\n~~~\n```python\nraise ValueError\n```\n```python\nx = 1\n```\n"
+    assert extract_blocks(text) == [Block(line=7, source="x = 1\n", fragment=False)]
+
+
+def test_a_backtick_line_with_a_backtick_in_its_info_is_not_a_fence():
+    text = "``` a ` b\n```python\nx = 1\n```\n"
+    assert extract_blocks(text) == [Block(line=3, source="x = 1\n", fragment=False)]
 
 
 def test_blocks_under_a_tab_and_an_admonition_are_dedented():
