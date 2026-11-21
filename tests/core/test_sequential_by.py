@@ -268,6 +268,25 @@ class TestFieldExistenceValidation:
             test_domain.init(traverse=False)
         assert "missing_field" in str(exc.value)
 
+    def test_pm_correlate_that_names_no_field_raises(self, test_domain):
+        # A list is truthy, so handler wiring accepts it, but it names no field
+        # to partition by.
+        class ListCorrelatePM(BaseProcessManager):
+            order_id = Identifier(identifier=True)
+
+            @handle(OrderPlaced, start=True, correlate=["order_id"])
+            def on_placed(self, event):
+                pass
+
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.register(ListCorrelatePM, sequential_by=True)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            test_domain.init(traverse=False)
+        assert "has no usable `correlate` field" in str(exc.value)
+        assert "ListCorrelatePM" in str(exc.value)
+
     def test_pm_partitions_by_correlate_field(self, test_domain):
         class OrderPM(BaseProcessManager):
             order_id = Identifier(identifier=True)

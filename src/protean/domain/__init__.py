@@ -1403,6 +1403,8 @@ class Domain:
     # Element Decorators #
     ######################
 
+    # Each ``@overload`` stub on this class carries ``pragma: no cover``: its
+    # ``...`` body is for type checkers and never runs.
     @overload
     def aggregate(
         self, _cls: type[_T], **kwargs: Any
