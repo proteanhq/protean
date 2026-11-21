@@ -280,7 +280,7 @@ def _package_modules(package_name: str, directory: Path) -> dict[str, Path]:
     found: dict[str, Path] = {}
     try:
         filenames = os.listdir(directory)
-    except OSError:  # pragma: no cover - directory vanished mid-walk
+    except OSError:  # the directory vanished after it was listed
         filenames = []
     for filename in filenames:
         path = directory / filename

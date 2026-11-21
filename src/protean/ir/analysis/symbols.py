@@ -370,16 +370,12 @@ class SymbolResolver:
         self, table: dict[str, str], module: str, node: ast.ImportFrom
     ) -> None:
         """Bind a ``from ... import ...`` statement, relative or absolute."""
-        if node.level:
-            base = self._resolve_relative(module, node)
-            if base is None:
-                # Escaped the top-level package, or the package is unknown:
-                # leave every name it would bind unresolved.
-                return
-        else:
-            base = node.module
-            if base is None:  # pragma: no cover - level 0 always carries a module
-                return
+        # An absolute import always carries a module, so ``None`` comes only from
+        # a relative import that escaped the top-level package or whose package
+        # is unknown: leave every name it would bind unresolved.
+        base = self._resolve_relative(module, node) if node.level else node.module
+        if base is None:
+            return
         for alias in node.names:
             if alias.name == "*":
                 # A star import binds no single name to resolve.

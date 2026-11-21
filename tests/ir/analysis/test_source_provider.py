@@ -5,6 +5,7 @@ import importlib
 import importlib.util
 import logging
 import os
+import shutil
 import sys
 import zipfile
 from pathlib import Path
@@ -336,6 +337,25 @@ class TestEnumeration:
 
         assert modules[0] == "aliaspkg"
         assert not [m for m in modules if m.startswith("realpkg")]
+
+    def test_a_subdirectory_that_vanishes_mid_walk_is_skipped(
+        self, tmp_path, monkeypatch
+    ):
+        """A subdirectory deleted after the root was listed but before it was
+        read contributes no modules; the rest of the package still enumerates."""
+        root = _build_package(tmp_path, "vanishpkg")
+        real_package_directories = source_provider_module._package_directories
+
+        def listed_then_deleted(root_dir):
+            directories = real_package_directories(root_dir)
+            shutil.rmtree(root_dir / "sub")
+            return directories
+
+        monkeypatch.setattr(
+            source_provider_module, "_package_directories", listed_then_deleted
+        )
+
+        assert _provider_for(root).modules() == ("vanishpkg", "vanishpkg.models")
 
     def test_missing_root_directory_yields_nothing(self, tmp_path):
         assert _provider_for(tmp_path / "does_not_exist").modules() == ()

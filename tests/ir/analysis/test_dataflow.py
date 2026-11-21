@@ -1,6 +1,7 @@
 """DataflowAnalyzer: statement order, reaching definitions, block coverage."""
 
 import ast
+import logging
 from pathlib import Path
 from textwrap import dedent
 
@@ -14,6 +15,7 @@ from protean.ir.analysis import (
     SourceProvider,
     SymbolResolver,
 )
+from protean.ir.analysis import dataflow as dataflow_module
 from protean.ir.builder import IRBuilder
 from tests.ir.support import behavioral_domain
 from tests.ir.support.behavioral_domain import elements
@@ -1190,6 +1192,34 @@ class TestFailOpen:
         assert flow.order_of(node.body[0]) == 0
         assert flow.reaching(_load(node.body[1], "a")) == ()
 
+    def test_an_error_while_building_yields_an_empty_flow(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        """A body the builder cannot analyze, such as one nested deeper than the
+        interpreter's stack, yields an empty flow and a debug log line, and the
+        error does not reach the caller. Driven by making the build raise, since
+        whether a fixed depth trips the limit depends on the caller's stack."""
+        analyzer, provider = _analyzer_for(
+            _make_pkg(tmp_path, "def m(a):\n    x = a\n")
+        )
+        node = _find_func(provider, "m")
+
+        def boom(self, module, node):
+            raise RecursionError("simulated stack exhaustion")
+
+        monkeypatch.setattr(dataflow_module._FlowBuilder, "build", boom)
+
+        with caplog.at_level(logging.DEBUG, logger=dataflow_module.__name__):
+            flow = analyzer.analyze(MODULE, node)
+
+        assert flow.node is node
+        assert flow.parameters == ()
+        assert flow.statements() == ()
+        assert flow.order_of(node.body[0]) is None
+        assert flow.reaching(_load(node.body[0], "a")) == ()
+        assert flow.coverage(node.body[0]) == BlockCoverage((), ())
+        assert f"Cannot analyze a body in module {MODULE}" in caplog.text
+
 
 class TestDeterminism:
     SOURCE = """
@@ -1247,6 +1277,33 @@ class TestDeterminism:
             branch.body[0],
             branch.orelse[0],
         ]
+
+
+class TestRepr:
+    def test_a_definition_names_its_binding_kind_and_order(self, tmp_path):
+        flow, node = _setup(tmp_path, "def m(a):\n    x = a\n    use(x)\n")
+
+        (definition,) = flow.reaching(_load(node.body[1], "x"))
+        (parameter,) = flow.parameters
+
+        assert repr(definition) == "<Definition x ASSIGN order 0>"
+        assert repr(parameter) == "<Definition a PARAMETER order -1>"
+
+    def test_a_with_context_names_its_fqn(self, tmp_path):
+        flow, node = _setup(
+            tmp_path,
+            """
+            from protean import UnitOfWork
+
+            def m():
+                with UnitOfWork():
+                    persist()
+            """,
+        )
+
+        (context,) = flow.coverage(node.body[0].body[0]).contexts
+
+        assert repr(context) == "<WithContext protean.UnitOfWork>"
 
 
 class TestCaching:

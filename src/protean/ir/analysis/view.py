@@ -101,7 +101,7 @@ class FilterCallSite:
     field_names: tuple[str, ...]
     location: SourceLocation
 
-    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+    def __repr__(self) -> str:
         return f"<FilterCallSite {self.method_name} line {self.location.line}>"
 
 

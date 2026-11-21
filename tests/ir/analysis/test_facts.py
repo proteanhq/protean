@@ -1137,6 +1137,43 @@ class TestOrdering:
         assert [a.name for a in facts.attributes] == ["alpha", "beta", "gamma"]
 
 
+class TestRepr:
+    SOURCE = """
+    class Service:
+        def run(self):
+            self.helper(x=1)
+            self.status = "x"
+            print(self.total)
+            del self.city
+    """
+
+    @pytest.fixture
+    def facts(self, tmp_path):
+        catalog, index = _walked_catalog(_make_pkg(tmp_path, self.SOURCE))
+        return _method_facts(catalog, index, "pkg.mod", "Service", "run")
+
+    def test_a_call_names_its_method_and_line(self, facts):
+        call = next(c for c in facts.calls if c.method == "helper")
+
+        assert repr(call) == "<CallFact helper line 4>"
+
+    def test_an_attribute_names_its_kind_and_line(self, facts):
+        by_name = {a.name: a for a in facts.attributes}
+
+        assert repr(by_name["status"]) == "<AttributeFact status write line 5>"
+        assert repr(by_name["total"]) == "<AttributeFact total read line 6>"
+        assert repr(by_name["city"]) == "<AttributeFact city delete line 7>"
+
+    def test_a_construction_names_its_element_and_line(self, order_catalog):
+        facts = order_catalog.element_facts(behavior.OrderRepository)["seed"]
+        (construction,) = facts.constructions
+
+        assert repr(construction) == (
+            f"<ConstructionFact {BEHAVIOR_MODULE}.Order "
+            f"line {construction.location.line}>"
+        )
+
+
 class TestBuilderWiring:
     def test_catalog_shares_the_builders_provider(self, order_domain):
         """A catalog built on a builder's provider and index reads a method the

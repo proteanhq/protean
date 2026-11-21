@@ -165,7 +165,7 @@ class Definition:
     #: which is bound before the body's first statement.
     order: int
 
-    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+    def __repr__(self) -> str:
         return f"<Definition {self.name} {self.kind} order {self.order}>"
 
 
@@ -182,7 +182,7 @@ class WithContext:
     #: cached tree; do not mutate.
     node: ast.expr
 
-    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+    def __repr__(self) -> str:
         return f"<WithContext {self.fqn}>"
 
 
@@ -321,7 +321,7 @@ class DataflowAnalyzer:
         # Fail open: the substrate must not abort a diagnostics pass over one
         # pathological body. A genuine interpreter limit (deep nesting) is as
         # much "cannot analyze" here as anything else.
-        except Exception as exc:  # noqa: BLE001 - logged; the body counts as unanalyzable  # pragma: no cover
+        except Exception as exc:  # noqa: BLE001 - logged; the body counts as unanalyzable
             logger.debug("Cannot analyze a body in module %s: %r", module, exc)
             return MethodFlow(module, node, (), {}, {}, {}, ())
 

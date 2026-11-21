@@ -192,7 +192,7 @@ class CallFact:
     dynamic_kwargs: bool
     location: SourceLocation
 
-    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+    def __repr__(self) -> str:
         return f"<CallFact {self.method} line {self.location.line}>"
 
 
@@ -213,7 +213,7 @@ class AttributeFact:
     is_delete: bool
     location: SourceLocation
 
-    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+    def __repr__(self) -> str:
         if self.is_delete:
             kind = "delete"
         else:
@@ -239,7 +239,7 @@ class ConstructionFact:
     positional_template: bool
     location: SourceLocation
 
-    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+    def __repr__(self) -> str:
         return f"<ConstructionFact {self.fqn} line {self.location.line}>"
 
 

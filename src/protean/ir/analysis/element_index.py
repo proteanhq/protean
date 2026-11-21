@@ -152,7 +152,7 @@ class MethodEntry:
     #: Decorators that do not reduce to a plain name are absent.
     decorators: tuple[str, ...]
 
-    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+    def __repr__(self) -> str:
         return f"<MethodEntry {self.name} line {self.node.lineno}>"
 
 
@@ -179,7 +179,7 @@ class ClassEntry:
         """The method called ``name``, or ``None``."""
         return self._methods.get(name)
 
-    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+    def __repr__(self) -> str:
         return f"<ClassEntry {self.module}:{self.qualname}>"
 
 
@@ -385,7 +385,7 @@ class ElementIndex:
             self._element_types = _registered_element_types(self._domain)
         try:
             return self._element_types.get(cls)
-        except TypeError:  # pragma: no cover - a class with an unusable __hash__
+        except TypeError:  # a class whose metaclass makes it unhashable
             return None
 
 
