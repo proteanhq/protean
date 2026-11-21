@@ -100,8 +100,8 @@ def _save(
     if not repo.save_operator_change(row, read_status, read_retry_count):
         print(
             f"Outbox row {escape(str(row.id))} changed while the command ran: a "
-            "worker claimed it, an attempt failed, or another operator retried "
-            "or discarded it. Nothing was written. "
+            "worker claimed it, an attempt failed, another operator retried "
+            "or discarded it, or the row was deleted. Nothing was written. "
             "Check its status and run the command again."
         )
         raise typer.Abort()
@@ -243,7 +243,8 @@ def retry(
     outbox processor can claim it again. It still waits behind the earlier
     rows of its partition key, and later rows of the key publish after it.
     The command refuses a row that changes while it runs: a worker claims
-    it, an attempt fails, or another operator retries or discards it.
+    it, an attempt fails, another operator retries or discards it, or the
+    row is deleted.
     """
     derived_domain = load_domain(domain)
     with derived_domain.domain_context():
@@ -279,8 +280,8 @@ def discard(
     The row is never published. It stays in the outbox as discarded, with
     the reason in its ``last_error``, and the later rows of its partition key
     publish without it. The command refuses a row that changes while it
-    runs: a worker claims it, an attempt fails, or another operator retries
-    or discards it.
+    runs: a worker claims it, an attempt fails, another operator retries or
+    discards it, or the row is deleted.
     """
     derived_domain = load_domain(domain)
     with derived_domain.domain_context():

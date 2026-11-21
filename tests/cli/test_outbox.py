@@ -388,6 +388,7 @@ class TestOutboxRetryAndDiscardRefuse:
         row.next_retry_at = test_domain.clock.now() - timedelta(minutes=1)
         outbox_repo.add(row)
         load_row = cli_outbox._load_row
+        versions = []
 
         def load_then_retry_and_fail(domain, repo, row_id):
             loaded = load_row(domain, repo, row_id)
@@ -397,6 +398,7 @@ class TestOutboxRetryAndDiscardRefuse:
             [claimed] = repo.claim_batch("worker-1", limit=10)
             claimed.mark_failed(RuntimeError("broker down again"))
             repo.add(claimed)
+            versions.append(repo.get(row.id)._version)
             return loaded
 
         monkeypatch.setattr(cli_outbox, "_load_row", load_then_retry_and_fail)
@@ -412,6 +414,7 @@ class TestOutboxRetryAndDiscardRefuse:
         assert stored.retry_count == 1
         assert stored.last_error["message"] == "broker down again"
         assert "discard_reason" not in stored.last_error
+        assert stored._version == versions[0]
 
 
 class TestRowIdShape:

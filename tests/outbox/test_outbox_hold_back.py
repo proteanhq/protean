@@ -490,11 +490,13 @@ class TestAnOperatorReleasesAHaltedKey:
         )
         assert _reload(outbox_repo, "a").status == OutboxStatus.FAILED.value
 
-    def test_an_operator_change_advances_the_row_version(self, outbox_repo):
+    @pytest.mark.parametrize("action", ["retry", "discard"])
+    def test_an_operator_change_advances_the_row_version(self, outbox_repo, action):
         _insert(outbox_repo, _abandoned(_row("a", minute=0)))
         head = _reload(outbox_repo, "a")
         read_version = head._version
-        assert head.discard("poison") is True
+        changed = head.reset_for_retry() if action == "retry" else head.discard("x")
+        assert changed is True
 
         assert outbox_repo.save_operator_change(
             head, OutboxStatus.ABANDONED.value, head.max_retries

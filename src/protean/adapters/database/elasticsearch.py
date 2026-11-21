@@ -381,8 +381,8 @@ def _result_set(
 def _document_field(field_name: str) -> str:
     """The document field that stores the entity attribute ``field_name``.
 
-    ``_version`` is stored as ``entity_version`` (see ``from_entity``); every
-    other attribute keeps its name.
+    ``_version`` is stored as ``entity_version`` (see ``from_entity``). Any
+    other name is returned unchanged.
     """
     return "entity_version" if field_name == "_version" else field_name
 
