@@ -78,6 +78,20 @@ class TestEventTemplateDictPattern:
         )
         assert event._expected_version == 7
 
+    def test_keyword_expected_version_of_minus_one_wins_over_the_template_dict(
+        self, test_domain
+    ):
+        """An explicit ``_expected_version=-1`` (the stream must be empty) is
+        kept even when the template dict carries another version."""
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.init(traverse=False)
+
+        event = OrderPlaced(
+            {"order_id": "123", "_expected_version": 4}, _expected_version=-1
+        )
+        assert event._expected_version == -1
+
 
 class TestUnregisteredEvent:
     def test_unregistered_event_raises_configuration_error(self):
