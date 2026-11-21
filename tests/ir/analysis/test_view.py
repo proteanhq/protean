@@ -162,6 +162,12 @@ class TestFilterCallSites:
 
         assert "stale" not in {site.method_name for site in sites}
 
+    def test_a_filter_call_site_names_its_method_and_line(self, view):
+        sites = view.filter_call_sites(behavior.OrderRepository)
+        active = next(s for s in sites if s.method_name == "active")
+
+        assert repr(active) == f"<FilterCallSite active line {active.location.line}>"
+
 
 class TestDataflowSurface:
     def test_method_flow_surfaces_dataflow_for_a_body(self, view):

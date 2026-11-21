@@ -550,11 +550,38 @@ class TestFailOpen:
 
         assert keys == [("brokenpkg.good", "Good")]
 
+    def test_class_with_an_unhashable_metaclass_has_no_role(self, index):
+        """A metaclass can set ``__hash__ = None``, so the class cannot be
+        looked up in the registered-element map. It is treated as an element
+        the domain does not know, and nothing raises."""
+
+        class UnhashableMeta(type):
+            __hash__ = None
+
+        unhashable = UnhashableMeta("Unhashable", (), {"method": lambda self: None})
+        with pytest.raises(TypeError):
+            hash(unhashable)
+
+        assert index.role_of(unhashable, "method") is None
+        assert index.roles(unhashable) == {}
+
     def test_empty_root_path_yields_an_empty_index(self):
         index = ElementIndex(Domain(name="NoRoot", root_path=""))
 
         assert index.classes() == ()
         assert index.class_entry("brokenpkg.good", "Good") is None
+
+
+class TestRepr:
+    def test_a_class_entry_names_its_module_and_qualname(self, index):
+        entry = index.class_entry(WALKED_ELEMENTS, "Wallet")
+
+        assert repr(entry) == f"<ClassEntry {WALKED_ELEMENTS}:Wallet>"
+
+    def test_a_method_entry_names_its_method_and_line(self, index):
+        method = index.class_entry(WALKED_ELEMENTS, "Wallet").method("rename")
+
+        assert repr(method) == f"<MethodEntry rename line {method.node.lineno}>"
 
 
 class TestSourceShapes:

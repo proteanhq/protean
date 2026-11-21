@@ -2688,7 +2688,7 @@ class IRBuilder:
         return flag
 
     @staticmethod
-    def _module_level_imports(tree: ast.Module) -> list[ast.stmt]:
+    def _module_level_imports(tree: ast.Module) -> list[ast.Import | ast.ImportFrom]:
         """Import statements at the module's top level only.
 
         Nested imports are deliberately excluded: a ``TYPE_CHECKING`` guard,
@@ -2701,7 +2701,7 @@ class IRBuilder:
         ]
 
     @staticmethod
-    def _import_names(node: ast.AST) -> list[str]:
+    def _import_names(node: ast.Import | ast.ImportFrom) -> list[str]:
         """Dotted names an import statement brings the adapter package under.
 
         ``ast.ImportFrom`` must also contribute the imported alias names so
@@ -2710,14 +2710,10 @@ class IRBuilder:
         """
         if isinstance(node, ast.Import):
             return [a.name for a in node.names]
-        if isinstance(node, ast.ImportFrom):
-            module = node.module or ""
-            return [module] + [
-                f"{module}.{a.name}" if module else a.name for a in node.names
-            ]
-        # Unreachable: callers only pass ``ast.Import``/``ast.ImportFrom``
-        # nodes filtered by ``_module_level_imports``.
-        return []  # pragma: no cover
+        module = node.module or ""
+        return [module] + [
+            f"{module}.{a.name}" if module else a.name for a in node.names
+        ]
 
     def _diagnose_adapter_calls(self, ir: dict[str, Any]) -> None:
         """Report ADAPTER_CALL_IN_DOMAIN for each call in a registered element's
@@ -4374,13 +4370,8 @@ class IRBuilder:
             if getattr(record.cls.meta_, "abstract", False):
                 continue
             agg_fqn = fqn(record.cls)
-            cluster = ir["clusters"].get(agg_fqn)
-            if cluster is None:  # pragma: no cover
-                # Defensive: ``_build_clusters`` clusters every non-internal
-                # aggregate, so a non-internal, non-abstract record always has a
-                # cluster. Unreachable given the current builder, kept as a guard.
-                continue
-            invariants = cluster["aggregate"]["invariants"]
+            # ``_build_clusters`` gives every non-internal aggregate a cluster.
+            invariants = ir["clusters"][agg_fqn]["aggregate"]["invariants"]
             if not invariants["pre"] and not invariants["post"]:
                 self._diagnostics.append(
                     build_diagnostic(
