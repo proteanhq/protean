@@ -276,7 +276,7 @@ def create_app(domain: Domain) -> FastAPI:
     return app
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     import uvicorn
 
     domain.init(traverse=False)

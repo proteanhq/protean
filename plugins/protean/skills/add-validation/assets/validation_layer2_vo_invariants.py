@@ -119,7 +119,7 @@ class Booking:
     location = ValueObject(GeoCoordinate)
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     domain.init(traverse=False)
     with domain.domain_context():
         # Valid booking
