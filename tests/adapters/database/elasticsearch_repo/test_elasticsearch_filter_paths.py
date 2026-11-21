@@ -99,6 +99,36 @@ class TestFilterPaths:
             "Athos",
         ]
 
+    def test_update_all_guarded_on_the_version_writes_the_next_version(
+        self, test_domain, dao
+    ):
+        [athos] = dao.fetch(Q(first_name="Athos")).items
+        version = athos._version
+
+        updated = dao.update_all(
+            Q(id=athos.id, _version=version), {"age": 31, "_version": version + 1}
+        )
+
+        assert updated == 1
+        stored = test_domain.repository_for(Person).get(athos.id)
+        assert stored.age == 31
+        assert stored._version == version + 1
+
+    def test_update_all_guarded_on_a_stale_version_matches_nothing(
+        self, test_domain, dao
+    ):
+        [athos] = dao.fetch(Q(first_name="Athos")).items
+        version = athos._version
+
+        updated = dao.update_all(
+            Q(id=athos.id, _version=version + 1), {"age": 31, "_version": version + 2}
+        )
+
+        assert updated == 0
+        stored = test_domain.repository_for(Person).get(athos.id)
+        assert stored.age == 30
+        assert stored._version == version
+
     def test_delete_all_with_an_or_deletes_only_matching_documents(self, dao):
         deleted = dao.delete_all(Q(first_name="Athos") | Q(age=50))
 

@@ -490,6 +490,103 @@ class TestAnOperatorReleasesAHaltedKey:
         )
         assert _reload(outbox_repo, "a").status == OutboxStatus.FAILED.value
 
+    @pytest.mark.parametrize("action", ["retry", "discard"])
+    def test_an_operator_change_advances_the_row_version(self, outbox_repo, action):
+        _insert(outbox_repo, _abandoned(_row("a", minute=0)))
+        head = _reload(outbox_repo, "a")
+        read_version = head._version
+        changed = head.reset_for_retry() if action == "retry" else head.discard("x")
+        assert changed is True
+
+        assert outbox_repo.save_operator_change(
+            head, OutboxStatus.ABANDONED.value, head.max_retries
+        )
+        assert _reload(outbox_repo, "a")._version == read_version + 1
+
+    def test_a_row_saved_again_after_the_read_is_not_written(self, outbox_repo, now):
+        _insert(
+            outbox_repo,
+            _failed(_row("a", minute=0), next_retry_at=now + timedelta(hours=1)),
+        )
+        stale = _reload(outbox_repo, "a")
+        moved = _reload(outbox_repo, "a")
+        moved.next_retry_at = now + timedelta(hours=2)
+        outbox_repo.add(moved)
+        assert _reload(outbox_repo, "a")._version == stale._version + 1
+        assert stale.discard("x") is True
+
+        assert (
+            outbox_repo.save_operator_change(stale, OutboxStatus.FAILED.value, 1)
+            is False
+        )
+        stored = _reload(outbox_repo, "a")
+        assert stored.status == OutboxStatus.FAILED.value
+        assert stored.last_error is None
+
+    @pytest.mark.parametrize("action", ["retry", "discard"])
+    def test_a_stale_change_does_not_overwrite_a_newer_failure(
+        self, outbox_repo, now, action
+    ):
+        _insert(
+            outbox_repo,
+            _failed(_row("a", minute=0), next_retry_at=now - timedelta(minutes=1)),
+        )
+        stale = _reload(outbox_repo, "a")
+        other = _reload(outbox_repo, "a")
+        assert other.reset_for_retry() is True
+        assert outbox_repo.save_operator_change(other, OutboxStatus.FAILED.value, 1)
+        [claimed] = outbox_repo.claim_batch("worker-1", limit=10)
+        claimed.mark_failed(RuntimeError("broker down again"))
+        outbox_repo.add(claimed)
+        changed = stale.reset_for_retry() if action == "retry" else stale.discard("x")
+        assert changed is True
+
+        assert (
+            outbox_repo.save_operator_change(stale, OutboxStatus.FAILED.value, 1)
+            is False
+        )
+
+        stored = _reload(outbox_repo, "a")
+        assert stored.status == OutboxStatus.FAILED.value
+        assert stored.retry_count == 1
+        assert stored.last_error["message"] == "broker down again"
+        assert "discard_reason" not in stored.last_error
+
+    @pytest.mark.parametrize("action", ["retry", "discard"])
+    def test_a_stale_change_does_not_overwrite_a_newer_abandonment(
+        self, outbox_repo, now, action
+    ):
+        _insert(outbox_repo, _abandoned(_row("a", minute=0)))
+        stale = _reload(outbox_repo, "a")
+        max_retries = stale.max_retries
+        other = _reload(outbox_repo, "a")
+        assert other.reset_for_retry() is True
+        assert outbox_repo.save_operator_change(
+            other, OutboxStatus.ABANDONED.value, max_retries
+        )
+        for attempt in range(1, max_retries + 1):
+            [claimed] = outbox_repo.claim_batch("worker-1", limit=10)
+            # A failure stamped a day back leaves its retry due at once.
+            claimed.mark_failed(
+                RuntimeError(f"attempt {attempt}"), now=now - timedelta(days=1)
+            )
+            outbox_repo.add(claimed)
+        changed = stale.reset_for_retry() if action == "retry" else stale.discard("x")
+        assert changed is True
+
+        assert (
+            outbox_repo.save_operator_change(
+                stale, OutboxStatus.ABANDONED.value, max_retries
+            )
+            is False
+        )
+
+        stored = _reload(outbox_repo, "a")
+        assert stored.status == OutboxStatus.ABANDONED.value
+        assert stored.retry_count == max_retries
+        assert stored.last_error["message"] == f"attempt {max_retries}"
+        assert "discard_reason" not in stored.last_error
+
 
 def _halted(outbox_repo) -> list[tuple[str, str, str, str, int]]:
     return [
