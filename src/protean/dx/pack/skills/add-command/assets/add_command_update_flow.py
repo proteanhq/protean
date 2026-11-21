@@ -175,7 +175,7 @@ async def cancel_reservation(reservation_id: str, request: Request):
 
 
 # Example usage
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     import uvicorn
 
     domain.init(traverse=False)

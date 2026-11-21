@@ -100,17 +100,15 @@ class OrderView:
 def demonstrate_value_object_allowed():
     """Show that ValueObject fields are now allowed in projections.
 
-    Returns True if the projection is created successfully.
+    Returns True once the projection class is defined. A rejected field
+    would raise IncorrectUsageError at class definition time.
     """
-    try:
 
-        class ProjectionWithVO(BaseProjection):
-            user_id: Identifier(identifier=True)
-            email = ValueObject(Email)
+    class ProjectionWithVO(BaseProjection):
+        user_id: Identifier(identifier=True)
+        email = ValueObject(Email)
 
-        return True
-    except IncorrectUsageError:
-        return False  # pragma: no cover
+    return True
 
 
 def demonstrate_reference_restriction():
@@ -123,8 +121,6 @@ def demonstrate_reference_restriction():
         class BadProjection(BaseProjection):
             user_id: Identifier(identifier=True)
             role = Reference(Role)
-
-        return None  # pragma: no cover - validation always fires
     except IncorrectUsageError as e:
         return str(e.args[0])
 
@@ -139,8 +135,6 @@ def demonstrate_association_restriction():
         class BadProjection(BaseProjection):
             user_id: Identifier(identifier=True)
             role = HasOne(Role)
-
-        return None  # pragma: no cover - validation always fires
     except IncorrectUsageError as e:
         return str(e.args[0])
 
@@ -157,7 +151,6 @@ def demonstrate_missing_identifier():
 
     try:
         test_domain.register(NoIdProjection)
-        return None  # pragma: no cover - validation always fires
     except IncorrectUsageError as e:
         return str(e.args[0])
 

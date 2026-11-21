@@ -187,7 +187,7 @@ class InventoryCommandHandler:
         repo.add(inventory)
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     domain.init(traverse=False)
     with domain.domain_context():
         # Create inventory item (Layer 1 + 2 + 3 all validate)

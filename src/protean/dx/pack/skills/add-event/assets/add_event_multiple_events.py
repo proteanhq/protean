@@ -235,7 +235,7 @@ class ShipmentNotifier:
 
 
 # Example usage
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     from datetime import datetime
 
     domain.init(traverse=False)
