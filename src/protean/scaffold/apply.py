@@ -255,14 +255,11 @@ def _ensure_parents(directory: Path, created_dirs: list[Path]) -> None:
     """
     missing: list[Path] = []
     current = directory
-    while not _exists(current):
+    # The filesystem root is its own parent, so the walk stops there even if
+    # the root reads as missing.
+    while not _exists(current) and current.parent != current:
         missing.append(current)
-        parent = current.parent
-        if parent == current:  # pragma: no cover - the filesystem root always
-            # exists, so the while loop exits before this guard can fire; it is a
-            # defensive backstop against an infinite walk, not a reachable path.
-            break
-        current = parent
+        current = current.parent
 
     # ``missing`` is deepest-first; create shallowest-first so each parent exists
     # before its child.

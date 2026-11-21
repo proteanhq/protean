@@ -51,6 +51,24 @@ class ParcelPM(BaseProcessManager):
         self.parcel_id = event.parcel_id
 
 
+# Registered only with a domain that never runs ``init()`` or ``check()``, so
+# no transition event class is ever generated for ``CratePM``.
+class Crate(BaseAggregate):
+    label: String()
+
+
+class CrateSent(BaseEvent):
+    crate_id: Identifier()
+
+
+class CratePM(BaseProcessManager):
+    crate_id: Identifier()
+
+    @handle(CrateSent, start=True, correlate="crate_id")
+    def on_sent(self, event: CrateSent) -> None:
+        self.crate_id = event.crate_id
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain, request):
     if "no_test_domain" in request.keywords:
@@ -201,6 +219,26 @@ class TestDispatchBeforeInit:
                 given(ParcelPM, ParcelSent(parcel_id="P-1"))
 
         assert str(exc.value) == "Event store is not configured"
+
+    @pytest.mark.no_test_domain
+    def test_transition_without_init_raises_configuration_error(self):
+        """A process manager whose domain never ran ``init()`` has no
+        transition event class, so persisting a transition raises
+        ConfigurationError."""
+        domain = Domain(name="Uninitialized")
+        domain.register(Crate)
+        domain.register(CrateSent, part_of=Crate)
+        domain.register(CratePM, stream_categories=["uninitialized::crate"])
+
+        with domain.domain_context():
+            pm = CratePM(crate_id="C-1")
+            with pytest.raises(ConfigurationError) as exc:
+                CratePM._persist_transition(pm, "on_sent")
+
+        assert str(exc.value) == (
+            "Process Manager `CratePM` has no transition event class. "
+            "Ensure domain.init() has been called."
+        )
 
 
 class TestFullLifecycle:

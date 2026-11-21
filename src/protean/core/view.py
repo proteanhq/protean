@@ -51,7 +51,7 @@ class ReadView(Generic[_ProjectionT]):
         self._projection_cls = projection_cls
         self._is_cache_backed: bool = bool(projection_cls.meta_.cache)
 
-    def __repr__(self) -> str:  # pragma: no cover
+    def __repr__(self) -> str:
         backend = "cache" if self._is_cache_backed else "database"
         return f"<ReadView for {self._projection_cls.__name__} ({backend})>"
 

@@ -8,8 +8,10 @@ from protean import current_domain
 from protean.core.projection import BaseProjection
 from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, String
+from protean.utils.eventing import Message, MessageHeaders, Metadata
 from protean.utils.projection_rebuilder import (
     RebuildResult,
+    _global_position,
     _replay_projector,
     _truncate_projection,
 )
@@ -89,6 +91,17 @@ class TestReplayOrder:
         assert (dispatched, skipped) == (2, 0)
         balance = current_domain.repository_for(Balances).get(user.id)
         assert (balance.name, balance.balance) == ("Order", 200.0)
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            Message(data={}),
+            Message(data={}, metadata=Metadata(headers=MessageHeaders())),
+        ],
+        ids=["no-metadata", "no-event-store-metadata"],
+    )
+    def test_message_without_a_store_position_sorts_as_position_zero(self, message):
+        assert _global_position(message) == 0
 
 
 class TestLargeEventCount:

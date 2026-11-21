@@ -1,5 +1,7 @@
 """Shared test elements for Query domain element tests."""
 
+from typing import Any
+
 from protean.core.projection import BaseProjection
 from protean.core.query import BaseQuery
 from protean.core.value_object import BaseValueObject
@@ -33,3 +35,15 @@ class GetOrdersByCustomer(BaseQuery):
 
 class GetOrderById(BaseQuery):
     order_id = Identifier(required=True)
+
+
+class GetOrdersPage(BaseQuery):
+    """Fills ``page_size`` from ``page`` while the query is being built."""
+
+    customer_id = Identifier(required=True)
+    page = Integer(default=1)
+    page_size = Integer()
+
+    def model_post_init(self, context: Any, /) -> None:
+        if self.page_size is None:
+            self.page_size = 10 * self.page

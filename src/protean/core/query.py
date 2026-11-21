@@ -231,9 +231,7 @@ class BaseQuery(Element, BaseModel, OptionsMixin, Generic[TResult]):
 
     def __setattr__(self, name: str, value: Any) -> None:
         if not getattr(self, "_initialized", False):
-            super().__setattr__(
-                name, value
-            )  # pragma: no cover — Pydantic init uses object.__setattr__ directly
+            super().__setattr__(name, value)
         else:
             raise IncorrectUsageError(
                 "Query objects are immutable and cannot be modified once created"

@@ -8,12 +8,13 @@ from protean.upgrade import (
     _check_elasticsearch_server,
     _check_health_port,
     _check_outbox_migrations,
+    _check_outbox_schema,
     _check_pool_defaults,
     _outbox_composite_index_sql,
     _outbox_set_not_null_sql,
     run_upgrade_checks,
 )
-from tests.shared import provider_adapter
+from tests.shared import module_unavailable, provider_adapter
 
 
 def _codes(findings: list[UpgradeFinding]) -> set[str]:
@@ -199,6 +200,21 @@ class TestRunUpgradeChecks:
 
         # In-memory providers are not SQLAlchemy-backed -> nothing to migrate.
         assert _check_outbox_schema(test_domain) == []
+
+    @pytest.mark.parametrize(
+        "check",
+        [_check_outbox_schema, _check_outbox_migrations],
+        ids=["schema", "migrations"],
+    )
+    def test_outbox_checks_report_nothing_without_sqlalchemy(self, test_domain, check):
+        """Without sqlalchemy no provider can hold an outbox table, so the
+        outbox checks return no finding instead of failing on the import."""
+        test_domain.init(traverse=False)
+
+        with module_unavailable(
+            "sqlalchemy", reload=("protean.adapters.database.sqlalchemy",)
+        ):
+            assert check(test_domain) == []
 
 
 # ---------------------------------------------------------------------------

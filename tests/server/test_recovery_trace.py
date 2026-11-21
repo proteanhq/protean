@@ -81,6 +81,29 @@ def test_nested_captures_do_not_leak():
     assert recovery_trace.is_active() is False
 
 
+class _CaptureEndsOnAcquire:
+    """Stands in for the recorder's lock and ends the capture as ``record()``
+    takes it: the order a ``capture()`` exit racing ``record()`` produces."""
+
+    def __enter__(self) -> None:
+        recovery_trace._events = None
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
+
+
+@pytest.mark.no_test_domain
+def test_record_drops_the_event_when_the_capture_ends_before_the_lock(monkeypatch):
+    log: list = []
+    monkeypatch.setattr(recovery_trace, "_events", log)
+    monkeypatch.setattr(recovery_trace, "_lock", _CaptureEndsOnAcquire())
+
+    recovery_trace.record(action="fail", position=1)
+
+    assert log == []
+    assert recovery_trace.is_active() is False
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Instrumentation tests (drive the real EventStoreSubscription)
 # ──────────────────────────────────────────────────────────────────────

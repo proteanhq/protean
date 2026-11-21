@@ -193,7 +193,7 @@ def _check_outbox_schema(domain: Domain) -> list[UpgradeFinding]:
     try:
         from sqlalchemy import inspect as sa_inspect  # noqa: F401, PLC0415
         from sqlalchemy.types import String as SAString  # noqa: F401, PLC0415
-    except ImportError:  # pragma: no cover - sqlalchemy backs every SADatabase
+    except ImportError:
         return []
 
     bounds = _outbox_string_bounds()
@@ -233,12 +233,9 @@ def _sa_outbox_engines(domain: Domain) -> Iterator[tuple[str, Any, str | None]]:
     for name, provider in domain.databases.items():
         if not isinstance(provider, SADatabase):
             continue
-        engine = getattr(provider, "_engine", None)
-        if engine is None:  # pragma: no cover - an initialized SADatabase has one
-            continue
         # Honor a non-default provider schema so the right outbox table is found.
         schema = getattr(getattr(provider, "_metadata", None), "schema", None)
-        yield name, engine, schema
+        yield name, provider._engine, schema
 
 
 def _read_outbox(
@@ -513,7 +510,7 @@ def _check_outbox_migrations(domain: Domain) -> list[UpgradeFinding]:
     """
     try:
         from sqlalchemy import inspect as sa_inspect  # noqa: F401, PLC0415
-    except ImportError:  # pragma: no cover - sqlalchemy backs every SADatabase
+    except ImportError:
         return []
 
     # The name the framework actually writes, so the emitted SQL labels legacy

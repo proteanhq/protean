@@ -21,6 +21,7 @@ from protean.scaffold import (
     EditFileOperation,
     apply_plan,
 )
+from protean.scaffold.apply import _fs_folds_case
 
 # Pure filesystem tests; the autouse domain fixture would build an unrelated
 # Domain per test for nothing.
@@ -460,6 +461,12 @@ def test_case_variant_duplicates_follow_the_filesystem(tmp_path):
         assert written == ("src/pkg/Thing.py", "src/pkg/thing.py")
         assert (tmp_path / "src/pkg/Thing.py").read_text() == "upper\n"
         assert (tmp_path / "src/pkg/thing.py").read_text() == "lower\n"
+
+
+def test_a_root_that_cannot_be_compared_reads_as_case_sensitive(tmp_path):
+    """When neither spelling of the root can be read, the probe answers that
+    the filesystem keeps case, on every platform."""
+    assert _fs_folds_case(tmp_path / "missing") is False
 
 
 def test_missing_project_directory_is_refused_and_creates_nothing(tmp_path):

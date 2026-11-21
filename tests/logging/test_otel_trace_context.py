@@ -30,6 +30,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from protean import Domain
+from protean.integrations import logging as protean_logging
 from protean.integrations.logging import (
     OTelTraceContextFilter,
     ProteanCorrelationFilter,
@@ -43,6 +44,7 @@ from protean.utils.eventing import (
     Metadata,
 )
 from protean.utils.globals import g
+from tests.shared import module_unavailable
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -119,6 +121,25 @@ class TestOTelProcessor:
         ):
             event_dict = protean_otel_processor(None, "info", {"event": "msg"})
 
+        assert event_dict["trace_id"] == ""
+        assert event_dict["span_id"] == ""
+        assert event_dict["trace_flags"] == 0
+
+    @pytest.mark.no_test_domain
+    def test_helpers_resolve_to_none_when_opentelemetry_cannot_import(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The first lookup without ``opentelemetry`` caches ``None`` in the
+        helper slots, and the processor returns empty fields."""
+        for slot in ("_get_current_span", "_format_trace_id", "_format_span_id"):
+            monkeypatch.setattr(protean_logging, slot, protean_logging._OTEL_UNLOADED)
+
+        with module_unavailable("opentelemetry"):
+            event_dict = protean_otel_processor(None, "info", {"event": "msg"})
+
+        assert protean_logging._get_current_span is None
+        assert protean_logging._format_trace_id is None
+        assert protean_logging._format_span_id is None
         assert event_dict["trace_id"] == ""
         assert event_dict["span_id"] == ""
         assert event_dict["trace_flags"] == 0
