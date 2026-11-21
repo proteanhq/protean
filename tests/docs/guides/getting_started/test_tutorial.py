@@ -28,6 +28,7 @@ from protean.utils.processing import Priority
 from tests.docs.support import (
     DOCS_SRC,
     EXAMPLE_TESTS_TIMEOUT,
+    _text,
     load_example,
     outcome_counts,
     run_example_tests,
@@ -589,12 +590,18 @@ _PYPROJECT_PYTEST = (
 
 
 def _run_in_fresh_project(tmp_path, pyproject: str) -> subprocess.CompletedProcess[str]:
-    """Run pytest in a project folder laid out as chapter 11 describes.
+    """Run the tutorial's tests in a new project folder at ``tmp_path``.
 
     Copies the tutorial's ``bookshelf`` package and ``tests`` folder into
     ``tmp_path``, writes ``pyproject`` as its ``pyproject.toml``, and runs
-    ``python -m pytest`` there with no other options, as a reader would.
-    Returns the finished process with its output.
+    ``python -P -m pytest -p no:cacheprovider -p no:randomly`` there. With
+    ``-P`` the working folder stays off ``sys.path``, as it does for the
+    bare ``pytest`` command the chapter tells the reader to run. Returns
+    the finished process with its output.
+
+    Raises:
+        TimeoutError: the run took longer than ``EXAMPLE_TESTS_TIMEOUT``
+            seconds. The message holds the output written so far.
     """
     tutorial = DOCS_SRC / "guides" / "getting-started" / "tutorial"
     for folder in ("bookshelf", "tests"):
@@ -624,19 +631,33 @@ def _run_in_fresh_project(tmp_path, pyproject: str) -> subprocess.CompletedProce
         "-p",
         "no:randomly",
     ]
-    return subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        check=False,
-        cwd=tmp_path,
-        env=child_env,
-        timeout=EXAMPLE_TESTS_TIMEOUT,
-    )
+    try:
+        return subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=tmp_path,
+            env=child_env,
+            timeout=EXAMPLE_TESTS_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # pytest shows the exception message and not its attributes, so
+        # the output the child wrote so far goes into the message.
+        output = _text(exc.stdout) + _text(exc.stderr)
+        raise TimeoutError(
+            f"pytest in {tmp_path} ran longer than {EXAMPLE_TESTS_TIMEOUT}s. "
+            f"Output so far:\n{output}"
+        ) from exc
 
 
 class TestTutorialCh11:
-    """Ch11: The chapter's test files pass against the ``bookshelf`` package."""
+    """Ch11: The chapter's test files pass against the ``bookshelf`` package.
+
+    The chapter's displayed pytest configuration also runs them in a new
+    project folder, and the same folder without its ``pythonpath`` line
+    cannot import ``bookshelf``.
+    """
 
     def test_invariants(self):
         result = run_example_tests(
@@ -692,8 +713,9 @@ class TestTutorialCh11:
 
         result = _run_in_fresh_project(tmp_path, "".join(kept))
 
-        assert result.returncode != 0
-        assert "No module named 'bookshelf'" in result.stdout + result.stderr
+        output = result.stdout + result.stderr
+        assert result.returncode != 0, output
+        assert "No module named 'bookshelf'" in output, output
 
 
 @pytest.mark.no_test_domain
