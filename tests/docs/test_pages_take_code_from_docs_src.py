@@ -411,6 +411,9 @@ GUIDE_TOML_INCLUDES = {
     "guides/compose-a-domain/schema-migrations.md": [
         "guides/compose-a-domain/schema-migrations/two_providers.toml",
     ],
+    "guides/getting-started/tutorial/11-testing.md": [
+        "guides/getting-started/tutorial/pyproject_pytest.toml",
+    ],
     "guides/multi-domain-applications.md": [
         "guides/multi-domain-applications/catalogue.toml",
     ],
