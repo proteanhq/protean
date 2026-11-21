@@ -1,0 +1,4 @@
+[event_store]
+provider = "sql"
+database_uri = "${SQL_EVENT_STORE_URL|postgresql://postgres:postgres@localhost:5432/postgres}"
+schema = "events"

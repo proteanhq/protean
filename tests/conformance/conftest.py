@@ -37,6 +37,8 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import tempfile
 from collections.abc import Callable, Iterator
 from enum import Flag
 from pathlib import Path
@@ -52,6 +54,7 @@ from protean.infra.registry import (
     databases,
     event_stores,
 )
+from protean.port.event_store import EventStoreCapabilities
 from tests.conformance.flag_coverage import named_flags
 from tests.shared import (
     ELASTICSEARCH_URI,
@@ -128,6 +131,15 @@ BUILTIN_ADAPTER_CONFIGS: dict[tuple[str, str], dict[str, Any]] = {
         "provider": "message_db",
         "database_uri": MESSAGE_DB_URI,
     },
+    # A file per process, so two runs on one machine do not share a store.
+    # The PostgreSQL run passes its database_uri in --adapter-config.
+    ("event_store", "sql"): {
+        "provider": "sql",
+        "database_uri": "sqlite:///"
+        + str(
+            Path(tempfile.gettempdir()) / f"protean-conformance-sql-{os.getpid()}.db"
+        ),
+    },
 }
 
 
@@ -167,6 +179,23 @@ RESET: dict[str, Callable[[Any], None]] = {
     "broker": lambda broker: broker.clear(),
     "cache": lambda cache: cache.clear(),
     "event_store": lambda store: store.clear(),
+}
+
+
+def _create_event_store_schema(store: Any) -> None:
+    capabilities = getattr(store, "capabilities", None)
+    if (
+        capabilities is not None
+        and EventStoreCapabilities.SCHEMA_MANAGEMENT in capabilities
+    ):
+        store.create_schema()
+
+
+# What each port's adapter needs before a test. An event store that manages
+# its own schema gets its tables, as a deployment's setup step would create
+# them. Database providers create their tables in their own suites.
+PREPARE: dict[str, Callable[[Any], None]] = {
+    "event_store": _create_event_store_schema,
 }
 
 
@@ -401,7 +430,17 @@ def adapter(request: pytest.FixtureRequest, test_domain: Domain | None) -> Any:
 def run_around_tests(
     request: pytest.FixtureRequest, test_domain: Domain | None
 ) -> Iterator[None]:
-    """Reset the adapter under test after each test."""
+    """Prepare the adapter under test before each test, and reset it after.
+
+    The preparation runs for a test that never asks for ``adapter`` too,
+    because the reset after it needs the adapter's tables.
+    """
+    if test_domain is not None:
+        port = _require_port(request)
+        prepare = PREPARE.get(port)
+        if prepare is not None:
+            prepare(ADAPTER_OF[port](test_domain))
+
     yield
 
     if test_domain is not None:

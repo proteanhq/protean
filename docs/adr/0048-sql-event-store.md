@@ -62,7 +62,9 @@ provider = "sql"                 # shares the "default" database provider
 
 - Without `database_uri`, the store shares the `default` provider. With it, the
   store uses a separate database. A domain whose SQL database provider is not
-  `default` makes it `default` or sets `database_uri`.
+  `default` makes it `default` or sets `database_uri`. Until
+  [#2141](https://github.com/proteanhq/protean/issues/2141) adds the shared
+  mode, a store without `database_uri` raises `ConfigurationError` at start-up.
 - The database type comes from the `default` provider or the URL scheme. Any
   type other than SQLite or PostgreSQL fails at start-up with an error that
   lists the supported types.
@@ -209,10 +211,12 @@ On the shared `default` SQLite provider, or on the store's own engine:
   fail at once with `database is locked`, because SQLite cannot upgrade both to
   the write lock ([#2108](https://github.com/proteanhq/protean/issues/2108)).
 
-`BEGIN IMMEDIATE` makes every transaction on the file take the write lock at
-the start, read-only ones included, so other SQLite databases keep their
-settings unchanged. A test runs two processes against one file. Writers on more
-than one machine require PostgreSQL.
+The store starts its writes with `BEGIN IMMEDIATE`, which takes the write lock
+at the start. Its reads start with a plain `BEGIN`, so under WAL they run while
+another connection writes. Other SQLite databases keep their settings
+unchanged. The tests race writer threads on two store objects, each with
+its own engine, against one file. Writers on more than one machine require
+PostgreSQL.
 
 ### 11. Idle subscriptions back off exponentially
 
@@ -267,8 +271,8 @@ would require every event store to implement them.
 - Lock-key or position-rule changes require stopping every writer.
 - The database does not prevent a user with write access from changing or
   deleting events.
-- On SQLite, all writers run on one machine, and read-only transactions on a
-  shared file take the write lock.
+- On SQLite, all writers run on one machine, and one write at a time holds the
+  file's write lock.
 - An idle subscription reads a new event up to `max_tick_interval` late.
 - A command sent from inside a handler reaches the engine when that handler
   commits.

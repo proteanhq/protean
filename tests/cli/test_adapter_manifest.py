@@ -28,6 +28,7 @@ from protean.cli.test import (
     TEST_CONFIGS,
     AdapterEntry,
     AdapterManifest,
+    ConformanceRun,
     TestRunner,
     _registered_adapters,
     build_adapter_matrix,
@@ -36,6 +37,7 @@ from protean.cli.test import (
     load_adapter_manifest,
     run_pr_lane,
 )
+from tests.shared import POSTGRES_URI
 
 # The manifest and the PR lane are file and CLI work; none of it loads a domain.
 pytestmark = pytest.mark.no_test_domain
@@ -61,6 +63,9 @@ def _entry(name: str, lane: str = "touched", **kwargs) -> AdapterEntry:
         "stores": [],
     }
     fields.update(kwargs)
+    fields["conformance"] = [
+        ConformanceRun(*pair.split(":")) for pair in kwargs.get("conformance", [])
+    ]
     return AdapterEntry(name=name, lane=lane, **fields)
 
 
@@ -187,11 +192,11 @@ class TestManifestIsCurrent:
     def test_every_conformance_suite_is_in_its_adapters_paths(self, manifest):
         # A "touched" leg runs only when the PR changes one of its paths, so a
         # suite outside them would run on no PR that edits it.
-        pairs = [(e, pair) for e in manifest.adapters for pair in e.conformance]
-        assert pairs
+        runs = [(e, run) for e in manifest.adapters for run in e.conformance]
+        assert runs
         missing = []
-        for entry, pair in pairs:
-            folder = f"tests/conformance/{pair.partition(':')[0]}/"
+        for entry, run in runs:
+            folder = f"tests/conformance/{run.port}/"
             assert (REPO_ROOT / folder).is_dir()
             if folder not in entry.paths:
                 missing.append((entry.name, folder))
@@ -254,7 +259,97 @@ class TestLoadAdapterManifest:
     def test_conformance_pairs_are_read(self, tmp_path):
         path = self.write(tmp_path, '["event_store:message_db"]')
         (entry,) = load_adapter_manifest(path).adapters
-        assert entry.conformance == ["event_store:message_db"]
+        assert entry.conformance == [ConformanceRun("event_store", "message_db")]
+
+    def test_a_conformance_table_is_read_with_its_config_and_label(self, tmp_path):
+        path = self.write(
+            tmp_path,
+            '[{ port = "event_store", adapter = "sql", '
+            'config = { database_uri = "postgresql://h/db" } }]',
+        )
+        (entry,) = load_adapter_manifest(path).adapters
+        assert entry.conformance == [
+            ConformanceRun(
+                "event_store",
+                "sql",
+                config='{"database_uri": "postgresql://h/db"}',
+                label="store",
+            )
+        ]
+
+    def test_a_conformance_table_without_config_has_none(self, tmp_path):
+        path = self.write(tmp_path, '[{ port = "event_store", adapter = "sql" }]')
+        (entry,) = load_adapter_manifest(path).adapters
+        assert entry.conformance == [
+            ConformanceRun("event_store", "sql", config=None, label="store")
+        ]
+
+    def test_a_conformance_table_with_an_unknown_key_is_rejected(self, tmp_path):
+        path = self.write(
+            tmp_path, '[{ port = "event_store", adapter = "sql", uri = "x" }]'
+        )
+        with pytest.raises(
+            ValueError, match=r"Adapter 'store'.*unknown keys \['uri'\]"
+        ):
+            load_adapter_manifest(path)
+
+    def test_a_conformance_config_that_is_not_a_table_is_rejected(self, tmp_path):
+        path = self.write(
+            tmp_path, '[{ port = "event_store", adapter = "sql", config = "x" }]'
+        )
+        with pytest.raises(
+            ValueError, match="Adapter 'store' has conformance config 'x'"
+        ):
+            load_adapter_manifest(path)
+
+    @pytest.mark.parametrize(
+        "table, message",
+        [
+            ('{ adapter = "sql" }', "'<port>:<adapter>'"),
+            ('{ port = "event_store" }', "'<port>:<adapter>'"),
+            ('{ port = "queue", adapter = "sql" }', "port 'queue'"),
+            ('{ port = "event_store", adapter = "memory" }', "core run already runs"),
+            ('{ port = "event_store", adapter = "nope" }', "adapter 'nope'"),
+        ],
+    )
+    def test_a_conformance_table_gets_the_pair_checks(self, tmp_path, table, message):
+        path = self.write(tmp_path, f"[{table}]")
+        with pytest.raises(ValueError, match=f"Adapter 'store'.*{message}"):
+            load_adapter_manifest(path)
+
+    def test_two_runs_with_one_suite_name_are_rejected(self, tmp_path):
+        path = self.write(
+            tmp_path,
+            '[{ port = "event_store", adapter = "sql", config = { a = 1 } }, '
+            '{ port = "event_store", adapter = "sql", config = { a = 2 } }]',
+        )
+        with pytest.raises(
+            ValueError,
+            match=r"Adapter 'store' lists two conformance runs named "
+            r"\['Conformance: event_store/sql \(store\)'\]",
+        ):
+            load_adapter_manifest(path)
+
+    def test_a_pair_and_a_table_of_one_adapter_are_both_kept(self, tmp_path):
+        path = self.write(
+            tmp_path, '["event_store:sql", { port = "event_store", adapter = "sql" }]'
+        )
+        (entry,) = load_adapter_manifest(path).adapters
+        assert [run.name for run in entry.conformance] == [
+            "Conformance: event_store/sql",
+            "Conformance: event_store/sql (store)",
+        ]
+
+    def test_a_conformance_config_json_cannot_write_is_rejected(self, tmp_path):
+        path = self.write(
+            tmp_path,
+            '[{ port = "event_store", adapter = "sql", '
+            "config = { at = 2031-03-04T12:30:00Z } }]",
+        )
+        with pytest.raises(
+            ValueError, match=r"Adapter 'store' has conformance config .* JSON cannot"
+        ):
+            load_adapter_manifest(path)
 
     def test_an_entry_without_conformance_lists_none(self, tmp_path):
         path = tmp_path / "adapters.toml"
@@ -356,8 +451,13 @@ class TestLoadAdapterManifest:
             metadata.EntryPoint, "load", side_effect=AssertionError("loaded")
         ):
             manifest = load_adapter_manifest()
-        pairs = [p for e in manifest.adapters for p in e.conformance]
-        assert pairs == ["cache:redis", "event_store:message_db"]
+        names = [run.name for e in manifest.adapters for run in e.conformance]
+        assert names == [
+            "Conformance: event_store/sql (postgresql)",
+            "Conformance: cache/redis",
+            "Conformance: event_store/sql",
+            "Conformance: event_store/message_db",
+        ]
 
     def test_a_manifest_without_triggers_has_none(self, tmp_path):
         path = tmp_path / "adapters.toml"
@@ -573,6 +673,48 @@ class TestBuildAdapterSuites:
         entries = [_entry("a", conformance=["database:postgresql"])]
         (suite,) = build_conformance_suites(TestRunner(), entries)
         assert suite.shared_database == "postgresql"
+
+    def test_a_conformance_table_passes_its_config_and_takes_its_label_lock(self):
+        run = ConformanceRun(
+            "event_store", "sql", config='{"database_uri": "x"}', label="postgresql"
+        )
+        entry = _entry("postgresql")
+        entry.conformance = [run]
+        runner = TestRunner()
+        (suite,) = build_conformance_suites(runner, [entry])
+        assert suite.name == "Conformance: event_store/sql (postgresql)"
+        assert suite.shared_database == "postgresql"
+        assert suite.command == runner.build_coverage_command(
+            [
+                "pytest",
+                "--cache-clear",
+                "--ignore=tests/support/",
+                "tests/conformance/event_store",
+                "--port",
+                "event_store",
+                "--adapter",
+                "sql",
+                "--adapter-config",
+                '{"database_uri": "x"}',
+            ]
+        )
+
+    def test_one_adapter_on_two_databases_builds_two_suites(self, manifest):
+        suites = build_conformance_suites(
+            TestRunner(), manifest.resolve(["sqlite", "postgresql"])
+        )
+        by_name = {s.name: s for s in suites}
+        assert set(by_name) == {
+            "Conformance: event_store/sql",
+            "Conformance: event_store/sql (postgresql)",
+        }
+        assert by_name["Conformance: event_store/sql"].shared_database is None
+        assert "--adapter-config" not in by_name["Conformance: event_store/sql"].command
+        postgresql = by_name["Conformance: event_store/sql (postgresql)"]
+        assert postgresql.shared_database == "postgresql"
+        config = postgresql.command[postgresql.command.index("--adapter-config") + 1]
+        # The PostgreSQL service the database suites use.
+        assert json.loads(config) == {"database_uri": POSTGRES_URI}
 
     def test_an_adapter_without_conformance_pairs_builds_no_suite(self):
         suites = build_adapter_suites(TestRunner(), [_entry("x", markers=["redis"])])

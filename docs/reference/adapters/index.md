@@ -80,6 +80,7 @@ Current Implementations:
 
 - Memory - Default in-memory event store (no external dependencies)
 - [Message DB](./eventstore/message-db.md): PostgreSQL-based production event store
+- [SQL](./eventstore/sql.md): Production event store on a SQLite file or PostgreSQL, with no database extension
 
 ---
 

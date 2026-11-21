@@ -109,6 +109,7 @@ don't require one.
 |---|---|---|
 | `memory` | Development, testing, event-sourcing prototypes | In-memory only; events vanish on restart. |
 | `message_db` | Production event sourcing | Requires PostgreSQL with the [Message DB](https://github.com/message-db/message-db) extension installed. Durable, ordered, replayable streams. |
+| `sql` | Production event sourcing without a database extension | Runs on a SQLite file or PostgreSQL through SQLAlchemy. No consumer groups. On SQLite, one write runs at a time. See [SQL event store](../../reference/adapters/eventstore/sql.md). |
 
 **Typical production pick: Message DB** co-located with your
 PostgreSQL write database, in a separate database on the same server:

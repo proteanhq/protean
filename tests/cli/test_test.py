@@ -2139,6 +2139,16 @@ class TestPortAdapterConfig:
     def test_no_uri_leaves_the_key_out(self):
         assert _adapter_config("broker", "inline", "", {}) == {"provider": "inline"}
 
+    def test_sql_event_store_without_uri_gets_a_sqlite_file(self):
+        config = _adapter_config("event_store", "sql", "", {})
+        assert config["database_uri"].startswith("sqlite:///")
+
+    def test_sql_event_store_keeps_the_uri_from_config(self):
+        config = _adapter_config(
+            "event_store", "sql", "", {"database_uri": "postgresql://h/db"}
+        )
+        assert config["database_uri"] == "postgresql://h/db"
+
     def test_config_merges_into_the_pytest_call(self):
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(returncode=0, stdout="1 passed\n", stderr="")

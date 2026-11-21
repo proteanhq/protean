@@ -168,8 +168,10 @@ def _check_body(
 def verify(adapter: EventStorePort) -> IntegrityReport:
     """Check the store's internal invariants and report every violation.
 
-    Reads the whole store through ``$all`` and changes nothing. It checks
-    that:
+    Reads the whole store through ``$all``, then reads the snapshot of each
+    stream with a ``-`` in its name, other than ``:snapshot-`` streams,
+    whose snapshot ``$all`` did not return. It changes
+    nothing. It checks that:
 
     - every row carries ``id``, ``stream_name`` and ``position``,
     - each stream's ``position`` runs from 0 with no gaps,
@@ -254,6 +256,9 @@ def verify(adapter: EventStorePort) -> IntegrityReport:
         if violation is not None:
             violations.append(violation)
 
+    violations.extend(
+        _unscanned_snapshot_violations(adapter, stream_head, snapshot_version, seen_ids)
+    )
     violations.extend(_snapshot_violations(snapshot_version, stream_head))
 
     return IntegrityReport(
@@ -318,17 +323,9 @@ def _identity_and_position_violations(
     """
     violations: list[IntegrityViolation] = []
 
-    # Duplicate message id (the store's own message identity)
-    if message_id in seen_ids:
-        violations.append(
-            IntegrityViolation(
-                kind=ViolationKind.DUPLICATE_MESSAGE_ID,
-                stream=stream,
-                position=position,
-                detail=f"Message id '{message_id}' appears more than once.",
-            )
-        )
-    seen_ids.add(message_id)
+    violation = _duplicate_id_violation(message_id, stream, position, seen_ids)
+    if violation is not None:
+        violations.append(violation)
 
     # Per-stream gapless position from base 0
     expected = last_position.get(stream, -1) + 1
@@ -347,6 +344,63 @@ def _identity_and_position_violations(
     last_position[stream] = position
     stream_head[stream] = max(stream_head.get(stream, -1), position)
 
+    return violations
+
+
+def _duplicate_id_violation(
+    message_id: str, stream: str, position: int, seen_ids: set[str]
+) -> IntegrityViolation | None:
+    """Return a violation when ``message_id`` is in ``seen_ids``, and record it."""
+    duplicate = message_id in seen_ids
+    seen_ids.add(message_id)
+    if not duplicate:
+        return None
+    return IntegrityViolation(
+        kind=ViolationKind.DUPLICATE_MESSAGE_ID,
+        stream=stream,
+        position=position,
+        detail=f"Message id '{message_id}' appears more than once.",
+    )
+
+
+def _unscanned_snapshot_violations(
+    adapter: EventStorePort,
+    stream_head: dict[str, int],
+    snapshot_version: dict[str, int],
+    seen_ids: set[str],
+) -> list[IntegrityViolation]:
+    """Check the snapshot of each stream the scan saw without one.
+
+    Streams with no ``-`` in their name and ``:snapshot-`` streams are
+    skipped.
+
+    A store that keeps snapshots apart from its events, such as the sql event
+    store, leaves them out of ``$all``. A well-formed snapshot read here is
+    recorded in ``snapshot_version`` for the head check.
+    """
+    violations: list[IntegrityViolation] = []
+    for stream in list(stream_head):
+        category, dash, identifier = stream.partition("-")
+        if _SNAPSHOT_MARKER in stream or not dash:
+            continue
+        snapshot_stream = f"{category}{_SNAPSHOT_MARKER}{identifier}"
+        if snapshot_stream in stream_head:
+            continue
+        row = adapter.get_last_stream_message(snapshot_stream)
+        if row is None:
+            continue
+        violation = _missing_fields_violation(row, snapshot_stream, row.get("position"))
+        if violation is not None:
+            violations.append(violation)
+            continue
+        violation = _duplicate_id_violation(
+            row["id"], snapshot_stream, row["position"], seen_ids
+        )
+        if violation is not None:
+            violations.append(violation)
+        violation = _check_body(row, snapshot_stream, row["position"], snapshot_version)
+        if violation is not None:
+            violations.append(violation)
     return violations
 
 

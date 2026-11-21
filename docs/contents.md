@@ -332,6 +332,7 @@ dependencies.
 
 - [Event Store Overview](./reference/adapters/eventstore/index.md): Event store port, core operations, temporal queries, and causation tracing.
 - [MessageDB](./reference/adapters/eventstore/message-db.md): MessageDB event store adapter.
+- [SQL event store](./reference/adapters/eventstore/sql.md): Event store on a SQLite file or a PostgreSQL database.
 
 ---
 

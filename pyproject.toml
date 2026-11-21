@@ -184,6 +184,7 @@ elasticsearch = "protean.adapters.database.elasticsearch:register"
 [project.entry-points."protean.event_stores"]
 memory = "protean.adapters.event_store.memory:register"
 message_db = "protean.adapters.event_store:register_message_db"
+sql = "protean.adapters.event_store.sql:register"
 
 [project.entry-points."protean.caches"]
 memory = "protean.adapters.cache.memory:register"

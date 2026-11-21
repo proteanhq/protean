@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from inflection import camelize
 
 from protean.exceptions import ConfigurationError
+from protean.port.event_store import EventStoreCapabilities, EventStorePort
 from protean.utils import clone_class
 from protean.utils.consume_idempotency import (
     PROCESSED_MESSAGE_INDEXES,
@@ -153,12 +154,25 @@ class InfrastructureManager:
 
         Delegates to each managed provider's ``create_schema()``
         which is idempotent — existing tables are left untouched.
-        Databases with ``managed = false`` are skipped.
+        Databases with ``managed = false`` are skipped. An event store that
+        declares ``SCHEMA_MANAGEMENT`` creates its tables too.
         """
         for provider in self._domain.databases.values():
             if not provider.managed:
                 continue
             provider.create_schema()
+        store = self._schema_managing_event_store()
+        if store is not None:
+            store.create_schema()
+
+    def _schema_managing_event_store(self) -> EventStorePort | None:
+        """Return the built event store adapter when it manages its tables."""
+        store = self._domain.event_store._adapter
+        if store is None:
+            return None
+        if EventStoreCapabilities.SCHEMA_MANAGEMENT not in store.capabilities:
+            return None
+        return store
 
     def setup_outbox(self) -> None:
         """Create only outbox tables.
@@ -201,9 +215,13 @@ class InfrastructureManager:
     def drop_database(self) -> None:
         """Drop all database tables for managed providers.
 
-        Databases with ``managed = false`` are skipped.
+        Databases with ``managed = false`` are skipped. An event store that
+        declares ``SCHEMA_MANAGEMENT`` drops its tables too.
         """
         for provider in self._domain.databases.values():
             if not provider.managed:
                 continue
             provider.drop_schema()
+        store = self._schema_managing_event_store()
+        if store is not None:
+            store.drop_schema()

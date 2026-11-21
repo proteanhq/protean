@@ -25,7 +25,8 @@ To change tables with migrations from the dev box to production, follow
 
 Creates all database artifacts (tables, indexes, constraints) for every
 configured provider. This includes tables for aggregates, entities, projections,
-and outbox (if enabled).
+and outbox (if enabled). With the `sql` event store, it also creates the
+store's `messages` and `snapshots` tables.
 
 ```bash
 protean db setup --domain=my_domain
@@ -43,6 +44,7 @@ domain model.
 ## `protean db drop`
 
 Drops all database tables and schema objects for every configured provider.
+With the `sql` event store, it also drops the store's tables.
 
 ```bash
 # Interactive — prompts for confirmation

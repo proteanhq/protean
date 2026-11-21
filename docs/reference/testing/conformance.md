@@ -42,9 +42,13 @@ other three. A plain `pytest tests/conformance` needs no services.
 
 `protean test` runs each suite on its port's default adapter as part of the
 core run. In an adapter's leg, `-c FULL` and `-c COVERAGE`, it runs a suite on
-another adapter when that adapter's entry in `tests/adapters.toml` lists the
-pair in its `conformance` key, as the `redis-cache` entry does for
-`cache:redis` and the `message-db` entry does for `event_store:message_db`. `-c EVENTSTORE` runs the event-store suite on Message
+another adapter when an entry in `tests/adapters.toml` lists it in its
+`conformance` key, as a `"<port>:<adapter>"` pair or as a
+`{ port, adapter, config }` table. The `redis-cache` entry lists
+`cache:redis`, the `message-db` entry lists `event_store:message_db`, and the
+`sqlite` entry lists `event_store:sql`. The `postgresql` entry lists a table
+that runs `event_store:sql` with a PostgreSQL `database_uri` as
+`--adapter-config`. `-c EVENTSTORE` runs the event-store suite on Message
 DB from its own store list. See
 [Which runs include the conformance suites](../../community/contributing/testing.md#which-runs-include-the-conformance-suites).
 
@@ -137,6 +141,7 @@ names the `EventStoreCapabilities` flag it needs:
 
 The memory event store skips the `CONSUMER_GROUPS`, `DURABLE` and
 `SCHEMA_MANAGEMENT` tests. Message DB skips the `SCHEMA_MANAGEMENT` tests.
+The SQL event store skips the `CONSUMER_GROUPS` tests.
 [Write an Event-Store Adapter](../../guides/write-an-adapter/event-store.md)
 runs this suite against a worked example adapter.
 

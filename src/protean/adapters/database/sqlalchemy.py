@@ -2747,6 +2747,21 @@ class SADAO(
         return inspector.has_table(self.schema_name, schema=schema)
 
 
+def queue_pool_stats(engine: Engine) -> PoolStats | None:
+    """Return the counters of ``engine``'s pool, or ``None`` without a ``QueuePool``."""
+    # Only ``QueuePool`` keeps these counters. ``SingletonThreadPool`` has
+    # an int ``size`` attribute, so calling ``size()`` on it would raise.
+    pool = engine.pool
+    if not isinstance(pool, QueuePool):
+        return None
+    return PoolStats(
+        size=pool.size(),
+        checked_out=pool.checkedout(),
+        overflow=pool.overflow(),
+        checked_in=pool.checkedin(),
+    )
+
+
 class SADatabase(BaseDatabase, RawQueryDatabasePort):
     """Base database adapter for the SQLAlchemy dialects."""
 
@@ -3122,18 +3137,7 @@ class SADatabase(BaseDatabase, RawQueryDatabasePort):
     def _pool_stats(self) -> PoolStats | None:
         if not hasattr(self, "_engine") or self._engine is None:
             return None
-
-        # Only ``QueuePool`` keeps these counters. ``SingletonThreadPool`` has
-        # an int ``size`` attribute, so calling ``size()`` on it would raise.
-        pool = self._engine.pool
-        if not isinstance(pool, QueuePool):
-            return None
-        return PoolStats(
-            size=pool.size(),
-            checked_out=pool.checkedout(),
-            overflow=pool.overflow(),
-            checked_in=pool.checkedin(),
-        )
+        return queue_pool_stats(self._engine)
 
     def close(self) -> None:
         """Close the provider and clean up all connections.
@@ -3317,6 +3321,14 @@ class SADatabase(BaseDatabase, RawQueryDatabasePort):
                 conn.close()
 
 
+# The engine arguments a PostgreSQL engine starts from. The config overlays them.
+POSTGRESQL_ENGINE_DEFAULTS: dict[str, typing.Any] = {
+    "pool_size": 5,
+    "max_overflow": 10,
+    "pool_pre_ping": True,
+    "pool_recycle": 1800,
+}
+
 # The PostgreSQL drivers the provider supports, each with the extra that installs
 # it. A ``database_uri`` without a driver (``postgresql://``) takes the first one
 # that imports, so psycopg 3 is the default and psycopg2 the fallback.
@@ -3346,6 +3358,59 @@ def _postgresql_driver_import_error(driver: str) -> ImportError | None:
     return _driver_import_error(driver)
 
 
+def resolve_postgresql_url(url: URL, name: str, kind: str = "Database") -> URL:
+    """Return ``url`` with the PostgreSQL driver Protean uses for it.
+
+    A URL that names a driver, or is for another backend, comes back as
+    written. A ``postgresql://`` URL gets psycopg 3 when it imports and
+    psycopg2 otherwise. ``kind`` and ``name`` start the error message, as in
+    ``Database 'default' uses ...``.
+
+    Raises:
+        ConfigurationError: When the named driver, or both drivers for a URL
+            without one, cannot be imported. The message names the extra that
+            installs the driver.
+    """
+    owner = f"{kind} '{name}'"
+    backend, _, driver = url.drivername.partition("+")
+
+    # A URL for another backend, or naming a driver outside the supported
+    # pair, goes to SQLAlchemy as written.
+    if backend != "postgresql":
+        return url
+
+    if driver:
+        if driver in _POSTGRESQL_DRIVERS:
+            error = _postgresql_driver_import_error(driver)
+            if error is not None:
+                raise ConfigurationError(
+                    f"{owner} uses a '{url.drivername}://' "
+                    f"URL, but the '{driver}' driver cannot be imported "
+                    f"({error}). Install it with "
+                    f'`pip install "{_POSTGRESQL_DRIVERS[driver]}"`.'
+                ) from error
+        return url
+
+    errors: dict[str, ImportError] = {}
+    for candidate in _POSTGRESQL_DRIVERS:
+        error = _postgresql_driver_import_error(candidate)
+        if error is None:
+            logger.info(
+                "repository.postgresql.driver_selected",
+                extra={"database": name, "driver": candidate},
+            )
+            return url.set(drivername=f"{url.drivername}+{candidate}")
+        errors[candidate] = error
+
+    raise ConfigurationError(
+        f"{owner} uses a '{url.drivername}://' URL, and no "
+        f"PostgreSQL driver can be imported "
+        f"(psycopg: {errors['psycopg']}; psycopg2: {errors['psycopg2']}). "
+        f'Install psycopg 3 with `pip install "{_POSTGRESQL_DRIVERS["psycopg"]}"`, '
+        f'or psycopg2 with `pip install "{_POSTGRESQL_DRIVERS["psycopg2"]}"`.'
+    )
+
+
 class PostgresqlDatabase(SADatabase):
     """Database adapter for PostgreSQL, on psycopg 3 or psycopg2.
 
@@ -3360,44 +3425,7 @@ class PostgresqlDatabase(SADatabase):
     database_type = "postgresql"
 
     def _engine_url(self) -> URL:
-        url = super()._engine_url()
-        backend, _, driver = url.drivername.partition("+")
-
-        # A URL for another backend, or naming a driver outside the supported
-        # pair, goes to SQLAlchemy as written.
-        if backend != "postgresql":
-            return url
-
-        if driver:
-            if driver in _POSTGRESQL_DRIVERS:
-                error = _postgresql_driver_import_error(driver)
-                if error is not None:
-                    raise ConfigurationError(
-                        f"Database '{self.name}' uses a '{url.drivername}://' "
-                        f"URL, but the '{driver}' driver cannot be imported "
-                        f"({error}). Install it with "
-                        f'`pip install "{_POSTGRESQL_DRIVERS[driver]}"`.'
-                    ) from error
-            return url
-
-        errors: dict[str, ImportError] = {}
-        for candidate in _POSTGRESQL_DRIVERS:
-            error = _postgresql_driver_import_error(candidate)
-            if error is None:
-                logger.info(
-                    "repository.postgresql.driver_selected",
-                    extra={"database": self.name, "driver": candidate},
-                )
-                return url.set(drivername=f"{url.drivername}+{candidate}")
-            errors[candidate] = error
-
-        raise ConfigurationError(
-            f"Database '{self.name}' uses a '{url.drivername}://' URL, and no "
-            f"PostgreSQL driver can be imported "
-            f"(psycopg: {errors['psycopg']}; psycopg2: {errors['psycopg2']}). "
-            f'Install psycopg 3 with `pip install "{_POSTGRESQL_DRIVERS["psycopg"]}"`, '
-            f'or psycopg2 with `pip install "{_POSTGRESQL_DRIVERS["psycopg2"]}"`.'
-        )
+        return resolve_postgresql_url(super()._engine_url(), self.name)
 
     @property
     def capabilities(self) -> DatabaseCapabilities:
@@ -3423,12 +3451,7 @@ class PostgresqlDatabase(SADatabase):
 
         Return: a dictionary with database-specific SQLAlchemy Engine arguments.
         """
-        return {
-            "pool_size": 5,
-            "max_overflow": 10,
-            "pool_pre_ping": True,
-            "pool_recycle": 1800,
-        }
+        return dict(POSTGRESQL_ENGINE_DEFAULTS)
 
     def _get_database_specific_session_args(self) -> dict[str, typing.Any]:
         """Set Database specific session parameters.

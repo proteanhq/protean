@@ -412,6 +412,7 @@ nav:
       - Event Stores:
         - reference/adapters/eventstore/index.md
         - reference/adapters/eventstore/message-db.md
+        - reference/adapters/eventstore/sql.md
     - Type Checking:
       - reference/type-checking/index.md
     - Testing:

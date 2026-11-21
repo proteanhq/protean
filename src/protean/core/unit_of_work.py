@@ -455,7 +455,7 @@ class UnitOfWork:
             # event-sourced aggregates' events, rather than leaving the store
             # missing a committed event. See ADR-0015.
             #
-            # The built-in event stores (memory, message-db) write the append
+            # The built-in event stores (memory, message-db, sql) write the append
             # directly, outside this transaction. A genuine optimistic-concurrency
             # conflict still raises and is re-driven by the handler-level version
             # retry, which reloads the aggregate cleanly.
@@ -493,7 +493,7 @@ class UnitOfWork:
             # An adapter may detect an optimistic-concurrency conflict on this
             # commit's own write and raise ExpectedVersionError itself. The
             # in-memory provider does this in its compare-and-set commit, and
-            # the memory and Message DB event stores on a wrong expected
+            # the memory, Message DB and sql event stores on a wrong expected
             # version. That is a concurrency conflict, not a generic
             # transaction failure, so propagate it unchanged for the
             # version-retry machinery (mirrors the StaleDataError translation

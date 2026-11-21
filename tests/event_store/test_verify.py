@@ -29,9 +29,9 @@ from protean.port.event_store import EventStoreCapabilities, EventStorePort
 class _ListStore(EventStorePort):
     """An ``EventStorePort`` backed by a preloaded list of raw dicts.
 
-    Only ``$all`` reads are implemented (that is all ``verify`` uses), and they
-    page by ``global_position`` exactly like the real adapters, so the iterator's
-    paging is genuinely exercised.
+    Only the reads ``verify`` uses are implemented: ``$all`` reads, which page
+    by ``global_position`` exactly like the real adapters, so the iterator's
+    paging is genuinely exercised, and the last message of a stream.
     """
 
     def __init__(self, messages: list[dict[str, Any]]) -> None:
@@ -59,9 +59,10 @@ class _ListStore(EventStorePort):
         raise NotImplementedError
 
     def get_last_stream_message(
-        self, *args: Any, **kwargs: Any
-    ) -> Any:  # pragma: no cover
-        raise NotImplementedError
+        self, stream_name: str, *args: Any, **kwargs: Any
+    ) -> dict[str, Any] | None:
+        rows = [m for m in self._messages if m.get("stream_name") == stream_name]
+        return rows[-1] if rows else None
 
     def get_last_category_message(
         self, *args: Any, **kwargs: Any
@@ -611,3 +612,57 @@ def test_report_json_writes_the_kind_as_its_plain_string():
     payload = json.loads(json.dumps(report.as_dict()))
 
     assert payload["violations"][0]["kind"] == "position_gap"
+
+
+class _SnapshotsApartStore(_ListStore):
+    """A store that keeps snapshots out of ``$all``, like the sql event store."""
+
+    def __init__(
+        self, messages: list[dict[str, Any]], snapshots: dict[str, dict[str, Any]]
+    ) -> None:
+        super().__init__(messages)
+        self._snapshots = snapshots
+
+    def get_last_stream_message(
+        self, stream_name: str, *args: Any, **kwargs: Any
+    ) -> dict[str, Any] | None:
+        return self._snapshots.get(stream_name)
+
+
+@pytest.mark.parametrize("field", ["id", "stream_name", "position"])
+def test_a_snapshot_read_apart_from_all_without_a_required_field_is_flagged(field):
+    snapshot = {
+        "id": "snap-1",
+        "stream_name": "test::user:snapshot-abc",
+        "position": 0,
+        "data": {"_version": 0},
+    }
+    del snapshot[field]
+    store = _SnapshotsApartStore(
+        [_msg(1, "test::user-abc", 0)], {"test::user:snapshot-abc": snapshot}
+    )
+
+    report = verify(store)
+
+    assert [(v.kind, v.stream) for v in report.violations] == [
+        (ViolationKind.MALFORMED_MESSAGE, "test::user:snapshot-abc")
+    ]
+    assert field in report.violations[0].detail
+
+
+def test_a_snapshot_read_apart_from_all_with_an_event_id_is_flagged():
+    snapshot = {
+        "id": "id-1",
+        "stream_name": "test::user:snapshot-abc",
+        "position": 0,
+        "data": {"_version": 0},
+    }
+    store = _SnapshotsApartStore(
+        [_msg(1, "test::user-abc", 0)], {"test::user:snapshot-abc": snapshot}
+    )
+
+    report = verify(store)
+
+    assert [(v.kind, v.stream) for v in report.violations] == [
+        (ViolationKind.DUPLICATE_MESSAGE_ID, "test::user:snapshot-abc")
+    ]
