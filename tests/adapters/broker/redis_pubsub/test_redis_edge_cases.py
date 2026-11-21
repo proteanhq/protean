@@ -77,6 +77,23 @@ def test_ack_nack_not_supported_simple_queuing(broker, caplog):
 
 
 @pytest.mark.redis
+def test_adapter_refuses_ack_and_nack(broker, caplog):
+    """Called directly, the adapter refuses ACK and NACK and logs why."""
+    adapter = broker._adapter
+
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        assert adapter.ack("test_stream", "msg-1", "test_group") is False
+        assert adapter.nack("test_stream", "msg-1", "test_group") is False
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert warnings == [
+        "ACK not supported by RedisPubSubBroker - message msg-1 cannot be acknowledged",
+        "NACK not supported by RedisPubSubBroker - message msg-1 cannot be nacked",
+    ]
+
+
+@pytest.mark.redis
 def test_redis_consumer_group_internal_tracking(broker):
     """Test Redis-specific consumer group internal tracking"""
     stream = "test_stream"

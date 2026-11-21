@@ -295,6 +295,26 @@ class TestOutboxReconciliation:
         assert engine._reconcile_outbox_on_startup() == 1
         assert len(outbox_repo.find_all_by_message_id(message_id)) == 1
 
+    def test_engine_startup_sweep_failure_does_not_block_startup(
+        self, domain_and_repo, monkeypatch, caplog
+    ):
+        """A failing sweep is logged and repairs nothing, so the engine still starts."""
+        domain, _ = domain_and_repo
+
+        def failing_reconcile(domain):
+            raise RuntimeError("event store unreachable")
+
+        monkeypatch.setattr(outbox_module, "reconcile_outbox", failing_reconcile)
+        engine = Engine(domain, test_mode=True)
+
+        with caplog.at_level(logging.WARNING, logger="protean.server.engine"):
+            assert engine._reconcile_outbox_on_startup() == 0
+
+        assert any(
+            r.getMessage() == "engine.outbox_reconcile_failed" and r.exc_info
+            for r in caplog.records
+        )
+
 
 @pytest.mark.no_test_domain
 class TestReconcileRepairsALostRowBehindALaterCommit:

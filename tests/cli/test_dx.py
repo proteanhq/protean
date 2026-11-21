@@ -8,7 +8,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from protean.cli.dx import app
+from protean.cli.dx import _unified_diff, app
+from protean.dx import ApplyResult, ApplyStatus
 from protean.dx.pack import PACK_VERSION
 from protean.dx.renderers import REQUIRED_TARGETS
 
@@ -749,6 +750,24 @@ def test_check_notes_edits_around_the_block(tmp_path: Path) -> None:
     assert "edited around the block" in " ".join(result.output.split())
 
 
+def test_check_names_the_file_for_a_whole_file_target_state_mismatch(
+    tmp_path: Path,
+) -> None:
+    """A whole-file target reads as edited outside the file when its state row
+    records a file hash that differs from its slice hash."""
+    _install(tmp_path)
+    state_file = _state_file(tmp_path)
+    state = json.loads(state_file.read_text(encoding="utf-8"))
+    state["entries"][".cursor/rules/protean.mdc"]["file_hash"] = "0" * 64
+    state_file.write_text(json.dumps(state), encoding="utf-8")
+
+    result = runner.invoke(app, ["check", "-p", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    flat = " ".join(result.output.split())
+    assert "protean.mdc is up to date (edited outside the file)" in flat, flat
+
+
 # --- filesystem errors ------------------------------------------------------
 
 
@@ -760,6 +779,20 @@ def test_unreadable_target_reports_an_error(tmp_path: Path) -> None:
         result = runner.invoke(app, [verb, "-p", str(tmp_path)])
         assert result.exit_code == 2, f"{verb}: {result.output}"
         assert "error" in result.output
+
+
+def test_diff_body_is_empty_when_the_target_cannot_be_read(tmp_path: Path) -> None:
+    """A target that became unreadable after the scan read it shows no diff."""
+    (tmp_path / "AGENTS.md").mkdir()
+    pending = ApplyResult(
+        target="AGENTS.md",
+        status=ApplyStatus.UPDATE,
+        version=PACK_VERSION,
+        slice_hash="0" * 64,
+        content="# Protean agent guidance\n",
+    )
+
+    assert _unified_diff(tmp_path, pending) == ""
 
 
 def test_install_refuses_a_preexisting_agents_without_markers(tmp_path: Path) -> None:

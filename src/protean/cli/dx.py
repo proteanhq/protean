@@ -452,7 +452,7 @@ def _unified_diff(root: Path, result: ApplyResult) -> str:
         current = (
             target_path.read_text(encoding="utf-8") if target_path.exists() else ""
         )
-    except OSError:  # pragma: no cover - TOCTOU: the scan already read this target
+    except OSError:
         return ""
     return "".join(
         difflib.unified_diff(
@@ -538,16 +538,15 @@ def _managed_region(managed_file: ManagedFile) -> str:
 def _outside_region(managed_file: ManagedFile) -> str:
     """Name where an edit outside the managed region sits, per merge mode.
 
-    A whole-file target has no region outside itself, so it never reports outside
-    drift and this never names one for it.
+    A whole-file target has no region outside itself. It reports outside drift
+    only when its state row records a file hash that differs from its slice hash,
+    and then the label names the file.
     """
     from protean.dx import ManagedBlock, ManagedWholeFile  # noqa: PLC0415
 
     if isinstance(managed_file, ManagedBlock):
         return "around the block"
-    if isinstance(
-        managed_file, ManagedWholeFile
-    ):  # pragma: no cover - a whole-file target has no outside region
+    if isinstance(managed_file, ManagedWholeFile):
         return "outside the file"
     return "outside the managed keys"
 

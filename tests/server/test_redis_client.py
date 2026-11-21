@@ -1,5 +1,7 @@
 """Tests for ``redis_client``, which finds the Redis client behind a broker."""
 
+import sys
+
 import pytest
 import redis
 
@@ -44,6 +46,14 @@ def test_get_connection_errors_are_raised():
 
     with pytest.raises(RuntimeError, match="connection lookup failed"):
         redis_client(broker)
+
+
+def test_without_the_redis_package_there_is_no_client(monkeypatch):
+    """With ``redis`` not installed the broker's connection is never asked for."""
+    monkeypatch.setitem(sys.modules, "redis", None)
+    broker = Broker(_FailingConnectionAdapter())  # type: ignore[arg-type]
+
+    assert redis_client(broker) is None
 
 
 @pytest.mark.redis

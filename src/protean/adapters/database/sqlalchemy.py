@@ -237,12 +237,12 @@ def _install_query_timing(engine: typing.Any) -> None:
         executemany: bool,
     ) -> None:
         start = conn.info.pop(_QUERY_START_KEY, None)
-        if start is None:  # pragma: no cover - defensive: mismatched before/after
+        if start is None:
             return
         duration_ms = (time.perf_counter() - start) * 1000
         try:
             _maybe_log_query(statement, parameters, duration_ms)
-        except Exception:  # pragma: no cover - defensive: logging must never raise
+        except Exception:
             logger.debug("slow_query_log_emission_failed", exc_info=True)
 
 
@@ -908,9 +908,7 @@ def _make_sa_indexes(
         if isinstance(index, RawIndex):
             raw_indexes.append(index)
             continue
-        if not isinstance(
-            index, ProteanIndex
-        ):  # pragma: no cover - guarded at registration
+        if not isinstance(index, ProteanIndex):
             continue
 
         name = index.resolved_name(table_name)

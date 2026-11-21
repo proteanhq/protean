@@ -500,9 +500,7 @@ class EventStoreSubscription(BaseSubscription):
         # constructed after the engine has initialized its event store, so
         # fail loudly when the adapter is missing.
         event_store = engine.domain.event_store
-        if (
-            event_store._adapter is None
-        ):  # pragma: no cover — defensive; store is initialized by engine startup
+        if event_store._adapter is None:
             raise ConfigurationError(
                 "Event store is not initialized. Cannot create an "
                 "EventStoreSubscription before the domain's event store is set up."
@@ -949,9 +947,7 @@ class EventStoreSubscription(BaseSubscription):
             and m.metadata.event_store
             and m.metadata.event_store.global_position is not None
         ]
-        if len(positioned) < len(
-            messages
-        ):  # pragma: no cover — real store messages always carry a position
+        if len(positioned) < len(messages):
             # The gap walk needs a global_position, so records without one are
             # dropped here rather than in ``process_batch``. Log it so the drop
             # (a sign of a malformed store record) is not silent.
@@ -1041,7 +1037,7 @@ class EventStoreSubscription(BaseSubscription):
                 message.metadata is None
                 or message.metadata.event_store is None
                 or message.metadata.event_store.global_position is None
-            ):  # pragma: no cover — corruption guard; real store messages always carry these
+            ):
                 logger.warning(
                     f"[{self.subscriber_class_name}] "
                     f"Skipping message with missing metadata/position"
