@@ -90,8 +90,7 @@ The tests import `bookshelf`, so pytest needs the project folder on the import
 path. Add this to `pyproject.toml`:
 
 ```toml
-[tool.pytest.ini_options]
-pythonpath = ["."]
+--8<-- "guides/getting-started/tutorial/pyproject_pytest.toml"
 ```
 
 Then run the tests from the project folder:
