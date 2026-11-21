@@ -1691,6 +1691,54 @@ def _existing_brokers_by_message(
     return existing
 
 
+def _global_position(message: Any) -> int:
+    return cast(int, message.metadata.event_store.global_position)
+
+
+def _tail_messages(store: Any, tail: int, limit: int) -> list[Any]:
+    """Return the event and command messages among the newest *limit* rows of
+    ``$all`` at or below *tail*, in ascending ``global_position`` order.
+
+    A snapshot row counts toward *limit* and is not returned. A row above
+    *tail* is neither returned nor counted.
+    """
+    start = max(0, tail - limit + 1)
+    messages = [
+        m
+        for m in store.read("$all", position=start, limit=limit)
+        if _global_position(m) <= tail
+    ]
+    # ``limit`` rows in a span of ``limit`` positions means the span has no gap
+    # and no snapshot row, so this one read is the whole window.
+    if start == 0 or len(messages) >= limit:
+        return sorted(messages, key=_global_position)
+
+    # The span is short of ``limit`` rows. ``read`` drops snapshot rows, so its
+    # result cannot tell a gap from a snapshot, and the walk reads with the
+    # snapshot positions to count both. Each window spans ``limit`` positions
+    # and reads ``limit`` rows from its low end, so it covers every row in it;
+    # the ``<= hi`` filter drops a row of the window above that a gap let in.
+    found: list[Any] = []
+    need = limit
+    hi = tail
+    while True:
+        low = max(0, hi - limit + 1)
+        window_messages, snapshot_positions = store._read_with_snapshot_positions(
+            "$all", position=low, limit=limit
+        )
+        ranked: list[tuple[int, Any]] = [
+            (_global_position(m), m)
+            for m in window_messages
+            if _global_position(m) <= hi
+        ] + [(position, None) for position in snapshot_positions if position <= hi]
+        newest = sorted(ranked, key=lambda row: row[0], reverse=True)[:need]
+        need -= len(newest)
+        found += [message for _, message in newest if message is not None]
+        if need == 0 or low == 0:
+            return sorted(found, key=_global_position)
+        hi = low - 1
+
+
 def _messages_missing_internal_row(
     domain: Any,
     provider_name: str,
@@ -1700,9 +1748,10 @@ def _messages_missing_internal_row(
     outbox_config: dict[str, Any],
     internal_broker: str,
 ) -> tuple[list[Any], dict[str, set[str]]]:
-    """Return the repairable events in the window of *limit* messages ending at
-    *last* that were written at or after the cleanup cutoff and have no
-    internal outbox row, in event store order.
+    """Return the repairable events among the newest *limit* rows of ``$all`` at
+    or below *last* that were written at or after the cleanup cutoff and have
+    no internal outbox row, in ``global_position`` order. A snapshot row counts
+    toward *limit*.
 
     Also returns the brokers that already hold a row for each repairable event
     that passes the cutoff, keyed by message id. Returns ``([], {})`` when no
@@ -1711,8 +1760,7 @@ def _messages_missing_internal_row(
     """
     store = domain.event_store
     tail = last.metadata.event_store.global_position
-    start = max(0, tail - limit + 1)
-    messages = store.read("$all", position=start, limit=limit)
+    messages = _tail_messages(store, tail, limit)
 
     # Every repairable event in the window is checked. Several processes can
     # write to one domain, so another process can commit after a crash and
