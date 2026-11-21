@@ -208,8 +208,11 @@ class TestMigrateAndUpgrade:
 
         result = project.run("migrate")
 
+        # Current Typer reports "Missing option '--message'". The lowest
+        # supported Typer runs the option callback instead, which reports
+        # "Invalid value for '--message'". Both name the option.
         assert result.exit_code == 2
-        assert "Missing option '--message'" in plain(result.output)
+        assert "'--message'" in plain(result.output)
         assert project.versions() == []
 
     def test_migrate_refuses_a_blank_message(self, project):
