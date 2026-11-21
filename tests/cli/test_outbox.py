@@ -377,6 +377,42 @@ class TestOutboxRetryAndDiscardRefuse:
         assert stored.locked_by == "worker-1"
         assert stored.last_error is None
 
+    @pytest.mark.parametrize(
+        "args", [("retry",), ("discard", "--reason", "skip")], ids=["retry", "discard"]
+    )
+    def test_a_row_retried_and_failed_again_during_the_command_is_left_alone(
+        self, test_domain, outbox_repo, monkeypatch, args
+    ):
+        row = _row("a", minute=0, status=OutboxStatus.FAILED.value)
+        row.retry_count = 1
+        row.next_retry_at = test_domain.clock.now() - timedelta(minutes=1)
+        outbox_repo.add(row)
+        load_row = cli_outbox._load_row
+
+        def load_then_retry_and_fail(domain, repo, row_id):
+            loaded = load_row(domain, repo, row_id)
+            other = repo.get(row.id)
+            assert other.reset_for_retry() is True
+            assert repo.save_operator_change(other, OutboxStatus.FAILED.value, 1)
+            [claimed] = repo.claim_batch("worker-1", limit=10)
+            claimed.mark_failed(RuntimeError("broker down again"))
+            repo.add(claimed)
+            return loaded
+
+        monkeypatch.setattr(cli_outbox, "_load_row", load_then_retry_and_fail)
+
+        result = _invoke(args[0], str(row.id), *args[1:])
+
+        assert result.exit_code == 1
+        assert f"Outbox row {row.id} changed while the command ran" in _flat(
+            result.output
+        )
+        stored = _reload(outbox_repo, row)
+        assert stored.status == OutboxStatus.FAILED.value
+        assert stored.retry_count == 1
+        assert stored.last_error["message"] == "broker down again"
+        assert "discard_reason" not in stored.last_error
+
 
 class TestRowIdShape:
     @pytest.mark.parametrize(

@@ -253,7 +253,8 @@ a larger `limit`. `limit=None` does not lift the cap: it still returns at most
 **The database**: abandoned rows can also be inspected with regular SQL.
 Prefer `protean outbox retry` and `discard` for changing them, because those
 commands refuse two kinds of row: a row that is not failed or abandoned, and a
-row that a worker claims while the command runs.
+row that changes while the command runs, because a worker claims it, an attempt
+fails, or another operator retries or discards it.
 
 ### A partitioned key can halt
 
