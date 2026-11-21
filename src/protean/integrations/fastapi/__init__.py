@@ -14,7 +14,7 @@ except ImportError as exc:
     from importlib.util import find_spec
 
     if find_spec("fastapi") is not None:
-        raise  # pragma: no cover - a real bug in a present fastapi, surfaced as-is
+        raise
     from protean.utils.dependencies import missing_dependency_message
 
     raise ImportError(

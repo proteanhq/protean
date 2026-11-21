@@ -15,7 +15,7 @@ from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError
-from protean.fields import Float, HasMany, Identifier, String, ValueObject
+from protean.fields import Float, HasMany, Identifier, Reference, String, ValueObject
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +222,27 @@ class Item(BaseAggregate):
         self.audit_log = f"created:{event.name}"
 
 
+# Event-sourced aggregate with a Reference field to another aggregate
+class Team(BaseAggregate):
+    name: String()
+
+
+class PlayerSigned(BaseEvent):
+    player_id: Identifier(required=True)
+    name: String(required=True)
+
+
+class Player(BaseAggregate):
+    player_id: Identifier(identifier=True)
+    name: String()
+    team = Reference("Team")
+
+    @apply
+    def signed(self, event: PlayerSigned):
+        self.player_id = event.player_id
+        self.name = event.name
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -242,6 +263,9 @@ def register_elements(test_domain):
     test_domain.register(LineItem, part_of=Order)
     test_domain.register(OrderPlaced, part_of=Order)
     test_domain.register(ItemAdded, part_of=Order)
+    test_domain.register(Team)
+    test_domain.register(Player, event_sourced=True)
+    test_domain.register(PlayerSigned, part_of=Player)
     test_domain.init(traverse=False)
 
 
@@ -493,6 +517,26 @@ class TestReconstitutionWithHasMany:
         assert len(replayed.items) == 1
         assert replayed.items[0].product_name == "Widget"
         assert replayed.items[0].quantity == 2.0
+
+
+# ---------------------------------------------------------------------------
+# Test: reconstitution with Reference fields
+# ---------------------------------------------------------------------------
+class TestReconstitutionWithReference:
+    def test_create_for_reconstitution_initializes_reference_shadow_field(self):
+        """_create_for_reconstitution sets a Reference's shadow field to None."""
+        player = Player._create_for_reconstitution()
+        assert "team_id" in player.__dict__
+        assert player.__dict__["team_id"] is None
+
+    def test_from_events_with_reference(self):
+        """from_events rebuilds an aggregate that holds a Reference field."""
+        signed = PlayerSigned(player_id="PL-1", name="Ada")
+
+        replayed = Player.from_events([signed])
+        assert replayed.player_id == "PL-1"
+        assert replayed.name == "Ada"
+        assert replayed.team_id is None
 
 
 # ---------------------------------------------------------------------------

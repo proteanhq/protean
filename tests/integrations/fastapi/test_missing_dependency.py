@@ -2,7 +2,8 @@
 
 ``fastapi`` ships in the optional ``protean[server]`` extra. Importing
 ``protean.integrations.fastapi`` without it must fail with a message naming the
-extra, not a bare ``ModuleNotFoundError`` from deep inside the package.
+extra, not a bare ``ModuleNotFoundError`` from deep inside the package. An
+import error from a fastapi that is installed surfaces unchanged.
 """
 
 import importlib
@@ -22,6 +23,19 @@ def test_importing_integration_without_fastapi_reports_actionable_error():
     message = str(exc_info.value)
     assert "protean.integrations.fastapi" in message
     assert 'pip install "protean[server]"' in message
+
+
+def test_import_error_from_an_installed_fastapi_is_raised_unchanged():
+    # fastapi is installed, but one of its submodules fails to import, so the
+    # original error surfaces instead of an install hint.
+    with module_unavailable(
+        "fastapi.responses", reload=("protean.integrations.fastapi",)
+    ):
+        with pytest.raises(ImportError) as exc_info:
+            importlib.import_module("protean.integrations.fastapi")
+
+    assert exc_info.value.name == "fastapi.responses"
+    assert "pip install" not in str(exc_info.value)
 
 
 def test_integration_imports_normally_when_fastapi_is_present():

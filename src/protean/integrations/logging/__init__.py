@@ -83,7 +83,7 @@ def _load_otel_helpers() -> None:
             format_trace_id,
             get_current_span,
         )
-    except ImportError:  # pragma: no cover - opentelemetry is installed in dev/CI
+    except ImportError:
         _get_current_span = None
         _format_trace_id = None
         _format_span_id = None

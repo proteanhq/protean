@@ -563,7 +563,7 @@ class BaseAggregate(BaseEntity):
             shadow_name, _ = cast(Reference, ref_field).get_shadow_field()
             # ``shadow_name`` is ``str | None`` but always resolved for a bound
             # reference field, so this assert never fires at runtime.
-            assert shadow_name is not None  # pragma: no cover
+            assert shadow_name is not None
             aggregate.__dict__[shadow_name] = None  # pyright: ignore[reportIndexIssue]
 
         # --- Setup association pseudo-methods (add_*, remove_*, etc.) ---

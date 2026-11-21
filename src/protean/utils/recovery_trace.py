@@ -91,7 +91,7 @@ def record(
         # Re-read under the lock so a nested capture() swap (also taken under the
         # lock) can never land this append on a list that has already been restored.
         events = _events
-        if events is None:  # pragma: no cover — only reachable if record races a swap
+        if events is None:
             return
         events.append(
             RecoveryEvent(action=action, position=position, delivered=delivered)

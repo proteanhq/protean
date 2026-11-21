@@ -72,7 +72,7 @@ try:
         MYSQL_URI,
         POSTGRES_URI,
     )
-except ModuleNotFoundError:  # pragma: no cover — tests.shared is always importable in-repo; this fallback is only for downstream installs without the test tree
+except ModuleNotFoundError:
     POSTGRES_URI = "postgresql://postgres:postgres@localhost:5432/postgres"
     ELASTICSEARCH_URI: dict[str, list[str]] = {"hosts": ["localhost"]}  # type: ignore[no-redef]
     MSSQL_URI = (

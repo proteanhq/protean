@@ -88,7 +88,7 @@ def record(
         # already been restored. The None case here is only reachable if record()
         # races a capture() exit, which the single-driver usage never does.
         events = _events
-        if events is None:  # pragma: no cover
+        if events is None:
             return
         events.append(
             OCCEvent(
