@@ -101,6 +101,9 @@ class OrderCommandHandler:
 if __name__ == "__main__":
     domain.init(traverse=False)
     with domain.domain_context():
+        domain.repository_for(Inventory).add(
+            Inventory(product_id="PROD-001", quantity_available=10)
+        )
         domain.process(
             PlaceOrder(
                 customer_id="CUST-001",
