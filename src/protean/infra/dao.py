@@ -208,13 +208,26 @@ def _try_claim(
     claim_fields: dict[str, Any],
     entity: Any,
 ) -> bool:
-    """Claim one candidate row, and on success apply ``claim_fields`` to it."""
+    """Claim one candidate row, and on success apply ``claim_fields`` to it.
+
+    On an aggregate, the claim also advances the row's ``_version`` by one,
+    and ``entity`` then carries the new version.
+    """
     # Re-assert the eligibility criteria in the update so a row claimed
     # by another worker between the read and this write is skipped.
     guard = Q(**{id_name: getattr(entity, id_name)}) & criteria
-    if dao.update_all(guard, claim_fields) > 0:
+    values = claim_fields
+    versioned = dao.entity_cls.element_type == DomainObjects.AGGREGATE
+    if versioned:
+        guard &= Q(_version=entity._version)
+        values = {**claim_fields, "_version": entity._version + 1}
+    if dao.update_all(guard, values) > 0:
         for attr, value in claim_fields.items():
             setattr(entity, attr, value)
+        if versioned:
+            # The next save of ``entity`` expects the claimed version.
+            entity._version += 1
+            entity._next_version = entity._version + 1
         return True
     return False
 
@@ -800,6 +813,10 @@ class DAO:
         - With ``hold_back``, a grouped row is claimed only when every earlier
           row of its group that matches ``hold_back.holds`` is claimed by the
           same call. A row locked by another caller holds the rows behind it.
+        - On an aggregate, each claimed row's ``_version`` advances by one,
+          and the returned entity carries the new version. Saving it then
+          advances the version again. A later write that expects the claimed
+          version is refused once another claim takes the row.
 
         ``claim_fields`` must make a claimed row stop matching ``criteria``.
         The call may wait briefly on a row another caller has locked. How a

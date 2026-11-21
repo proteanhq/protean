@@ -29,9 +29,15 @@ def claim(dao, message, worker_id, now):
     # Simplified view of the per-message compare-and-swap in the portable claim.
     # A row is eligible when it is pending, failed, or processing under an
     # expired lock, its lock is free, its retry time is due, and it has
-    # retries left:
+    # retries left. The guard also checks the version the worker read, and
+    # the claim adds one to it, so a later write that expects the old version
+    # is refused.
     eligible = (
-        Q(id=message.id, status__in=["pending", "failed", "processing"])
+        Q(
+            id=message.id,
+            _version=message._version,
+            status__in=["pending", "failed", "processing"],
+        )
         & (Q(locked_until__isnull=True) | Q(locked_until__lte=now))
         & (Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now))
         & Q(retry_count__lt=F("max_retries"))
@@ -43,6 +49,7 @@ def claim(dao, message, worker_id, now):
             "locked_by": worker_id,
             "locked_until": now + timedelta(minutes=5),
             "last_processed_at": now,
+            "_version": message._version + 1,
         },
     )
     # claimed_count > 0 only for the winning worker

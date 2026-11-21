@@ -577,7 +577,7 @@ on this logger.
 | `outbox.initialized` | DEBUG | `database_provider`, `broker_provider` |
 | `outbox.batch_fetched` | DEBUG | `count` |
 | `outbox.batch_completed` | INFO | `total`, `successful`, `failed`, `released` |
-| `outbox.message_already_claimed` | DEBUG | `message_id` |
+| `outbox.message_already_claimed` | WARNING | `message_id` |
 | `outbox.message_published` | DEBUG | `message_id`, `broker` |
 | `outbox.publish_failed` | WARNING | `message_id`, `error_type`, `error` |
 | `outbox.processing_error` | ERROR (exc) | `message_id` |

@@ -2547,7 +2547,8 @@ class SADAO(
     ) -> "list[BaseEntity]":
         """Claim rows as :meth:`protean.infra.dao.DAO.claim` describes, in one
         ``UPDATE … RETURNING`` statement over a ``FOR UPDATE SKIP LOCKED``
-        sub-select, with or without ``hold_back``.
+        sub-select, with or without ``hold_back``. On a table with a
+        ``_version`` column, the ``UPDATE`` advances it by one.
 
         Only PostgreSQL has both constructs, so only ``PostgresqlDatabase``
         declares ``NATIVE_CLAIM``, and every other dialect takes the portable
@@ -2585,7 +2586,10 @@ class SADAO(
             )
             claimable = and_(id_col.in_(candidate_ids), ~held)
 
-        stmt = update(table).where(claimable).values(**claim_fields).returning(table)
+        values: dict[str, typing.Any] = dict(claim_fields)
+        if "_version" in table.c:
+            values["_version"] = table.c._version + 1
+        stmt = update(table).where(claimable).values(**values).returning(table)
 
         conn = typing.cast(Session, session)
         try:

@@ -114,6 +114,16 @@ class TestFilterPaths:
         assert stored.age == 31
         assert stored._version == version + 1
 
+    def test_filter_on_the_version_matches_the_stored_version(self, dao):
+        [athos] = dao.fetch(Q(first_name="Athos")).items
+        version = athos._version
+
+        current = dao.query.filter(id=athos.id, _version=version).all().items
+        stale = dao.query.filter(id=athos.id, _version=version + 1).all().items
+
+        assert [item.id for item in current] == [athos.id]
+        assert stale == []
+
     def test_update_all_guarded_on_a_stale_version_matches_nothing(
         self, test_domain, dao
     ):

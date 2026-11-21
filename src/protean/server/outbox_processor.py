@@ -3,6 +3,7 @@ import logging
 from typing import TYPE_CHECKING, Any, cast
 
 from protean.core.unit_of_work import UnitOfWork
+from protean.exceptions import ExpectedVersionError
 from protean.infra.broker import Broker
 from protean.port.broker import BrokerCapabilities
 from protean.utils import ensure_utc_aware, outbox_trace
@@ -23,6 +24,28 @@ if TYPE_CHECKING:
     from protean.server.engine import Engine
 
 logger = logging.getLogger(__name__)
+
+
+def _log_claim_taken_over(message: Outbox) -> None:
+    """Log that another worker claimed ``message`` since this worker did."""
+    logger.warning(
+        "outbox.message_already_claimed",
+        extra={"message_id": message.message_id[:8]},
+    )
+
+
+def _still_claimed(fresh: Outbox, claimed: Outbox) -> bool:
+    """Whether ``fresh``, the row as read now, still has the version this
+    worker's claim gave ``claimed``. Logs ``outbox.message_already_claimed``
+    when it does not.
+
+    Every claim advances the row's version, so a different version means
+    another worker claimed the row, or wrote it, after this worker's claim.
+    """
+    if fresh._version == claimed._version:
+        return True
+    _log_claim_taken_over(claimed)
+    return False
 
 
 def _in_group_commit_order(messages: list[Outbox], lanes: OutboxLanes) -> list[Outbox]:
@@ -334,17 +357,24 @@ class OutboxProcessor(BaseSubscription):
         """Give a claimed row back unpublished, so it waits for an earlier row
         of its group that failed in the same batch.
 
-        Only a row still ``PROCESSING`` under this worker's lock is released.
-        Returns whether the row was released. If it was not, the row stays
-        ``PROCESSING`` until its lock expires and is then claimable again.
+        Only a row still ``PROCESSING`` under this worker's lock, at the
+        version this worker's claim gave it, is released. Returns whether the
+        row was released. If it was not, the row stays as it is: under another
+        worker's claim, or ``PROCESSING`` until its lock expires and is then
+        claimable again.
         """
         assert self.outbox_repo is not None, "Outbox repository not initialized"
         try:
             with UnitOfWork():
                 fresh = self.outbox_repo.get(message.id)
-                if fresh.locked_by != self.worker_id or not fresh.release():
+                if fresh.locked_by != self.worker_id:
+                    return False
+                if not _still_claimed(fresh, message) or not fresh.release():
                     return False
                 self.outbox_repo.add(fresh)
+        except ExpectedVersionError:
+            _log_claim_taken_over(message)
+            return False
         # a failed release must not abort the batch; logged, the lock expires
         except Exception:
             logger.exception(
@@ -462,7 +492,7 @@ class OutboxProcessor(BaseSubscription):
                 # publishing needs only the row's data/metadata, already loaded.
                 publish_success, publish_error = await self._publish_message(message)
 
-                marked_id, marked_status = _record_publish_outcome(
+                marked = _record_publish_outcome(
                     self,
                     self.outbox_repo,
                     message,
@@ -472,6 +502,10 @@ class OutboxProcessor(BaseSubscription):
                     stream_category,
                     message_type,
                 )
+                if marked is None:
+                    # Another worker holds the row now, and nothing was written.
+                    return False
+                marked_id, marked_status = marked
 
                 # Trace-validation seam: the terminal mark, emitted only after the
                 # UnitOfWork has durably committed, so the recorded status is a
@@ -738,14 +772,20 @@ def _abandon_invalid_partition_key(
     # poisoned row does not abort the rest of the batch in
     # ``process_batch`` and throttle the poll loop. The claim left the row
     # PROCESSING, and it is claimed and checked again once its lock expires.
+    # A row another worker claimed since is left to that worker.
     try:
         with UnitOfWork():
             fresh = outbox_repo.get(message.id)
+            if not _still_claimed(fresh, message):
+                return True
             fresh.mark_abandoned(
                 f"Invalid partition key: {reason}",
                 cause="Invalid partition key",
             )
             outbox_repo.add(fresh)
+    except ExpectedVersionError:
+        _log_claim_taken_over(message)
+        return True
     # a failed abandon must not abort the batch; logged, row retried
     except Exception:
         logger.exception(
@@ -811,50 +851,74 @@ def _record_publish_outcome(
     publish_error: Exception | None,
     stream_category: str,
     message_type: str,
-) -> tuple[str, str]:
+) -> tuple[str, str] | None:
     """Mark the row published, failed or abandoned, and commit it.
 
-    Returns the row's id and the status it was committed with.
+    The row is marked failed only while it has the version this worker's
+    claim gave ``message``. A save that finds the version changed is refused
+    in either branch.
+
+    Returns the row's id and the status it was committed with, or ``None``
+    when another worker claimed the row since this worker did and nothing
+    was written.
     """
-    # Record the outcome in a short transaction (no await inside).
-    with UnitOfWork():
-        # Re-fetch to bind the row to this UoW and read its current
-        # persisted state before transitioning it.
-        message = outbox_repo.get(message.id)
+    try:
+        # Record the outcome in a short transaction (no await inside).
+        with UnitOfWork():
+            # Re-fetch to bind the row to this UoW and read its current
+            # persisted state before transitioning it.
+            fresh = outbox_repo.get(message.id)
 
-        # Update final status based on broker publish result
-        metrics = get_domain_metrics(processor.engine.domain)
-        if publish_success:
-            _mark_published(processor, message, metrics, stream_category, message_type)
-        else:
-            processor._mark_message_failed(message, publish_error)
-            logger.warning(
-                "outbox.publish_failed",
-                extra={
-                    "message_id": message.message_id[:8],
-                    "error_type": type(publish_error).__name__
-                    if publish_error
-                    else None,
-                    "error": str(publish_error) if publish_error else None,
-                },
-            )
-            # Record OTel metrics for failed message
-            metrics.outbox_failed.add(1)
-            if publish_error is not None:
-                set_span_error(span, publish_error)
+            # Update final status based on broker publish result
+            metrics = get_domain_metrics(processor.engine.domain)
+            if publish_success:
+                _mark_published(
+                    processor, fresh, metrics, stream_category, message_type
+                )
+            elif _still_claimed(fresh, message):
+                _mark_publish_failed(processor, fresh, metrics, span, publish_error)
+            else:
+                return None
 
-        # Save the final status
-        outbox_repo.add(message)
+            # Save the final status
+            outbox_repo.add(fresh)
 
-        # Capture the terminal status inside the UoW, while the session is
-        # live, for the trace emit after commit: reading it post-commit
-        # could touch an expired attribute on a closed session, and the
-        # record() argument is evaluated even when the recorder is inactive.
-        marked_id = str(message.id)
-        marked_status = message.status
+            # Capture the terminal status inside the UoW, while the session is
+            # live, for the trace emit after commit: reading it post-commit
+            # could touch an expired attribute on a closed session, and the
+            # record() argument is evaluated even when the recorder is inactive.
+            marked_id = str(fresh.id)
+            marked_status = fresh.status
 
-        # UnitOfWork commits here - either all operations succeed or all rollback
+            # UnitOfWork commits here - either all operations succeed or all rollback
+    except ExpectedVersionError:
+        # Another worker claimed the row between the read and the save.
+        _log_claim_taken_over(message)
+        return None
     return marked_id, marked_status
+
+
+def _mark_publish_failed(
+    processor: OutboxProcessor,
+    message: Outbox,
+    metrics: Any,
+    span: Any,
+    publish_error: Exception | None,
+) -> None:
+    """Mark the row failed after a failed publish, and record its metrics."""
+    processor._mark_message_failed(message, publish_error)
+    logger.warning(
+        "outbox.publish_failed",
+        extra={
+            "message_id": message.message_id[:8],
+            "error_type": type(publish_error).__name__ if publish_error else None,
+            "error": str(publish_error) if publish_error else None,
+        },
+    )
+    # Record OTel metrics for failed message
+    metrics.outbox_failed.add(1)
+    if publish_error is not None:
+        set_span_error(span, publish_error)
 
 
 def _mark_published(
@@ -908,15 +972,20 @@ def _save_processing_error(
     message: Outbox,
     exc: Exception,
 ) -> None:
-    """Mark the row failed in a fresh transaction after an unexpected error."""
+    """Mark the row failed in a fresh transaction after an unexpected error.
+
+    A row another worker claimed since this worker did is left unchanged.
+    """
     # Try to save the error state in a separate transaction
     try:
         with UnitOfWork():
             # Reload message to get fresh state (in case transaction rolled back)
             fresh_message = outbox_repo.get(message.id)
-            if fresh_message:
+            if fresh_message and _still_claimed(fresh_message, message):
                 processor._mark_message_failed(fresh_message, exc)
                 outbox_repo.add(fresh_message)
+    except ExpectedVersionError:
+        _log_claim_taken_over(message)
     # the row stays for the next claim; logged with traceback
     except Exception:
         logger.exception(
