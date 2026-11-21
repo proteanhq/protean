@@ -83,7 +83,8 @@ _PYTHON_FENCE = re.compile(_FENCE_OPEN.format(language="(?:python|py)"))
 _TOML_FENCE = re.compile(_FENCE_OPEN.format(language=r"(?i:toml)(?:\{.*\})?"))
 _ANY_FENCE = re.compile(r"^[ \t]*(?P<fence>`{3,}|~{3,})")
 # The parts of an info string where ``pymdownx.superfences`` accepts a backtick.
-_QUOTED_INFO = re.compile(r"\"[^\"]*\"|'[^']*'|\{[^}]*\}")
+# A ``{...}`` list runs to the last ``}``, so a quoted ``}`` inside it does not end it.
+_QUOTED_INFO = re.compile(r"\"[^\"]*\"|'[^']*'|\{.*\}")
 _FRAGMENT = re.compile(r"^# fragment\b")
 
 

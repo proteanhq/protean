@@ -165,6 +165,16 @@ def test_a_backtick_in_a_brace_attribute_does_not_stop_a_fence():
     ]
 
 
+def test_a_quoted_brace_in_a_brace_attribute_does_not_end_the_attribute():
+    text = '```python {title="}a`b"}\nx = 1\n```\n'
+    assert extract_blocks(text) == [Block(line=2, source="x = 1\n", fragment=False)]
+
+
+def test_a_python_fence_inside_a_fence_with_a_quoted_brace_is_content():
+    text = '```text {title="}a`b"}\n```python\nraise ValueError\n```\n'
+    assert extract_blocks(text) == []
+
+
 def test_blocks_under_a_tab_and_an_admonition_are_dedented():
     text = (
         '=== "Tab"\n'

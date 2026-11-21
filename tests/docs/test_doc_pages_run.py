@@ -131,7 +131,8 @@ _ANY_PY_FENCE = re.compile(
 )
 _ANY_FENCE_OPEN = re.compile(r"^\s*(`{3,}|~{3,})")
 # Quoted values and ``{...}`` lists, where a backtick fence may hold a backtick.
-_QUOTED_INFO = re.compile(r"\"[^\"]*\"|'[^']*'|\{[^}]*\}")
+# A ``{...}`` list runs to the last ``}``, as superfences reads it.
+_QUOTED_INFO = re.compile(r"\"[^\"]*\"|'[^']*'|\{.*\}")
 
 
 def count_python_fences(text: str) -> int:
@@ -197,6 +198,15 @@ def test_the_count_includes_a_python_fence_with_a_backtick_in_its_title():
 
 def test_the_count_skips_a_backtick_line_with_a_backtick_in_its_info():
     assert count_python_fences("``` a ` b\n```python\nx = 1\n```\n") == 1
+
+
+def test_the_count_includes_a_python_fence_with_a_quoted_brace_in_its_attributes():
+    assert count_python_fences('```python {title="}a`b"}\nx = 1\n```\n') == 1
+
+
+def test_the_count_skips_a_python_fence_inside_a_fence_with_a_quoted_brace():
+    text = '```text {title="}a`b"}\n```python\nx = 1\n```\n'
+    assert count_python_fences(text) == 0
 
 
 class _MkDocsLoader(yaml.SafeLoader):
