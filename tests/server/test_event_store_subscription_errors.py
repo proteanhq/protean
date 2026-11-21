@@ -27,6 +27,7 @@ from protean import apply
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
+from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, String
 from protean.server import Engine
 from protean.server.subscription.event_store_subscription import (
@@ -885,6 +886,14 @@ class TestConfiguration:
         expected_prefix = f"failed-{sub.subscriber_name}-test"
         assert sub.failed_positions_stream == expected_prefix
 
+    def test_refuses_an_uninitialized_event_store(self, test_domain, monkeypatch):
+        """A subscription cannot be built before the event store is set up."""
+        engine = Engine(domain=test_domain, test_mode=False)
+        monkeypatch.setattr(test_domain.event_store, "_adapter", None)
+
+        with pytest.raises(ConfigurationError, match="Event store is not initialized"):
+            EventStoreSubscription(engine, "test", SucceedingEventHandler)
+
 
 # ──────────────────────────────────────────────────────────────────────
 # Tests: Recovery Checkpoint / Watermark
@@ -1248,6 +1257,28 @@ class TestMixedBatches:
         await sub.process_batch([msg1, msg2])
 
         assert sub.current_position == 20  # Advanced past both
+
+    @pytest.mark.asyncio
+    async def test_message_without_a_global_position_is_skipped(
+        self, test_domain, caplog
+    ):
+        """A record with no store position is skipped and logged, and the rest
+        of the batch is processed."""
+        sub = _make_subscription(test_domain, SucceedingEventHandler)
+        unpositioned = _create_message(global_position=1)
+        metadata_dict = unpositioned.metadata.to_dict()
+        metadata_dict["event_store"] = None
+        unpositioned.metadata = Metadata(**metadata_dict)
+
+        with caplog.at_level(logging.WARNING):
+            result = await sub.process_batch(
+                [unpositioned, _create_message(global_position=2)]
+            )
+
+        assert result == 1
+        assert handler_counter == 1
+        assert sub.current_position == 2
+        assert "Skipping message with missing metadata/position" in caplog.text
 
 
 # ──────────────────────────────────────────────────────────────────────

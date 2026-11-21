@@ -314,7 +314,7 @@ def _collect_partitioned_stream_status(
     broker = domain.brokers.get("default")
     redis_conn: Any = redis_client(broker)
     if broker is None or redis_conn is None:
-        return _unknown_status(name, handler_cls.__name__, "stream", stream_category)  # pragma: no cover  # only RedisBroker advertises STREAM_PARTITIONING  # fmt: skip
+        return _unknown_status(name, handler_cls.__name__, "stream", stream_category)
 
     try:
         keys = broker._partition_keys(stream_category)

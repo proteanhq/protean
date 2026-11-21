@@ -99,6 +99,22 @@ class TestGapSafeBatch:
         assert _positions(out) == [1, 2]
         assert sub._gap_first_seen == {}
 
+    def test_records_without_a_global_position_are_dropped_and_logged(
+        self, all_subscription, caplog
+    ):
+        sub = all_subscription
+        sub.current_position = 0
+        no_metadata = SimpleNamespace(metadata=None)
+
+        with caplog.at_level(logging.WARNING):
+            out = sub._gap_safe_batch([_msg(1), no_metadata, _msg(None), _msg(2)])
+
+        assert _positions(out) == [1, 2]
+        assert any(
+            "Skipping 2 $all record(s) with no global_position" in r.getMessage()
+            for r in caplog.records
+        )
+
     def test_holds_at_the_first_gap(self, all_subscription):
         sub = all_subscription
         sub.current_position = 0

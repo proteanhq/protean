@@ -213,7 +213,7 @@ def _read_failing_event(
     if not messages:
         return None
     es_meta = messages[0].metadata.event_store if messages[0].metadata else None
-    if es_meta is None:  # pragma: no cover (a stored row always carries positions)
+    if es_meta is None:
         return None
     return messages[0] if es_meta.global_position == position else None
 
@@ -702,9 +702,7 @@ def replay(
 
         with _redrive_engine(derived_domain) as engine:
             owner_sub = _owner_subscription(engine, failed_stream)
-            if (
-                owner_sub is None
-            ):  # pragma: no cover (every failed stream has a live subscription)
+            if owner_sub is None:
                 emit_usage_error(
                     as_json=False,
                     message=f"No live subscription owns the failed stream for position {position}.",

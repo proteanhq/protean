@@ -958,7 +958,7 @@ class Engine:
             if repaired:
                 logger.info("engine.outbox_reconciled", extra={"rows": repaired})
             return repaired
-        except Exception:  # pragma: no cover - never block startup
+        except Exception:
             logger.warning("engine.outbox_reconcile_failed", exc_info=True)
             return 0
 

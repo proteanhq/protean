@@ -119,6 +119,18 @@ class TestRenderIndexDDL:
         ]
         assert render_index_ddl(IndexedJob, "sqlite") == []
 
+    def test_an_entry_that_is_not_an_index_renders_nothing(self, test_domain):
+        """``domain.init()`` rejects such an entry. Rendering an element before
+        ``init()`` skips it and renders the declared indexes."""
+        test_domain.register(
+            IndexedJob,
+            indexes=[Index("status", name="ix_status"), "status"],
+        )
+
+        assert render_index_ddl(IndexedJob, "sqlite") == [
+            "CREATE INDEX ix_status ON indexed_job (status)"
+        ]
+
     def test_no_indexes_returns_empty(self, test_domain):
         class Plain(BaseAggregate):
             name = String(max_length=32)
