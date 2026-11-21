@@ -963,12 +963,18 @@ class OutboxRepository(BaseRepository):
 
         ``row`` holds the change made by :meth:`Outbox.reset_for_retry` or
         :meth:`Outbox.discard`. The write goes through only while the stored
-        row still has ``read_status`` and ``read_retry_count``. A worker that
-        claims a failed row moves it to ``PROCESSING``, and a failed attempt
-        raises ``retry_count``, so either one makes the write match no row.
-        A plain save would pass in that case, because the claim does not bump
-        the row's version, and the worker would then publish a discarded row
-        or a second worker would claim a retried one.
+        row still has ``read_status``, ``read_retry_count`` and the version
+        ``row`` was read at, and it advances the stored version by one. A
+        worker that claims a failed row moves it to ``PROCESSING``, and a
+        failed attempt raises ``retry_count``, so either one makes the write
+        match no row. A plain save would pass in that case, because the claim
+        does not bump the row's version, and the worker would then publish a
+        discarded row or a second worker would claim a retried one. Another
+        operator's retry followed by a worker's failed attempts can leave the
+        status and retry count equal to the read values. Every such write
+        advances the version, so ``save_operator_change`` finds no row at the
+        read version and a stale discard or retry does not overwrite the newer
+        failure.
 
         Returns:
             True if the row was written, False if it changed in the meantime
@@ -987,7 +993,13 @@ class OutboxRepository(BaseRepository):
                 "locked_until",
             )
         }
-        guard = Q(id=row.id, status=read_status, retry_count=read_retry_count)
+        values["_version"] = row._version + 1
+        guard = Q(
+            id=row.id,
+            status=read_status,
+            retry_count=read_retry_count,
+            _version=row._version,
+        )
         return self._dao.update_all(guard, values) > 0
 
     def find_published(self, limit: int | None = PAGE_SIZE) -> list[Outbox]:

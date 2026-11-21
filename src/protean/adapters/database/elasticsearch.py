@@ -378,6 +378,15 @@ def _result_set(
     )
 
 
+def _document_field(field_name: str) -> str:
+    """The document field that stores the entity attribute ``field_name``.
+
+    ``_version`` is stored as ``entity_version`` (see ``from_entity``). Any
+    other name is returned unchanged.
+    """
+    return "entity_version" if field_name == "_version" else field_name
+
+
 def _lookup_expression(
     dao: "ElasticsearchDAO", child: tuple[str, _Any], negated: bool
 ) -> _Any:
@@ -386,6 +395,7 @@ def _lookup_expression(
     The expression is inverted when ``negated`` is true.
     """
     stripped_key, lookup_name = split_lookup_key(child[0])
+    stripped_key = _document_field(stripped_key)
     # Every lookup registered on ``ESDatabase`` is a ``DefaultLookup``, which
     # declares ``as_expression``; ``get_lookup`` returns the wider type.
     lookup_class = typing.cast(
@@ -686,7 +696,8 @@ class ElasticsearchDAO(DAOPort, BoundedDeletePort):
         # Build the update script
         script_lines = []
         params = {}
-        for field_name, field_value in values.items():
+        for attribute_name, field_value in values.items():
+            field_name = _document_field(attribute_name)
             param_name = f"new_{field_name}"
             script_lines.append(f"ctx._source.{field_name} = params.{param_name}")
             params[param_name] = field_value
