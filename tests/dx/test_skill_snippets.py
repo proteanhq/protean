@@ -46,7 +46,7 @@ if not PACK_ROOT.is_dir():
     )
 
 _ANY_PY_FENCE = re.compile(r"^(```|~~~)\s*py", re.IGNORECASE)
-_ANY_FENCE_OPEN = re.compile(r"^(`{3,}(?=[^`]*$)|~{3,})")
+_ANY_FENCE_OPEN = re.compile(r"^(`{3,}|~{3,})")
 
 
 def count_python_fences(text: str) -> int:
@@ -123,6 +123,10 @@ _NESTED_PYTHON_FENCE = (
 
 def test_the_count_skips_a_python_fence_inside_a_longer_fence():
     assert count_python_fences(_NESTED_PYTHON_FENCE) == 1
+
+
+def test_the_count_includes_a_python_fence_with_a_backtick_in_its_title():
+    assert count_python_fences('```python title="a`b"\nx = 1\n```\n') == 1
 
 
 def test_every_skill_snippet_runs_or_is_allowlisted(tmp_path):

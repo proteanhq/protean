@@ -147,6 +147,24 @@ def test_a_backtick_line_with_a_backtick_in_its_info_is_not_a_fence():
     assert extract_blocks(text) == [Block(line=3, source="x = 1\n", fragment=False)]
 
 
+def test_a_backtick_in_a_quoted_option_does_not_stop_a_fence():
+    text = '```text title="`x`"\n```python\nraise ValueError\n```\n'
+    # ``pymdownx.superfences`` renders the ``python`` line as content.
+    assert extract_blocks(text) == []
+
+
+def test_a_python_fence_with_a_backtick_in_its_title_is_a_block():
+    text = '```python title="a`b"\nx = 1\n```\n'
+    assert extract_blocks(text) == [Block(line=2, source="x = 1\n", fragment=False)]
+
+
+def test_a_backtick_in_a_brace_attribute_does_not_stop_a_fence():
+    text = '```toml{ title="`x`" }\nreal = "yes"\n```\n'
+    assert extract_toml_blocks(text) == [
+        Block(line=2, source='real = "yes"\n', fragment=False)
+    ]
+
+
 def test_blocks_under_a_tab_and_an_admonition_are_dedented():
     text = (
         '=== "Tab"\n'

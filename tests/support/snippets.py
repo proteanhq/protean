@@ -76,11 +76,14 @@ from pathlib import Path
 
 FILE_TIMEOUT = 30.0
 
-_FENCE_OPEN = r"^(?P<indent>[ \t]*)(?P<fence>`{{3,}}|~{{3,}})[ \t]*{language}(?:[ \t]+[^`]*)?[ \t]*$"
+_FENCE_OPEN = (
+    r"^(?P<indent>[ \t]*)(?P<fence>`{{3,}}|~{{3,}})[ \t]*{language}(?:[ \t]+.*)?[ \t]*$"
+)
 _PYTHON_FENCE = re.compile(_FENCE_OPEN.format(language="(?:python|py)"))
-_TOML_FENCE = re.compile(_FENCE_OPEN.format(language=r"(?i:toml)(?:\{[^`]*\})?"))
-# Any fence opener. A backtick fence's info string holds no backtick.
-_ANY_FENCE = re.compile(r"^[ \t]*(?P<fence>`{3,}(?=[^`]*$)|~{3,})")
+_TOML_FENCE = re.compile(_FENCE_OPEN.format(language=r"(?i:toml)(?:\{.*\})?"))
+_ANY_FENCE = re.compile(r"^[ \t]*(?P<fence>`{3,}|~{3,})")
+# The parts of an info string where ``pymdownx.superfences`` accepts a backtick.
+_QUOTED_INFO = re.compile(r"\"[^\"]*\"|'[^']*'|\{[^}]*\}")
 _FRAGMENT = re.compile(r"^# fragment\b")
 
 
@@ -120,8 +123,8 @@ def _extract_fenced(text: str, fence_open: re.Pattern[str]) -> list[Block]:
     lines = text.splitlines()
     index = 0
     while index < len(lines):
-        target = fence_open.match(lines[index])
-        opener = target or _ANY_FENCE.match(lines[index])
+        target = _match_opener(fence_open, lines[index])
+        opener = target or _match_opener(_ANY_FENCE, lines[index])
         if not opener:
             index += 1
             continue
@@ -136,6 +139,21 @@ def _extract_fenced(text: str, fence_open: re.Pattern[str]) -> list[Block]:
             blocks.append(make_block(start + 1, "\n".join(body) + "\n"))
         index = end + 1
     return blocks
+
+
+def _match_opener(pattern: re.Pattern[str], line: str) -> re.Match[str] | None:
+    """Match ``pattern`` against ``line`` as a fence opener.
+
+    A backtick fence's info string may hold a backtick only inside a quoted
+    option value or a ``{...}`` attribute list, as in ``title="`x`"``. A line
+    with a backtick anywhere else in its info string is not an opener.
+    """
+    match = pattern.match(line)
+    if match and match.group("fence")[0] == "`":
+        info = line[match.end("fence") :]
+        if "`" in _QUOTED_INFO.sub("", info):
+            return None
+    return match
 
 
 def _close_index(lines: list[str], start: int, fence: str) -> int:
