@@ -8,7 +8,8 @@ module in ``src/protean`` and checks the key of every read on a domain's config
 against the defaults.
 
 A read is ``<config>["key"]`` or ``<config>.get("key", ...)`` with a string
-literal key. ``<config>`` is ``<receiver>.config``, or a name bound to one by
+literal key. Assigning or deleting ``<config>["key"]`` is not a read;
+``<config>["key"] += ...`` is. ``<config>`` is ``<receiver>.config``, or a name bound to one by
 an earlier assignment, such as ``cfg = self._domain.config`` or
 ``cfg: Config = domain.config``. The receiver is ``domain``,
 ``derived_domain``, ``current_domain``, any attribute named ``domain`` or
@@ -81,6 +82,11 @@ def _string(node: ast.expr) -> str | None:
 
 def _read(node: ast.AST) -> tuple[ast.expr, str, int] | None:
     """Return the config expression, key and line of a read, or ``None``."""
+    # ``cfg["key"] += 1`` reads the key before it writes it back.
+    if isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Subscript):
+        node = node.target
+    elif isinstance(node, ast.Subscript) and not isinstance(node.ctx, ast.Load):
+        return None
     if isinstance(node, ast.Subscript):
         key = _string(node.slice)
         return (node.value, key, node.lineno) if key is not None else None
@@ -501,6 +507,21 @@ def test_scan_keeps_an_alias_through_an_annotation_without_a_value(
     monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
 
     assert _scan() == {"annotated_key": [f"{tmp_path.name}/declared.py:4"]}
+
+
+def test_scan_skips_subscript_writes_and_reads_an_augmented_assignment(
+    tmp_path, monkeypatch
+):
+    (tmp_path / "writes.py").write_text(
+        "def build():\n"
+        "    cfg = domain.config\n"
+        '    cfg["written_key"] = 1\n'
+        '    del cfg["deleted_key"]\n'
+        '    cfg["counted_key"] += 1\n'
+    )
+    monkeypatch.setattr(f"{__name__}._SRC", tmp_path)
+
+    assert _scan() == {"counted_key": [f"{tmp_path.name}/writes.py:5"]}
 
 
 def test_scan_ends_an_alias_at_an_except_target(tmp_path, monkeypatch):
