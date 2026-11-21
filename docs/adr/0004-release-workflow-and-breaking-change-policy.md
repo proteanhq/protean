@@ -214,6 +214,13 @@ is deliberately narrow. It covers bugs and leaves out disliked-but-intentional
 API. The author of the change must show that the old behaviour was never
 a contract.
 
+Behaviour that stores or accepts invalid state always falls under this
+exception. A save that writes a row the aggregate's own invariants reject, and
+a field declaration that accepts a bound the IR cannot write, are two examples.
+The fix raises in the next minor release, and it ships with an entry in that
+release's migration guide. A raise at runtime meets condition 2 when its
+message names the fix.
+
 This exception has been applied to two changes. For multi-worker event-store
 double-processing (#1089), the server now refuses to start, with an
 `--allow-event-store-multiworker` opt-out for the rare legitimate case.
