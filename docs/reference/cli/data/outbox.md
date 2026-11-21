@@ -59,7 +59,7 @@ protean outbox reconcile --provider=analytics --limit=5000 --domain=my_domain
 |--------|-------------|---------|
 | `--domain` | Domain module path | `.` (current directory) |
 | `--provider` | Provider whose outbox to reconcile | `default` |
-| `--limit` | Most recent event-store messages to scan for gaps, skipped messages included | `1000` |
+| `--limit` | Most recent event-store messages to scan for gaps, skipped messages included. A snapshot row older than the newest message also counts toward the limit | `1000` |
 
 **Output**
 
