@@ -47,6 +47,8 @@ if not PACK_ROOT.is_dir():
 
 _ANY_PY_FENCE = re.compile(r"^(```|~~~)\s*py", re.IGNORECASE)
 _ANY_FENCE_OPEN = re.compile(r"^(`{3,}|~{3,})")
+# Quoted values and ``{...}`` lists, where a backtick fence may hold a backtick.
+_QUOTED_INFO = re.compile(r"\"[^\"]*\"|'[^']*'|\{[^}]*\}")
 
 
 def count_python_fences(text: str) -> int:
@@ -54,7 +56,8 @@ def count_python_fences(text: str) -> int:
 
     Each line is stripped before it is matched. Every fence, Python ones
     included, is tracked through its closing fence, so a Python opener written
-    inside another fence is not counted.
+    inside another fence is not counted. A backtick line with a backtick outside
+    a quoted value or a ``{...}`` list opens no fence.
     """
     count = 0
     close = None
@@ -64,7 +67,10 @@ def count_python_fences(text: str) -> int:
                 close = None
             continue
         opener = _ANY_FENCE_OPEN.match(line)
-        if opener:
+        if opener and not (
+            opener.group(1)[0] == "`"
+            and "`" in _QUOTED_INFO.sub("", line[opener.end() :])
+        ):
             count += bool(_ANY_PY_FENCE.match(line))
             fence = opener.group(1)
             close = re.compile(rf"^{re.escape(fence[0])}{{{len(fence)},}}$")
@@ -127,6 +133,10 @@ def test_the_count_skips_a_python_fence_inside_a_longer_fence():
 
 def test_the_count_includes_a_python_fence_with_a_backtick_in_its_title():
     assert count_python_fences('```python title="a`b"\nx = 1\n```\n') == 1
+
+
+def test_the_count_skips_a_backtick_line_with_a_backtick_in_its_info():
+    assert count_python_fences("``` a ` b\n```python\nx = 1\n```\n") == 1
 
 
 def test_every_skill_snippet_runs_or_is_allowlisted(tmp_path):
