@@ -13,7 +13,9 @@ files, and chapter 10 adds ``bookshelf/api.py`` to it. The ``tutorial/``
 folder goes on ``sys.path`` so the package imports by its name.
 """
 
+import os
 import runpy
+import shutil
 import subprocess
 import sys
 import types
@@ -25,6 +27,7 @@ from protean.exceptions import NotSupportedError, ValidationError
 from protean.utils.processing import Priority
 from tests.docs.support import (
     DOCS_SRC,
+    EXAMPLE_TESTS_TIMEOUT,
     load_example,
     outcome_counts,
     run_example_tests,
@@ -580,6 +583,58 @@ def _assert_passed(result, passed: int) -> None:
     assert outcome_counts(result) == {"passed": passed}
 
 
+_PYPROJECT_PYTEST = (
+    DOCS_SRC / "guides" / "getting-started" / "tutorial" / "pyproject_pytest.toml"
+)
+
+
+def _run_in_fresh_project(tmp_path, pyproject: str) -> subprocess.CompletedProcess[str]:
+    """Run pytest in a project folder laid out as chapter 11 describes.
+
+    Copies the tutorial's ``bookshelf`` package and ``tests`` folder into
+    ``tmp_path``, writes ``pyproject`` as its ``pyproject.toml``, and runs
+    ``python -m pytest`` there with no other options, as a reader would.
+    Returns the finished process with its output.
+    """
+    tutorial = DOCS_SRC / "guides" / "getting-started" / "tutorial"
+    for folder in ("bookshelf", "tests"):
+        shutil.copytree(
+            tutorial / folder,
+            tmp_path / folder,
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
+    (tmp_path / "pyproject.toml").write_text(pyproject, encoding="utf-8")
+
+    child_env = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("PYTEST_") and name not in ("PYTHONPATH", "PROTEAN_ENV")
+    }
+    child_env["PYTHONDONTWRITEBYTECODE"] = "1"
+    # ``python -m`` puts the working folder on ``sys.path``, which would let
+    # ``bookshelf`` import without the ``pythonpath`` setting. ``-P`` turns
+    # that off, so only the setting under test puts the folder there.
+    command = [
+        sys.executable,
+        "-P",
+        "-m",
+        "pytest",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "no:randomly",
+    ]
+    return subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=tmp_path,
+        env=child_env,
+        timeout=EXAMPLE_TESTS_TIMEOUT,
+    )
+
+
 class TestTutorialCh11:
     """Ch11: The chapter's test files pass against the ``bookshelf`` package."""
 
@@ -622,6 +677,23 @@ class TestTutorialCh11:
             "guides/getting-started/tutorial/tests/test_integration.py"
         )
         _assert_passed(result, 1)
+
+    def test_displayed_pytest_config_runs_the_tests_in_a_fresh_project(self, tmp_path):
+        pyproject = _PYPROJECT_PYTEST.read_text(encoding="utf-8")
+
+        result = _run_in_fresh_project(tmp_path, pyproject)
+
+        _assert_passed(result, 11)
+
+    def test_fresh_project_without_pythonpath_cannot_import_bookshelf(self, tmp_path):
+        lines = _PYPROJECT_PYTEST.read_text(encoding="utf-8").splitlines(keepends=True)
+        kept = [line for line in lines if not line.startswith("pythonpath")]
+        assert len(kept) == len(lines) - 1
+
+        result = _run_in_fresh_project(tmp_path, "".join(kept))
+
+        assert result.returncode != 0
+        assert "No module named 'bookshelf'" in result.stdout + result.stderr
 
 
 @pytest.mark.no_test_domain
