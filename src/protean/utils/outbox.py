@@ -1544,7 +1544,9 @@ def reconcile_outbox(
     Otherwise the function reads the most recent ``limit`` messages of
     ``$all``, and repairs every event of the kinds described below that has
     no internal outbox row. ``limit`` counts every message in ``$all``,
-    including ones the function skips.
+    including ones the function skips. A snapshot row in ``$all`` also counts
+    toward ``limit``, so a snapshot among the newest rows leaves one message
+    fewer to check.
 
     Only events raised by this domain's event-sourced aggregates on
     ``provider_name`` are repaired. For an event-sourced aggregate the event
@@ -1700,7 +1702,9 @@ def _tail_messages(store: Any, tail: int, limit: int) -> list[Any]:
     ``$all`` at or below *tail*, in ascending ``global_position`` order.
 
     A snapshot row counts toward *limit* and is not returned. A row above
-    *tail* is neither returned nor counted.
+    *tail* is neither returned nor counted. When the newest span has a gap,
+    the function reads one window of *limit* positions per step, so a gap of
+    many positions costs about one read per *limit* positions it spans.
     """
     start = max(0, tail - limit + 1)
     messages = [
@@ -1709,15 +1713,17 @@ def _tail_messages(store: Any, tail: int, limit: int) -> list[Any]:
         if _global_position(m) <= tail
     ]
     # ``limit`` rows in a span of ``limit`` positions means the span has no gap
-    # and no snapshot row, so this one read is the whole window.
+    # and no snapshot row, so this one read is the whole window. A span that
+    # starts at position 0 has no older rows to look for.
     if start == 0 or len(messages) >= limit:
         return sorted(messages, key=_global_position)
 
     # The span is short of ``limit`` rows. ``read`` drops snapshot rows, so its
     # result cannot tell a gap from a snapshot, and the walk reads with the
     # snapshot positions to count both. Each window spans ``limit`` positions
-    # and reads ``limit`` rows from its low end, so it covers every row in it;
-    # the ``<= hi`` filter drops a row of the window above that a gap let in.
+    # and reads ``limit`` rows from its low end, so it covers every row in it.
+    # When the window has fewer than ``limit`` rows, the read also returns rows
+    # above ``hi``, and the ``<= hi`` filter drops them.
     found: list[Any] = []
     need = limit
     hi = tail

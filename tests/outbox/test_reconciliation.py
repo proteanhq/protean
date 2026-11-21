@@ -209,13 +209,16 @@ class TestOutboxReconciliation:
         outbox_repo._dao.delete_all()  # crash window: newest row missing → scan
 
         positions = []
-        real_read = store.read
+        real_read = store._read_with_snapshot_positions
 
+        # ``read`` goes through this method too, so the spy also sees any walk
+        # read that follows the first read of ``$all``.
         def spy(stream, position=0, limit=1000):
-            positions.append(position)
+            if stream == "$all":
+                positions.append(position)
             return real_read(stream, position, limit)
 
-        monkeypatch.setattr(store, "read", spy)
+        monkeypatch.setattr(store, "_read_with_snapshot_positions", spy)
 
         limit = 2
         reconcile_outbox(domain, limit=limit)
@@ -237,13 +240,14 @@ class TestOutboxReconciliation:
         outbox_repo._dao.delete_all()
 
         positions = []
-        real_read = store.read
+        real_read = store._read_with_snapshot_positions
 
         def spy(stream, position=0, limit=1000):
-            positions.append(position)
+            if stream == "$all":
+                positions.append(position)
             return real_read(stream, position, limit)
 
-        monkeypatch.setattr(store, "read", spy)
+        monkeypatch.setattr(store, "_read_with_snapshot_positions", spy)
 
         reconcile_outbox(domain, limit=1000)  # limit >> number of events
 
@@ -2006,7 +2010,10 @@ def _seed_at_positions(domain, event_positions, snapshot_positions=()):
     """Raise one ``Funded`` event per entry of *event_positions* and move the
     ``$all`` rows to those global positions, as a store with gaps leaves them.
     Add a snapshot row at each of *snapshot_positions*. Return the message id
-    at each event position."""
+    at each event position.
+
+    The helper reorders the stored rows without rebuilding the per-stream
+    index, so a test that seeds with it reads ``$all`` only."""
     for _ in event_positions:
         _fund(domain)
     rows = domain.event_store.get_connection()
@@ -2055,6 +2062,17 @@ class TestReconcileCountsRowsAcrossPositionGaps:
         _lose_rows(outbox_repo, ids[1])
 
         assert reconcile_outbox(domain, limit=4) == 0
+        assert outbox_repo.find_all_by_message_id(ids[1]) == []
+
+    def test_a_window_with_more_rows_than_needed_keeps_only_the_newest(
+        self, domain_and_repo
+    ):
+        domain, outbox_repo = domain_and_repo
+        ids = _seed_at_positions(domain, [1, 2, 10])
+        _lose_rows(outbox_repo, ids[1])
+
+        # The window at positions 1 and 2 holds two rows and the walk needs one.
+        assert reconcile_outbox(domain, limit=2) == 0
         assert outbox_repo.find_all_by_message_id(ids[1]) == []
 
     def test_a_snapshot_row_counts_toward_limit(self, domain_and_repo):
@@ -2124,3 +2142,25 @@ class TestReconcileCountsRowsAcrossPositionGaps:
         assert window_starts == [41, 41, 31, 21, 11, 1, 0]
         assert _has_internal_row(outbox_repo, ids[5])
         assert _has_internal_row(outbox_repo, ids[50])
+
+    def test_walk_stops_when_it_has_limit_rows(self, domain_and_repo, monkeypatch):
+        domain, outbox_repo = domain_and_repo
+        ids = _seed_at_positions(domain, [1, 10, 20, 30, 40])
+        outbox_repo._dao.delete_all()
+        store = domain.event_store
+        window_starts = []
+        real_read = store._read_with_snapshot_positions
+
+        def spy(stream, position=0, limit=1000):
+            window_starts.append(position)
+            return real_read(stream, position, limit)
+
+        monkeypatch.setattr(store, "_read_with_snapshot_positions", spy)
+
+        assert reconcile_outbox(domain, limit=2) == 2
+        # The window starting at 29 holds the row at 30, the second row the
+        # walk needs, so no window below it is read.
+        assert window_starts == [39, 39, 37, 35, 33, 31, 29]
+        assert _has_internal_row(outbox_repo, ids[30])
+        assert _has_internal_row(outbox_repo, ids[40])
+        assert outbox_repo.find_all_by_message_id(ids[20]) == []
