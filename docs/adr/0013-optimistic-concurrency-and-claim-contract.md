@@ -295,3 +295,54 @@ removed.
 - Elasticsearch keeps the portable claim. When two claims race for one row,
   the row is claimed at most once, and the losing claim returns no rows or
   raises `DatabaseError` on a version conflict.
+
+## Amendment (November 2026): a claim advances the row version
+
+A worker can still be running when its lock expires. Another worker can then
+claim the same rows. The first worker's release reads the row, checks
+`locked_by` and saves it. That check passes when both workers have the same
+`worker_id`, and the engine gives every outbox processor for one database and
+broker pair the same default one. The writes that mark a row failed or
+abandoned read and save the row with no `locked_by` check at all. Each save
+passed the version check too, because the claim left `_version` unchanged. So
+a stale worker could release a row, or mark it failed or abandoned, while the
+new owner was publishing it.
+
+**Amended decision:** a claim adds one to the `_version` of each aggregate row
+it claims, and the entity it returns carries the new value. That value
+identifies the claim.
+
+- The portable claim adds the version it read to the guard of its per-row
+  `update_all`, and writes that version plus one. The returned entity's next
+  save expects the claimed version, so it advances the version again.
+- The PostgreSQL statement sets `_version = _version + 1` in its `UPDATE`.
+- A native claim from a custom adapter keeps the same promise. The `DAO`
+  service passes `claim_fields` to it unchanged.
+- A claim on an entity class with no `_version` is unchanged.
+
+The outbox processor uses the claim's version for each write that releases a
+row, marks it failed or abandons it. It reads the row and compares the stored
+version with the one its claim returned. When they differ, it writes nothing
+and logs `outbox.message_already_claimed` at WARNING. The version-checked save
+refuses a claim that lands between that read and the save, and the processor
+handles that refusal the same way. A write that marks a row published does not
+compare the version, because the stale worker did publish the row. That write
+still advances the version, so the new owner's later failure write is refused
+and the row stays `PUBLISHED`.
+
+The Consequences section says the "already claimed" contention messages
+disappear on the fast path. `outbox.message_already_claimed` now comes back at
+WARNING on every provider, the fast path included. It marks a stale worker's
+refused write. A claim lost at batch fetch still logs nothing.
+
+**Alternatives considered:**
+
+- **A `claim_token` column** written by each claim and checked by each write:
+  rejected. Once the claim advances `_version`, the version carries the same
+  information, and the outbox schema stays as it is.
+- **A default `worker_id` unique to each process:** rejected. It protects
+  only the default case. Two processes given the same `worker_id` in their
+  configuration would still pass the `locked_by` check.
+- **The claim's `locked_until` as the token:** rejected. A store that keeps
+  dates at a coarser precision than the claim returned, as Elasticsearch does
+  by default, would refuse the current worker's own writes.

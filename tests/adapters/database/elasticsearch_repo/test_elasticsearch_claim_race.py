@@ -28,6 +28,7 @@ class TestPortableClaimRace:
         person = test_domain.repository_for(Person)._dao.create(
             first_name="Athos", last_name=tag, age=0
         )
+        version = test_domain.repository_for(Person).get(person.id)._version
         meet = threading.Barrier(2, timeout=10)
         update_all = ElasticsearchDAO.update_all
 
@@ -61,4 +62,6 @@ class TestPortableClaimRace:
         assert len(outcomes) == 2
         assert len(claims) <= 1
         assert all(o == [] or isinstance(o, DatabaseError) for o in losers)
-        assert test_domain.repository_for(Person).get(person.id).age == 1
+        stored = test_domain.repository_for(Person).get(person.id)
+        assert stored.age == 1
+        assert stored._version == version + 1

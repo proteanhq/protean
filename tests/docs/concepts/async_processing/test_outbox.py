@@ -91,6 +91,9 @@ def test_a_message_under_an_expired_lock_can_be_reclaimed():
         assert example.claim(repo._dao, message, "worker-1", now) == 1
         assert example.claim(repo._dao, message, "worker-2", now) == 0
 
+        # A worker reads the row again before it claims it, so it holds the
+        # version the first claim advanced.
+        message = repo.get(message.id)
         after_expiry = now + timedelta(minutes=6)
         assert example.claim(repo._dao, message, "worker-2", after_expiry) == 1
         assert repo.get(message.id).locked_by == "worker-2"

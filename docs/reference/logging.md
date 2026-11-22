@@ -577,7 +577,7 @@ on this logger.
 | `outbox.initialized` | DEBUG | `database_provider`, `broker_provider` |
 | `outbox.batch_fetched` | DEBUG | `count` |
 | `outbox.batch_completed` | INFO | `total`, `successful`, `failed`, `released` |
-| `outbox.message_already_claimed` | DEBUG | `message_id` |
+| `outbox.message_already_claimed` | WARNING | `message_id` |
 | `outbox.message_published` | DEBUG | `message_id`, `broker` |
 | `outbox.publish_failed` | WARNING | `message_id`, `error_type`, `error` |
 | `outbox.processing_error` | ERROR (exc) | `message_id` |
@@ -588,6 +588,14 @@ on this logger.
 | `outbox.cleanup` | DEBUG | `database_provider`, `broker_provider` |
 | `outbox.cleanup_completed` | INFO | `total`, `published`, `abandoned`, `discarded` |
 | `outbox.cleanup_failed` | ERROR (exc) | |
+
+When another worker claims a row between this worker's read and its save, the
+version-checked save raises `ExpectedVersionError`. The processor logs
+`outbox.message_already_claimed` for it, as for any refused write. The save
+failure is also logged on other loggers first: `uow.commit_failed` on
+`protean.core.unit_of_work` when the conflict surfaces at commit, or
+"Failed saving entity because ..." at ERROR on `protean.infra.dao` when it
+surfaces at the save.
 
 ---
 

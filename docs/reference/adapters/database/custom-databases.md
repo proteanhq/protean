@@ -549,7 +549,9 @@ class MyDAO(DAOPort, BoundedDeletePort):
 
 The `DAO` service calls the DAO method only when the provider declares the
 flag. When the provider does not declare it, the service runs the portable
-claim or delete, which works on every adapter. A DAO class can subclass a port
+claim or delete, which works on every adapter. Every claim adds one to the
+`_version` of each aggregate row it claims and returns the row with the new
+value, so a native `claim` must do the same. A DAO class can subclass a port
 whose flag its provider does not declare. When a provider declares a flag and
 its DAO class does not subclass the port, the `DAO` service raises
 `ConfigurationError` when it is built. A SQL provider builds it when it

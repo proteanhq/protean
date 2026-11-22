@@ -6,6 +6,8 @@ same batch are released back to ``PENDING`` unpublished, so they wait for it.
 """
 
 import logging
+import threading
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -15,10 +17,18 @@ from protean.core.event import BaseEvent
 from protean.fields import Integer, String
 from protean.port.broker import BrokerCapabilities
 from protean.server import Engine
-from protean.server.outbox_processor import OutboxProcessor, _in_group_commit_order
+from protean.server.outbox_processor import (
+    OutboxProcessor,
+    _abandon_invalid_partition_key,
+    _in_group_commit_order,
+    _save_processing_error,
+)
 from protean.server.subscription.stream_subscription import StreamSubscription
+from protean.utils import outbox_trace
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.outbox import Outbox, OutboxLanes, OutboxStatus
+from protean.utils.query import Q
+from tests.shared import FrozenClock
 
 BASE_TIME = datetime(2026, 1, 1, tzinfo=UTC)
 CATEGORY = "test::counter"
@@ -345,3 +355,362 @@ async def test_initialize_logs_the_adapter_class_of_the_selected_broker(
 
     [record] = [r for r in caplog.records if r.getMessage() == "outbox.broker_selected"]
     assert record.broker == "InlineBroker"
+
+
+# A worker whose lock expired mid-batch must not release, fail or abandon a
+# row another worker claimed since. Each claim advances the row's version, so
+# the stale worker's guarded write sees the newer claim and is refused.
+
+LOCK_EXPIRED = timedelta(minutes=10)
+TAKEN_OVER = "outbox.message_already_claimed"
+
+
+async def _engine_processor(
+    test_domain, fail_ids: set[str], worker_id: str | None = None
+) -> OutboxProcessor:
+    """A processor built as the engine builds one: with no ``worker_id``
+    unless one is given."""
+    processor = OutboxProcessor(
+        Engine(test_domain, test_mode=True),
+        "default",
+        "default",
+        worker_id=worker_id,
+    )
+    await processor.initialize()
+    processor.broker = FailingBroker(fail_ids)
+    return processor
+
+
+@pytest.fixture
+def clock(test_domain):
+    test_domain.clock = FrozenClock(BASE_TIME + timedelta(hours=1))
+    return test_domain.clock
+
+
+def _claim_state(outbox_repo, label: str) -> tuple:
+    row = _stored(outbox_repo, label)
+    return (row.status, row.locked_by, row.locked_until, row._version)
+
+
+def _taken_over_records(caplog) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if r.getMessage() == TAKEN_OVER]
+
+
+def _assert_refused_once_per_row(caplog, labels: list[str]) -> None:
+    refusals = _taken_over_records(caplog)
+    assert sorted(r.message_id for r in refusals) == sorted(labels)
+    assert all(r.levelno == logging.WARNING for r in refusals)
+    # The failed publish logs its own traceback before any write is tried.
+    tracebacks = [
+        r
+        for r in caplog.records
+        if r.name == "protean.server.outbox_processor"
+        and r.exc_info
+        and r.getMessage() != "outbox.broker_publish_failed"
+    ]
+    assert tracebacks == []
+
+
+def _marks(events: list[dict]) -> list[dict]:
+    return [event for event in events if event["action"] == "mark"]
+
+
+async def _fail_the_publish(processor: OutboxProcessor, message: Outbox) -> None:
+    processor.broker.fail_ids.add(message.message_id)
+    await processor.process_batch([message])
+
+
+async def _fail_unexpectedly(processor: OutboxProcessor, message: Outbox) -> None:
+    _save_processing_error(
+        processor, processor.outbox_repo, message, RuntimeError("unexpected")
+    )
+
+
+async def _abandon_for_its_key(processor: OutboxProcessor, message: Outbox) -> None:
+    processor.broker.capabilities = BrokerCapabilities.STREAM_PARTITIONING
+    message.partition_key = "dlq"
+    rejected = _abandon_invalid_partition_key(processor, processor.outbox_repo, message)
+    assert rejected is True
+
+
+WRITES = [
+    pytest.param(_fail_the_publish, OutboxStatus.FAILED, id="publish-failed"),
+    pytest.param(_fail_unexpectedly, OutboxStatus.FAILED, id="processing-error"),
+    pytest.param(_abandon_for_its_key, OutboxStatus.ABANDONED, id="abandon"),
+]
+
+
+@pytest.mark.database
+class TestAStaleWorkerLeavesARowAnotherWorkerClaimed:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "worker_ids",
+        [(None, None), ("worker-a", "worker-b")],
+        ids=["shared-default-worker-id", "different-worker-ids"],
+    )
+    async def test_the_failure_and_the_release_are_both_refused(
+        self, test_domain, outbox_repo, clock, caplog, worker_ids
+    ):
+        outbox_repo.add(_row("a", 0))
+        outbox_repo.add(_row("b", 1))
+        stale_id, current_id = worker_ids
+        stale = await _engine_processor(test_domain, {"a"}, worker_id=stale_id)
+        current = await _engine_processor(test_domain, set(), worker_id=current_id)
+        assert (stale.worker_id == current.worker_id) == (stale_id is None)
+
+        batch = await stale.get_next_batch_of_messages()
+        assert [row.message_id for row in batch] == ["a", "b"]
+        clock.advance(LOCK_EXPIRED)
+        taken = await current.get_next_batch_of_messages()
+        assert [row.message_id for row in taken] == ["a", "b"]
+        claimed = {label: _claim_state(outbox_repo, label) for label in ("a", "b")}
+
+        with (
+            outbox_trace.capture() as events,
+            caplog.at_level(logging.INFO, logger="protean.server.outbox_processor"),
+        ):
+            successful = await stale.process_batch(batch)
+
+        assert successful == 0
+        for label in ("a", "b"):
+            assert _claim_state(outbox_repo, label) == claimed[label]
+            assert claimed[label][0] == OutboxStatus.PROCESSING.value
+        [record] = [
+            r for r in caplog.records if r.getMessage() == "outbox.batch_completed"
+        ]
+        assert (record.successful, record.released, record.failed) == (0, 0, 2)
+        _assert_refused_once_per_row(caplog, ["a", "b"])
+        assert _marks(events) == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("write, status", WRITES)
+    async def test_a_write_on_a_row_another_worker_claimed_changes_nothing(
+        self, test_domain, outbox_repo, clock, caplog, write, status
+    ):
+        outbox_repo.add(_row("b", 0))
+        stale = await _engine_processor(test_domain, fail_ids=set())
+        current = await _engine_processor(test_domain, fail_ids=set())
+        [message] = await stale.get_next_batch_of_messages()
+        clock.advance(LOCK_EXPIRED)
+        assert len(await current.get_next_batch_of_messages()) == 1
+        claimed = _claim_state(outbox_repo, "b")
+
+        with (
+            outbox_trace.capture() as events,
+            caplog.at_level(logging.INFO, logger="protean.server.outbox_processor"),
+        ):
+            await write(stale, message)
+
+        assert _claim_state(outbox_repo, "b") == claimed
+        assert claimed[0] != status.value
+        _assert_refused_once_per_row(caplog, ["b"])
+        assert _marks(events) == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("write, status", WRITES)
+    async def test_a_row_this_worker_still_holds_gets_the_write(
+        self, test_domain, outbox_repo, clock, caplog, write, status
+    ):
+        outbox_repo.add(_row("b", 0))
+        processor = await _engine_processor(test_domain, fail_ids=set())
+        [message] = await processor.get_next_batch_of_messages()
+
+        with caplog.at_level(logging.INFO, logger="protean.server.outbox_processor"):
+            await write(processor, message)
+
+        row = _stored(outbox_repo, "b")
+        assert row.status == status.value
+        assert row.locked_by is None
+        assert _taken_over_records(caplog) == []
+
+    @pytest.mark.asyncio
+    async def test_a_row_this_worker_still_holds_is_released(
+        self, test_domain, outbox_repo, clock, caplog
+    ):
+        outbox_repo.add(_row("a", 0))
+        outbox_repo.add(_row("b", 1))
+        processor = await _engine_processor(test_domain, fail_ids={"a"})
+        batch = await processor.get_next_batch_of_messages()
+
+        with caplog.at_level(logging.INFO, logger="protean.server.outbox_processor"):
+            await processor.process_batch(batch)
+
+        assert _stored(outbox_repo, "b").status == OutboxStatus.PENDING.value
+        assert _taken_over_records(caplog) == []
+
+    @pytest.mark.asyncio
+    async def test_a_row_a_stale_worker_published_stays_published(
+        self, test_domain, outbox_repo, clock, caplog
+    ):
+        outbox_repo.add(_row("b", 0))
+        stale = await _engine_processor(test_domain, fail_ids=set())
+        current = await _engine_processor(test_domain, fail_ids={"b"})
+        stale_batch = await stale.get_next_batch_of_messages()
+        clock.advance(LOCK_EXPIRED)
+        current_batch = await current.get_next_batch_of_messages()
+        assert len(current_batch) == 1
+
+        assert await stale.process_batch(stale_batch) == 1
+        assert _stored(outbox_repo, "b").status == OutboxStatus.PUBLISHED.value
+
+        with caplog.at_level(logging.INFO, logger="protean.server.outbox_processor"):
+            assert await current.process_batch(current_batch) == 0
+
+        assert _stored(outbox_repo, "b").status == OutboxStatus.PUBLISHED.value
+        _assert_refused_once_per_row(caplog, ["b"])
+
+
+def _claim_while_reading(
+    test_domain, processor: OutboxProcessor, label: str, claim: Callable[[], int]
+) -> list[int]:
+    """Make ``processor``'s next read of row ``label`` run ``claim`` on another
+    thread after the read and before the row is returned.
+
+    Returns the list each run of ``claim`` appends its claimed count to, for
+    the test to check on its own thread."""
+    repo = processor.outbox_repo
+    get = repo.get
+    row_id = _stored(repo, label).id
+    claimed_counts: list[int] = []
+
+    def get_then_claim(identifier):
+        row = get(identifier)
+        if identifier == row_id:
+
+            def in_context() -> None:
+                with test_domain.domain_context():
+                    claimed_counts.append(claim())
+
+            thread = threading.Thread(target=in_context)
+            thread.start()
+            thread.join(timeout=10)
+            assert not thread.is_alive()
+        return row
+
+    repo.get = get_then_claim
+    return claimed_counts
+
+
+def _claim_by(test_domain, label: str, worker_id: str) -> Callable[[], int]:
+    """A claim of row ``label`` by ``worker_id`` that ignores hold-back, and
+    returns how many rows it claimed."""
+
+    def claim() -> int:
+        repo = test_domain._get_outbox_repo("default")
+        now = test_domain.clock.now()
+        claimed = repo._dao.claim(
+            repo._eligibility_criteria(now, None) & Q(message_id=label),
+            {
+                "status": OutboxStatus.PROCESSING.value,
+                "locked_by": worker_id,
+                "locked_until": now + timedelta(minutes=5),
+            },
+            limit=1,
+            hold_back=None,
+        )
+        return len(claimed)
+
+    return claim
+
+
+def _assert_held_by_worker_b(row: Outbox, claimed_at: datetime) -> None:
+    assert (row.status, row.locked_by, row.locked_until) == (
+        OutboxStatus.PROCESSING.value,
+        "worker-b",
+        claimed_at + timedelta(minutes=5),
+    )
+
+
+class TestAClaimBetweenTheReadAndTheSave:
+    """The memory provider runs the other worker's claim between the stale
+    worker's read of the row and its save."""
+
+    @pytest.mark.asyncio
+    async def test_the_release_is_refused(
+        self, test_domain, outbox_repo, clock, caplog
+    ):
+        outbox_repo.add(_row("a", 0))
+        outbox_repo.add(_row("b", 1))
+        stale = await _engine_processor(test_domain, {"a"}, worker_id="worker-a")
+        batch = await stale.get_next_batch_of_messages()
+        assert [row.message_id for row in batch] == ["a", "b"]
+        clock.advance(LOCK_EXPIRED)
+        claims = _claim_while_reading(
+            test_domain, stale, "b", _claim_by(test_domain, "b", "worker-b")
+        )
+
+        with (
+            outbox_trace.capture() as events,
+            caplog.at_level(logging.INFO, logger="protean.server.outbox_processor"),
+        ):
+            assert await stale.process_batch(batch) == 0
+
+        assert _stored(outbox_repo, "a").status == OutboxStatus.FAILED.value
+        [record] = [
+            r for r in caplog.records if r.getMessage() == "outbox.batch_completed"
+        ]
+        assert (record.successful, record.released, record.failed) == (0, 0, 2)
+        assert claims == [1]
+        row = _stored(outbox_repo, "b")
+        _assert_held_by_worker_b(row, clock.now())
+        assert row._version == batch[1]._version + 1
+        _assert_refused_once_per_row(caplog, ["b"])
+        assert [e["message"] for e in _marks(events)] == [str(batch[0].id)]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("publishes", [False, True], ids=["failed", "published"])
+    async def test_the_outcome_is_refused(
+        self, test_domain, outbox_repo, clock, caplog, publishes
+    ):
+        outbox_repo.add(_row("b", 0))
+        fail_ids = set() if publishes else {"b"}
+        stale = await _engine_processor(test_domain, fail_ids, worker_id="worker-a")
+        [message] = await stale.get_next_batch_of_messages()
+        clock.advance(LOCK_EXPIRED)
+        claims = _claim_while_reading(
+            test_domain, stale, "b", _claim_by(test_domain, "b", "worker-b")
+        )
+
+        with (
+            outbox_trace.capture() as events,
+            caplog.at_level(logging.INFO, logger="protean.server.outbox_processor"),
+        ):
+            assert await stale.process_batch([message]) == 0
+
+        assert claims == [1]
+        row = _stored(outbox_repo, "b")
+        _assert_held_by_worker_b(row, clock.now())
+        assert row._version == message._version + 1
+        _assert_refused_once_per_row(caplog, ["b"])
+        assert not any(
+            r.getMessage() == "outbox.processing_error" for r in caplog.records
+        )
+        assert _marks(events) == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "write",
+        [
+            pytest.param(_fail_unexpectedly, id="processing-error"),
+            pytest.param(_abandon_for_its_key, id="abandon"),
+        ],
+    )
+    async def test_the_failure_or_the_abandon_is_refused(
+        self, test_domain, outbox_repo, clock, caplog, write
+    ):
+        outbox_repo.add(_row("b", 0))
+        stale = await _engine_processor(test_domain, set(), worker_id="worker-a")
+        [message] = await stale.get_next_batch_of_messages()
+        clock.advance(LOCK_EXPIRED)
+        claims = _claim_while_reading(
+            test_domain, stale, "b", _claim_by(test_domain, "b", "worker-b")
+        )
+
+        with caplog.at_level(logging.INFO, logger="protean.server.outbox_processor"):
+            await write(stale, message)
+
+        assert claims == [1]
+        row = _stored(outbox_repo, "b")
+        _assert_held_by_worker_b(row, clock.now())
+        assert row._version == message._version + 1
+        _assert_refused_once_per_row(caplog, ["b"])

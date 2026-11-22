@@ -19,7 +19,9 @@ from dataclasses import dataclass, field
 import pytest
 
 from protean.core.aggregate import BaseAggregate
-from protean.fields import Integer, String
+from protean.core.projection import BaseProjection
+from protean.core.unit_of_work import UnitOfWork
+from protean.fields import Identifier, Integer, String
 from protean.infra import dao as dao_module
 from protean.port.dao import HoldBack
 from protean.port.database import DatabaseCapabilities
@@ -40,6 +42,11 @@ class KeyedJob(BaseAggregate):
     seq: Integer(required=True)
 
 
+class ClaimJobView(BaseProjection):
+    job_id: Identifier(identifier=True)
+    status: String(max_length=20, default="ready")
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     # Its own table name: a local database can still hold a uuid-keyed
@@ -47,6 +54,7 @@ def register_elements(test_domain):
     # created and never dropped. Reusing it fails on psycopg 3.
     test_domain.register(ClaimJob, schema_name="generic_claim_job")
     test_domain.register(KeyedJob, schema_name="generic_keyed_job")
+    test_domain.register(ClaimJobView, schema_name="generic_claim_job_view")
     test_domain.init(traverse=False)
 
 
@@ -734,6 +742,107 @@ class TestClaimDispatch:
 
         assert [job.priority for job in claimed] == [3, 2]
         assert calls == [(2, ("-priority",), None)]
+
+
+def _saved_twice(test_domain) -> ClaimJob:
+    """A stored ``ClaimJob`` whose version is past the first write."""
+    repo = test_domain.repository_for(ClaimJob)
+    job = ClaimJob(status="ready")
+    repo.add(job)
+    job.priority = 1
+    repo.add(job)
+    return job
+
+
+@pytest.mark.transactional
+class TestClaimAdvancesVersion:
+    """A claim advances each claimed row's ``_version`` by one, and the
+    returned entity can be saved at that version."""
+
+    def test_the_stored_row_and_the_returned_entity_carry_the_next_version(
+        self, test_domain
+    ):
+        repo = test_domain.repository_for(ClaimJob)
+        job = _saved_twice(test_domain)
+        version = repo.get(job.id)._version
+
+        claimed = repo._dao.claim(Q(status="ready"), {"status": "claimed"}, limit=10)
+
+        assert [c.id for c in claimed] == [job.id]
+        assert claimed[0]._version == version + 1
+        assert repo.get(job.id)._version == version + 1
+
+        claimed[0].locked_by = "w1"
+        with UnitOfWork():
+            repo.add(claimed[0])
+
+        stored = repo.get(job.id)
+        assert stored._version == version + 2
+        assert stored.locked_by == "w1"
+
+    def test_a_held_back_claim_advances_the_version(self, test_domain):
+        _keyed(test_domain, _row("a", 0, "k1"), _row("b", 1, "k1"))
+        repo = test_domain.repository_for(KeyedJob)
+        versions = {label: repo.get(label)._version for label in ("a", "b")}
+
+        claimed = repo._dao.claim(
+            Q(status="ready"),
+            {"status": "claimed"},
+            limit=10,
+            order_by=["seq"],
+            hold_back=HOLD_BY_KEY,
+        )
+
+        assert [job.id for job in claimed] == ["a", "b"]
+        for job in claimed:
+            assert job._version == versions[job.id] + 1
+            assert repo.get(job.id)._version == versions[job.id] + 1
+
+        claimed[1].priority = 7
+        with UnitOfWork():
+            repo.add(claimed[1])
+
+        assert repo.get("b")._version == versions["b"] + 2
+
+    def test_a_candidate_written_since_it_was_read_is_not_claimed(
+        self, test_domain, monkeypatch
+    ):
+        """The portable claim's guarded update checks the version it read, so
+        a row written between the read and the update, and still matching
+        the criteria, is left to the writer."""
+        _skip_if_postgresql(test_domain)
+        repo = test_domain.repository_for(ClaimJob)
+        job = _saved_twice(test_domain)
+        dao = repo._dao
+        update_all = dao.update_all
+
+        def another_writer_saves_the_row_first(criteria, values):
+            stored = repo.get(job.id)
+            stored.priority += 1
+            repo.add(stored)
+            return update_all(criteria, values)
+
+        monkeypatch.setattr(dao, "update_all", another_writer_saves_the_row_first)
+
+        claimed = dao.claim(Q(status="ready"), {"status": "claimed"}, limit=10)
+
+        assert claimed == []
+        assert repo.get(job.id).status == "ready"
+
+
+@pytest.mark.transactional
+def test_a_class_with_no_version_is_claimed_as_before(test_domain):
+    """A projection has no ``_version``, so the claim writes only
+    ``claim_fields``, on the portable and the native claim alike."""
+    repo = test_domain.repository_for(ClaimJobView)
+    repo.add(ClaimJobView(job_id="j1"))
+
+    claimed = repo._dao.claim(Q(status="ready"), {"status": "claimed"}, limit=10)
+
+    assert [view.job_id for view in claimed] == ["j1"]
+    assert claimed[0].status == "claimed"
+    assert not hasattr(claimed[0], "_version")
+    assert repo.get("j1").status == "claimed"
 
 
 @dataclass

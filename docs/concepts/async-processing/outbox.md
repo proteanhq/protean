@@ -285,6 +285,16 @@ duration (default 5 minutes). The message remains in `PROCESSING` status with
 an expired `locked_until` timestamp. Another worker detects the expired lock
 and the message becomes eligible for reprocessing.
 
+Each claim adds one to the message's version, and the worker keeps the
+version its claim returned. A worker that is still running when its lock
+expires can lose the message to another worker's claim. Before it releases
+the message, marks it failed or abandons it, the worker checks the stored
+version against its own. When they differ, the worker writes nothing, logs
+`outbox.message_already_claimed` and leaves the message to the worker that
+claimed it last. A stale worker that already published the message marks it
+published, because the broker has the message, unless another worker claims
+it between the stale worker's read and its save. That save is refused too.
+
 ## Operational Signals
 
 Four signals characterize outbox health. Any of them drifting
