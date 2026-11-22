@@ -268,7 +268,7 @@ class Reloader:
         signal.signal(signal.SIGINT, self._handle_signal)
         signal.signal(signal.SIGTERM, self._handle_signal)
         # SIGHUP is unavailable on non-POSIX platforms.
-        with contextlib.suppress(OSError, AttributeError):  # pragma: no cover
+        with contextlib.suppress(OSError, AttributeError):
             signal.signal(signal.SIGHUP, self._handle_signal)
 
     def _handle_signal(self, signum: int, frame: object) -> None:

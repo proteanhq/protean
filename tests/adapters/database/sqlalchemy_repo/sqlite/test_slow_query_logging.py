@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import event, text
 
 from protean.adapters.database import sqlalchemy as sqlalchemy_adapter
 from protean.integrations.logging import ProteanCorrelationFilter
@@ -31,6 +31,7 @@ from tests.shared import provider_adapter
 
 SLOW_QUERY_LOGGER = "protean.adapters.database.sqlalchemy.slow_query"
 QUERY_LOGGER = "protean.adapters.database.sqlalchemy.query"
+ADAPTER_LOGGER = "protean.adapters.database.sqlalchemy"
 
 
 def _slow_query_records(caplog) -> list[logging.LogRecord]:
@@ -194,3 +195,51 @@ class TestHelperFunctions:
     def test_truncate_statement_appends_ellipsis(self):
         truncated = sqlalchemy_adapter._truncate_statement("x" * 200, 10)
         assert truncated == "xxxxxxxxxx..."
+
+
+@pytest.mark.sqlite
+class TestQueryTimingGuards:
+    """Query timing never breaks or mislabels the query it measures."""
+
+    @pytest.fixture(autouse=True)
+    def lower_threshold(self, test_domain):
+        test_domain.config["logging"]["slow_query_threshold_ms"] = 0
+
+    def test_a_query_with_no_recorded_start_is_not_logged(self, test_domain, caplog):
+        """When the start time is missing, the query runs and no latency is logged."""
+        engine = provider_adapter(test_domain, "default")._engine
+
+        def drop_start_time(conn, cursor, statement, parameters, context, many):
+            conn.info.pop(sqlalchemy_adapter._QUERY_START_KEY, None)
+
+        event.listen(engine, "before_cursor_execute", drop_start_time)
+        try:
+            with caplog.at_level(logging.DEBUG, logger=SLOW_QUERY_LOGGER):
+                with engine.connect() as conn:
+                    assert conn.execute(text("SELECT 1")).scalar() == 1
+        finally:
+            event.remove(engine, "before_cursor_execute", drop_start_time)
+
+        assert _slow_query_records(caplog) == []
+
+    def test_a_logging_failure_does_not_fail_the_query(
+        self, test_domain, caplog, monkeypatch
+    ):
+        def failing_log(statement, parameters, duration_ms):
+            raise RuntimeError("log handler failed")
+
+        monkeypatch.setattr(sqlalchemy_adapter, "_maybe_log_query", failing_log)
+        engine = provider_adapter(test_domain, "default")._engine
+
+        with caplog.at_level(logging.DEBUG, logger=ADAPTER_LOGGER):
+            with engine.connect() as conn:
+                assert conn.execute(text("SELECT 1")).scalar() == 1
+
+        failures = [
+            r
+            for r in caplog.records
+            if r.name == ADAPTER_LOGGER
+            and r.getMessage() == "slow_query_log_emission_failed"
+        ]
+        assert failures
+        assert failures[0].exc_info is not None

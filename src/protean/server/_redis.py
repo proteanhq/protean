@@ -20,7 +20,7 @@ def redis_client(broker: "Broker | None") -> "redis.Redis[Any] | None":
     try:
         # redis is an optional extra, so it is imported only when a view asks.
         import redis  # noqa: PLC0415
-    except ImportError:  # pragma: no cover  # the test environment installs redis
+    except ImportError:
         return None
     connection = broker.get_connection()
     if isinstance(connection, redis.Redis):

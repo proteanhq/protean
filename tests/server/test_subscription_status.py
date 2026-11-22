@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 from uuid import uuid4
 
 import pytest
@@ -31,6 +31,7 @@ from protean.core.projector import BaseProjector
 from protean.core.subscriber import BaseSubscriber
 from protean.domain import Domain
 from protean.fields import Identifier, String
+from protean.port.broker import BrokerCapabilities
 from protean.server.engine import Engine
 from protean.server.subscription.event_store_subscription import (
     EventStoreSubscription,
@@ -299,6 +300,34 @@ class TestDiscovery:
 
         assert status.stream_category == category
         assert status.current_position is None
+        assert status.status == "unknown"
+
+    def test_a_partitioning_broker_without_a_redis_client_is_unknown(self, test_domain):
+        """The partitions are read through Redis, so a broker that advertises
+        ``STREAM_PARTITIONING`` with no Redis client reads as unknown."""
+        category = _register_order(test_domain)
+        test_domain.register(
+            OrderSequencer,
+            part_of=Order,
+            sequential_by="client_id",
+            subscription_type="stream",
+        )
+        test_domain.init(traverse=False)
+        broker = test_domain.brokers["default"]
+        partitioning = broker.capabilities | BrokerCapabilities.STREAM_PARTITIONING
+
+        with patch.object(
+            type(broker._adapter),
+            "capabilities",
+            new_callable=PropertyMock,
+            return_value=partitioning,
+        ):
+            status = _statuses(test_domain)[fqn(OrderSequencer)]
+
+        assert status.stream_category == category
+        assert status.subscription_type == "stream"
+        assert status.lag is None
+        assert status.head_position is None
         assert status.status == "unknown"
 
     def test_command_handlers_on_one_stream_share_one_dispatcher(self, test_domain):

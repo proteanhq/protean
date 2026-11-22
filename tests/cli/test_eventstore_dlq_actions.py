@@ -10,7 +10,9 @@ the one the commands act on.
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -951,6 +953,28 @@ class TestReplay:
         )
         assert str(gone) in listing.output
 
+    def test_replay_with_no_live_owner_subscription_is_usage_error(self, test_domain):
+        _drive_to_exhaustion(test_domain, ToggleEventHandler)
+        ToggleEventHandler.should_fail = False  # a dispatch would resolve it
+
+        with patch.object(eventstore_cli, "_owner_subscription", return_value=None):
+            result = _invoke(
+                ["eventstore", "dlq", "replay", "1", "--domain", "x.py", "--yes"],
+                domain=test_domain,
+            )
+
+        assert result.exit_code == EXIT_USAGE
+        assert "No live subscription owns the failed stream" in " ".join(
+            result.output.split()
+        )
+        # The position is untouched, so it is still listed as exhausted.
+        listing = _invoke(
+            ["eventstore", "dlq", "list", "--domain", "x.py", "--json"],
+            domain=test_domain,
+        )
+        (owner,) = json.loads(listing.output)["data"]["subscriptions"]
+        assert owner["exhausted"] == [1]
+
     def test_replay_unreadable_event_is_usage_error(self, test_domain):
         # An Exhausted record with no stream location and no origin stream.
         store = test_domain.event_store._adapter
@@ -1081,6 +1105,27 @@ class TestPurge:
 
         assert result.exit_code == EXIT_USAGE
         assert "No exhausted position 999 found" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Re-reading the failing event
+# ---------------------------------------------------------------------------
+
+
+class TestReadFailingEvent:
+    def test_a_read_with_no_store_positions_is_unreadable(self, test_domain):
+        """A message read back without store positions cannot be matched to the
+        exhausted position, so it counts as unreadable."""
+        stored = _write_event_to_store(test_domain, _create_message())
+        metadata = stored.metadata.to_dict()
+        metadata["event_store"] = None
+        unpositioned = Message(data=stored.data, metadata=Metadata(**metadata))
+        record = SimpleNamespace(
+            data={"stream_name": stored.metadata.headers.stream, "stream_position": 0}
+        )
+        store = SimpleNamespace(read=lambda *args, **kwargs: [unpositioned])
+
+        assert eventstore_cli._read_failing_event(store, record, 1) is None
 
 
 # ---------------------------------------------------------------------------

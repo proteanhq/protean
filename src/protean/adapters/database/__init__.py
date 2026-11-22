@@ -212,7 +212,7 @@ class Databases(collections.abc.MutableMapping[str, BaseDatabase]):
                 SADatabase,
                 _refuse_unstorable_identity,
             )
-        except ImportError:  # pragma: no cover - sqlalchemy backs every SADatabase
+        except ImportError:
             return
 
         providers = self._databases or {}

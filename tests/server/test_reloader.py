@@ -365,6 +365,16 @@ class TestReloaderSignalHandling:
         for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
             assert signal.getsignal(sig) == reloader._handle_signal
 
+    def test_install_signal_handlers_without_sighup(self, monkeypatch):
+        """A platform with no SIGHUP still gets its SIGINT and SIGTERM handlers."""
+        reloader = Reloader(domain_path="my.domain")
+        monkeypatch.delattr(signal, "SIGHUP")
+
+        reloader._install_signal_handlers()
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            assert signal.getsignal(sig) == reloader._handle_signal
+
     def test_handle_signal_is_idempotent(self, caplog):
         """The first signal requests the exit; a second one is ignored."""
         reloader = Reloader(domain_path="my.domain")
