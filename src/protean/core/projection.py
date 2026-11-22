@@ -279,8 +279,8 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         )
         _projection_init_context.stack = stack
 
-        # Collect all validation errors (Pydantic + required value objects)
-        # before raising, so the caller sees every problem at once.
+        # Collect validation errors (Pydantic + required value objects)
+        # before raising.
         collected_errors: dict[str, list[str]] = {}
 
         try:

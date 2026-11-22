@@ -6,10 +6,16 @@ from protean.core.projection import BaseProjection, _projection_init_context
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
 from protean.fields import Float, Identifier, String, ValueObject
+from tests.shared import provider_adapter
 
 
 class Money(BaseValueObject):
     amount = Float()
+
+
+class Cost(BaseValueObject):
+    amount = Float()
+    currency = String(max_length=3)
 
 
 class Price(BaseProjection):
@@ -33,12 +39,19 @@ class NamedPrice(BaseProjection):
     price = ValueObject(Money, required=True)
 
 
+class CostedItem(BaseProjection):
+    pid = Identifier(identifier=True)
+    cost = ValueObject(Cost, required=True)
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Money)
     test_domain.register(Price)
     test_domain.register(OptionalPrice)
     test_domain.register(NamedPrice)
+    test_domain.register(Cost)
+    test_domain.register(CostedItem)
     test_domain.register(CachedPrice, cache="default")
     test_domain.init(traverse=False)
 
@@ -80,6 +93,21 @@ class TestRequiredValueObject:
 
         assert price.price.amount == 1.0
 
+    def test_one_of_two_shadow_fields_counts_as_given(self):
+        shadow_names = _shadow_names(CostedItem, "cost")
+        assert sorted(shadow_names) == ["cost_amount", "cost_currency"]
+
+        item = CostedItem(pid="p", cost_amount=1.0)
+
+        assert item.cost.amount == 1.0
+        assert item.cost.currency is None
+
+    def test_one_of_two_shadow_keys_present_with_none_counts_as_given(self):
+        item = CostedItem(pid="p", cost_amount=None)
+
+        assert item.pid == "p"
+        assert item.cost is None
+
     def test_shadow_keys_present_with_none_count_as_given(self):
         # A field counts as given by key presence, which is how a stored
         # record with empty shadow columns loads back.
@@ -111,6 +139,21 @@ class TestPersistenceRoundTrip:
         loaded = repo.get("p1")
 
         assert loaded.price == Money(amount=2.5)
+
+    def test_required_value_object_stored_with_none_shadow_keys_loads(
+        self, test_domain
+    ):
+        # A record whose shadow columns are all empty loads back, because the
+        # loader passes every shadow key, ``None`` included.
+        repo = test_domain.repository_for(Price)
+        repo.add(Price(pid="r1", price=Money(amount=1.0)))
+        record = provider_adapter(test_domain)._databases[Price.meta_.schema_name]["r1"]
+        record["price_amount"] = None
+
+        loaded = repo.get("r1")
+
+        assert loaded.pid == "r1"
+        assert loaded.price is None
 
     def test_optional_value_object_stored_as_none_round_trip(self, test_domain):
         repo = test_domain.repository_for(OptionalPrice)
@@ -167,12 +210,28 @@ class TestInitContextStack:
     def test_failure_keeps_an_outer_entry_on_the_stack(self):
         stack = getattr(_projection_init_context, "stack", [])
         _projection_init_context.stack = stack
+        before = len(stack)
         outer = {"descriptor_kwargs": {}, "shadow_kwargs": {}}
         stack.append(outer)
         try:
             with pytest.raises(ValidationError):
                 NamedPrice(pid="p")
 
+            assert len(_projection_init_context.stack) == before + 1
             assert _projection_init_context.stack[-1] is outer
         finally:
-            stack.remove(outer)
+            del stack[before:]
+
+    def test_success_keeps_an_outer_entry_on_the_stack(self):
+        stack = getattr(_projection_init_context, "stack", [])
+        _projection_init_context.stack = stack
+        before = len(stack)
+        outer = {"descriptor_kwargs": {}, "shadow_kwargs": {}}
+        stack.append(outer)
+        try:
+            Price(pid="p", price=Money(amount=1.0))
+
+            assert len(_projection_init_context.stack) == before + 1
+            assert _projection_init_context.stack[-1] is outer
+        finally:
+            del stack[before:]
