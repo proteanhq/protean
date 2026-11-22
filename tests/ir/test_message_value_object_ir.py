@@ -15,6 +15,7 @@ import jsonschema
 import pytest
 from pydantic import Field
 
+from protean._deprecation import RemovedInProtean020Warning
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
@@ -353,7 +354,8 @@ class TestAvro:
 class TestProtobuf:
     def test_value_object_field_is_the_value_object_message(self, flat):
         _, index = flat
-        text = generate_proto_schema(index[fqn(Moved)], all_elements=index)
+        with pytest.warns(RemovedInProtean020Warning):
+            text = generate_proto_schema(index[fqn(Moved)], all_elements=index)
         assert re.search(r"^  optional Addr addr = \d+;$", text, re.MULTILINE)
         assert re.search(r"^  Addr home = \d+;$", text, re.MULTILINE)
         assert text.count("message Addr {") == 1

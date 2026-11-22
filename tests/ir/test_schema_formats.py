@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
+from protean._deprecation import RemovedInProtean020Warning
 from protean.cli import app
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
@@ -120,16 +121,17 @@ class TestAvroRoundTrip:
 
 class TestProtobufMapping:
     def test_types_labels_and_field_numbers(self):
-        proto = generate_proto_schema(
-            _elem(
-                "E",
-                {
-                    "aaa": _f("String", required=True),
-                    "bbb": _f("Integer"),
-                    "ccc": _f("DateTime"),
-                },
+        with pytest.warns(RemovedInProtean020Warning):
+            proto = generate_proto_schema(
+                _elem(
+                    "E",
+                    {
+                        "aaa": _f("String", required=True),
+                        "bbb": _f("Integer"),
+                        "ccc": _f("DateTime"),
+                    },
+                )
             )
-        )
         assert 'syntax = "proto3";' in proto
         assert 'import "google/protobuf/timestamp.proto";' in proto
         # Numbers assigned 1..N in sorted field-name order.
@@ -138,31 +140,36 @@ class TestProtobufMapping:
         assert "  optional .google.protobuf.Timestamp ccc = 3;" in proto
 
     def test_repeated_for_list(self):
-        proto = generate_proto_schema(
-            _elem("E", {"tags": {"kind": "list", "type": "List"}})
-        )
+        with pytest.warns(RemovedInProtean020Warning):
+            proto = generate_proto_schema(
+                _elem("E", {"tags": {"kind": "list", "type": "List"}})
+            )
         assert "  repeated string tags = 1;" in proto
 
     def test_field_numbers_follow_sorted_name_order(self):
         element = _elem("E", {"z": _f("String"), "a": _f("Integer", required=True)})
-        proto = generate_proto_schema(element)
+        with pytest.warns(RemovedInProtean020Warning):
+            proto = generate_proto_schema(element)
         assert "  int64 a = 1;" in proto
         assert "  optional string z = 2;" in proto
 
     def test_regenerating_an_unchanged_schema_is_byte_identical(self):
         element = _elem("E", {"z": _f("String"), "a": _f("Integer", required=True)})
-        assert generate_proto_schema(element) == generate_proto_schema(element)
+        with pytest.warns(RemovedInProtean020Warning):
+            assert generate_proto_schema(element) == generate_proto_schema(element)
 
     def test_adding_a_field_renumbers_alphabetically_later_fields(self):
         # Documents the emission-only numbering: field numbers are NOT stable
         # across schema evolution (see the changelog / docs caveat). Inserting
         # 'a' shifts every alphabetically-later field's number.
-        before = generate_proto_schema(
-            _elem("E", {"b": _f("String"), "c": _f("String")})
-        )
-        after = generate_proto_schema(
-            _elem("E", {"a": _f("String"), "b": _f("String"), "c": _f("String")})
-        )
+        with pytest.warns(RemovedInProtean020Warning):
+            before = generate_proto_schema(
+                _elem("E", {"b": _f("String"), "c": _f("String")})
+            )
+        with pytest.warns(RemovedInProtean020Warning):
+            after = generate_proto_schema(
+                _elem("E", {"a": _f("String"), "b": _f("String"), "c": _f("String")})
+            )
         assert "  optional string b = 1;" in before
         assert "  optional string a = 1;" in after  # 'a' claims number 1
         assert "  optional string b = 2;" in after  # 'b' shifted 1 -> 2
@@ -353,7 +360,8 @@ class TestGenerateAllSchemas:
         ir = test_domain.to_ir()
 
         avro = generate_avro_schemas(ir)
-        proto = generate_proto_schemas(ir)
+        with pytest.warns(RemovedInProtean020Warning):
+            proto = generate_proto_schemas(ir)
         assert any("OrderPlaced" in k for k in avro)
         assert any("OrderPlaced" in k for k in proto)
 
@@ -536,13 +544,16 @@ class TestFlatElementSkips:
             "projections": {},
         }
 
-    @pytest.mark.parametrize(
-        "generate",
-        [generate_avro_schemas, generate_proto_schemas],
-        ids=["avro", "protobuf"],
-    )
-    def test_generator_skips_fieldless_and_non_data_elements(self, generate):
-        schemas = generate(self._ir())
+    def test_avro_generator_skips_fieldless_and_non_data_elements(self):
+        self._assert_skips(generate_avro_schemas(self._ir()))
+
+    def test_protobuf_generator_skips_fieldless_and_non_data_elements(self):
+        with pytest.warns(RemovedInProtean020Warning):
+            schemas = generate_proto_schemas(self._ir())
+        self._assert_skips(schemas)
+
+    @staticmethod
+    def _assert_skips(schemas: dict[str, Any]) -> None:
         assert "app.C" in schemas
         assert "app.NoFields" not in schemas
         assert "app.NotData" not in schemas
@@ -556,29 +567,31 @@ class TestFlatElementSkips:
 class TestProtobufComplexFields:
     def test_scalar_increment_reference_and_dict(self):
         # Sorted field order is meta, ref, seq -> numbers 1, 2, 3.
-        proto = generate_proto_schema(
-            _elem(
-                "E",
-                {
-                    "seq": {
-                        "kind": "auto",
-                        "type": "Auto",
-                        "increment": True,
-                        "required": True,
+        with pytest.warns(RemovedInProtean020Warning):
+            proto = generate_proto_schema(
+                _elem(
+                    "E",
+                    {
+                        "seq": {
+                            "kind": "auto",
+                            "type": "Auto",
+                            "increment": True,
+                            "required": True,
+                        },
+                        "ref": {"kind": "reference", "type": "Ref"},
+                        "meta": {"kind": "dict", "type": "Dict"},
                     },
-                    "ref": {"kind": "reference", "type": "Ref"},
-                    "meta": {"kind": "dict", "type": "Dict"},
-                },
+                )
             )
-        )
         assert "  map<string, string> meta = 1;" in proto  # map carries no label
         assert "  optional string ref = 2;" in proto  # reference -> string
         assert "  int64 seq = 3;" in proto  # increment auto -> int64
 
     def test_unresolvable_value_object_target_becomes_map(self):
-        proto = generate_proto_schema(
-            _elem("E", {"x": {"kind": "value_object", "type": "VO", "target": ""}})
-        )
+        with pytest.warns(RemovedInProtean020Warning):
+            proto = generate_proto_schema(
+                _elem("E", {"x": {"kind": "value_object", "type": "VO", "target": ""}})
+            )
         assert "  map<string, string> x = 1;" in proto
 
     def test_without_import_path_referenced_messages_are_inlined(self):
@@ -613,14 +626,15 @@ class TestProtobufComplexFields:
                 "cur": {"kind": "value_object", "type": "VO", "target": "app.Currency"},
             },
         )
-        proto = generate_proto_schema(
-            order,
-            all_elements={
-                "app.Money": money,
-                "app.Currency": currency,
-                "app.Order": order,
-            },
-        )
+        with pytest.warns(RemovedInProtean020Warning):
+            proto = generate_proto_schema(
+                order,
+                all_elements={
+                    "app.Money": money,
+                    "app.Currency": currency,
+                    "app.Order": order,
+                },
+            )
         assert proto == (
             'syntax = "proto3";\n'
             "package app;\n"

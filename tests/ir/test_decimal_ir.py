@@ -12,6 +12,7 @@ import jsonschema
 import pytest
 
 from protean import Domain
+from protean._deprecation import RemovedInProtean020Warning
 from protean.fields import Custom, Decimal, Float, Integer, List, String
 from protean.ir import SCHEMA_PATH
 from protean.ir.builder import IRBuilder
@@ -514,7 +515,8 @@ class TestProtobufGenerator:
     def test_decimal_is_a_string(self):
         ir = _build(x=Decimal(precision=19, scale=4, required=True))
 
-        proto = generate_proto_schema(_aggregate(ir))
+        with pytest.warns(RemovedInProtean020Warning):
+            proto = generate_proto_schema(_aggregate(ir))
 
         assert re.search(r"^\s*string x = \d+;$", proto, re.MULTILINE), proto
 

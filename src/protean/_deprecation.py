@@ -502,6 +502,35 @@ DEPRECATIONS: dict[str, Deprecation] = {
                 "RemovedInProtean020Warning is the only detector."
             ),
         ),
+        Deprecation(
+            slug="generate_proto_schemas",
+            name="`protean.ir.generators.protobuf.generate_proto_schemas()`",
+            since="0.19.0",
+            removal="0.20.0",
+            detection="runtime",
+            alternative='Call `write_schemas(..., fmt="protobuf")` instead.',
+            reason=(
+                "An imperative function call has no static declaration site for "
+                "a rule to read off a built domain; the per-call "
+                "RemovedInProtean020Warning is the only detector."
+            ),
+        ),
+        Deprecation(
+            slug="generate_proto_schema_standalone",
+            name=(
+                "`protean.ir.generators.protobuf.generate_proto_schema()` "
+                "called without `import_path`"
+            ),
+            since="0.19.0",
+            removal="0.20.0",
+            detection="runtime",
+            alternative='Call `write_schemas(..., fmt="protobuf")` instead.',
+            reason=(
+                "An imperative function call has no static declaration site for "
+                "a rule to read off a built domain; the per-call "
+                "RemovedInProtean020Warning is the only detector."
+            ),
+        ),
     )
 }
 
