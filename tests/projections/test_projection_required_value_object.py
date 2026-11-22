@@ -22,6 +22,11 @@ class OptionalPrice(BaseProjection):
     price = ValueObject(Money)
 
 
+class CachedPrice(BaseProjection):
+    pid = Identifier(identifier=True)
+    price = ValueObject(Money, required=True)
+
+
 class NamedPrice(BaseProjection):
     pid = Identifier(identifier=True)
     name = String(required=True)
@@ -34,6 +39,7 @@ def register_elements(test_domain):
     test_domain.register(Price)
     test_domain.register(OptionalPrice)
     test_domain.register(NamedPrice)
+    test_domain.register(CachedPrice, cache="default")
     test_domain.init(traverse=False)
 
 
@@ -114,6 +120,15 @@ class TestPersistenceRoundTrip:
 
         assert loaded.pid == "p2"
         assert loaded.price is None
+
+    def test_required_value_object_cache_round_trip(self, test_domain):
+        test_domain.cache_for(CachedPrice).add(
+            CachedPrice(pid="p3", price=Money(amount=4.0))
+        )
+
+        loaded = test_domain.view_for(CachedPrice).get("p3")
+
+        assert loaded.price == Money(amount=4.0)
 
 
 class TestInitContextStack:
