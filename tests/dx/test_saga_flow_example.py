@@ -386,21 +386,31 @@ def _events_on(domain: Domain, aggregate_cls: type, order_id: str) -> list[Any]:
 def test_each_create_command_twice_keeps_one_record_and_reports_again(
     amount: float, payment_event: str, payment_status: str
 ):
-    """A repeated create command leaves the stored record as it is and raises
-    the step's event again, so a saga that lost its own transition still gets
-    its reply. No PlaceOrder runs, so no saga instance reacts to the events."""
+    """A repeated create command keeps the stored fields and raises the step's
+    event again, so a saga that lost its own transition still gets its reply.
+    The repeated RequestPayment carries a different amount and charges nothing.
+    No PlaceOrder runs, so no saga instance reacts to the events."""
     namespace, domain = _load("saga_after_closed.py", f"_saga_repeat_{int(amount)}_")
     order_id = "ORD-TWICE"
     commands = [
-        namespace["CreateReservation"](order_id=order_id),
-        namespace["RequestPayment"](order_id=order_id, amount=amount),
-        namespace["CreateShipment"](order_id=order_id),
+        (
+            namespace["CreateReservation"](order_id=order_id),
+            namespace["CreateReservation"](order_id=order_id),
+        ),
+        (
+            namespace["RequestPayment"](order_id=order_id, amount=amount),
+            namespace["RequestPayment"](order_id=order_id, amount=amount + 1000),
+        ),
+        (
+            namespace["CreateShipment"](order_id=order_id),
+            namespace["CreateShipment"](order_id=order_id),
+        ),
     ]
 
     with domain.domain_context():
-        for command in commands:
-            domain.process(command)
-            domain.process(command)
+        for first, repeat in commands:
+            domain.process(first)
+            domain.process(repeat)
 
         for name in ("Inventory", "Payment", "Shipping"):
             records = domain.repository_for(namespace[name])._dao.query.all().items
@@ -408,19 +418,115 @@ def test_each_create_command_twice_keeps_one_record_and_reports_again(
 
         payment = domain.repository_for(namespace["Payment"]).get(order_id)
         assert payment.status == payment_status
+        assert float(payment.amount) == amount
 
         expected = {
-            "Inventory": ("StockReserved", "reservation_id"),
-            "Payment": (payment_event, None),
-            "Shipping": ("ShipmentDispatched", "tracking_id"),
+            "Inventory": ("StockReserved", {"reservation_id": order_id}),
+            "Payment": (
+                payment_event,
+                {"payment_id": order_id}
+                if payment_event == "PaymentConfirmed"
+                else {"reason": "amount over the limit"},
+            ),
+            "Shipping": ("ShipmentDispatched", {"tracking_id": order_id}),
         }
-        for name, (event_name, id_field) in expected.items():
+        for name, (event_name, fields) in expected.items():
             events = _events_on(domain, namespace[name], order_id)
             assert [type(event).__name__ for event in events] == [event_name] * 2
             for event in events:
                 assert event.order_id == order_id
-                if id_field:
-                    assert getattr(event, id_field) == order_id
+                for field, value in fields.items():
+                    assert getattr(event, field) == value, (name, field)
+
+
+@pytest.mark.parametrize(
+    "asset_name", ["saga_before_unclosed.py", "saga_after_closed.py"]
+)
+def test_a_repeated_place_order_changes_nothing(asset_name: str):
+    """The caller can send PlaceOrder twice. The second one finds the order and
+    returns, so it neither raises nor stores a second order or saga step."""
+    namespace, domain = _load(asset_name, f"_saga_place_twice_{Path(asset_name).stem}_")
+    pm_cls = namespace["OrderFulfillmentPM"]
+
+    with domain.domain_context():
+        _run_saga(namespace, domain, order_id="ORD-PLACE", total=100.0)
+        before = _snapshot(domain)
+        statuses = _saga_statuses(domain, pm_cls, "ORD-PLACE")
+
+        domain.process(
+            namespace["PlaceOrder"](
+                order_id="ORD-PLACE", customer_id="CUST-2", total=5.0
+            )
+        )
+
+        assert _snapshot(domain) == before
+        assert _saga_statuses(domain, pm_cls, "ORD-PLACE") == statuses
+
+
+@pytest.mark.parametrize(
+    "asset_name", ["saga_before_unclosed.py", "saga_after_closed.py"]
+)
+def test_two_orders_keep_one_record_each(asset_name: str):
+    """Each create handler looks its record up by the order id, so a second
+    order gets records of its own."""
+    namespace, domain = _load(asset_name, f"_saga_two_orders_{Path(asset_name).stem}_")
+
+    with domain.domain_context():
+        _run_saga(namespace, domain, order_id="ORD-A", total=100.0)
+        _run_saga(namespace, domain, order_id="ORD-B", total=100.0)
+
+        snapshot = _snapshot(domain)
+        for name in ("Order", "Inventory", "Payment", "Shipping"):
+            ids = sorted(
+                record.get("order_id", record.get("id")) for record in snapshot[name]
+            )
+            assert ids == ["ORD-A", "ORD-B"], name
+
+
+# The steps whose command can already have run when the saga issues it, and
+# the commands that ran before. A saga handler that fails after it issues its
+# command loses its own transition, and the command's reply finds no saga.
+# Processing the commands before PlaceOrder stands in for that first attempt.
+LOST_TRANSITION_STEPS = {
+    "on_order_placed": ["CreateReservation"],
+    "on_stock_reserved": ["CreateReservation", "RequestPayment"],
+    "on_payment_confirmed": ["CreateReservation", "RequestPayment", "CreateShipment"],
+}
+
+
+# The compensating path stops at payment, so it never reaches the shipment step.
+LOST_TRANSITION_CASES = [
+    (asset_name, step, total, last_status)
+    for asset_name in ("saga_before_unclosed.py", "saga_after_closed.py")
+    for step in sorted(LOST_TRANSITION_STEPS)
+    for total, last_status in ((100.0, "fulfilled"), (900.0, "cancelled"))
+    if not (total > 500.0 and step == "on_payment_confirmed")
+]
+
+
+@pytest.mark.parametrize(
+    ("asset_name", "step", "total", "last_status"), LOST_TRANSITION_CASES
+)
+def test_a_saga_whose_command_already_ran_still_completes(
+    asset_name: str, step: str, total: float, last_status: str
+):
+    """When a step's command has already run, the repeat the saga issues raises
+    the step's event again, so the saga still gets its reply and ends."""
+    commands = LOST_TRANSITION_STEPS[step]
+    run_name = f"_saga_lost_{Path(asset_name).stem}_{step}_{int(total)}_"
+    namespace, domain = _load(asset_name, run_name)
+    order_id = "ORD-LOST"
+    arguments = {"RequestPayment": {"amount": total}}
+
+    with domain.domain_context():
+        for name in commands:
+            domain.process(
+                namespace[name](order_id=order_id, **arguments.get(name, {}))
+            )
+
+        statuses = _run_saga(namespace, domain, order_id=order_id, total=total)
+
+    assert statuses[-1] == last_status
 
 
 def _strip_docstrings(function: ast.FunctionDef) -> ast.FunctionDef:

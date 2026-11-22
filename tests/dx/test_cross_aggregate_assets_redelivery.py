@@ -15,7 +15,9 @@ The two checks:
 
 The module also delivers a message twice to the assets that create an
 aggregate without handing off: the ``$any`` audit asset and the two subscriber
-assets. Each must keep one record.
+assets. Each must keep one record. It also checks that the ``$any`` audit on
+the event-handler pages keys its entry on the event's id, the way the asset
+does.
 
 Each asset runs under its own ``run_name`` so registrations cannot collide.
 """
@@ -24,6 +26,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import runpy
 import subprocess
 import sys
@@ -481,10 +484,64 @@ def test_a_repeated_external_message_keeps_one_record(
 
     with domain.domain_context():
         ns[subscriber]()(payload)
+        first = [record.to_dict() for record in _all(ns, domain, aggregate)]
+        assert [record[id_field] for record in first] == [record_id]
+
         ns[subscriber]()(payload)
 
-        records = _all(ns, domain, aggregate)
-        assert [record.to_dict()[id_field] for record in records] == [record_id]
+        assert [record.to_dict() for record in _all(ns, domain, aggregate)] == first
+
+
+def _is_any_handler(node: ast.AST) -> bool:
+    return isinstance(node, ast.FunctionDef) and any(
+        isinstance(decorator, ast.Call)
+        and [ast.unparse(arg) for arg in decorator.args] == ["'$any'"]
+        for decorator in node.decorator_list
+    )
+
+
+def _any_handlers(text: str) -> list[ast.FunctionDef]:
+    """Every ``@handle("$any")`` method a ``python`` block of a page defines."""
+    blocks = re.findall(r"```python\n(.*?)```", text, flags=re.DOTALL)
+    return [
+        node
+        for block in blocks
+        for node in ast.walk(ast.parse(block))
+        if isinstance(node, ast.FunctionDef) and _is_any_handler(node)
+    ]
+
+
+def _assert_keys_on_the_event_id(handler: ast.FunctionDef) -> None:
+    statements = [ast.unparse(node) for node in handler.body]
+    assert "entry_id = event._metadata.headers.id" in statements
+    [guard] = [node for node in handler.body if isinstance(node, ast.Try)]
+    assert [ast.unparse(node) for node in guard.body] == ["repository.get(entry_id)"]
+    [missing] = guard.handlers
+    assert ast.unparse(missing.type) == "ObjectNotFoundError"
+    [create] = [
+        node
+        for node in ast.walk(ast.Module(body=missing.body, type_ignores=[]))
+        if isinstance(node, ast.Call) and ast.unparse(node.func) == "AuditLog"
+    ]
+    assert "entry_id=entry_id" in [ast.unparse(k) for k in create.keywords]
+
+
+@pytest.mark.parametrize(
+    "page", ["event-handler/SKILL.md", "event-handler/references/any-handler.md"]
+)
+def test_the_any_audit_on_the_page_keys_on_the_event_id(page: str) -> None:
+    """The pages show the ``$any`` audit the asset runs. Each block that writes
+    an ``AuditLog`` keys the entry on the event's id and creates it only when
+    the lookup by that id finds nothing."""
+    auditors = [
+        handler
+        for handler in _any_handlers((SKILLS / page).read_text())
+        if "AuditLog(" in ast.unparse(handler)
+    ]
+    assert auditors, f"{page} must show the $any audit"
+
+    for handler in auditors:
+        _assert_keys_on_the_event_id(handler)
 
 
 # Runs in a child interpreter so the assets' registrations stay out of this

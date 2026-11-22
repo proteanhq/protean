@@ -20,11 +20,13 @@ PlaceOrder command runs the whole saga in-process, with no broker and no server.
 Payment is the branch point. It confirms an amount up to PAYMENT_LIMIT and fails
 anything above it, so the same flow reaches either terminal path.
 
-A message can arrive more than once, because delivery is at least once. The
-create handlers the saga calls (create_reservation, request_payment and
-create_shipment) keep one record per order: a repeated command leaves the
-record as it is and raises the step's event again. Each saga handler returns when the
-saga has already passed its step, so a repeated event changes nothing.
+A message can arrive more than once, because delivery is at least once. Every
+create handler keeps one record per order. A repeated PlaceOrder changes
+nothing. The handlers the saga calls (create_reservation, request_payment and
+create_shipment) keep the stored fields on a repeat and raise the step's event
+again. Each saga handler returns, recording no new state, when the saga's status
+is not the one its step expects: the step has already run, or its event arrived
+early.
 
 Usage:
     from saga_after_closed import PlaceOrder, domain
@@ -275,12 +277,19 @@ class Shipping:
 @domain.command_handler(part_of=Order)
 class OrderCommandHandler:
     """Handle the commands that drive Order: the one that starts the flow, and
-    the one the saga issues to compensate."""
+    the one the saga issues to compensate.
+
+    A repeated PlaceOrder for a stored order changes nothing.
+    """
 
     @handle(PlaceOrder)
     def place_order(self, command: PlaceOrder) -> None:
-        order = Order.place(command.order_id, command.customer_id, command.total)
-        current_domain.repository_for(Order).add(order)
+        repository = current_domain.repository_for(Order)
+        try:
+            repository.get(command.order_id)
+        except ObjectNotFoundError:
+            order = Order.place(command.order_id, command.customer_id, command.total)
+            repository.add(order)
 
     @handle(CancelOrder)
     def cancel_order(self, command: CancelOrder) -> None:
@@ -295,8 +304,8 @@ class InventoryCommandHandler:
     """Handle the commands the saga issues to Inventory.
 
     A command can arrive more than once, so create_reservation keeps one
-    reservation per order. A repeat leaves the reservation as it is and reports
-    it again, so a saga still waiting for StockReserved moves on.
+    reservation per order. A repeat keeps the stored fields and reports the
+    reservation again, so a saga still waiting for StockReserved moves on.
     """
 
     @handle(CreateReservation)
@@ -382,7 +391,7 @@ class OrderFulfillmentPM:
       order.
 
     A message can arrive more than once. Each handler first checks the saga's
-    status and returns when the saga has already passed that step.
+    status and returns when it is not the one the step expects.
     """
 
     order_id: Identifier()

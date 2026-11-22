@@ -73,7 +73,9 @@ later steps need and issues the first command. A saga needs at least one; give i
 one per event that can begin the flow.
 
 A message can arrive more than once, so each handler first checks the saga's
-`status` and returns when the saga has already passed its step. A repeated
+`status` and returns when it is not the one the step expects: the step has
+already run, or its event arrived early. The saga declares
+`status: String(default="new")`, so a new instance starts at `"new"`. A repeated
 `OrderPlaced` then leaves a running saga where it is.
 
 ```python
@@ -95,7 +97,7 @@ It carries only `correlate`. The command it issues is processed by that
 aggregate's [command-handler](../command-handler/SKILL.md), which does the actual
 work. In the worked example, each create handler the saga calls
 (`create_reservation`, `request_payment` and `create_shipment`) looks the record
-up by the order id first. When the record exists, it leaves the record as it is and raises the
+up by the order id first. When the record exists, it keeps the stored fields and raises the
 step's event again, so the saga still gets its reply.
 
 ```python
