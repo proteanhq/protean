@@ -22,6 +22,7 @@ from protean.core.upcaster import BaseUpcaster
 from protean.domain import Domain
 from protean.fields import Identifier, Integer, String
 from protean.infra.dao import DAO
+from protean.port.event_store import SNAPSHOT_TYPE
 from protean.server.engine import Engine
 from protean.utils import outbox as outbox_module
 from protean.utils.eventing import Message, MessageHeaders, Metadata
@@ -208,13 +209,16 @@ class TestOutboxReconciliation:
         outbox_repo._dao.delete_all()  # crash window: newest row missing → scan
 
         positions = []
-        real_read = store.read
+        real_read = store._read_with_snapshot_positions
 
+        # ``read`` goes through this method too, so the spy also sees any walk
+        # read that follows the first read of ``$all``.
         def spy(stream, position=0, limit=1000):
-            positions.append(position)
+            if stream == "$all":
+                positions.append(position)
             return real_read(stream, position, limit)
 
-        monkeypatch.setattr(store, "read", spy)
+        monkeypatch.setattr(store, "_read_with_snapshot_positions", spy)
 
         limit = 2
         reconcile_outbox(domain, limit=limit)
@@ -236,13 +240,14 @@ class TestOutboxReconciliation:
         outbox_repo._dao.delete_all()
 
         positions = []
-        real_read = store.read
+        real_read = store._read_with_snapshot_positions
 
         def spy(stream, position=0, limit=1000):
-            positions.append(position)
+            if stream == "$all":
+                positions.append(position)
             return real_read(stream, position, limit)
 
-        monkeypatch.setattr(store, "read", spy)
+        monkeypatch.setattr(store, "_read_with_snapshot_positions", spy)
 
         reconcile_outbox(domain, limit=1000)  # limit >> number of events
 
@@ -2019,3 +2024,163 @@ class TestOverlappingSweepsInMemory:
             assert dropped_id != sweep_rows[0].id
             rows = outbox_repo.find_all_by_message_id(_newest_message_id(domain))
             assert [row.id for row in rows] == [sweep_rows[0].id]
+
+
+def _seed_at_positions(domain, event_positions, snapshot_positions=()):
+    """Raise one ``Funded`` event per entry of *event_positions* and move the
+    ``$all`` rows to those global positions, as a store with gaps leaves them.
+    Add a snapshot row at each of *snapshot_positions*. Return the message id
+    at each event position.
+
+    The helper reorders the stored rows without rebuilding the per-stream
+    index, so a test that seeds with it reads ``$all`` only."""
+    for _ in event_positions:
+        _fund(domain)
+    rows = domain.event_store.get_connection()
+    ids = {}
+    for row, position in zip(rows, event_positions, strict=True):
+        row["global_position"] = position
+        ids[position] = row["metadata"]["headers"]["id"]
+    template = rows[0]
+    for position in snapshot_positions:
+        rows.append(
+            {
+                **template,
+                "id": f"snapshot-{position}",
+                "stream_name": f"reconcile::wallet:snapshot-{position}",
+                "type": SNAPSHOT_TYPE,
+                "global_position": position,
+                "data": {},
+                "metadata": {},
+            }
+        )
+    rows.sort(key=lambda row: row["global_position"])
+    return ids
+
+
+def _has_internal_row(outbox_repo, message_id):
+    rows = outbox_repo.find_all_by_message_id(message_id)
+    return [row.target_broker for row in rows] == ["default"]
+
+
+@pytest.mark.no_test_domain
+class TestReconcileCountsRowsAcrossPositionGaps:
+    """``limit`` counts rows of ``$all``, so a gap in ``global_position`` does
+    not shrink the window reconcile checks."""
+
+    def test_lost_row_inside_the_newest_limit_rows_is_repaired(self, domain_and_repo):
+        domain, outbox_repo = domain_and_repo
+        ids = _seed_at_positions(domain, [1, 10, 20, 30, 40])
+        _lose_rows(outbox_repo, ids[10])
+
+        assert reconcile_outbox(domain, limit=4) == 1
+        assert _has_internal_row(outbox_repo, ids[10])
+
+    def test_lost_row_older_than_the_newest_limit_rows_is_left(self, domain_and_repo):
+        domain, outbox_repo = domain_and_repo
+        ids = _seed_at_positions(domain, [1, 10, 20, 30, 40])
+        _lose_rows(outbox_repo, ids[1])
+
+        assert reconcile_outbox(domain, limit=4) == 0
+        assert outbox_repo.find_all_by_message_id(ids[1]) == []
+
+    def test_a_window_with_more_rows_than_needed_keeps_only_the_newest(
+        self, domain_and_repo
+    ):
+        domain, outbox_repo = domain_and_repo
+        ids = _seed_at_positions(domain, [1, 2, 10])
+        _lose_rows(outbox_repo, ids[1])
+
+        # The window at positions 1 and 2 holds two rows and the walk needs one.
+        assert reconcile_outbox(domain, limit=2) == 0
+        assert outbox_repo.find_all_by_message_id(ids[1]) == []
+
+    def test_a_snapshot_row_counts_toward_limit(self, domain_and_repo):
+        domain, outbox_repo = domain_and_repo
+        ids = _seed_at_positions(domain, [1, 10, 30], snapshot_positions=[20])
+        _lose_rows(outbox_repo, ids[1])
+
+        assert reconcile_outbox(domain, limit=3) == 0
+        assert outbox_repo.find_all_by_message_id(ids[1]) == []
+
+        assert reconcile_outbox(domain, limit=4) == 1
+        assert _has_internal_row(outbox_repo, ids[1])
+
+    def test_rebuilt_rows_are_numbered_in_global_position_order(self, domain_and_repo):
+        domain, outbox_repo = domain_and_repo
+        ids = _seed_at_positions(domain, [1, 10, 20])
+        outbox_repo._dao.delete_all()
+
+        assert reconcile_outbox(domain, limit=3) == 3
+        numbers = [
+            outbox_repo.find_all_by_message_id(ids[position])[0].sequence_number
+            for position in (1, 10, 20)
+        ]
+        assert numbers == [0, 1, 2]
+
+    def test_rows_above_the_tail_read_first_are_not_counted(
+        self, domain_and_repo, monkeypatch
+    ):
+        domain, outbox_repo = domain_and_repo
+        ids = _seed_at_positions(domain, [1, 10, 20])
+        _lose_rows(outbox_repo, ids[20])
+        store = domain.event_store
+        [at_10] = [
+            m
+            for m in store.read("$all")
+            if m.metadata.event_store.global_position == 10
+        ]
+        real_read_last = store.read_last_message
+        monkeypatch.setattr(
+            store,
+            "read_last_message",
+            lambda stream: at_10 if stream == "$all" else real_read_last(stream),
+        )
+
+        assert reconcile_outbox(domain, limit=2) == 0
+        assert outbox_repo.find_all_by_message_id(ids[20]) == []
+
+    def test_walk_stops_at_position_zero_when_the_store_has_fewer_rows(
+        self, domain_and_repo, monkeypatch
+    ):
+        domain, outbox_repo = domain_and_repo
+        ids = _seed_at_positions(domain, [5, 50])
+        outbox_repo._dao.delete_all()
+        store = domain.event_store
+        window_starts = []
+        real_read = store._read_with_snapshot_positions
+
+        def spy(stream, position=0, limit=1000):
+            window_starts.append(position)
+            return real_read(stream, position, limit)
+
+        monkeypatch.setattr(store, "_read_with_snapshot_positions", spy)
+
+        assert reconcile_outbox(domain, limit=10) == 2
+        # ``read`` goes through the spied method too, so the first 41 is the
+        # single read of the window ending at the tail; the walk follows it.
+        assert window_starts == [41, 41, 31, 21, 11, 1, 0]
+        assert _has_internal_row(outbox_repo, ids[5])
+        assert _has_internal_row(outbox_repo, ids[50])
+
+    def test_walk_stops_when_it_has_limit_rows(self, domain_and_repo, monkeypatch):
+        domain, outbox_repo = domain_and_repo
+        ids = _seed_at_positions(domain, [1, 10, 20, 30, 40])
+        outbox_repo._dao.delete_all()
+        store = domain.event_store
+        window_starts = []
+        real_read = store._read_with_snapshot_positions
+
+        def spy(stream, position=0, limit=1000):
+            window_starts.append(position)
+            return real_read(stream, position, limit)
+
+        monkeypatch.setattr(store, "_read_with_snapshot_positions", spy)
+
+        assert reconcile_outbox(domain, limit=2) == 2
+        # The window starting at 29 holds the row at 30, the second row the
+        # walk needs, so no window below it is read.
+        assert window_starts == [39, 39, 37, 35, 33, 31, 29]
+        assert _has_internal_row(outbox_repo, ids[30])
+        assert _has_internal_row(outbox_repo, ids[40])
+        assert outbox_repo.find_all_by_message_id(ids[20]) == []
