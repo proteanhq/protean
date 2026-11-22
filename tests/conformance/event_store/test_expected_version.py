@@ -108,9 +108,15 @@ class _Outcome:
         self.unexpected: list[BaseException] = []
 
 
-def _write_at_the_last_version(adapter, stream: str, outcome: _Outcome) -> None:
+def _write_at_the_last_version(
+    adapter, stream: str, outcome: _Outcome, barrier: threading.Barrier
+) -> None:
     last = adapter.get_last_stream_message(stream)
     version = last["position"] if last is not None else -1
+    # Every thread reads before any thread writes, so all fifty write with
+    # the same version. Without the barrier, a fast runner can finish each
+    # read and write before switching threads, and no write ever conflicts.
+    barrier.wait()
     try:
         _write(adapter, stream, version, expected_version=version)
     except ExpectedVersionError as exc:
@@ -124,8 +130,9 @@ def _write_at_the_last_version(adapter, stream: str, outcome: _Outcome) -> None:
 def test_fifty_writers_get_one_success_per_expected_version(adapter, test_domain):
     """Fifty threads each read the stream's version and write with it.
 
-    Exactly one write per expected version succeeds, and the stream's
-    positions run from 0 with no gaps.
+    In each round all fifty threads write with the same version. Exactly one
+    write per round succeeds, and the stream's positions run from 0 with no
+    gaps.
     """
     stream = "user-1"
     thread_count = 50
@@ -137,9 +144,8 @@ def test_fifty_writers_get_one_success_per_expected_version(adapter, test_domain
     def writer() -> None:
         with test_domain.domain_context():
             try:
-                barrier.wait()
                 for _ in range(attempts_per_thread):
-                    _write_at_the_last_version(adapter, stream, outcome)
+                    _write_at_the_last_version(adapter, stream, outcome, barrier)
             except BaseException as exc:  # checked below
                 with outcome.lock:
                     outcome.unexpected.append(exc)
@@ -163,10 +169,8 @@ def test_fifty_writers_get_one_success_per_expected_version(adapter, test_domain
 
     assert not any(thread.is_alive() for thread in threads)
     assert outcome.unexpected == []
-    assert outcome.conflicts, "the threads never wrote with the same version"
-
-    n = len(outcome.successes)
-    assert n > 0
+    n = attempts_per_thread
+    assert len(outcome.conflicts) == n * (thread_count - 1)
     assert sorted(outcome.successes) == list(range(-1, n - 1))
 
     rows = adapter.get_stream_messages(stream, limit=n + 1)
