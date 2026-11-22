@@ -93,8 +93,9 @@ def on_order_placed(self, event: OrderPlaced) -> None:
 Each intermediate handler advances the saga's state and issues the next command.
 It carries only `correlate`. The command it issues is processed by that
 aggregate's [command-handler](../command-handler/SKILL.md), which does the actual
-work. Each create handler in the worked example looks the record up by the order
-id first. When the record exists, it leaves the record as it is and raises the
+work. In the worked example, each create handler the saga calls
+(`create_reservation`, `request_payment` and `create_shipment`) looks the record
+up by the order id first. When the record exists, it leaves the record as it is and raises the
 step's event again, so the saga still gets its reply.
 
 ```python

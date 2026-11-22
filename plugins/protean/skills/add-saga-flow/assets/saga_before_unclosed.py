@@ -24,9 +24,10 @@ retire.
 Payment is the branch point. It confirms an amount up to PAYMENT_LIMIT and fails
 anything above it, so the same flow reaches either terminal path.
 
-A message can arrive more than once, because delivery is at least once. Each
-create handler keeps one record per order: a repeated command leaves the record
-as it is and raises the step's event again. Each saga handler returns when the
+A message can arrive more than once, because delivery is at least once. The
+create handlers the saga calls (create_reservation, request_payment and
+create_shipment) keep one record per order: a repeated command leaves the
+record as it is and raises the step's event again. Each saga handler returns when the
 saga has already passed its step, so a repeated event changes nothing.
 
 Usage:
