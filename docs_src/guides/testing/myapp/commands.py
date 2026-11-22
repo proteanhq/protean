@@ -45,7 +45,6 @@ class AddBook:
 class PlaceOrder:
     customer_id: Identifier(required=True)
     items = List(content_type=ValueObject(OrderItemVO))
-    total: Float()
 
 
 @domain.command_handler(part_of=Book)
@@ -71,7 +70,13 @@ class OrderCommandHandler:
             if inventory is None or inventory.quantity < item.quantity:
                 raise ValidationError({"items": ["Insufficient stock"]})
 
+        book_repo = current_domain.repository_for(Book)
+        total = sum(
+            book_repo.get(item.book_id).price.amount * item.quantity
+            for item in command.items
+        )
+
         order = Order.place(
-            customer_id=command.customer_id, items=command.items, total=command.total
+            customer_id=command.customer_id, items=command.items, total=total
         )
         current_domain.repository_for(Order).add(order)
