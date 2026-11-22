@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic import ValidationError as PydanticValidationError
 
 from protean.core.entity import (
+    _add_missing_required_errors,
     _EntityState,
     _init_value_object_shadows,
     _pop_init_context,
@@ -269,6 +270,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         # Pydantic clears __dict__ during super().__init__(), so we cannot
         # stash data on the instance.
         stack: list[dict[str, Any]] = getattr(_projection_init_context, "stack", [])
+        depth_before_init = len(stack)
         stack.append(
             {
                 "descriptor_kwargs": values.descriptor_kwargs,
@@ -277,10 +279,31 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         )
         _projection_init_context.stack = stack
 
+        # Collect all validation errors (Pydantic + required value objects)
+        # before raising, so the caller sees every problem at once.
+        collected_errors: dict[str, list[str]] = {}
+
         try:
             super().__init__(**values.kwargs)
         except PydanticValidationError as e:
-            raise ValidationError(convert_pydantic_errors(e)) from e
+            collected_errors.update(convert_pydantic_errors(e))
+        finally:
+            # ``model_post_init`` pops this call's entry on a successful init.
+            # When Pydantic validation raises before it runs, the entry is left
+            # behind. Truncate to the pre-push depth so this call's entry is
+            # balanced, without popping a parent's entry or double-popping one
+            # ``model_post_init`` already removed.
+            del stack[depth_before_init:]
+
+        _add_missing_required_errors(
+            projection_cls,
+            values.descriptor_kwargs,
+            values.shadow_kwargs,
+            collected_errors,
+        )
+
+        if collected_errors:
+            raise ValidationError(collected_errors)
 
     def model_post_init(self, context: Any, /) -> None:
         # Pop init context from the thread-local stack (pushed by __init__)

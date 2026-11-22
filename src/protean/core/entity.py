@@ -1326,17 +1326,18 @@ def _has_shadow_value(field_obj: Any, shadow_kwargs: dict[str, Any]) -> bool:
 
 
 def _add_missing_required_errors(
-    entity_cls: type[BaseEntity],
+    element_cls: type[Any],
     descriptor_kwargs: dict[str, Any],
     shadow_kwargs: dict[str, Any],
     collected_errors: dict[str, list[str]],
 ) -> None:
     """Add an ``is required`` error for each required descriptor field not given.
 
-    Covers ``ValueObject`` and ``Reference`` fields. A field counts as given
-    when its own name or one of its shadow fields was passed.
+    ``element_cls`` is an entity, aggregate or projection class. Covers
+    ``ValueObject`` and ``Reference`` fields. A field counts as given when its
+    own name or one of its shadow fields was passed.
     """
-    for field_name, field_obj in getattr(entity_cls, _FIELDS, {}).items():
+    for field_name, field_obj in getattr(element_cls, _FIELDS, {}).items():
         if (
             isinstance(field_obj, (ValueObject, Reference))
             and getattr(field_obj, "required", False)

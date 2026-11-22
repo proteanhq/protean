@@ -86,6 +86,11 @@ You can query on individual shadow fields:
 --8<-- "guides/consume-state/projections/001.py:shadow-field-query"
 ```
 
+A `ValueObject` field declared with `required=True` must be given when the
+projection is built, either as the value object or as one of its shadow
+fields. Leaving it out raises `ValidationError` with
+`{'<field>': ['is required']}`.
+
 ## Querying Projections
 
 Use `domain.view_for()` to get a read-only interface for any projection:
