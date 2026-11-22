@@ -721,9 +721,11 @@ class TestComprehensionScope:
             "{Closed for Closed in rows}",
             "list(Closed for Closed in rows)",
             "{k: Closed for k, Closed in pairs}",
+            "{Closed: v for Closed, v in pairs}",
             "[Closed for k, *Closed in pairs]",
+            "[Closed for r in rows for Closed in r]",
         ],
-        ids=["list", "set", "generator", "dict", "starred"],
+        ids=["list", "set", "generator", "dict", "dict-key", "starred", "later-for"],
     )
     def test_a_target_shadows_only_inside_its_comprehension(
         self, tmp_path, comprehension
@@ -765,6 +767,9 @@ class TestComprehensionScope:
             "[[Closed for x in r] for Closed in rows]",
             "[[x for x in Closed] for Closed in rows]",
             "[(lambda c=Closed: c) for Closed in rows]",
+            "[(lambda: Closed) for Closed in rows]",
+            "[(lambda: [Closed for x in r]) for Closed in rows]",
+            "[r for Closed, pairs[Closed] in rows]",
         ],
         ids=[
             "later-iterable",
@@ -772,6 +777,9 @@ class TestComprehensionScope:
             "nested-element",
             "nested-outermost-iterable",
             "lambda-default",
+            "lambda-body",
+            "comprehension-in-lambda-body",
+            "subscript-index",
         ],
     )
     def test_a_use_in_the_comprehension_scope_is_none(self, tmp_path, comprehension):
@@ -800,7 +808,7 @@ class TestComprehensionScope:
         self, tmp_path, comprehension
     ):
         """An attribute or subscript target binds no name, so it shadows
-        nothing. Its index is evaluated and still resolves."""
+        nothing. The subscript's index is evaluated and still resolves."""
         resolved = self._resolved_closed_uses(tmp_path, [f"names = {comprehension}"])
 
         assert resolved == ["acme.events.Closed"]
@@ -818,6 +826,39 @@ class TestComprehensionScope:
         )
 
         assert resolved == [None]
+
+    def test_a_lambda_outside_a_comprehension_keeps_the_import(self, tmp_path):
+        resolved = self._resolved_closed_uses(tmp_path, ["return lambda: Closed"])
+
+        assert resolved == ["acme.events.Closed"]
+
+    def test_a_target_shadows_a_module_level_import_too(self, tmp_path):
+        """Only the module imports ``Closed``. The element is the
+        comprehension's target, so it is ``None``; the use after it resolves
+        through the module table."""
+        source = (
+            "from acme.events import Closed\n"
+            "def run(rows):\n"
+            "    names = [Closed(r) for r in rows if [Closed for Closed in r]]\n"
+            "    return Closed\n"
+        )
+        _, scope, method = TestMethodScope._scope(tmp_path, source)
+        uses = sorted(
+            (
+                n
+                for n in ast.walk(method)
+                if isinstance(n, ast.Name)
+                and n.id == "Closed"
+                and isinstance(n.ctx, ast.Load)
+            ),
+            key=lambda n: (n.lineno, n.col_offset),
+        )
+
+        assert [scope.resolve(use) for use in uses] == [
+            "acme.events.Closed",
+            None,
+            "acme.events.Closed",
+        ]
 
     def test_another_rebinding_still_counts(self, tmp_path):
         """Leaving the comprehension target out of the rebindings keeps the

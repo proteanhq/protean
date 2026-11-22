@@ -92,7 +92,8 @@ statements written inside one method body, and the returned
   every later use.
 - A comprehension's own ``for`` targets bind only inside that comprehension,
   as Python scopes them, so they do not rebind the method's name. A use of a
-  target's name inside the comprehension's own scope resolves to ``None``: its
+  target's name inside the comprehension's own scope, a lambda body there
+  included, resolves to ``None`` whether or not an import binds the name: its
   value is an element of the iterable. The outermost iterable runs in the
   scope enclosing the comprehension, so a use there keeps the import. A later
   ``for`` iterable, an ``if`` condition and the element run in the
@@ -100,7 +101,8 @@ statements written inside one method body, and the returned
   itself. A walrus inside a comprehension still rebinds the method's name. List,
   set and dict comprehensions, generator expressions and ``async for``
   comprehensions all follow these rules.
-- A name no method-local import binds resolves through the module table.
+- Outside such a comprehension, a name no method-local import binds resolves
+  through the module table.
 
 Classification predicates
 -------------------------
@@ -185,7 +187,9 @@ class MethodScope:
     """Resolve use sites in one method body, method-local imports included.
 
     Built by :meth:`SymbolResolver.method_scope`. A name with no method-local
-    import resolves exactly as :meth:`SymbolResolver.resolve` resolves it.
+    import resolves exactly as :meth:`SymbolResolver.resolve` resolves it,
+    except inside a comprehension that binds it as a target, where it is
+    ``None``.
     """
 
     def __init__(
@@ -208,14 +212,12 @@ class MethodScope:
         Accepts the same shapes as :meth:`SymbolResolver.resolve`.
         """
         parts = _dotted_parts(node)
-        if parts is None:
+        if parts is None or _position_of(_root_name(node)) in self._shadowed:
             return None
         binding = self._bindings.get(parts[0])
         if binding is None:
             return self._resolver.resolve(self._module, node)
         if binding.fqn is None or _position_of(node) <= binding.position:
-            return None
-        if _position_of(_root_name(node)) in self._shadowed:
             return None
         return ".".join([binding.fqn, *parts[1:]])
 
@@ -312,8 +314,7 @@ class SymbolResolver:
             if isinstance(node, _COMPREHENSIONS):
                 stack.extend(_comprehension_parts(node, shadow))
                 continue
-            if _is_load_of_any(node, shadow):
-                walk.shadowed.add(_position_of(node))
+            walk.shadowed.update(_shadowed_loads(node, shadow))
             walk.rebound.update(_rebinding_names(node))
             stack.extend((part, shadow) for part in _parts_in_method_scope(node))
 
@@ -706,6 +707,20 @@ def _nonlocal_names(node: ast.AST) -> list[str]:
         if isinstance(inner, ast.Nonlocal):
             names.extend(inner.names)
     return names
+
+
+def _shadowed_loads(node: ast.AST, shadow: frozenset[str]) -> list[_Position]:
+    """Positions of the uses of ``shadow`` names that ``node`` itself holds.
+
+    ``node`` itself when it reads one of the names. For a nested scope, every
+    such read anywhere inside it: the method walk never enters a lambda body,
+    yet a lambda in a comprehension's element sees the comprehension's target.
+    """
+    if not shadow:
+        return []
+    if isinstance(node, NESTED_SCOPES):
+        return [_position_of(n) for n in ast.walk(node) if _is_load_of_any(n, shadow)]
+    return [_position_of(node)] if _is_load_of_any(node, shadow) else []
 
 
 def _is_load_of_any(node: ast.AST, names: frozenset[str]) -> bool:

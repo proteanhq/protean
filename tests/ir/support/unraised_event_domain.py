@@ -191,6 +191,6 @@ class Journal(BaseAggregate):
     def tally(self, rows):
         from tests.ir.support.journal_events import Tallied
 
-        names = [Tallied for Tallied in rows if Tallied]
+        names = [Tallied(journal_id=self.id) for Tallied in rows]
         self.raise_(Tallied(journal_id=self.id))
         return names
