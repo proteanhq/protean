@@ -27,10 +27,11 @@ Conventions:
 - A target defined in the same file, as a nested message or as a sibling
   message, is declared under its short name. A nested target named like the
   hidden entry message of one of the main message's map fields gets trailing
-  underscores instead. Two same-file targets with one short name, or a target
-  other than the element itself with the main message's name, raise
-  ``ValueError`` naming both FQNs. An imported target keeps its full name, so
-  it never collides.
+  underscores instead. Two same-file targets that would be declared under one
+  name, or a target other than the element itself with the main message's
+  name, raise ``ValueError`` naming both FQNs. A field that refers to the
+  element itself names the main message. An imported target keeps its full
+  name, so it never collides.
 - Without ``import_path``, the referenced value objects and entities become
   sibling messages in the same file, so a single file still compiles on its
   own. This standalone mode is deprecated and removed in 0.20.0:
@@ -228,32 +229,34 @@ def _referenced_blocks(
 
     Raises:
         ValueError: When two targets with different FQNs would be declared
-            under one short name, or a target other than the element itself
-            has the main message's name.
+            under one name, or a target other than the element itself has the
+            main message's name.
     """
     main_name, main_fqn = main
     ref_blocks: list[list[str]] = []
-    # Short name -> the FQN declared under it in this file.
+    # Declared name -> the FQN declared under it in this file. Keyed on the
+    # declared name, because a renamed map-entry clash can land on a name
+    # another target already has.
     declared = {main_name: main_fqn}
     queue = sorted(referenced)
     while queue:
         target_fqn = queue.pop(0)
-        ref_name = short_name(target_fqn)
-        if types._is_self(target_fqn) or declared.get(ref_name) == target_fqn:
+        local_name = types._local_name(short_name(target_fqn))
+        if types._is_self(target_fqn) or declared.get(local_name) == target_fqn:
             continue
-        if ref_name in declared:
-            first, second = sorted((declared[ref_name], target_fqn))
+        if local_name in declared:
+            first, second = sorted((declared[local_name], target_fqn))
             raise ValueError(
                 f"{first} and {second} would both be declared as message "
-                f"{ref_name!r} in the .proto file of {main_fqn}, so one would "
+                f"{local_name!r} in the .proto file of {main_fqn}, so one would "
                 f"replace the other. Give them distinct names."
             )
-        declared[ref_name] = target_fqn
+        declared[local_name] = target_fqn
         target = flat.get(target_fqn, {})
         nested_refs: set[str] = set()
         ref_blocks.append(
             _message_body(
-                types._local_name(ref_name),
+                local_name,
                 target.get("fields", {}),
                 types._resolve,
                 nested_refs,
@@ -300,9 +303,9 @@ def generate_proto_schema(
             lookup is given, every target is emitted as a sibling message.
 
     Raises:
-        ValueError: When two targets defined in this file have one short name,
-            or a target other than the element itself has the element's name.
-            The message names both FQNs.
+        ValueError: When two targets defined in this file would be declared
+            under one name, or a target other than the element itself has the
+            element's name. The message names both FQNs.
     """
     if import_path is None:
         warn_from_registry(
@@ -403,18 +406,21 @@ class _TypeNames:
         ref_name = short_name(target_fqn)
         if not ref_name:
             return "map<string, string>"
-        path = (
-            self._import_path(target_fqn)
-            if self._import_path and not self._is_self(target_fqn)
-            else None
-        )
+        nested = self._import_path is not None
+        if self._is_self(target_fqn):
+            # The main message is declared under the element's name, which
+            # can differ from the short name of its fqn.
+            return _local_type_name(
+                self._name, self._namespace, self._name, nested=nested
+            )
+        path = self._import_path(target_fqn) if self._import_path else None
         if not path:
             referenced.add(target_fqn)
             return _local_type_name(
                 self._local_name(ref_name),
                 self._namespace,
                 self._name,
-                nested=self._import_path is not None,
+                nested=nested,
             )
         self.imports.add(path)
         return f".{module_path(target_fqn) or 'protean'}.{ref_name}"
@@ -447,8 +453,9 @@ def generate_proto_schemas(ir: dict[str, Any]) -> dict[str, str]:
     path that writes importing files.
 
     Raises:
-        ValueError: When one element's file would declare two targets with
-            one short name, as :func:`generate_proto_schema` does.
+        ValueError: When one element's file would declare two targets under
+            one name, or a target other than the element itself has the
+            element's name, as :func:`generate_proto_schema` does.
     """
     warn_from_registry("generate_proto_schemas", "generate_proto_schemas()")
     flat = _build_flat_elements(ir)

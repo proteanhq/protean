@@ -302,3 +302,92 @@ class TestNoCollision:
 
         assert text.count("message Address {") == 1
         assert text.count("message Spot {") == 1
+
+    def test_self_reference_by_fqn_names_a_main_message_with_another_name(self):
+        # The main message is declared under the element's name, which here
+        # differs from the short name of its fqn.
+        order = {
+            "element_type": "AGGREGATE",
+            "name": "PurchaseOrder",
+            "fqn": "sales.Order",
+            "fields": {"parent": _ref("value_object", "sales.Order")},
+        }
+        with pytest.warns(RemovedInProtean020Warning):
+            standalone = generate_proto_schema(order, all_elements={})
+        nested = generate_proto_schema(
+            order, all_elements={}, import_path=lambda _: None
+        )
+
+        expected = (
+            'syntax = "proto3";\n'
+            "package sales;\n"
+            "\n"
+            "message PurchaseOrder {\n"
+            "  optional PurchaseOrder parent = 1;\n"
+            "}\n"
+        )
+        assert standalone == expected
+        assert nested == expected
+
+
+class TestDeclaredNameCollision:
+    def test_renamed_map_entry_target_clashes_with_another_target(self):
+        # x.LedgerEntry is nested under LedgerEntry_ to clear the hidden entry
+        # message of the ``ledger`` map, which is the name y.LedgerEntry_ has.
+        order = _order(
+            {
+                "ledger": _ref("dict", "x.LedgerEntry"),
+                "z": _ref("value_object", "y.LedgerEntry_"),
+            }
+        )
+        flat = {
+            "x.LedgerEntry": _vo("x.LedgerEntry", {"amount": _integer()}),
+            "sales.Order": order,
+        }
+        with pytest.raises(ValueError) as exc:
+            generate_proto_schema(order, all_elements=flat, import_path=lambda _: None)
+
+        message = str(exc.value)
+        assert "x.LedgerEntry and y.LedgerEntry_" in message
+        assert "'LedgerEntry_'" in message
+
+    def test_write_schemas_raises_for_nested_cycle_members_with_one_name(
+        self, tmp_path
+    ):
+        # Each Address refers to the other, so neither file may import the
+        # other and each nests the other's Address inside its own.
+        ir = {
+            "clusters": {
+                "billing.Invoice": {
+                    "aggregate": {
+                        "element_type": "AGGREGATE",
+                        "name": "Invoice",
+                        "fqn": "billing.Invoice",
+                        "fields": {"code": _string()},
+                    },
+                    "value_objects": {
+                        "billing.Address": _vo(
+                            "billing.Address",
+                            {"peer": _ref("value_object", "shipping.Address")},
+                        ),
+                    },
+                },
+                "shipping.Parcel": {
+                    "aggregate": {
+                        "element_type": "AGGREGATE",
+                        "name": "Parcel",
+                        "fqn": "shipping.Parcel",
+                        "fields": {"code": _string()},
+                    },
+                    "value_objects": {
+                        "shipping.Address": _vo(
+                            "shipping.Address",
+                            {"peer": _ref("value_object", "billing.Address")},
+                        ),
+                    },
+                },
+            },
+            "projections": {},
+        }
+        with pytest.raises(ValueError, match="billing.Address and shipping.Address"):
+            write_schemas(ir, tmp_path, fmt="protobuf")
