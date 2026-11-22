@@ -139,23 +139,34 @@ class AccountNotifier:
 
 ## Quick example: Catch-all ($any) handler
 
-`TaskAuditor` records every event on `Task`'s stream as an `AuditLog` entry:
+`TaskAuditor` records every event on `Task`'s stream as an `AuditLog` entry. The entry takes the event's id as its identity, so a redelivered event finds its entry and adds nothing:
 
 ```python
+from protean.exceptions import ObjectNotFoundError
+
 @domain.aggregate
 class Task:
     title: String(required=True)
 
 @domain.aggregate
 class AuditLog:
+    entry_id: Identifier(identifier=True)
     event_type: String(required=True)
 
 @domain.event_handler(part_of=AuditLog, stream_category=Task.meta_.stream_category)
 class TaskAuditor:
     @handle("$any")
     def on_any_event(self, event):
-        audit = AuditLog(event_type=event.__class__.__name__)
-        domain.repository_for(AuditLog).add(audit)
+        repository = domain.repository_for(AuditLog)
+        entry_id = event._metadata.headers.id
+        try:
+            repository.get(entry_id)
+        except ObjectNotFoundError:
+            repository.add(
+                AuditLog(entry_id=entry_id, event_type=event.__class__.__name__)
+            )
+        else:
+            return  # already recorded; a redelivered event must not log twice
 ```
 
 ## Error handling

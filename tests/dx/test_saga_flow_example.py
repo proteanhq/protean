@@ -20,6 +20,7 @@ same-named events and aggregates). The runner mirrors ``test_examples.py``.
 from __future__ import annotations
 
 import ast
+import re
 import runpy
 from pathlib import Path
 from typing import Any
@@ -27,8 +28,10 @@ from typing import Any
 import pytest
 
 from protean import dx
+from protean.core.event import BaseEvent
 from protean.domain import Domain
 from protean.ir.builder import IRBuilder
+from protean.utils.sync_dispatch import dispatch_events_sync
 
 # These build domains directly from package data; they never touch the autouse
 # ``test_domain`` fixture, so skip it and its initialization cost.
@@ -309,3 +312,161 @@ def test_before_asset_compensates_without_closing_either():
 
         order = domain.repository_for(namespace["Order"]).get("ORD-OPEN-FAIL")
         assert order.status == "cancelled"
+
+
+# --- Repeated messages ---
+
+
+def _snapshot(domain: Domain) -> dict[str, list[dict[str, Any]]]:
+    """Every record of every aggregate the asset defines, by class name."""
+    snapshot = {}
+    for record in domain.registry.aggregates.values():
+        items = domain.repository_for(record.cls)._dao.query.all().items
+        snapshot[record.cls.__name__] = sorted(
+            (item.to_dict() for item in items), key=lambda d: repr(sorted(d.items()))
+        )
+    return snapshot
+
+
+def _stored_events(domain: Domain) -> list[BaseEvent]:
+    messages = domain.event_store.read("$all")
+    objects = [message.to_domain_object() for message in messages]
+    return [obj for obj in objects if isinstance(obj, BaseEvent)]
+
+
+@pytest.mark.parametrize(
+    ("asset_name", "total", "last_status"),
+    [
+        ("saga_before_unclosed.py", 100.0, "fulfilled"),
+        ("saga_before_unclosed.py", 900.0, "cancelled"),
+        ("saga_after_closed.py", 100.0, "fulfilled"),
+        ("saga_after_closed.py", 900.0, "cancelled"),
+    ],
+)
+def test_redelivering_every_event_changes_nothing(
+    asset_name: str, total: float, last_status: str
+):
+    """Events are delivered at least once. After the flow has run, delivering
+    every stored event again, newest first, adds no record and leaves the saga
+    where it ended. The before asset matters most: its saga stays open, so every
+    repeated event reaches a live instance."""
+    run_name = f"_saga_redelivery_{Path(asset_name).stem}_{int(total)}_"
+    namespace, domain = _load(asset_name, run_name)
+    pm_cls = namespace["OrderFulfillmentPM"]
+
+    with domain.domain_context():
+        _run_saga(namespace, domain, order_id="ORD-REPEAT", total=total)
+        before = _snapshot(domain)
+        # Read the events once, before redelivery: each delivery writes a new
+        # saga transition, and those must stay out of the loop.
+        events = _stored_events(domain)
+        assert events, "the flow must have stored events"
+        # One record per aggregate the flow reached. Shipping is reached only on
+        # the success path.
+        reached = {name for name, records in before.items() if records}
+        assert {"Order", "Inventory", "Payment"} <= reached
+        assert all(len(records) <= 1 for records in before.values())
+
+        for event in reversed(events):
+            dispatch_events_sync([event], domain.handlers_for)
+
+        assert _snapshot(domain) == before
+        assert _saga_statuses(domain, pm_cls, "ORD-REPEAT")[-1] == last_status
+
+
+def _events_on(domain: Domain, aggregate_cls: type, order_id: str) -> list[Any]:
+    stream = f"{aggregate_cls.meta_.stream_category}-{order_id}"
+    return [message.to_domain_object() for message in domain.event_store.read(stream)]
+
+
+@pytest.mark.parametrize(
+    ("amount", "payment_event", "payment_status"),
+    [(100.0, "PaymentConfirmed", "confirmed"), (900.0, "PaymentFailed", "failed")],
+)
+def test_each_create_command_twice_keeps_one_record_and_reports_again(
+    amount: float, payment_event: str, payment_status: str
+):
+    """A repeated create command leaves the stored record as it is and raises
+    the step's event again, so a saga that lost its own transition still gets
+    its reply. No PlaceOrder runs, so no saga instance reacts to the events."""
+    namespace, domain = _load("saga_after_closed.py", f"_saga_repeat_{int(amount)}_")
+    order_id = "ORD-TWICE"
+    commands = [
+        namespace["CreateReservation"](order_id=order_id),
+        namespace["RequestPayment"](order_id=order_id, amount=amount),
+        namespace["CreateShipment"](order_id=order_id),
+    ]
+
+    with domain.domain_context():
+        for command in commands:
+            domain.process(command)
+            domain.process(command)
+
+        for name in ("Inventory", "Payment", "Shipping"):
+            records = domain.repository_for(namespace[name])._dao.query.all().items
+            assert [record.order_id for record in records] == [order_id], name
+
+        payment = domain.repository_for(namespace["Payment"]).get(order_id)
+        assert payment.status == payment_status
+
+        expected = {
+            "Inventory": ("StockReserved", "reservation_id"),
+            "Payment": (payment_event, None),
+            "Shipping": ("ShipmentDispatched", "tracking_id"),
+        }
+        for name, (event_name, id_field) in expected.items():
+            events = _events_on(domain, namespace[name], order_id)
+            assert [type(event).__name__ for event in events] == [event_name] * 2
+            for event in events:
+                assert event.order_id == order_id
+                if id_field:
+                    assert getattr(event, id_field) == order_id
+
+
+def _strip_docstrings(function: ast.FunctionDef) -> ast.FunctionDef:
+    body = function.body
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
+        function.body = body[1:] or [ast.Pass()]
+    return function
+
+
+def _skill_fragment_handlers() -> dict[str, ast.FunctionDef]:
+    """Every function a ``# fragment`` block in add-saga-flow/SKILL.md defines."""
+    text = (PACK_ROOT / dx.SKILLS_DIR / "add-saga-flow" / "SKILL.md").read_text()
+    blocks = re.findall(r"```python\n# fragment\n(.*?)```", text, flags=re.DOTALL)
+    found = {}
+    for block in blocks:
+        for node in ast.parse(block).body:
+            if isinstance(node, ast.FunctionDef):
+                found[node.name] = node
+    return found
+
+
+def test_skill_fragments_match_the_after_asset():
+    """SKILL.md shows the saga's handlers one step at a time. Each fragment must
+    be the asset's method, so a guard added to the asset reaches the page."""
+    fragments = _skill_fragment_handlers()
+    assert sorted(fragments) == [
+        "on_order_placed",
+        "on_payment_failed",
+        "on_shipment_dispatched",
+        "on_stock_reserved",
+    ]
+
+    tree = ast.parse((ASSETS_DIR / "saga_after_closed.py").read_bytes())
+    [pm] = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "OrderFulfillmentPM"
+    ]
+    methods = {node.name: node for node in pm.body if isinstance(node, ast.FunctionDef)}
+
+    for name, fragment in fragments.items():
+        assert ast.dump(_strip_docstrings(fragment)) == ast.dump(
+            _strip_docstrings(methods[name])
+        ), name

@@ -20,6 +20,11 @@ PlaceOrder command runs the whole saga in-process, with no broker and no server.
 Payment is the branch point. It confirms an amount up to PAYMENT_LIMIT and fails
 anything above it, so the same flow reaches either terminal path.
 
+A message can arrive more than once, because delivery is at least once. Each
+create handler keeps one record per order: a repeated command leaves the record
+as it is and raises the step's event again. Each saga handler returns when the
+saga has already passed its step, so a repeated event changes nothing.
+
 Usage:
     from saga_after_closed import PlaceOrder, domain
 
@@ -38,6 +43,7 @@ Usage:
 from decimal import Decimal as D
 
 from protean import Domain, current_domain, handle
+from protean.exceptions import ObjectNotFoundError
 from protean.fields import Decimal, Identifier, String
 
 # Domain setup
@@ -178,19 +184,24 @@ class Order:
 
 @domain.aggregate
 class Inventory:
-    """Inventory aggregate holding a stock reservation for an order."""
+    """Inventory aggregate holding the stock reservation for an order.
 
-    order_id: Identifier(required=True)
+    The order id is the identity, so an order has at most one reservation.
+    """
+
+    order_id: Identifier(identifier=True)
     status: String(default="reserved")
 
     @classmethod
     def reserve(cls, order_id: str) -> "Inventory":
         """Reserve stock for an order and report it with StockReserved."""
         reservation = cls(order_id=order_id)
-        reservation.raise_(
-            StockReserved(order_id=order_id, reservation_id=reservation.id)
-        )
+        reservation.report_reserved()
         return reservation
+
+    def report_reserved(self) -> None:
+        """Raise StockReserved for this reservation."""
+        self.raise_(StockReserved(order_id=self.order_id, reservation_id=self.order_id))
 
     def release(self) -> None:
         """Release the reservation. The compensating step for CancelReservation."""
@@ -199,9 +210,12 @@ class Inventory:
 
 @domain.aggregate
 class Payment:
-    """Payment aggregate representing a financial transaction."""
+    """Payment aggregate representing the payment for an order.
 
-    order_id: Identifier(required=True)
+    The order id is the identity, so an order is charged at most once.
+    """
+
+    order_id: Identifier(identifier=True)
     amount: Decimal(precision=19, scale=4, required=True)
     status: String(default="pending")
 
@@ -212,31 +226,46 @@ class Payment:
         This is the saga's branch point: the confirmed path goes on to shipping,
         the failed path compensates.
         """
-        payment = cls(order_id=order_id, amount=amount)
-        if amount > PAYMENT_LIMIT:
-            payment.status = "failed"
-            payment.raise_(
-                PaymentFailed(order_id=order_id, reason="amount over the limit")
+        status = "failed" if amount > PAYMENT_LIMIT else "confirmed"
+        payment = cls(order_id=order_id, amount=amount, status=status)
+        payment.report_outcome()
+        return payment
+
+    def report_outcome(self) -> None:
+        """Raise the event for the stored outcome: PaymentFailed when the
+        payment failed, PaymentConfirmed when it was confirmed."""
+        if self.status == "failed":
+            self.raise_(
+                PaymentFailed(order_id=self.order_id, reason="amount over the limit")
             )
         else:
-            payment.status = "confirmed"
-            payment.raise_(PaymentConfirmed(order_id=order_id, payment_id=payment.id))
-        return payment
+            self.raise_(
+                PaymentConfirmed(order_id=self.order_id, payment_id=self.order_id)
+            )
 
 
 @domain.aggregate
 class Shipping:
-    """Shipping aggregate representing a shipment."""
+    """Shipping aggregate representing the shipment for an order.
 
-    order_id: Identifier(required=True)
+    The order id is the identity, so an order ships at most once.
+    """
+
+    order_id: Identifier(identifier=True)
     status: String(default="dispatched")
 
     @classmethod
     def dispatch(cls, order_id: str) -> "Shipping":
         """Dispatch the shipment. ShipmentDispatched ends the saga."""
         shipment = cls(order_id=order_id)
-        shipment.raise_(ShipmentDispatched(order_id=order_id, tracking_id=shipment.id))
+        shipment.report_dispatched()
         return shipment
+
+    def report_dispatched(self) -> None:
+        """Raise ShipmentDispatched for this shipment."""
+        self.raise_(
+            ShipmentDispatched(order_id=self.order_id, tracking_id=self.order_id)
+        )
 
 
 # --- Command handlers (each does the work the saga asks for) ---
@@ -262,12 +291,23 @@ class OrderCommandHandler:
 
 @domain.command_handler(part_of=Inventory)
 class InventoryCommandHandler:
-    """Handle the commands the saga issues to Inventory."""
+    """Handle the commands the saga issues to Inventory.
+
+    A command can arrive more than once, so create_reservation keeps one
+    reservation per order. A repeat leaves the reservation as it is and reports
+    it again, so a saga still waiting for StockReserved moves on.
+    """
 
     @handle(CreateReservation)
     def create_reservation(self, command: CreateReservation) -> None:
-        reservation = Inventory.reserve(command.order_id)
-        current_domain.repository_for(Inventory).add(reservation)
+        repository = current_domain.repository_for(Inventory)
+        try:
+            reservation = repository.get(command.order_id)
+        except ObjectNotFoundError:
+            reservation = Inventory.reserve(command.order_id)
+        else:
+            reservation.report_reserved()
+        repository.add(reservation)
 
     @handle(CancelReservation)
     def cancel_reservation(self, command: CancelReservation) -> None:
@@ -279,22 +319,42 @@ class InventoryCommandHandler:
 
 @domain.command_handler(part_of=Payment)
 class PaymentCommandHandler:
-    """Handle the commands the saga issues to Payment."""
+    """Handle the commands the saga issues to Payment.
+
+    A repeated RequestPayment charges nothing. It reports the stored outcome
+    again, so a saga still waiting for the payment event moves on.
+    """
 
     @handle(RequestPayment)
     def request_payment(self, command: RequestPayment) -> None:
-        payment = Payment.charge(command.order_id, command.amount)
-        current_domain.repository_for(Payment).add(payment)
+        repository = current_domain.repository_for(Payment)
+        try:
+            payment = repository.get(command.order_id)
+        except ObjectNotFoundError:
+            payment = Payment.charge(command.order_id, command.amount)
+        else:
+            payment.report_outcome()
+        repository.add(payment)
 
 
 @domain.command_handler(part_of=Shipping)
 class ShippingCommandHandler:
-    """Handle the commands the saga issues to Shipping."""
+    """Handle the commands the saga issues to Shipping.
+
+    A repeated CreateShipment dispatches nothing. It reports the stored shipment
+    again, so a saga still waiting for ShipmentDispatched moves on.
+    """
 
     @handle(CreateShipment)
     def create_shipment(self, command: CreateShipment) -> None:
-        shipment = Shipping.dispatch(command.order_id)
-        current_domain.repository_for(Shipping).add(shipment)
+        repository = current_domain.repository_for(Shipping)
+        try:
+            shipment = repository.get(command.order_id)
+        except ObjectNotFoundError:
+            shipment = Shipping.dispatch(command.order_id)
+        else:
+            shipment.report_dispatched()
+        repository.add(shipment)
 
 
 # --- Process Manager (the saga) ---
@@ -319,6 +379,9 @@ class OrderFulfillmentPM:
     - on_payment_failed (end=True): the failure terminal, which also issues the
       compensating commands to release the stock reservation and cancel the
       order.
+
+    A message can arrive more than once. Each handler first checks the saga's
+    status and returns when the saga has already passed that step.
     """
 
     order_id: Identifier()
@@ -329,6 +392,8 @@ class OrderFulfillmentPM:
     @handle(OrderPlaced, start=True, correlate="order_id")
     def on_order_placed(self, event: OrderPlaced) -> None:
         """Start the saga and reserve stock."""
+        if self.status != "new":
+            return
         self.order_id = event.order_id
         self.total = event.total
         self.status = "reserving_stock"
@@ -337,6 +402,8 @@ class OrderFulfillmentPM:
     @handle(StockReserved, correlate="order_id")
     def on_stock_reserved(self, event: StockReserved) -> None:
         """Request payment once stock is reserved."""
+        if self.status != "reserving_stock":
+            return
         # Remember the reservation: the failure path needs it to compensate.
         self.reservation_id = event.reservation_id
         self.status = "awaiting_payment"
@@ -347,17 +414,23 @@ class OrderFulfillmentPM:
     @handle(PaymentConfirmed, correlate="order_id")
     def on_payment_confirmed(self, event: PaymentConfirmed) -> None:
         """Dispatch the shipment once payment is confirmed."""
+        if self.status != "awaiting_payment":
+            return
         self.status = "shipping"
         current_domain.process(CreateShipment(order_id=self.order_id))
 
     @handle(ShipmentDispatched, correlate="order_id", end=True)
     def on_shipment_dispatched(self, event: ShipmentDispatched) -> None:
         """Close the saga on the success path."""
+        if self.status != "shipping":
+            return
         self.status = "fulfilled"
 
     @handle(PaymentFailed, correlate="order_id", end=True)
     def on_payment_failed(self, event: PaymentFailed) -> None:
         """Close the saga on the failure path and compensate earlier steps."""
+        if self.status != "awaiting_payment":
+            return
         self.status = "cancelled"
         current_domain.process(CancelReservation(reservation_id=self.reservation_id))
         current_domain.process(CancelOrder(order_id=self.order_id))

@@ -72,10 +72,16 @@ A start handler opens the saga. Mark it `start=True`. It stores the fields the
 later steps need and issues the first command. A saga needs at least one; give it
 one per event that can begin the flow.
 
+A message can arrive more than once, so each handler first checks the saga's
+`status` and returns when the saga has already passed its step. A repeated
+`OrderPlaced` then leaves a running saga where it is.
+
 ```python
 # fragment
 @handle(OrderPlaced, start=True, correlate="order_id")
 def on_order_placed(self, event: OrderPlaced) -> None:
+    if self.status != "new":
+        return
     self.order_id = event.order_id
     self.total = event.total
     self.status = "reserving_stock"
@@ -87,12 +93,16 @@ def on_order_placed(self, event: OrderPlaced) -> None:
 Each intermediate handler advances the saga's state and issues the next command.
 It carries only `correlate`. The command it issues is processed by that
 aggregate's [command-handler](../command-handler/SKILL.md), which does the actual
-work.
+work. Each create handler in the worked example looks the record up by the order
+id first. When the record exists, it leaves the record as it is and raises the
+step's event again, so the saga still gets its reply.
 
 ```python
 # fragment
 @handle(StockReserved, correlate="order_id")
 def on_stock_reserved(self, event: StockReserved) -> None:
+    if self.status != "reserving_stock":
+        return
     # Remember the reservation: the failure path needs it to compensate.
     self.reservation_id = event.reservation_id
     self.status = "awaiting_payment"
@@ -108,6 +118,8 @@ success path closes when the shipment goes out:
 # fragment
 @handle(ShipmentDispatched, correlate="order_id", end=True)
 def on_shipment_dispatched(self, event: ShipmentDispatched) -> None:
+    if self.status != "shipping":
+        return
     self.status = "fulfilled"
 ```
 
@@ -124,6 +136,8 @@ stock reservation and cancels the order:
 # fragment
 @handle(PaymentFailed, correlate="order_id", end=True)
 def on_payment_failed(self, event: PaymentFailed) -> None:
+    if self.status != "awaiting_payment":
+        return
     self.status = "cancelled"
     current_domain.process(CancelReservation(reservation_id=self.reservation_id))
     current_domain.process(CancelOrder(order_id=self.order_id))

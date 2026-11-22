@@ -15,6 +15,7 @@ The ERP sends camelCase JSON; our domain uses snake_case with different naming.
 import logging
 
 from protean import Domain, handle
+from protean.exceptions import ObjectNotFoundError
 from protean.fields import Identifier, String
 
 domain = Domain(__name__)
@@ -69,15 +70,26 @@ class EmployeeCommandHandler:
 
     @handle(OnboardEmployee)
     def handle_onboard(self, command: OnboardEmployee):
-        """Create a new employee from onboard command."""
-        employee = Employee(
-            employee_id=command.employee_id,
-            full_name=command.full_name,
-            email=command.email,
-            department=command.department,
-            source=command.source,
-        )
-        domain.repository_for(Employee).add(employee)
+        """Create a new employee from onboard command.
+
+        A repeated onboarding finds the employee and changes nothing. The
+        external system can send the same message more than once.
+        """
+        repository = domain.repository_for(Employee)
+        try:
+            repository.get(command.employee_id)
+        except ObjectNotFoundError:
+            repository.add(
+                Employee(
+                    employee_id=command.employee_id,
+                    full_name=command.full_name,
+                    email=command.email,
+                    department=command.department,
+                    source=command.source,
+                )
+            )
+        else:
+            return  # already onboarded; a repeated message must not fail
 
     @handle(UpdateEmployeeDepartment)
     def handle_update_department(self, command: UpdateEmployeeDepartment):

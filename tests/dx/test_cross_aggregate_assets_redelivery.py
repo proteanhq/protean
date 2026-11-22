@@ -13,6 +13,10 @@ The two checks:
   was. Events are delivered at least once and can arrive late, so each
   receiving command handler must skip work it has already applied.
 
+The module also delivers a message twice to the assets that create an
+aggregate without handing off: the ``$any`` audit asset and the two subscriber
+assets. Each must keep one record.
+
 Each asset runs under its own ``run_name`` so registrations cannot collide.
 """
 
@@ -389,6 +393,98 @@ def test_redelivering_every_event_changes_nothing(asset: str) -> None:
             dispatch_events_sync([event], domain.handlers_for)
 
         assert _snapshot(domain) == before
+
+
+def test_any_audit_keeps_one_entry_per_redelivered_event() -> None:
+    """The ``$any`` audit asset creates an aggregate per event without handing
+    off to another one, so it has no scenario above. Its entry is keyed on the
+    audited event's id, so delivering every event again adds no entry."""
+    ns, domain = _load("event-handler/assets/event_handler_any_event.py")
+
+    with domain.domain_context():
+        task = ns["Task"](task_id="TASK-1", title="Write docs", assignee="alice")
+        task.create()
+        domain.repository_for(ns["Task"]).add(task)
+        task = domain.repository_for(ns["Task"]).get("TASK-1")
+        task.complete()
+        domain.repository_for(ns["Task"]).add(task)
+
+        events = _stored_events(domain)
+        assert [type(event).__name__ for event in events] == [
+            "TaskCreated",
+            "TaskCompleted",
+        ]
+
+        for event in reversed(events):
+            dispatch_events_sync([event], domain.handlers_for)
+
+        entries = _all(ns, domain, "AuditLog")
+        assert sorted(entry.entry_id for entry in entries) == sorted(
+            event._metadata.headers.id for event in events
+        )
+        assert sorted(entry.event_type for entry in entries) == [
+            "TaskCompleted",
+            "TaskCreated",
+        ]
+
+
+@pytest.mark.parametrize(
+    ("asset", "subscriber", "payload", "aggregate", "id_field", "record_id"),
+    [
+        (
+            "subscriber/assets/subscriber_anti_corruption.py",
+            "ERPUserSubscriber",
+            {
+                "event_type": "user.created",
+                "data": {
+                    "userId": "USR-1",
+                    "firstName": "Alice",
+                    "lastName": "Johnson",
+                    "emailAddress": "alice@example.com",
+                },
+            },
+            "Customer",
+            "id",
+            "USR-1",
+        ),
+        (
+            "add-subscriber-flow/assets/subscriber_with_command.py",
+            "ERPEmployeeSubscriber",
+            {
+                "eventType": "employee.hired",
+                "payload": {
+                    "empId": "EMP-1",
+                    "firstName": "Alice",
+                    "lastName": "Johnson",
+                    "emailAddr": "alice@corp.com",
+                    "dept": "Engineering",
+                },
+            },
+            "Employee",
+            "employee_id",
+            "EMP-1",
+        ),
+    ],
+)
+def test_a_repeated_external_message_keeps_one_record(
+    asset: str,
+    subscriber: str,
+    payload: dict[str, Any],
+    aggregate: str,
+    id_field: str,
+    record_id: str,
+) -> None:
+    """An external system can send the same message twice. The command handler
+    behind each subscriber finds the record and returns, so the second call
+    neither raises nor stores a second record."""
+    ns, domain = _load(asset)
+
+    with domain.domain_context():
+        ns[subscriber]()(payload)
+        ns[subscriber]()(payload)
+
+        records = _all(ns, domain, aggregate)
+        assert [record.to_dict()[id_field] for record in records] == [record_id]
 
 
 # Runs in a child interpreter so the assets' registrations stay out of this
