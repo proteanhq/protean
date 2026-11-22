@@ -666,3 +666,33 @@ class TestAClaimBetweenTheReadAndTheSave:
             r.getMessage() == "outbox.processing_error" for r in caplog.records
         )
         assert _marks(events) == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "write",
+        [
+            pytest.param(_fail_unexpectedly, id="processing-error"),
+            pytest.param(_abandon_for_its_key, id="abandon"),
+        ],
+    )
+    async def test_the_failure_or_the_abandon_is_refused(
+        self, test_domain, outbox_repo, clock, caplog, write
+    ):
+        outbox_repo.add(_row("b", 0))
+        stale = await _engine_processor(test_domain, set(), worker_id="worker-a")
+        [message] = await stale.get_next_batch_of_messages()
+        clock.advance(LOCK_EXPIRED)
+        _claim_while_reading(
+            test_domain, stale, "b", _claim_by(test_domain, "b", "worker-b")
+        )
+
+        with caplog.at_level(logging.INFO, logger="protean.server.outbox_processor"):
+            await write(stale, message)
+
+        row = _stored(outbox_repo, "b")
+        assert (row.status, row.locked_by) == (
+            OutboxStatus.PROCESSING.value,
+            "worker-b",
+        )
+        assert row._version == message._version + 1
+        _assert_refused_once_per_row(caplog, ["b"])
