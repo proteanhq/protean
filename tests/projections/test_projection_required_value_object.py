@@ -44,6 +44,12 @@ class CostedItem(BaseProjection):
     cost = ValueObject(Cost, required=True)
 
 
+@pytest.fixture(scope="session")
+def db_config():
+    # The round-trip tests edit the memory adapter's stored records directly.
+    return {"provider": "memory"}
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Money)
