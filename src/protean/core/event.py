@@ -88,6 +88,9 @@ class BaseEvent(BaseMessageType):
         """
         incoming_metadata = kwargs.pop("_metadata", None)
         rebuild = bool(kwargs.pop("_rebuild", False))
+        # -1 is also a value a caller passes (the stream must be empty), so
+        # the keyword's presence decides whether a template may override it.
+        expected_version_given = "_expected_version" in kwargs
         expected_version = kwargs.pop("_expected_version", -1)
 
         # Support template dict pattern: Event({"key": "val"}, key2="val2")
@@ -109,9 +112,7 @@ class BaseEvent(BaseMessageType):
             incoming_metadata = template_metadata
         kwargs.pop("_rebuild", None)
         template_expected_version = kwargs.pop("_expected_version", None)
-        if (
-            expected_version == -1 and template_expected_version is not None
-        ):  # pragma: no cover  # no framework caller puts it in a template
+        if not expected_version_given and template_expected_version is not None:
             expected_version = template_expected_version
         kwargs.pop("_version", None)
 

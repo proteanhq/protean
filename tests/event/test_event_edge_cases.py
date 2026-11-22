@@ -2,6 +2,8 @@
 
 - An event rejects a positional argument that is not a dict.
 - An event merges a positional template dict with keyword arguments.
+- An event takes ``_expected_version`` from a template dict unless a keyword
+  argument gives one.
 - An event class that is not registered with a domain cannot be instantiated.
 """
 
@@ -54,6 +56,41 @@ class TestEventTemplateDictPattern:
         event = OrderPlaced({"order_id": "123"}, name="Test")
         assert event.order_id == "123"
         assert event.name == "Test"
+
+    def test_expected_version_is_taken_from_the_template_dict(self, test_domain):
+        """An event takes ``_expected_version`` from a template dict when no
+        keyword argument gives one."""
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.init(traverse=False)
+
+        event = OrderPlaced({"order_id": "123", "_expected_version": 4})
+        assert event._expected_version == 4
+
+    def test_keyword_expected_version_wins_over_the_template_dict(self, test_domain):
+        """An explicit ``_expected_version`` keyword overrides the template's."""
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.init(traverse=False)
+
+        event = OrderPlaced(
+            {"order_id": "123", "_expected_version": 4}, _expected_version=7
+        )
+        assert event._expected_version == 7
+
+    def test_keyword_expected_version_of_minus_one_wins_over_the_template_dict(
+        self, test_domain
+    ):
+        """An explicit ``_expected_version=-1`` (the stream must be empty) is
+        kept even when the template dict carries another version."""
+        test_domain.register(Order)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.init(traverse=False)
+
+        event = OrderPlaced(
+            {"order_id": "123", "_expected_version": 4}, _expected_version=-1
+        )
+        assert event._expected_version == -1
 
 
 class TestUnregisteredEvent:

@@ -257,9 +257,7 @@ def _global_position(message: Message) -> int:
     none."""
     # Defensive: event-store messages always carry metadata/event_store;
     # this guards only against corrupt store data.
-    if (
-        message.metadata is None or message.metadata.event_store is None
-    ):  # pragma: no cover
+    if message.metadata is None or message.metadata.event_store is None:
         return 0
     return message.metadata.event_store.global_position or 0
 

@@ -11,6 +11,7 @@ Validates:
 - ReadView does not expose write methods (add, _dao, delete)
 - Cache-backed projections: query and find_by raise NotSupportedError
 - ReadView and repository_for see the same data
+- ReadView's repr names the projection and its backend
 """
 
 import pytest
@@ -85,6 +86,10 @@ class TestViewForEntryPoint:
     def test_returns_read_view_instance(self, test_domain):
         view = test_domain.view_for(PersonProjection)
         assert isinstance(view, ReadView)
+
+    def test_repr_names_the_projection_and_the_database_backend(self, test_domain):
+        view = test_domain.view_for(PersonProjection)
+        assert repr(view) == "<ReadView for PersonProjection (database)>"
 
     def test_rejects_aggregate_class(self, test_domain):
         with pytest.raises(IncorrectUsageError, match="only available for projections"):
@@ -350,6 +355,10 @@ class TestCacheBackedReadView:
 
         with pytest.raises(NotSupportedError, match="get()"):
             view.find_by(first_name="John")
+
+    def test_repr_names_the_projection_and_the_cache_backend(self, test_domain):
+        view = test_domain.view_for(CachedPersonProjection)
+        assert repr(view) == "<ReadView for CachedPersonProjection (cache)>"
 
 
 # ---------------------------------------------------------------------------

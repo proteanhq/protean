@@ -78,6 +78,28 @@ def test_nested_captures_do_not_leak():
     assert checkpoint_trace.is_active() is False
 
 
+class _CaptureEndsOnAcquire:
+    """Stands in for the recorder's lock and ends the capture as ``record()``
+    takes it: the order a ``capture()`` exit racing ``record()`` produces."""
+
+    def __enter__(self) -> None:
+        checkpoint_trace._events = None
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
+
+
+def test_record_drops_the_event_when_the_capture_ends_before_the_lock(monkeypatch):
+    log: list = []
+    monkeypatch.setattr(checkpoint_trace, "_events", log)
+    monkeypatch.setattr(checkpoint_trace, "_lock", _CaptureEndsOnAcquire())
+
+    checkpoint_trace.record(cursor=0, present=[1], abandoned=[], safe=1)
+
+    assert log == []
+    assert checkpoint_trace.is_active() is False
+
+
 def test_record_is_thread_safe_under_contention():
     # Concurrent appends must not drop events: the recorder guards the shared log
     # with a lock, mirroring occ_trace, so a future concurrent driver is safe.

@@ -1389,10 +1389,10 @@ def _value_object_kwargs_from_shadows(
     """
     vo_kwargs: dict[str, Any] = {}
     for embedded_field in field_obj.embedded_fields.values():
-        if embedded_field.attribute_name is None or embedded_field.field_name is None:
-            # ``embedded_fields`` yields fully-bound fields, so both
-            # names are always set; guard never fires at runtime.
-            continue  # pragma: no cover
+        # ``embedded_fields`` yields fully-bound fields, so both names are
+        # always set; the asserts only narrow the types.
+        assert embedded_field.attribute_name is not None
+        assert embedded_field.field_name is not None
         if embedded_field.attribute_name in shadow_kwargs:
             vo_kwargs[embedded_field.field_name] = shadow_kwargs[
                 embedded_field.attribute_name

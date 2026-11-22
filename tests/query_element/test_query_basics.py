@@ -16,7 +16,7 @@ import pytest
 
 from protean.exceptions import IncorrectUsageError, ValidationError
 
-from .elements import GetOrdersByCustomer, OrderSummary
+from .elements import GetOrdersByCustomer, GetOrdersPage, OrderSummary
 
 
 class TestQueryCreation:
@@ -67,6 +67,19 @@ class TestQueryImmutability:
         q = GetOrdersByCustomer(customer_id="C-123")
         with pytest.raises(IncorrectUsageError, match="immutable"):
             q.customer_id = "C-456"
+
+    def test_query_can_set_a_field_while_it_is_being_built(self, test_domain):
+        """A query's ``model_post_init`` may assign a field; the query is
+        immutable only once construction finishes."""
+        test_domain.register(OrderSummary)
+        test_domain.register(GetOrdersPage, part_of=OrderSummary)
+        test_domain.init(traverse=False)
+
+        q = GetOrdersPage(customer_id="C-123", page=3)
+        assert q.page_size == 30
+
+        with pytest.raises(IncorrectUsageError, match="immutable"):
+            q.page_size = 50
 
 
 class TestQuerySerialization:

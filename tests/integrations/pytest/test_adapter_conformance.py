@@ -30,6 +30,7 @@ from protean.integrations.pytest.adapter_conformance import (
     resolve_db_config,
 )
 from protean.port.database import DatabaseCapabilities
+from tests.shared import module_unavailable
 
 # The opt-in the conformance reference page shows, read from the file the page
 # includes so the page and these tests cannot drift apart.
@@ -215,6 +216,28 @@ class TestBuiltinDbConfigs:
     def test_memory_is_minimal(self):
         """Memory config is just {'provider': 'memory'}."""
         assert BUILTIN_DB_CONFIGS["MEMORY"] == {"provider": "memory"}
+
+    def test_configs_use_default_ports_without_the_test_tree(self):
+        """A downstream install has no ``tests.shared``, so the built-in
+        configs fall back to each server's default port."""
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RemovedInProtean020Warning)
+                with module_unavailable("tests.shared"):
+                    importlib.reload(adapter_conformance)
+            configs = adapter_conformance.BUILTIN_DB_CONFIGS
+        finally:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RemovedInProtean020Warning)
+                importlib.reload(adapter_conformance)
+
+        assert configs["POSTGRESQL"]["database_uri"] == (
+            "postgresql://postgres:postgres@localhost:5432/postgres"
+        )
+        assert configs["MYSQL"]["database_uri"] == (
+            "mysql+pymysql://root:protean@localhost:3306/protean"
+        )
+        assert configs["ELASTICSEARCH"]["database_uri"] == {"hosts": ["localhost"]}
 
 
 class TestMarkerToCapability:

@@ -333,10 +333,9 @@ def _rebuild_function_with_new_class_cell(
         return None
 
     closure = func.__closure__
-    if (
-        closure is None
-    ):  # pragma: no cover – defensive; CPython always provides closure when freevars exist
-        return None
+    # Python refuses to build a function whose code has free variables
+    # without a closure tuple, so this assert only narrows the type.
+    assert closure is not None
 
     idx = freevars.index("__class__")
 
@@ -442,7 +441,7 @@ def _rebind_class_cells(new_cls: type, original_cls: type) -> None:
         fixed = _fix_function_class_cell(attr_value, new_cls, original_cls)
         if fixed is not None:
             # guard for C-extension / read-only descriptors
-            with contextlib.suppress(AttributeError, TypeError):  # pragma: no cover
+            with contextlib.suppress(AttributeError, TypeError):
                 type.__setattr__(new_cls, attr_name, fixed)
 
 
