@@ -814,9 +814,10 @@ class DAO:
           row of its group that matches ``hold_back.holds`` is claimed by the
           same call. A row locked by another caller holds the rows behind it.
         - On an aggregate, each claimed row's ``_version`` advances by one,
-          and the returned entity carries the new version. Saving it then
-          advances the version again. A later write that expects the claimed
-          version is refused once another claim takes the row.
+          and the returned entity carries the new version, so it can be saved
+          as it is. A later claim of the row advances the version again, and
+          the repository's version check then refuses a save of the entity
+          the earlier claim returned.
 
         ``claim_fields`` must make a claimed row stop matching ``criteria``.
         The call may wait briefly on a row another caller has locked. How a

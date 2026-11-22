@@ -589,6 +589,14 @@ on this logger.
 | `outbox.cleanup_completed` | INFO | `total`, `published`, `abandoned`, `discarded` |
 | `outbox.cleanup_failed` | ERROR (exc) | |
 
+When another worker claims a row between this worker's read and its save, the
+version-checked save raises `ExpectedVersionError`. The processor logs
+`outbox.message_already_claimed` for it, as for any refused write. The save
+failure is also logged on other loggers first: `uow.commit_failed` on
+`protean.core.unit_of_work` when the conflict surfaces at commit, or
+"Failed saving entity because ..." at ERROR on `protean.infra.dao` when it
+surfaces at the save.
+
 ---
 
 ### `protean.core.unit_of_work`

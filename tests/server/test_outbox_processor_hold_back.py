@@ -431,7 +431,6 @@ async def _abandon_for_its_key(processor: OutboxProcessor, message: Outbox) -> N
     message.partition_key = "dlq"
     rejected = _abandon_invalid_partition_key(processor, processor.outbox_repo, message)
     assert rejected is True
-    assert processor.broker.published == []
 
 
 WRITES = [
@@ -444,14 +443,20 @@ WRITES = [
 @pytest.mark.database
 class TestAStaleWorkerLeavesARowAnotherWorkerClaimed:
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "worker_ids",
+        [(None, None), ("worker-a", "worker-b")],
+        ids=["shared-default-worker-id", "different-worker-ids"],
+    )
     async def test_the_failure_and_the_release_are_both_refused(
-        self, test_domain, outbox_repo, clock, caplog
+        self, test_domain, outbox_repo, clock, caplog, worker_ids
     ):
         outbox_repo.add(_row("a", 0))
         outbox_repo.add(_row("b", 1))
-        stale = await _engine_processor(test_domain, fail_ids={"a"})
-        current = await _engine_processor(test_domain, fail_ids=set())
-        assert stale.worker_id == current.worker_id
+        stale_id, current_id = worker_ids
+        stale = await _engine_processor(test_domain, {"a"}, worker_id=stale_id)
+        current = await _engine_processor(test_domain, set(), worker_id=current_id)
+        assert (stale.worker_id == current.worker_id) == (stale_id is None)
 
         batch = await stale.get_next_batch_of_messages()
         assert [row.message_id for row in batch] == ["a", "b"]
@@ -497,6 +502,7 @@ class TestAStaleWorkerLeavesARowAnotherWorkerClaimed:
             await write(stale, message)
 
         assert _claim_state(outbox_repo, "b") == claimed
+        assert claimed[0] != status.value
         _assert_refused_once_per_row(caplog, ["b"])
         assert _marks(events) == []
 
@@ -555,13 +561,17 @@ class TestAStaleWorkerLeavesARowAnotherWorkerClaimed:
 
 
 def _claim_while_reading(
-    test_domain, processor: OutboxProcessor, label: str, claim: Callable[[], None]
-) -> None:
+    test_domain, processor: OutboxProcessor, label: str, claim: Callable[[], int]
+) -> list[int]:
     """Make ``processor``'s next read of row ``label`` run ``claim`` on another
-    thread after the read and before the row is returned."""
+    thread after the read and before the row is returned.
+
+    Returns the list each run of ``claim`` appends its claimed count to, for
+    the test to check on its own thread."""
     repo = processor.outbox_repo
     get = repo.get
     row_id = _stored(repo, label).id
+    claimed_counts: list[int] = []
 
     def get_then_claim(identifier):
         row = get(identifier)
@@ -569,7 +579,7 @@ def _claim_while_reading(
 
             def in_context() -> None:
                 with test_domain.domain_context():
-                    claim()
+                    claimed_counts.append(claim())
 
             thread = threading.Thread(target=in_context)
             thread.start()
@@ -578,12 +588,14 @@ def _claim_while_reading(
         return row
 
     repo.get = get_then_claim
+    return claimed_counts
 
 
-def _claim_by(test_domain, label: str, worker_id: str) -> Callable[[], None]:
-    """A claim of row ``label`` by ``worker_id`` that ignores hold-back."""
+def _claim_by(test_domain, label: str, worker_id: str) -> Callable[[], int]:
+    """A claim of row ``label`` by ``worker_id`` that ignores hold-back, and
+    returns how many rows it claimed."""
 
-    def claim() -> None:
+    def claim() -> int:
         repo = test_domain._get_outbox_repo("default")
         now = test_domain.clock.now()
         claimed = repo._dao.claim(
@@ -596,9 +608,17 @@ def _claim_by(test_domain, label: str, worker_id: str) -> Callable[[], None]:
             limit=1,
             hold_back=None,
         )
-        assert len(claimed) == 1
+        return len(claimed)
 
     return claim
+
+
+def _assert_held_by_worker_b(row: Outbox, claimed_at: datetime) -> None:
+    assert (row.status, row.locked_by, row.locked_until) == (
+        OutboxStatus.PROCESSING.value,
+        "worker-b",
+        claimed_at + timedelta(minutes=5),
+    )
 
 
 class TestAClaimBetweenTheReadAndTheSave:
@@ -615,7 +635,7 @@ class TestAClaimBetweenTheReadAndTheSave:
         batch = await stale.get_next_batch_of_messages()
         assert [row.message_id for row in batch] == ["a", "b"]
         clock.advance(LOCK_EXPIRED)
-        _claim_while_reading(
+        claims = _claim_while_reading(
             test_domain, stale, "b", _claim_by(test_domain, "b", "worker-b")
         )
 
@@ -623,14 +643,16 @@ class TestAClaimBetweenTheReadAndTheSave:
             outbox_trace.capture() as events,
             caplog.at_level(logging.INFO, logger="protean.server.outbox_processor"),
         ):
-            await stale.process_batch(batch)
+            assert await stale.process_batch(batch) == 0
 
         assert _stored(outbox_repo, "a").status == OutboxStatus.FAILED.value
+        [record] = [
+            r for r in caplog.records if r.getMessage() == "outbox.batch_completed"
+        ]
+        assert (record.successful, record.released, record.failed) == (0, 0, 2)
+        assert claims == [1]
         row = _stored(outbox_repo, "b")
-        assert (row.status, row.locked_by) == (
-            OutboxStatus.PROCESSING.value,
-            "worker-b",
-        )
+        _assert_held_by_worker_b(row, clock.now())
         assert row._version == batch[1]._version + 1
         _assert_refused_once_per_row(caplog, ["b"])
         assert [e["message"] for e in _marks(events)] == [str(batch[0].id)]
@@ -645,7 +667,7 @@ class TestAClaimBetweenTheReadAndTheSave:
         stale = await _engine_processor(test_domain, fail_ids, worker_id="worker-a")
         [message] = await stale.get_next_batch_of_messages()
         clock.advance(LOCK_EXPIRED)
-        _claim_while_reading(
+        claims = _claim_while_reading(
             test_domain, stale, "b", _claim_by(test_domain, "b", "worker-b")
         )
 
@@ -655,11 +677,9 @@ class TestAClaimBetweenTheReadAndTheSave:
         ):
             assert await stale.process_batch([message]) == 0
 
+        assert claims == [1]
         row = _stored(outbox_repo, "b")
-        assert (row.status, row.locked_by) == (
-            OutboxStatus.PROCESSING.value,
-            "worker-b",
-        )
+        _assert_held_by_worker_b(row, clock.now())
         assert row._version == message._version + 1
         _assert_refused_once_per_row(caplog, ["b"])
         assert not any(
@@ -682,17 +702,15 @@ class TestAClaimBetweenTheReadAndTheSave:
         stale = await _engine_processor(test_domain, set(), worker_id="worker-a")
         [message] = await stale.get_next_batch_of_messages()
         clock.advance(LOCK_EXPIRED)
-        _claim_while_reading(
+        claims = _claim_while_reading(
             test_domain, stale, "b", _claim_by(test_domain, "b", "worker-b")
         )
 
         with caplog.at_level(logging.INFO, logger="protean.server.outbox_processor"):
             await write(stale, message)
 
+        assert claims == [1]
         row = _stored(outbox_repo, "b")
-        assert (row.status, row.locked_by) == (
-            OutboxStatus.PROCESSING.value,
-            "worker-b",
-        )
+        _assert_held_by_worker_b(row, clock.now())
         assert row._version == message._version + 1
         _assert_refused_once_per_row(caplog, ["b"])

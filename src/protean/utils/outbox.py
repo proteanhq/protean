@@ -966,15 +966,14 @@ class OutboxRepository(BaseRepository):
         row still has ``read_status``, ``read_retry_count`` and the version
         ``row`` was read at, and it advances the stored version by one. A
         worker that claims a failed row moves it to ``PROCESSING``, and a
-        failed attempt raises ``retry_count``. Both also advance the version,
-        so either one makes the write match no row. If the write went through,
-        the worker would publish a discarded row or a second worker would
-        claim a retried one. Another
+        failed attempt raises ``retry_count``, so either one makes the write
+        match no row. If the write went through, the worker would publish a
+        discarded row or a second worker would claim a retried one. Another
         operator's retry followed by a worker's failed attempts can leave the
-        status and retry count equal to the read values. Every such write
-        advances the version, so ``save_operator_change`` finds no row at the
-        read version and a stale discard or retry does not overwrite the newer
-        failure.
+        status and retry count equal to the read values. Every such write,
+        a claim included, advances the version, so ``save_operator_change``
+        finds no row at the read version and a stale discard or retry does
+        not overwrite the newer failure.
 
         Returns:
             True if the row was written, False if it changed in the meantime

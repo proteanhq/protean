@@ -291,8 +291,9 @@ expires can lose the message to another worker's claim. Before it releases
 the message, marks it failed or abandons it, the worker checks the stored
 version against its own. When they differ, the worker writes nothing, logs
 `outbox.message_already_claimed` and leaves the message to the worker that
-claimed it last. A stale worker that already published the message still
-marks it published, because the broker has the message.
+claimed it last. A stale worker that already published the message marks it
+published, because the broker has the message, unless another worker claims
+it between the stale worker's read and its save. That save is refused too.
 
 ## Operational Signals
 

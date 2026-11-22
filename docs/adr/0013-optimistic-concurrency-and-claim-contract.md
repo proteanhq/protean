@@ -299,12 +299,14 @@ removed.
 ## Amendment (November 2026): a claim advances the row version
 
 A worker can still be running when its lock expires. Another worker can then
-claim the same rows. The first worker's later writes read the row, check
-`locked_by` and save it. That check passes when both workers have the same
-`worker_id`, and the engine builds every outbox processor with the same
-default one. The save passed the version check too, because the claim left
-`_version` unchanged. So a stale worker could release a row, or mark it failed
-or abandoned, while the new owner was publishing it.
+claim the same rows. The first worker's release reads the row, checks
+`locked_by` and saves it. That check passes when both workers have the same
+`worker_id`, and the engine gives every outbox processor for one database and
+broker pair the same default one. The writes that mark a row failed or
+abandoned read and save the row with no `locked_by` check at all. Each save
+passed the version check too, because the claim left `_version` unchanged. So
+a stale worker could release a row, or mark it failed or abandoned, while the
+new owner was publishing it.
 
 **Amended decision:** a claim adds one to the `_version` of each aggregate row
 it claims, and the entity it returns carries the new value. That value
@@ -327,6 +329,11 @@ handles that refusal the same way. A write that marks a row published does not
 compare the version, because the stale worker did publish the row. That write
 still advances the version, so the new owner's later failure write is refused
 and the row stays `PUBLISHED`.
+
+The Consequences section says the "already claimed" contention messages
+disappear on the fast path. `outbox.message_already_claimed` now comes back at
+WARNING on every provider, the fast path included. It marks a stale worker's
+refused write. A claim lost at batch fetch still logs nothing.
 
 **Alternatives considered:**
 

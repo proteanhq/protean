@@ -19,8 +19,9 @@ from dataclasses import dataclass, field
 import pytest
 
 from protean.core.aggregate import BaseAggregate
+from protean.core.projection import BaseProjection
 from protean.core.unit_of_work import UnitOfWork
-from protean.fields import Integer, String
+from protean.fields import Identifier, Integer, String
 from protean.infra import dao as dao_module
 from protean.port.dao import HoldBack
 from protean.port.database import DatabaseCapabilities
@@ -41,6 +42,11 @@ class KeyedJob(BaseAggregate):
     seq: Integer(required=True)
 
 
+class ClaimJobView(BaseProjection):
+    job_id: Identifier(identifier=True)
+    status: String(max_length=20, default="ready")
+
+
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     # Its own table name: a local database can still hold a uuid-keyed
@@ -48,6 +54,7 @@ def register_elements(test_domain):
     # created and never dropped. Reusing it fails on psycopg 3.
     test_domain.register(ClaimJob, schema_name="generic_claim_job")
     test_domain.register(KeyedJob, schema_name="generic_keyed_job")
+    test_domain.register(ClaimJobView, schema_name="generic_claim_job_view")
     test_domain.init(traverse=False)
 
 
@@ -821,6 +828,21 @@ class TestClaimAdvancesVersion:
 
         assert claimed == []
         assert repo.get(job.id).status == "ready"
+
+
+@pytest.mark.transactional
+def test_a_class_with_no_version_is_claimed_as_before(test_domain):
+    """A projection has no ``_version``, so the claim writes only
+    ``claim_fields``, on the portable and the native claim alike."""
+    repo = test_domain.repository_for(ClaimJobView)
+    repo.add(ClaimJobView(job_id="j1"))
+
+    claimed = repo._dao.claim(Q(status="ready"), {"status": "claimed"}, limit=10)
+
+    assert [view.job_id for view in claimed] == ["j1"]
+    assert claimed[0].status == "claimed"
+    assert not hasattr(claimed[0], "_version")
+    assert repo.get("j1").status == "claimed"
 
 
 @dataclass

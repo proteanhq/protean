@@ -30,8 +30,8 @@ def claim(dao, message, worker_id, now):
     # A row is eligible when it is pending, failed, or processing under an
     # expired lock, its lock is free, its retry time is due, and it has
     # retries left. The guard also checks the version the worker read, and
-    # the claim adds one to it, so a later write that expects the old version
-    # is refused.
+    # the claim adds one to it, so an earlier claimant's write, which expects
+    # the version its own claim gave the row, is refused.
     eligible = (
         Q(
             id=message.id,

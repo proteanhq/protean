@@ -203,8 +203,10 @@ Crash(w) ==
 (* holder crashed). This returns a claimed-but-unfinished row to the           *)
 (* claimable pool. Modeling the expiry only after the holder is gone keeps     *)
 (* the spec off the pathological "lock expired while the owner still runs"     *)
-(* path, which the 5-minute lock plus the re-fetch in the mark step guard      *)
-(* against in the real processor.                                            *)
+(* path. The real processor guards that path with the row version: each        *)
+(* claim advances it, and the release, failure and abandon writes refuse a     *)
+(* row whose version differs from the one their claim returned. The spec       *)
+(* does not model that check.                                                  *)
 (***************************************************************************)
 LockExpire(m) ==
     /\ status[m] = "PROCESSING"

@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 
 
 def _log_claim_taken_over(message: Outbox) -> None:
-    """Log that another worker claimed ``message`` since this worker did."""
+    """Log that the row was written after this worker claimed ``message``,
+    most often by another worker's claim."""
     logger.warning(
         "outbox.message_already_claimed",
         extra={"message_id": message.message_id[:8]},
@@ -39,8 +40,9 @@ def _still_claimed(fresh: Outbox, claimed: Outbox) -> bool:
     worker's claim gave ``claimed``. Logs ``outbox.message_already_claimed``
     when it does not.
 
-    Every claim advances the row's version, so a different version means
-    another worker claimed the row, or wrote it, after this worker's claim.
+    Every claim and every save advances the row's version, so a different
+    version means the row was written after this worker's claim: claimed by
+    another worker, or saved by anyone, this worker included.
     """
     if fresh._version == claimed._version:
         return True
@@ -360,16 +362,18 @@ class OutboxProcessor(BaseSubscription):
         Only a row still ``PROCESSING`` under this worker's lock, at the
         version this worker's claim gave it, is released. Returns whether the
         row was released. If it was not, the row stays as it is: under another
-        worker's claim, or ``PROCESSING`` until its lock expires and is then
-        claimable again.
+        worker's claim, ``PROCESSING`` until its lock expires and is then
+        claimable again, or in a status other than ``PROCESSING``.
         """
         assert self.outbox_repo is not None, "Outbox repository not initialized"
         try:
             with UnitOfWork():
                 fresh = self.outbox_repo.get(message.id)
-                if fresh.locked_by != self.worker_id:
-                    return False
-                if not _still_claimed(fresh, message) or not fresh.release():
+                if (
+                    not _still_claimed(fresh, message)
+                    or fresh.locked_by != self.worker_id
+                    or not fresh.release()
+                ):
                     return False
                 self.outbox_repo.add(fresh)
         except ExpectedVersionError:
@@ -767,12 +771,11 @@ def _abandon_invalid_partition_key(
     if not reason:
         return False
     # Guard the abandon transaction: if the row was cleaned up
-    # between claim and here (``get`` raises) or the commit loses an
-    # OCC race on a reclaimed row, swallow it and report the row rejected so the
-    # poisoned row does not abort the rest of the batch in
-    # ``process_batch`` and throttle the poll loop. The claim left the row
-    # PROCESSING, and it is claimed and checked again once its lock expires.
-    # A row another worker claimed since is left to that worker.
+    # between claim and here (``get`` raises), swallow it and report the row
+    # rejected so the poisoned row does not abort the rest of the batch in
+    # ``process_batch`` and throttle the poll loop. A row another worker
+    # claimed since, before the read or between the read and the save, is
+    # left to that worker and also reported rejected.
     try:
         with UnitOfWork():
             fresh = outbox_repo.get(message.id)
@@ -855,8 +858,8 @@ def _record_publish_outcome(
     """Mark the row published, failed or abandoned, and commit it.
 
     The row is marked failed only while it has the version this worker's
-    claim gave ``message``. A save that finds the version changed is refused
-    in either branch.
+    claim gave ``message``. In either branch, a save is refused when another
+    worker claimed the row between the read and the save.
 
     Returns the row's id and the status it was committed with, or ``None``
     when another worker claimed the row since this worker did and nothing
@@ -974,7 +977,8 @@ def _save_processing_error(
 ) -> None:
     """Mark the row failed in a fresh transaction after an unexpected error.
 
-    A row another worker claimed since this worker did is left unchanged.
+    A row written since this worker's claim is left unchanged. That is a row
+    another worker claimed, or one whose outcome this worker already saved.
     """
     # Try to save the error state in a separate transaction
     try:
