@@ -163,7 +163,8 @@ class Journal(BaseAggregate):
     """Each method imports the event it uses inside its own body. ``void``,
     ``reverse`` and ``archive`` raise their events through an absolute, a
     relative and an aliased import. ``flag`` imports ``Flagged`` and never
-    raises it."""
+    raises it. ``tally`` reuses ``Tallied`` as a comprehension's loop variable
+    before it raises the imported event."""
 
     name = String(max_length=50)
 
@@ -186,3 +187,10 @@ class Journal(BaseAggregate):
         from tests.ir.support.journal_events import Flagged
 
         return Flagged(journal_id=self.id)
+
+    def tally(self, rows):
+        from tests.ir.support.journal_events import Tallied
+
+        names = [Tallied for Tallied in rows if Tallied]
+        self.raise_(Tallied(journal_id=self.id))
+        return names

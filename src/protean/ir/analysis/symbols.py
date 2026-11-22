@@ -90,6 +90,16 @@ statements written inside one method body, and the returned
   of the name is a statement of the body itself, outside any ``if``, ``try``,
   loop or ``with``. That import always runs, so it replaces the argument for
   every later use.
+- A comprehension's own ``for`` targets bind only inside that comprehension,
+  as Python scopes them, so they do not rebind the method's name. A use of a
+  target's name inside the comprehension's own scope resolves to ``None``: its
+  value is an element of the iterable. The outermost iterable runs in the
+  scope enclosing the comprehension, so a use there keeps the import. A later
+  ``for`` iterable, an ``if`` condition and the element run in the
+  comprehension's scope. A nested comprehension shadows the name only inside
+  itself. A walrus inside a comprehension still rebinds the method's name. List,
+  set and dict comprehensions, generator expressions and ``async for``
+  comprehensions all follow these rules.
 - A name no method-local import binds resolves through the module table.
 
 Classification predicates
@@ -118,7 +128,7 @@ from __future__ import annotations
 
 import ast
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from protean.ir.analysis.source_provider import SourceProvider
@@ -138,6 +148,9 @@ _DEF_NODES = (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 #: method enclosing it.
 NESTED_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 
+#: Expressions that open a scope of their own for their ``for`` targets.
+_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+
 #: A ``(line, col)`` source position, as the AST records it on a node.
 _Position = tuple[int, int]
 
@@ -154,6 +167,20 @@ class _LocalBinding:
     fqn: str | None
 
 
+@dataclass(slots=True)
+class _MethodWalk:
+    """What one walk of a method body records, before rebindings are applied."""
+
+    bindings: dict[str, _LocalBinding] = field(default_factory=dict)
+    # Names bound in the body other than by an import.
+    rebound: set[str] = field(default_factory=set)
+    # Positions of name uses inside a comprehension that binds the name.
+    shadowed: set[_Position] = field(default_factory=set)
+    # Names whose first import is a statement of the body itself: it always
+    # runs before any later use, so it replaces a parameter of that name.
+    always_run: dict[str, _Position] = field(default_factory=dict)
+
+
 class MethodScope:
     """Resolve use sites in one method body, method-local imports included.
 
@@ -166,10 +193,14 @@ class MethodScope:
         resolver: SymbolResolver,
         module: str,
         bindings: dict[str, _LocalBinding],
+        shadowed: frozenset[_Position],
     ) -> None:
         self._resolver = resolver
         self._module = module
         self._bindings = bindings
+        # Positions of name uses inside a comprehension that binds the name as
+        # one of its own targets.
+        self._shadowed = shadowed
 
     def resolve(self, node: ast.expr) -> str | None:
         """The FQN a use-site expression in this method names, or ``None``.
@@ -183,6 +214,8 @@ class MethodScope:
         if binding is None:
             return self._resolver.resolve(self._module, node)
         if binding.fqn is None or _position_of(node) <= binding.position:
+            return None
+        if _position_of(_root_name(node)) in self._shadowed:
             return None
         return ".".join([binding.fqn, *parts[1:]])
 
@@ -246,33 +279,56 @@ class SymbolResolver:
         The module's own table is not changed: :meth:`resolve` and
         :meth:`symbols` still answer from module-level bindings only.
         """
-        bindings: dict[str, _LocalBinding] = {}
-        rebound: set[str] = set()
-        # Names whose first import is a statement of the body itself: it always
-        # runs before any later use, so it replaces a parameter of that name.
-        always_run: dict[str, _Position] = {}
-        top_level = {id(statement) for statement in method.body}
-        stack: list[ast.AST] = list(reversed(method.body))
-        while stack:
-            node = stack.pop()
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
-                self._bind_local_import(bindings, module, node)
-                if id(node) in top_level:
-                    for name in _imported_names(node):
-                        always_run.setdefault(name, _position_of(node))
-                continue
-            rebound.update(_rebinding_names(node))
-            stack.extend(_parts_in_method_scope(node))
+        walk = _MethodWalk()
+        self._walk_method_body(walk, module, method)
+        bindings = walk.bindings
         for name in _parameter_names(method) & bindings.keys():
-            if always_run.get(name) != bindings[name].position:
+            if walk.always_run.get(name) != bindings[name].position:
                 # The first import may not run, so a use after it can still see
                 # the argument the caller passed.
-                rebound.add(name)
-        for name in rebound & bindings.keys():
+                walk.rebound.add(name)
+        for name in walk.rebound & bindings.keys():
             # The name is also bound to a value this static scope cannot follow,
             # so no single FQN is right for every use after the import.
             bindings[name] = _LocalBinding(bindings[name].position, None)
-        return MethodScope(self, module, bindings)
+        return MethodScope(self, module, bindings, frozenset(walk.shadowed))
+
+    def _walk_method_body(
+        self, walk: _MethodWalk, module: str, method: FunctionNode
+    ) -> None:
+        """Record into ``walk`` what ``method``'s body binds, outside nested scopes."""
+        top_level = {id(statement) for statement in method.body}
+        # Each entry carries the names the comprehensions around it bind as
+        # targets, which a use there must not read as the method's binding.
+        no_shadow: frozenset[str] = frozenset()
+        stack: list[tuple[ast.AST, frozenset[str]]] = [
+            (statement, no_shadow) for statement in reversed(method.body)
+        ]
+        while stack:
+            node, shadow = stack.pop()
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                self._record_local_import(walk, module, node, id(node) in top_level)
+                continue
+            if isinstance(node, _COMPREHENSIONS):
+                stack.extend(_comprehension_parts(node, shadow))
+                continue
+            if _is_load_of_any(node, shadow):
+                walk.shadowed.add(_position_of(node))
+            walk.rebound.update(_rebinding_names(node))
+            stack.extend((part, shadow) for part in _parts_in_method_scope(node))
+
+    def _record_local_import(
+        self,
+        walk: _MethodWalk,
+        module: str,
+        node: ast.Import | ast.ImportFrom,
+        is_top_level: bool,
+    ) -> None:
+        """Record one method-local import, and whether it always runs."""
+        self._bind_local_import(walk.bindings, module, node)
+        if is_top_level:
+            for name in _imported_names(node):
+                walk.always_run.setdefault(name, _position_of(node))
 
     def _bind_local_import(
         self,
@@ -499,8 +555,10 @@ def _bound_names(node: ast.AST) -> list[str]:
     Covers every ``Store`` or ``Del`` name (assignment, augmented and annotated
     assignment, ``for``/``with`` targets, a walrus, ``del``), an ``except ... as``
     name, a ``match`` capture, and the name of a nested ``def``, ``async def`` or
-    ``class``. A comprehension target binds only inside the comprehension, but it
-    is counted too: the result is a miss, never a wrong FQN.
+    ``class``. A comprehension's ``for`` targets never reach this function:
+    :func:`_comprehension_parts` leaves them out of the method walk, because
+    they bind only inside the comprehension. A walrus inside a comprehension
+    still reaches it and binds the method's name.
     """
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
         return [node.name]
@@ -553,6 +611,54 @@ def _parts_in_method_scope(node: ast.AST) -> list[ast.AST]:
     return list(ast.iter_child_nodes(node))
 
 
+def _comprehension_parts(
+    node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp,
+    shadow: frozenset[str],
+) -> list[tuple[ast.AST, frozenset[str]]]:
+    """The parts of a comprehension to walk, each with the names shadowed there.
+
+    The outermost iterable runs in the enclosing scope, under ``shadow``. Every
+    other part runs in the comprehension's own scope, where its target names
+    shadow the method's too. A target binds no name for the method, so only the
+    parts of a target that are evaluated are returned: the object and index of
+    an attribute or subscript target, never a plain name.
+    """
+    targets: set[str] = set()
+    for generator in node.generators:
+        targets.update(_assigned_names(generator.target))
+    inner = shadow | targets
+    parts: list[tuple[ast.AST, frozenset[str]]] = [(node.generators[0].iter, shadow)]
+    for index, generator in enumerate(node.generators):
+        if index:
+            parts.append((generator.iter, inner))
+        parts.extend(
+            (part, inner) for part in _evaluated_target_parts(generator.target)
+        )
+        parts.extend((condition, inner) for condition in generator.ifs)
+    if isinstance(node, ast.DictComp):
+        parts.extend([(node.key, inner), (node.value, inner)])
+    else:
+        parts.append((node.elt, inner))
+    return parts
+
+
+def _evaluated_target_parts(target: ast.expr) -> list[ast.expr]:
+    """The attribute and subscript targets inside a ``for`` target.
+
+    A plain name binds and is left out; unpacking is followed into its elements.
+    """
+    if isinstance(target, ast.Name):
+        return []
+    if isinstance(target, ast.Starred):
+        return _evaluated_target_parts(target.value)
+    if isinstance(target, (ast.Tuple, ast.List)):
+        parts: list[ast.expr] = []
+        for element in target.elts:
+            parts.extend(_evaluated_target_parts(element))
+        return parts
+    return [target]
+
+
 def _parameter_names(method: FunctionNode) -> set[str]:
     """Every name ``method`` binds as a parameter, ``*args`` and ``**kwargs`` too."""
     args = method.args
@@ -600,6 +706,22 @@ def _nonlocal_names(node: ast.AST) -> list[str]:
         if isinstance(inner, ast.Nonlocal):
             names.extend(inner.names)
     return names
+
+
+def _is_load_of_any(node: ast.AST, names: frozenset[str]) -> bool:
+    """Whether ``node`` reads a plain name that is one of ``names``."""
+    return (
+        isinstance(node, ast.Name)
+        and isinstance(node.ctx, ast.Load)
+        and node.id in names
+    )
+
+
+def _root_name(node: ast.expr) -> ast.expr:
+    """The root of an attribute chain, or ``node`` itself when it is no chain."""
+    while isinstance(node, ast.Attribute):
+        node = node.value
+    return node
 
 
 def _position_of(node: ast.AST) -> _Position:

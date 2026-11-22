@@ -126,6 +126,19 @@ class TestRaises:
             "archive": {"raises": [fqn(j.Archived)]},
         }
 
+    def test_a_comprehension_reusing_the_imported_name_keeps_the_edge(self):
+        """``tally`` uses ``Tallied`` as a comprehension's loop variable before
+        it raises the imported event, and the edge is still recorded."""
+        domain = Domain(name="MethodEdgesComprehension", root_path=".")
+        domain.register(journal.Journal)
+        domain.register(j.Tallied, part_of=journal.Journal)
+        domain.init(traverse=False)
+
+        ir = IRBuilder(domain).build()
+        edges = ir["clusters"][fqn(journal.Journal)]["aggregate"]["method_edges"]
+
+        assert edges["tally"] == {"raises": [fqn(j.Tallied)]}
+
 
 class TestInvokes:
     """``invokes`` is derived by name-surface recognition against the scope."""
