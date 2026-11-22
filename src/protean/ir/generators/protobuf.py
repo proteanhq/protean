@@ -25,10 +25,12 @@ Conventions:
   nested message inside the file's main message. Its full name then includes
   the main message's name, so two files in one package never define it twice.
 - A target defined in the same file, as a nested message or as a sibling
-  message, is declared under its short name. Two such targets with one short
-  name, or a target other than the element itself with the main message's
-  name, raise ``ValueError`` naming both FQNs. An imported target keeps its
-  full name, so it never collides.
+  message, is declared under its short name. A nested target named like the
+  hidden entry message of one of the main message's map fields gets trailing
+  underscores instead. Two same-file targets with one short name, or a target
+  other than the element itself with the main message's name, raise
+  ``ValueError`` naming both FQNs. An imported target keeps its full name, so
+  it never collides.
 - Without ``import_path``, the referenced value objects and entities become
   sibling messages in the same file, so a single file still compiles on its
   own. This standalone mode is deprecated and removed in 0.20.0:
