@@ -67,7 +67,9 @@ class OrderCommandHandler:
         inventory_repo = current_domain.repository_for(Inventory)
         for item in command.items:
             inventory = inventory_repo.find_by_book(item.book_id)
-            if inventory is None or inventory.quantity < item.quantity:
+            if inventory is None:
+                raise ValidationError({"items": [f"Unknown book: {item.book_id}"]})
+            if inventory.quantity < item.quantity:
                 raise ValidationError({"items": ["Insufficient stock"]})
 
         book_repo = current_domain.repository_for(Book)

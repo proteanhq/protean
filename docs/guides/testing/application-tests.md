@@ -240,6 +240,17 @@ the use case, and step definitions that invoke the service:
 --8<-- "guides/testing/application-tests/bdd/registration/test_activate_user.py:steps"
 ```
 
+## Testing a Command Handler Directly
+
+A rule that no scenario covers can be checked with plain pytest tests. The
+tests below process `PlaceOrder` and check the stored total and each
+rejection message:
+
+```python
+# fragment
+--8<-- "guides/testing/application-tests/test_place_order_handler.py:handler_tests"
+```
+
 ## Using Tags for Selective Execution
 
 Gherkin tags are converted to pytest markers. Use them to organize and filter

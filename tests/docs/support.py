@@ -152,7 +152,23 @@ def run_example_tests(
     if not filepath.is_file():
         raise FileNotFoundError(f"no docs_src example at {path}")
 
-    child_env = example_env(root, env)
+    package_parents = sorted(
+        {str(folder.parent) for folder in package_dirs(root).values()}
+    )
+    pythonpath = [str(root), *package_parents]
+    if os.environ.get("PYTHONPATH"):
+        pythonpath.append(os.environ["PYTHONPATH"])
+    inherited = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("PYTEST_") and name != "PROTEAN_ENV"
+    }
+    child_env = {
+        **inherited,
+        "PYTHONPATH": os.pathsep.join(pythonpath),
+        "PYTHONDONTWRITEBYTECODE": "1",
+        **(env or {}),
+    }
     with tempfile.TemporaryDirectory() as workdir:
         config = Path(workdir) / "pytest.ini"
         config.write_text("[pytest]\n", encoding="utf-8")
@@ -187,37 +203,6 @@ def run_example_tests(
                 f"{path} ran longer than {EXAMPLE_TESTS_TIMEOUT}s. "
                 f"Output so far:\n{output}"
             ) from exc
-
-
-def example_env(
-    root: Path = DOCS_SRC, env: dict[str, str] | None = None
-) -> dict[str, str]:
-    """Return the environment for a child process that runs ``docs_src`` code.
-
-    ``root`` and the parent folder of every package under it go on
-    ``PYTHONPATH``, followed by the parent's ``PYTHONPATH``, so the child
-    imports a ``docs_src`` package such as ``myapp`` by its folder name.
-    ``PYTHONDONTWRITEBYTECODE`` is set, so no ``__pycache__`` folder is written
-    into ``docs_src``. The ``PYTEST_*`` variables and ``PROTEAN_ENV`` in the
-    parent's environment are left out. ``env`` adds variables on top.
-    """
-    package_parents = sorted(
-        {str(folder.parent) for folder in package_dirs(root).values()}
-    )
-    pythonpath = [str(root), *package_parents]
-    if os.environ.get("PYTHONPATH"):
-        pythonpath.append(os.environ["PYTHONPATH"])
-    inherited = {
-        name: value
-        for name, value in os.environ.items()
-        if not name.startswith("PYTEST_") and name != "PROTEAN_ENV"
-    }
-    return {
-        **inherited,
-        "PYTHONPATH": os.pathsep.join(pythonpath),
-        "PYTHONDONTWRITEBYTECODE": "1",
-        **(env or {}),
-    }
 
 
 def _text(stream: str | bytes | None) -> str:
