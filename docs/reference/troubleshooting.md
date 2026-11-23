@@ -95,8 +95,8 @@ test mode:
 
 **Symptoms:** A `UserWarning` that starts with `Working outside of domain
 context.`, followed by an `AttributeError` whose message starts with
-`No active domain context: cannot access 'config' on current_domain.` The
-quoted name is the domain attribute the call tried to read, such as
+`No active domain context: cannot access '<name>' on current_domain.`
+`<name>` is the domain attribute the call tried to read, such as
 `repository_for`, `config` or `databases`. Protean warns first, then the call
 fails because there is no current domain to read from.
 

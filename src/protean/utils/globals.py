@@ -44,6 +44,11 @@ class _NoDomainContextError(AttributeError):
             name=name,
         )
 
+    def __reduce__(self) -> tuple[type["_NoDomainContextError"], tuple[str]]:
+        # The default rebuilds the error from ``args``, which holds the
+        # finished message, so a pickle or copy would wrap it twice.
+        return (type(self), (str(self.name),))
+
 
 class _ContextStack(Generic[_T]):
     """A contextvars-backed stack preserving ``push``/``pop`` nesting.
@@ -97,8 +102,8 @@ class _ContextLocalProxy(Generic[_T]):
             one.
         missing_error: Builds the error raised when ordinary attribute
             get, set or delete finds no object active. It receives the
-            attribute name. Defaults to ``AttributeError``. Dunder and tool
-            probes always raise a plain ``AttributeError``.
+            attribute name. Defaults to ``AttributeError``. Reads of dunder
+            and tool-probe names raise a plain ``AttributeError`` instead.
     """
 
     _lookup: Callable[[], _T | None]

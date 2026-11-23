@@ -53,3 +53,25 @@ def test_add_inside_context_succeeds():
     with domain.domain_context():
         domain.repository_for(Order).add(Order(order_id="1"))
         assert domain.repository_for(Order).get("1").order_id == "1"
+
+
+@pytest.mark.no_test_domain
+def test_read_with_no_rows_outside_context_still_works():
+    domain, Order = _build_domain()
+    domain.init(traverse=False)
+
+    assert domain.repository_for(Order).query.all().items == []
+
+
+@pytest.mark.no_test_domain
+def test_read_returning_a_row_outside_context_names_the_missing_context():
+    domain, Order = _build_domain()
+    domain.init(traverse=False)
+    with domain.domain_context():
+        domain.repository_for(Order).add(Order(order_id="1"))
+
+    with pytest.raises(AttributeError) as exc_info:
+        domain.repository_for(Order).get("1")
+
+    assert NO_CONTEXT in str(exc_info.value)
+    assert exc_info.value.name == "event_store"
