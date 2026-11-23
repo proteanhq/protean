@@ -353,7 +353,11 @@ class TestMethodScope:
         """The resolver and the scope of ``run``, the first function in ``mod``."""
         resolver = _walked_resolver(_make_pkg(tmp_path, {"mod.py": source}))
         tree = resolver._provider.tree("pkg.mod")
-        method = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        method = next(
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+        )
         return resolver, resolver.method_scope("pkg.mod", method), method
 
     @staticmethod
@@ -679,6 +683,192 @@ class TestMethodScope:
         use = next(n for n in ast.walk(method) if isinstance(n, ast.Attribute))
 
         assert scope.resolve(use) is None
+
+
+class TestComprehensionScope:
+    """A comprehension's ``for`` targets bind only inside the comprehension.
+
+    Each method imports ``Closed`` first. A case lists what every ``Closed``
+    load after the import resolves to, in source order.
+    """
+
+    @staticmethod
+    def _resolved_closed_uses(tmp_path, body, *, is_async=False):
+        """What each ``Closed`` load in ``run`` resolves to, in source order."""
+        source = (
+            f"{'async ' if is_async else ''}def run(rows, pairs):\n"
+            "    from acme.events import Closed\n"
+            + "".join(f"    {line}\n" for line in body)
+        )
+        _, scope, method = TestMethodScope._scope(tmp_path, source)
+        uses = sorted(
+            (
+                n
+                for n in ast.walk(method)
+                if isinstance(n, ast.Name)
+                and n.id == "Closed"
+                and isinstance(n.ctx, ast.Load)
+            ),
+            key=lambda n: (n.lineno, n.col_offset),
+        )
+        assert uses
+        return [scope.resolve(use) for use in uses]
+
+    @pytest.mark.parametrize(
+        "comprehension",
+        [
+            "[Closed for Closed in rows]",
+            "{Closed for Closed in rows}",
+            "list(Closed for Closed in rows)",
+            "{k: Closed for k, Closed in pairs}",
+            "{Closed: v for Closed, v in pairs}",
+            "[Closed for k, *Closed in pairs]",
+            "[Closed for r in rows for Closed in r]",
+        ],
+        ids=["list", "set", "generator", "dict", "dict-key", "starred", "later-for"],
+    )
+    def test_a_target_shadows_only_inside_its_comprehension(
+        self, tmp_path, comprehension
+    ):
+        resolved = self._resolved_closed_uses(
+            tmp_path, [f"names = {comprehension}", "return Closed"]
+        )
+
+        assert resolved == [None, "acme.events.Closed"]
+
+    def test_an_async_comprehension_follows_the_same_rule(self, tmp_path):
+        resolved = self._resolved_closed_uses(
+            tmp_path,
+            ["names = [Closed async for Closed in rows]", "return Closed"],
+            is_async=True,
+        )
+
+        assert resolved == [None, "acme.events.Closed"]
+
+    def test_the_outermost_iterable_runs_in_the_method_scope(self, tmp_path):
+        """The element is the first load in source order, the iterable's root
+        the second. The attribute chain on that root resolves too."""
+        body = ["names = [Closed for Closed in Closed.__subclasses__()]"]
+        resolved = self._resolved_closed_uses(tmp_path, body)
+        _, scope, method = TestMethodScope._scope(
+            tmp_path,
+            "def run(rows):\n    from acme.events import Closed\n    " + body[0],
+        )
+        chain = TestMethodScope._use(method, "Closed.__subclasses__")
+
+        assert resolved == [None, "acme.events.Closed"]
+        assert scope.resolve(chain) == "acme.events.Closed.__subclasses__"
+
+    @pytest.mark.parametrize(
+        "comprehension",
+        [
+            "[y for Closed in rows for y in Closed]",
+            "[r for Closed in rows if Closed]",
+            "[[Closed for x in r] for Closed in rows]",
+            "[[x for x in Closed] for Closed in rows]",
+            "[(lambda c=Closed: c) for Closed in rows]",
+            "[(lambda: Closed) for Closed in rows]",
+            "[(lambda: [Closed for x in r]) for Closed in rows]",
+            "[r for Closed, pairs[Closed] in rows]",
+        ],
+        ids=[
+            "later-iterable",
+            "condition",
+            "nested-element",
+            "nested-outermost-iterable",
+            "lambda-default",
+            "lambda-body",
+            "comprehension-in-lambda-body",
+            "subscript-index",
+        ],
+    )
+    def test_a_use_in_the_comprehension_scope_is_none(self, tmp_path, comprehension):
+        resolved = self._resolved_closed_uses(tmp_path, [f"names = {comprehension}"])
+
+        assert resolved == [None]
+
+    def test_a_nested_comprehension_shadows_only_inside_itself(self, tmp_path):
+        resolved = self._resolved_closed_uses(
+            tmp_path,
+            ["names = [[Closed for Closed in r] for r in rows]", "return Closed"],
+        )
+
+        assert resolved == [None, "acme.events.Closed"]
+
+    @pytest.mark.parametrize(
+        "comprehension",
+        [
+            "[Closed(r) for r in rows]",
+            "[Closed for self.Closed in rows]",
+            "[r for (r, pairs[Closed]) in rows]",
+        ],
+        ids=["no-target", "attribute-target", "subscript-target"],
+    )
+    def test_a_comprehension_that_binds_no_such_name_keeps_the_import(
+        self, tmp_path, comprehension
+    ):
+        """An attribute or subscript target binds no name, so it shadows
+        nothing. The subscript's index is evaluated and still resolves."""
+        resolved = self._resolved_closed_uses(tmp_path, [f"names = {comprehension}"])
+
+        assert resolved == ["acme.events.Closed"]
+
+    @pytest.mark.parametrize(
+        "comprehension",
+        ["[(Closed := r) for r in rows]", "[r for r in rows if (Closed := r)]"],
+        ids=["element", "condition"],
+    )
+    def test_a_walrus_in_a_comprehension_rebinds_the_method_name(
+        self, tmp_path, comprehension
+    ):
+        resolved = self._resolved_closed_uses(
+            tmp_path, [f"names = {comprehension}", "return Closed"]
+        )
+
+        assert resolved == [None]
+
+    def test_a_lambda_outside_a_comprehension_keeps_the_import(self, tmp_path):
+        resolved = self._resolved_closed_uses(tmp_path, ["return lambda: Closed"])
+
+        assert resolved == ["acme.events.Closed"]
+
+    def test_a_target_shadows_a_module_level_import_too(self, tmp_path):
+        """Only the module imports ``Closed``. The element is the
+        comprehension's target, so it is ``None``; the use after it resolves
+        through the module table."""
+        source = (
+            "from acme.events import Closed\n"
+            "def run(rows):\n"
+            "    names = [Closed(r) for r in rows if [Closed for Closed in r]]\n"
+            "    return Closed\n"
+        )
+        _, scope, method = TestMethodScope._scope(tmp_path, source)
+        uses = sorted(
+            (
+                n
+                for n in ast.walk(method)
+                if isinstance(n, ast.Name)
+                and n.id == "Closed"
+                and isinstance(n.ctx, ast.Load)
+            ),
+            key=lambda n: (n.lineno, n.col_offset),
+        )
+
+        assert [scope.resolve(use) for use in uses] == [
+            "acme.events.Closed",
+            None,
+            "acme.events.Closed",
+        ]
+
+    def test_another_rebinding_still_counts(self, tmp_path):
+        """Leaving the comprehension target out of the rebindings keeps the
+        assignment that also rebinds the name."""
+        resolved = self._resolved_closed_uses(
+            tmp_path,
+            ["names = [Closed for Closed in rows]", "Closed = 1", "return Closed"],
+        )
+
+        assert resolved == [None, None]
 
 
 class TestClassification:

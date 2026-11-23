@@ -22,3 +22,7 @@ class Archived(BaseEvent):
 
 class Flagged(BaseEvent):
     journal_id = Identifier()
+
+
+class Tallied(BaseEvent):
+    journal_id = Identifier()

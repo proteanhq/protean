@@ -152,6 +152,23 @@ class TestTheRuleStaysSilent:
         assert elements == [fqn(j.Flagged)]
         assert fqn(event) not in elements
 
+    def test_a_comprehension_reusing_the_imported_name_keeps_the_raise(self):
+        """``Journal.tally`` imports ``Tallied``, uses the name as a
+        comprehension's loop variable, then raises it. The loop variable binds
+        only inside the comprehension, so the construction inside ``raise_``
+        still resolves to the event."""
+        domain = _domain("UnraisedLocalImportComprehension")
+        domain.register(m.Journal)
+        domain.register(j.Tallied, part_of=m.Journal)
+        domain.init(traverse=False)
+
+        tally_facts = FactCatalog(domain).element_facts(m.Journal)["tally"]
+        elements = [d["element"] for d in _findings(IRBuilder(domain).build(), CODE)]
+
+        assert [c.fqn for c in tally_facts.constructions] == [fqn(j.Tallied)]
+        assert tally_facts.constructions[0].field_names == ("journal_id",)
+        assert fqn(j.Tallied) not in elements
+
     def test_an_entity_method_raise_is_recognized(self):
         """The rule scans entity methods too: ``BasketLine.add`` raises
         ``LineAdded``, so it is not flagged even though the aggregate root raises
