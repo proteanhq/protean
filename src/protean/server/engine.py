@@ -1060,7 +1060,7 @@ def _wire_outbox_processors(engine: Engine) -> None:
 
     Raises:
         ValueError: when the outbox broker or an external broker is not configured.
-        ConfigurationError: when an outbox table cannot be reached.
+        ConfigurationError: when a provider reports no outbox table.
     """
     logger.debug("engine.outbox_initializing")
     # Get the broker provider name from the config with validation
