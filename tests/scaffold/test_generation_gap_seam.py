@@ -10,16 +10,14 @@ The re-run tests exercise the seam's rule through the local ``_apply`` helper.
 in a later issue (ADR-0035). ``_apply`` models exactly the rule that applier will
 follow, so these tests fix the contract the applier has to meet.
 
-The aggregate is exercised in a subprocess, the way a user's project runs it, so
-module discovery and registration happen in a clean interpreter rather than being
-tangled up with the test process's already-imported modules.
+The aggregate is exercised by ``project_checks/test_generation_gap.py``, which
+runs with pytest in a child interpreter inside the project, the way a user's
+project runs it. Module discovery and registration happen in a clean interpreter
+rather than being tangled up with the test process's already-imported modules.
 """
 
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -30,84 +28,17 @@ from protean.scaffold import (
     CreateFileOperation,
     plan_add_slice,
 )
+from tests.support.project_tests import passed_count, run_tests_in
 
 pytestmark = pytest.mark.no_test_domain
+
+_CHECKS = Path(__file__).parent / "project_checks"
 
 # The developer's edit to the hand-owned subclass: an invariant plus a sentinel
 # the re-run test looks for to prove the file survived untouched. This is the
 # code a re-run of ``add`` must never overwrite.
+_HAND_EDITED_AGGREGATE = (_CHECKS / "order_aggregate.py").read_text(encoding="utf-8")
 SENTINEL = "developer-owned-marker-4c1f"
-
-_HAND_EDITED_AGGREGATE = f'''"""The Order aggregate. Hand-owned; a re-run of add must not touch this."""
-
-from protean import invariant
-from protean.exceptions import ValidationError
-
-from myproj.domain import myproj
-
-from .aggregate_base import OrderBase
-
-SENTINEL = "{SENTINEL}"
-
-
-@myproj.aggregate
-class Order(OrderBase):
-    """The Order aggregate root."""
-
-    @invariant.post
-    def name_must_not_be_blank(self):
-        if not self.name.strip():
-            raise ValidationError({{"name": ["name must not be blank"]}})
-'''
-
-# Run inside the generated project: initialise the domain by traversal, then
-# check that the base+subclass compose and the subclass invariant fires.
-_DRIVER = """
-import sys
-sys.path.insert(0, "src")
-
-from myproj.domain import myproj
-
-myproj.init(traverse=True)
-
-from protean.exceptions import ValidationError
-from myproj.order.aggregate import Order, SENTINEL
-
-with myproj.domain_context():
-    # The registered element is the hand-owned subclass, not the base.
-    names = [e.name for e in myproj.registry.aggregates.values()]
-    assert names == ["Order"], names
-    assert "OrderBase" not in names
-
-    # pydantic validation works on the field the base declares.
-    good = Order.create(name="Widget")
-    assert good.name == "Widget"
-    assert good.id  # identity was assigned
-
-    # The base's field constraint (max_length=100) is enforced, so a value that
-    # violates it raises. This proves the constraint survived onto the subclass,
-    # not just that a happy-path value round-trips.
-    try:
-        Order(name="x" * 101)
-    except ValidationError:
-        pass
-    else:
-        raise AssertionError("base field constraint did not fire")
-
-    # The create factory (generated, on the base) raised the created event.
-    assert [type(e).__name__ for e in good._events] == ["OrderCreated"]
-
-    # The invariant declared in the subclass fires on a blank name.
-    try:
-        Order(name="   ")
-    except ValidationError:
-        pass
-    else:
-        raise AssertionError("subclass invariant did not fire")
-
-print("SENTINEL:" + SENTINEL)
-print("DRIVER_OK")
-"""
 
 
 def _scaffold_project(root: Path) -> Path:
@@ -137,19 +68,17 @@ def _apply(plan: ChangePlan, root: Path) -> None:
         target.write_text(op.content, encoding="utf-8")
 
 
-def _run_driver(project: Path) -> subprocess.CompletedProcess[str]:
-    env = {**os.environ}
-    env.pop("VIRTUAL_ENV", None)
-    env.pop("PROTEAN_ENV", None)
-    env.pop("PROTEAN_DEBUG", None)
-    return subprocess.run(
-        [sys.executable, "-c", _DRIVER],
-        cwd=project,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
+def _run_checks(project: Path) -> None:
+    """Run ``project_checks/test_generation_gap.py`` in *project* and require
+    every test in it to pass."""
+    (project / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+    result = run_tests_in(project, [_CHECKS / "test_generation_gap.py"])
+
+    assert result.returncode == 0, (
+        f"the seam did not compose into a working aggregate:\n"
+        f"{result.stdout}\n{result.stderr}"
     )
+    assert passed_count(result) == 5, result.stdout
 
 
 def test_base_and_subclass_compose_into_a_valid_aggregate(tmp_path):
@@ -164,14 +93,7 @@ def test_base_and_subclass_compose_into_a_valid_aggregate(tmp_path):
         _HAND_EDITED_AGGREGATE, encoding="utf-8"
     )
 
-    result = _run_driver(project)
-
-    assert result.returncode == 0, (
-        f"the seam did not compose into a working aggregate:\n"
-        f"{result.stdout}\n{result.stderr}"
-    )
-    assert "DRIVER_OK" in result.stdout
-    assert f"SENTINEL:{SENTINEL}" in result.stdout
+    _run_checks(project)
 
 
 def test_rerun_refreshes_the_base_and_preserves_the_hand_owned_subclass(tmp_path):
@@ -215,8 +137,4 @@ def test_rerun_refreshes_the_base_and_preserves_the_hand_owned_subclass(tmp_path
     assert "name_must_not_be_blank" in preserved
 
     # And the refreshed base + preserved subclass still compose and run.
-    result = _run_driver(project)
-    assert result.returncode == 0, (
-        f"after a re-run the seam no longer composes:\n{result.stdout}\n{result.stderr}"
-    )
-    assert "DRIVER_OK" in result.stdout
+    _run_checks(project)

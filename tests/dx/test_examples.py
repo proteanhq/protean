@@ -34,6 +34,7 @@ from pathlib import Path
 import pytest
 
 from protean import dx
+from tests.support.project_tests import passed_count, run_tests_in
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -505,163 +506,17 @@ def test_every_value_object_is_referenced():
 #
 # The sweep above proves only that a value object's name appears in the source.
 # The example runner skips each `__main__` demo block, so it never executes the
-# code paths that now build and read those value objects. These tests run that
-# code for the three examples that were changed to use their value objects:
-# `Customer` holding `ContactInfo`, the scaffold `Order` pricing line items in
-# `Money`, and the event-sourced `Order` rebuilding `Money` on add and on replay.
-# Each runs in a child interpreter, like the runner, so the example domains stay
-# out of this test process.
-
-_ASSET_CHECK = """
-import pathlib
-import runpy
-import sys
-
-from protean.domain import Domain
-
-namespace = runpy.run_path(sys.argv[1], run_name="_dx_runtime_check_")
-domain = next(v for v in namespace.values() if isinstance(v, Domain))
-domain.init(traverse=False)
-with domain.domain_context():
-    exec(sys.argv[2], dict(namespace))
-print("ok")
-"""
+# code paths that build and read those value objects. `asset_checks/` holds
+# ordinary tests that run that code; they run in a child interpreter, like the
+# runner, so the example domains stay out of this test process.
 
 
-def _run_asset_check(asset: str, check: str) -> None:
-    """Load `asset`, initialize its domain, and run `check` against its names."""
-    path = SKILLS_ROOT / asset
-    result = subprocess.run(
-        [sys.executable, "-c", _ASSET_CHECK, str(path), check],
-        capture_output=True,
-        text=True,
-        timeout=120,
-        check=False,
-    )
-    assert result.returncode == 0 and result.stdout.strip().endswith("ok"), (
-        f"{asset} failed its runtime check (exit {result.returncode}):\n{result.stderr}"
+def test_the_examples_value_objects_work_at_runtime(tmp_path):
+    (tmp_path / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")
+
+    result = run_tests_in(
+        tmp_path, [Path(__file__).parent / "asset_checks" / "test_asset_runtime.py"]
     )
 
-
-def test_customer_holds_its_contact_info():
-    _run_asset_check(
-        "add-field/assets/add_simple_field.py",
-        """
-customer = Customer(
-    customer_id="CUST-1",
-    name="Ada",
-    contact=ContactInfo(email="ada@example.com", phone="555-0100"),
-)
-assert isinstance(customer.contact, ContactInfo)
-assert customer.contact.email == "ada@example.com"
-assert customer.contact.phone == "555-0100"
-""",
-    )
-
-
-def test_scaffold_order_prices_line_items_in_money():
-    _run_asset_check(
-        "generate-test-scaffold/assets/scaffold_aggregate_unit.py",
-        """
-order = Order.create(customer_id="CUST-1")
-item = order.add_item("P1", quantity=2, unit_price=10.0)
-order.add_item("P2", quantity=1, unit_price=5.5)
-assert isinstance(item.unit_price, Money)
-assert item.unit_price == Money(amount=10.0, currency="USD")
-assert item.subtotal == 20.0
-assert order.total == 25.5
-assert Money(amount=1.0).add(Money(amount=2.0)) == Money(amount=3.0)
-""",
-    )
-
-
-def test_event_sourced_order_rebuilds_money_on_add_and_replay():
-    _run_asset_check(
-        "event-sourced-aggregate/assets/es_aggregate_with_entities.py",
-        """
-order = Order.create(
-    order_id="ORD-1",
-    customer_id="CUST-1",
-    items=[
-        {"product_id": "P1", "quantity": 2, "unit_price": 25.0},
-        {"product_id": "P2", "quantity": 1, "unit_price": 75.0},
-    ],
-)
-assert all(isinstance(item.unit_price, Money) for item in order.items)
-assert order.total == 125.0
-
-replayed = Order.from_events(order._events)
-assert sorted(item.unit_price.amount for item in replayed.items) == [25.0, 75.0]
-assert all(isinstance(item.unit_price, Money) for item in replayed.items)
-assert replayed.total == 125.0
-""",
-    )
-
-
-def test_invoice_finds_and_removes_a_line_by_keyword_id():
-    _run_asset_check(
-        "add-field/assets/add_association_fields.py",
-        """
-from decimal import Decimal as StdDecimal
-
-from protean.exceptions import ObjectNotFoundError, ValidationError
-
-invoice = Invoice(invoice_number="INV-1", customer_id="CUST-1")
-line = InvoiceLineItem(description="Mouse", quantity=2, unit_price="29.99")
-invoice.add_line_items(line)
-
-assert invoice.get_one_from_line_items(id=line.id) is line
-assert invoice.total == StdDecimal("59.98")
-
-try:
-    invoice.get_one_from_line_items(id="missing")
-except ObjectNotFoundError:
-    pass
-else:
-    raise AssertionError("a miss must raise ObjectNotFoundError")
-
-try:
-    invoice.remove_product_line("missing")
-except ValidationError as exc:
-    assert exc.messages == {"line_items": ["No line item with id missing"]}
-else:
-    raise AssertionError("removing an unknown line must raise ValidationError")
-
-invoice.remove_product_line(line.id)
-assert invoice.line_items == []
-""",
-    )
-
-
-def test_failed_withdrawal_leaves_the_balance_unchanged():
-    _run_asset_check(
-        "aggregate/assets/aggregate_with_invariants.py",
-        """
-from decimal import Decimal
-
-account = Account(account_number="ACC-1", balance="100.00", overdraft_limit="50.00")
-try:
-    account.withdraw("200.00")
-except ValidationError:
-    pass
-else:
-    raise AssertionError("withdrawing past the overdraft limit must raise")
-
-assert account.balance == Decimal("100.00")
-""",
-    )
-
-
-def test_warehouse_ships_part_of_its_reserved_stock():
-    _run_asset_check(
-        "aggregate/assets/aggregate_with_invariants.py",
-        """
-warehouse = Warehouse(name="Main", max_capacity=1000.0)
-warehouse.receive_stock(100.0)
-warehouse.reserve_stock(100.0)
-warehouse.ship_stock(50.0)
-
-assert warehouse.current_stock == 50.0
-assert warehouse.reserved_stock == 50.0
-""",
-    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert passed_count(result) == 13, result.stdout

@@ -11,7 +11,6 @@ slice passes ``protean verify``.
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 import textwrap
@@ -33,6 +32,7 @@ from protean.scaffold.slice_generator import (
     generate_slice_plan,
     split_words,
 )
+from tests.support.project_tests import passed_count, project_env, run_tests_in
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -2201,6 +2201,9 @@ def test_field_entry_keyed_by_something_that_is_not_a_string_raises():
 
 _VERIFY_PACKAGE = "scaffolded"
 
+# Real test files that the tests below copy into a generated project and run.
+_CHECKS = Path(__file__).parent / "project_checks"
+
 
 def _generate_project(tmp_path: Path) -> Path:
     """Run ``protean new`` and return the generated project root."""
@@ -2220,19 +2223,6 @@ def _materialize(project: Path, plan) -> None:
         target = project / op.path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(op.content)
-
-
-def _subprocess_env(project: Path) -> dict[str, str]:
-    src = str(project / "src")
-    existing = os.environ.get("PYTHONPATH", "")
-    env = {
-        **os.environ,
-        "PYTHONPATH": src + os.pathsep + existing if existing else src,
-    }
-    env.pop("VIRTUAL_ENV", None)
-    env.pop("PROTEAN_ENV", None)
-    env.pop("PROTEAN_DEBUG", None)
-    return env
 
 
 def test_fragment_driven_slice_verifies_green(tmp_path):
@@ -2274,7 +2264,7 @@ def test_fragment_driven_slice_verifies_green(tmp_path):
             ".",
         ],
         cwd=project,
-        env=_subprocess_env(project),
+        env=project_env(project),
         capture_output=True,
         text=True,
         errors="replace",
@@ -2336,7 +2326,7 @@ def test_parsed_model_slice_verifies_green(tmp_path):
             ".",
         ],
         cwd=project,
-        env=_subprocess_env(project),
+        env=project_env(project),
         capture_output=True,
         text=True,
         errors="replace",
@@ -2405,7 +2395,7 @@ def test_slice_whose_fields_take_framework_names_runs(tmp_path):
             ".",
         ],
         cwd=project,
-        env=_subprocess_env(project),
+        env=project_env(project),
         capture_output=True,
         text=True,
         errors="replace",
@@ -2419,49 +2409,12 @@ def test_slice_whose_fields_take_framework_names_runs(tmp_path):
     # ``verify`` proves the elements register. Driving the command proves they work:
     # the aggregate is read back by the id its authored ``id`` field holds, which is
     # what tracking the identity means.
-    drive = textwrap.dedent(
-        """
-        from scaffolded.domain import scaffolded
-        from scaffolded.thing.aggregate import Thing
-        from scaffolded.thing.commands import CreateThing
-
-        scaffolded.init()
-        with scaffolded.domain_context():
-            scaffolded.process(
-                CreateThing(
-                    id="thing-1",
-                    name="a name",
-                    Text="a",
-                    note="b",
-                    Identifier="i",
-                    ref="r",
-                )
-            )
-            found = scaffolded.repository_for(Thing).get("thing-1")
-            print(
-                "READ_BACK",
-                found.id,
-                found.Text,
-                found.note,
-                found.Identifier,
-                found.ref,
-            )
-        """
-    )
-    driven = subprocess.run(
-        [sys.executable, "-c", drive],
-        cwd=project,
-        env=_subprocess_env(project),
-        capture_output=True,
-        text=True,
-        errors="replace",
-        check=False,
+    driven = run_tests_in(
+        project, [_CHECKS / "test_framework_named_fields.py"], "tests/scaffolded"
     )
 
-    assert driven.returncode == 0, (
-        f"the generated slice must run:\n{driven.stdout}\n{driven.stderr}"
-    )
-    assert "READ_BACK thing-1 a b i r" in driven.stdout
+    assert driven.returncode == 0, driven.stdout + driven.stderr
+    assert passed_count(driven) == 1, driven.stdout
 
 
 def test_slice_with_an_identifier_id_runs(tmp_path):
@@ -2492,32 +2445,12 @@ def test_slice_with_an_identifier_id_runs(tmp_path):
     assert "id: Identifier(required=True)" in base
     assert "order_id=order.id," in base
 
-    drive = textwrap.dedent(
-        """
-        from scaffolded.domain import scaffolded
-        from scaffolded.order.aggregate import Order
-        from scaffolded.order.commands import CreateOrder
-
-        scaffolded.init()
-        with scaffolded.domain_context():
-            scaffolded.process(CreateOrder(id="order-1", name="a name"))
-            print("READ_BACK", scaffolded.repository_for(Order).get("order-1").name)
-        """
-    )
-    driven = subprocess.run(
-        [sys.executable, "-c", drive],
-        cwd=project,
-        env=_subprocess_env(project),
-        capture_output=True,
-        text=True,
-        errors="replace",
-        check=False,
+    driven = run_tests_in(
+        project, [_CHECKS / "test_identifier_id.py"], "tests/scaffolded"
     )
 
-    assert driven.returncode == 0, (
-        f"the generated slice must run:\n{driven.stdout}\n{driven.stderr}"
-    )
-    assert "READ_BACK a name" in driven.stdout
+    assert driven.returncode == 0, driven.stdout + driven.stderr
+    assert passed_count(driven) == 1, driven.stdout
 
 
 def test_slice_whose_command_takes_a_framework_import_name_runs(tmp_path):
@@ -2559,7 +2492,7 @@ def test_slice_whose_command_takes_a_framework_import_name_runs(tmp_path):
             ".",
         ],
         cwd=project,
-        env=_subprocess_env(project),
+        env=project_env(project),
         capture_output=True,
         text=True,
         errors="replace",

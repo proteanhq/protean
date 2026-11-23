@@ -11,7 +11,6 @@ elements after init.
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,6 +21,7 @@ from typer.testing import CliRunner
 from protean.cli import app
 from protean.scaffold import CreateFileOperation
 from protean.scaffold.add_plan import plan_add_slice
+from tests.support.project_tests import passed_count, project_env, run_tests_in
 
 # These generate and start their own projects; the autouse domain fixture would
 # build an unrelated Domain per test for nothing.
@@ -70,46 +70,6 @@ def _materialize(project: Path, plan) -> None:
         target = project / op.path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(op.content)
-
-
-def _subprocess_env(project: Path) -> dict[str, str]:
-    """Env for running the generated project uninstalled (its ``src/`` on the
-    path, and the leak-prone vars dropped). Mirrors the working-project test."""
-    src = str(project / "src")
-    existing = os.environ.get("PYTHONPATH", "")
-    env = {
-        **os.environ,
-        "PYTHONPATH": src + os.pathsep + existing if existing else src,
-    }
-    env.pop("VIRTUAL_ENV", None)
-    env.pop("PROTEAN_ENV", None)
-    env.pop("PROTEAN_DEBUG", None)
-    return env
-
-
-def _init_and_exercise(class_name: str, slug: str) -> str:
-    """The script the traversal test runs inside the generated project: init the
-    domain, print the registry, then drive the planned slice end to end.
-
-    Takes the slice's class name and slug so a multi-word aggregate is exercised
-    through its own module path (``order_item/``) and class (``OrderItem``)."""
-    return (
-        "import sys; sys.path.insert(0, 'src')\n"
-        "from scaffolded.domain import scaffolded as domain\n"
-        "domain.init()\n"
-        "names = sorted(domain.registry._elements_by_name.keys())\n"
-        "print('NAMES:' + ','.join(names))\n"
-        # Drive the slice end to end: process the command through the generated
-        # handler (which calls the generated `create` factory), then fetch the
-        # persisted aggregate back. command_processing is sync in the scaffold, so
-        # process runs the handler inline and returns the aggregate id.
-        f"from scaffolded.{slug}.commands import Create{class_name}\n"
-        f"from scaffolded.{slug}.aggregate import {class_name}\n"
-        "with domain.domain_context():\n"
-        f"    new_id = domain.process(Create{class_name}(name='Widget'))\n"
-        f"    fetched = domain.repository_for({class_name}).get(new_id)\n"
-        "    print('PERSISTED:' + fetched.name)\n"
-    )
 
 
 def test_dry_run_previews_the_create_operations(tmp_path):
@@ -252,7 +212,7 @@ def test_apply_then_verify_is_green(tmp_path):
             ".",
         ],
         cwd=project,
-        env=_subprocess_env(project),
+        env=project_env(project),
         capture_output=True,
         text=True,
         errors="replace",
@@ -265,66 +225,31 @@ def test_apply_then_verify_is_green(tmp_path):
     )
 
 
-@pytest.mark.parametrize(
-    ("name", "class_name", "slug"),
-    [
-        ("Order", "Order", "order"),
-        # A multi-word name: the slice lands in `order_item/` and the traversal
-        # has to discover it there under the derived class names.
-        ("order_item", "OrderItem", "order_item"),
-    ],
-)
-def test_planned_slice_loads_and_registers_under_traversal(
-    tmp_path, name, class_name, slug
-):
+def test_planned_slices_load_and_register_under_traversal(tmp_path):
     """Acceptance #3: the planned files register when the domain inits with
-    traversal on, and the slice actually works. Materialize the plan, init the
-    real domain, require all four elements in the registry by name, then process a
-    command through the generated handler and assert the aggregate persists.
+    traversal on, and the slices actually work. Materialize the plans for a
+    single-word and a multi-word aggregate, then run `project_checks/
+    test_added_slices.py` in the project: it requires every element of each slice
+    in the registry by name, and processes each create command through the
+    generated handler.
 
     Asserting only the registry names is not enough: a broken `create` factory or
     a handler missing its decorator can still leave the names present. Running the
     command exercises the factory and the handler body, so those regressions fail
-    here."""
+    here. The multi-word slice lands in `order_item/`, so traversal has to
+    discover it there under the derived class names."""
     project = _generate(tmp_path)
-    plan = plan_add_slice(str(project), "aggregate", name)
-    _materialize(project, plan)
+    for name in ("Order", "order_item"):
+        _materialize(project, plan_add_slice(str(project), "aggregate", name))
 
-    completed = subprocess.run(
-        [sys.executable, "-c", _init_and_exercise(class_name, slug)],
-        cwd=project,
-        env=_subprocess_env(project),
-        capture_output=True,
-        text=True,
-        check=False,
+    result = run_tests_in(
+        project,
+        [Path(__file__).parent / "project_checks" / "test_added_slices.py"],
+        "tests/scaffolded/application",
     )
 
-    assert completed.returncode == 0, (
-        "the domain must init and process the planned slice's command:\n"
-        f"{completed.stdout}\n{completed.stderr}"
-    )
-    line = next(
-        (ln for ln in completed.stdout.splitlines() if ln.startswith("NAMES:")),
-        "",
-    )
-    registered = set(line[len("NAMES:") :].split(","))
-    for element in (
-        class_name,
-        f"Create{class_name}",
-        f"{class_name}Created",
-        f"{class_name}CommandHandler",
-        f"{class_name}Summary",
-        f"{class_name}Projector",
-    ):
-        assert element in registered, (
-            f"{element} did not register under traversal; registered: "
-            f"{sorted(registered)}"
-        )
-    # The command ran through the generated handler and the aggregate came back.
-    assert "PERSISTED:Widget" in completed.stdout, (
-        "the generated handler did not create and persist the aggregate:\n"
-        f"{completed.stdout}\n{completed.stderr}"
-    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert passed_count(result) == 4, result.stdout
 
 
 def test_unsupported_type_exits_nonzero_and_writes_nothing(tmp_path):
