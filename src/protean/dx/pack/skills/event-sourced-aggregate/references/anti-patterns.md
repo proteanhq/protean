@@ -109,7 +109,7 @@ Set every field in the first event's handler, as `account_opened` does in the `A
 
 ### The Problem
 
-A standard `@domain.repository` registered for an event-sourced aggregate raises `IncorrectUsageError`. It raises at registration when `part_of` is the class, and at `domain.init()` when `part_of` is a string. A state-based repository is the wrong persistence model for an ES aggregate.
+A standard `@domain.repository` registered for an event-sourced aggregate raises `IncorrectUsageError`. It raises at registration when `part_of` is a class that is already event sourced, and `domain.init()` checks every registered repository again. A state-based repository is the wrong persistence model for an ES aggregate.
 
 ```python
 # fragment

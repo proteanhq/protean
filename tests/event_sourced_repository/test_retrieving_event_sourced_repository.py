@@ -64,6 +64,13 @@ class Ledger(BaseAggregate):
     name: String()
 
 
+def _another_account_aggregate() -> type[BaseAggregate]:
+    class Account(BaseAggregate):
+        name: String()
+
+    return Account
+
+
 class AccountESRepository(BaseEventSourcedRepository):
     def find_es_custom(self):
         return []
@@ -125,3 +132,31 @@ class TestRegisteredEventSourcedRepositoryIsReturned:
         test_domain.init(traverse=False)
 
         assert isinstance(test_domain.repository_for(Account), AccountAuditRepository)
+
+    def test_a_class_registered_again_keeps_its_place(self, test_domain):
+        class AccountAuditRepository(BaseEventSourcedRepository):
+            pass
+
+        test_domain.register(Account, event_sourced=True)
+        test_domain.register(AccountESRepository, part_of=Account)
+        test_domain.register(AccountAuditRepository, part_of=Account)
+        test_domain.register(AccountESRepository, part_of=Account)
+        test_domain.init(traverse=False)
+
+        assert isinstance(test_domain.repository_for(Account), AccountAuditRepository)
+
+    def test_an_aggregate_with_the_same_name_does_not_share_the_repository(
+        self, test_domain
+    ):
+        other_account = _another_account_aggregate()
+        assert other_account.__name__ == Account.__name__
+
+        test_domain.register(Account, event_sourced=True)
+        test_domain.register(other_account, event_sourced=True)
+        test_domain.register(AccountESRepository, part_of=Account)
+        test_domain.init(traverse=False)
+
+        repo = test_domain.repository_for(other_account)
+
+        assert not isinstance(repo, AccountESRepository)
+        assert repo.meta_.part_of is other_account

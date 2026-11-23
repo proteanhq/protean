@@ -1,5 +1,6 @@
 import pytest
 
+from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.repository import BaseRepository, repository_factory
 from protean.exceptions import (
@@ -183,12 +184,12 @@ class TestRepositoryOnEventSourcedAggregate:
                     return []
 
         assert exc.value.code == "USAGE_REPOSITORY_ON_EVENT_SOURCED_AGGREGATE"
+        assert exc.value.location == "Domain.register"
         assert exc.value.args[0] == (
             "Repository `AccountRepository` cannot be associated with `Account`, "
-            "which is an event-sourced aggregate. Subclass "
-            "`BaseEventSourcedRepository` instead, and register it with "
-            "`domain.register(AccountRepository, part_of=Account)` to add "
-            "custom methods."
+            "which is an event-sourced aggregate. To add custom methods, "
+            "subclass `BaseEventSourcedRepository` and register the subclass "
+            "with `domain.register(<Repository>, part_of=Account)`."
         )
 
     def test_a_string_part_of_naming_an_event_sourced_aggregate_raises_at_init(
@@ -207,13 +208,34 @@ class TestRepositoryOnEventSourcedAggregate:
             test_domain.init(traverse=False)
 
         assert exc.value.code == "USAGE_REPOSITORY_ON_EVENT_SOURCED_AGGREGATE"
+        assert exc.value.location == "Domain.init"
         assert (
             "`AccountRepository` cannot be associated with `Account`"
             in (exc.value.args[0])
         )
         assert "`BaseEventSourcedRepository`" in exc.value.args[0]
+        assert "`domain.register(<Repository>, part_of=Account)`" in exc.value.args[0]
+
+    def test_a_repository_registered_before_the_aggregate_raises_at_init(
+        self, test_domain
+    ):
+        class Account(BaseAggregate):
+            name: String()
+
+        class AccountRepository(BaseRepository):
+            def find_active(self):
+                return []
+
+        test_domain.register(AccountRepository, part_of=Account)
+        test_domain.register(Account, event_sourced=True)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            test_domain.init(traverse=False)
+
+        assert exc.value.code == "USAGE_REPOSITORY_ON_EVENT_SOURCED_AGGREGATE"
+        assert exc.value.location == "Domain.init"
         assert (
-            "`domain.register(AccountRepository, part_of=Account)`"
+            "`AccountRepository` cannot be associated with `Account`"
             in (exc.value.args[0])
         )
 

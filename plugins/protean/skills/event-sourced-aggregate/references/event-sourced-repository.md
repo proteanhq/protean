@@ -86,6 +86,8 @@ The skill's "Event-sourced repository" section shows the `BaseEventSourcedReposi
 - `part_of` is missing: "Repository `AccountRepository` should be associated with an Aggregate".
 - The `part_of` aggregate does not have `event_sourced=True`: "Repository `AccountRepository` can only be associated with an Event Sourced Aggregate".
 
+Once registered, `domain.repository_for(Account)` returns an instance of the subclass, so its custom methods are available.
+
 ## How `add()` Works
 
 When you call `repo.add(aggregate)`:

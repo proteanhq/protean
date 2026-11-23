@@ -70,7 +70,7 @@ sequenceDiagram
 |--------------|-----------------------|
 | `@domain.aggregate` | Add `event_sourced=True` option |
 | Aggregate methods | Use `@apply` decorator for event application |
-| `@domain.repository` | Replace with `@domain.event_sourced_repository` |
+| `@domain.repository` | Replace with a `BaseEventSourcedRepository` subclass registered with `domain.register(<Repository>, part_of=<Aggregate>)` |
 | Persistence Store | Replace with **Event Store** (e.g., Message DB) |
 | Everything else | Commands, Command Handlers, Projections, Projectors, unchanged |
 

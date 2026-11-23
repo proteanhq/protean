@@ -99,7 +99,11 @@ from protean.core.projection import BaseProjection, projection_factory
 from protean.core.projector import projector_factory
 from protean.core.query import BaseQuery, query_factory
 from protean.core.query_handler import query_handler_factory
-from protean.core.repository import BaseRepository, repository_factory
+from protean.core.repository import (
+    BaseRepository,
+    check_state_based_part_of,
+    repository_factory,
+)
 from protean.core.subscriber import subscriber_factory
 from protean.core.upcaster import BaseUpcaster, upcaster_factory
 from protean.core.value_object import value_object_factory
@@ -623,6 +627,11 @@ class Domain:
         # Fail fast if any references remain unresolved — later steps
         # (e.g. _assign_aggregate_clusters) assume resolved classes.
         self._check_for_unresolved_references()
+
+        # A repository registered before its aggregate was marked event
+        # sourced passed the check at registration, and a string ``part_of``
+        # was unchecked until it resolved above.
+        self._check_repositories_are_state_based()
 
         # Assign Aggregate Clusters
         self._assign_aggregate_clusters()
@@ -1179,6 +1188,11 @@ class Domain:
     def _resolve_references(self) -> None:
         """Resolve pending class references in association fields."""
         self._resolver.resolve_references()
+
+    def _check_repositories_are_state_based(self) -> None:
+        """Raise ``IncorrectUsageError`` for a repository on an event-sourced aggregate."""
+        for record in self.registry.repositories.values():
+            check_state_based_part_of(record.cls, location="Domain.init")
 
     # _cls should never be specified by keyword, so start it with an
     # underscore.  The presence of _cls is used to detect if this
@@ -2379,8 +2393,11 @@ class Domain:
         """Return an event-sourced repository instance for the aggregate.
 
         The instance is of the ``BaseEventSourcedRepository`` subclass
-        registered for the aggregate, the last one registered when there are
-        several. When none is registered, a subclass is generated.
+        registered for the aggregate. When several are registered, it is the
+        one registered last, and registering a class again does not change
+        its place. A subclass registered with a string ``part_of`` is found
+        only after ``domain.init()`` resolves the string. When none is found,
+        a subclass is generated.
         """
         registered = [
             record.cls

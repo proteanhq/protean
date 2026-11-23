@@ -619,19 +619,23 @@ def repository_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[
             f"Repository `{repository_cls.__name__}` can only be associated with an Aggregate"
         )
 
-    # A string ``part_of`` is checked once the resolver resolves it.
+    # A string ``part_of`` is checked by ``domain.init()`` once it resolves.
     if not auto_constructed and isinstance(repository_cls.meta_.part_of, type):
-        check_state_based_part_of(repository_cls)
+        check_state_based_part_of(repository_cls, location="Domain.register")
 
     return element_cls
 
 
-def check_state_based_part_of(repository_cls: Any) -> None:
+def check_state_based_part_of(repository_cls: Any, location: str) -> None:
     """Refuse a standard repository whose aggregate is event sourced.
 
     ``domain.repository_for()`` serves an event-sourced aggregate through an
     event-sourced repository, so a standard repository registered for one
     would never be used.
+
+    Args:
+        repository_cls: The registered repository class.
+        location: The entry point reported on the error.
 
     Raises:
         IncorrectUsageError: When ``meta_.part_of`` is an event-sourced
@@ -646,9 +650,9 @@ def check_state_based_part_of(repository_cls: Any) -> None:
     raise IncorrectUsageError(
         f"Repository `{repository_name}` cannot be associated with "
         f"`{aggregate_name}`, which is an event-sourced aggregate. "
-        f"Subclass `BaseEventSourcedRepository` instead, and register it with "
-        f"`domain.register({repository_name}, part_of={aggregate_name})` "
-        f"to add custom methods.",
+        f"To add custom methods, subclass `BaseEventSourcedRepository` and "
+        f"register the subclass with "
+        f"`domain.register(<Repository>, part_of={aggregate_name})`.",
         code=DiagnosticCode.USAGE_REPOSITORY_ON_EVENT_SOURCED_AGGREGATE,
-        location="Domain.repository",
+        location=location,
     )

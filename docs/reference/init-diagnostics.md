@@ -219,12 +219,13 @@ element's type.
 | **Category** | `usage` |
 | **Level** | `error` |
 | **Exception** | `IncorrectUsageError` |
-| **Raised by** | `Domain.repository` |
+| **Raised by** | `Domain.register`, `Domain.init` |
 
 **Why.** An event-sourced aggregate is loaded and saved through an event-sourced
 repository, so a standard repository registered for it would never be used. With a
-class `part_of`, the registration raises; with a string `part_of`, `domain.init()`
-raises.
+class `part_of`, the registration raises when the aggregate is already event
+sourced. `domain.init()` checks every registered repository again, which covers a
+string `part_of` and a repository registered before its aggregate.
 
 **Fix.** Subclass `BaseEventSourcedRepository` and register it with
 `domain.register(<Repository>, part_of=<Aggregate>)`.
