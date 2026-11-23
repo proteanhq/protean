@@ -529,6 +529,63 @@ def test_a_saga_whose_command_already_ran_still_completes(
     assert statuses[-1] == last_status
 
 
+@pytest.mark.parametrize(
+    "asset_name", ["saga_before_unclosed.py", "saga_after_closed.py"]
+)
+@pytest.mark.parametrize(
+    ("total", "closing_step", "end_status"),
+    [(100.0, "Shipping", "fulfilled"), (900.0, "Payment", "cancelled")],
+)
+def test_an_early_closing_event_still_ends_the_saga(
+    asset_name: str, total: float, closing_step: str, end_status: str
+):
+    """A closing event can reach the saga before the step it follows, when the
+    saga lost the transitions in between. The framework closes an ``end=True``
+    saga even when the handler returns early, so the closing handler must still
+    set the end status and, on the failure path, compensate."""
+    run_name = f"_saga_early_{Path(asset_name).stem}_{closing_step}_"
+    namespace, domain = _load(asset_name, run_name)
+    pm_cls = namespace["OrderFulfillmentPM"]
+    order_id = "ORD-EARLY"
+
+    with domain.domain_context():
+        # Start the saga but hold the CreateReservation it issues, so the saga
+        # stays at "reserving_stock".
+        domain.config["command_processing"] = "async"
+        domain.process(
+            namespace["PlaceOrder"](
+                order_id=order_id, customer_id="CUST-1", total=total
+            ),
+            asynchronous=False,
+        )
+        domain.config["command_processing"] = "sync"
+        assert _saga_statuses(domain, pm_cls, order_id) == ["reserving_stock"]
+
+        # The reservation exists, but its StockReserved never reached the saga,
+        # so the saga stored no reservation_id.
+        inventory_repository = domain.repository_for(namespace["Inventory"])
+        inventory_repository.add(namespace["Inventory"](order_id=order_id))
+
+        if closing_step == "Payment":
+            record = namespace["Payment"].charge(order_id, total)
+        else:
+            record = namespace["Shipping"].dispatch(order_id)
+        domain.repository_for(namespace[closing_step]).add(record)
+
+        assert _saga_statuses(domain, pm_cls, order_id)[-1] == end_status
+        final = _final_transition(domain, pm_cls, order_id)
+        assert final.is_complete is (asset_name == "saga_after_closed.py")
+
+        order = domain.repository_for(namespace["Order"]).get(order_id)
+        reservation = inventory_repository.get(order_id)
+        if end_status == "cancelled":
+            assert reservation.status == "released"
+            assert order.status == "cancelled"
+        else:
+            assert reservation.status == "reserved"
+            assert order.status == "placed"
+
+
 def _strip_docstrings(function: ast.FunctionDef) -> ast.FunctionDef:
     body = function.body
     if (

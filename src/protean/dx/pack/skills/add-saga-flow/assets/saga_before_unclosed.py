@@ -28,9 +28,12 @@ A message can arrive more than once, because delivery is at least once. Every
 create handler keeps one record per order. A repeated PlaceOrder changes
 nothing. The handlers the saga calls (create_reservation, request_payment and
 create_shipment) keep the stored fields on a repeat and raise the step's event
-again. Each saga handler returns, recording no new state, when the saga's status
-is not the one its step expects: the step has already run, or its event arrived
-early.
+again. Each start or intermediate saga handler returns, recording no new
+state, when the saga's status is not the one its step expects: the step has
+already run, or its event arrived early. The two closing handlers return only
+when the saga already sits at their own end status, "fulfilled" or "cancelled".
+A closing event that arrives early still ends the saga, and on the failure path
+it still compensates.
 
 Usage:
     from saga_before_unclosed import PlaceOrder, domain
@@ -395,8 +398,10 @@ class OrderFulfillmentPM:
       compensating commands to release the stock reservation and cancel the
       order.
 
-    A message can arrive more than once. Each handler first checks the saga's
-    status and returns when it is not the one the step expects.
+    A message can arrive more than once. Each start or intermediate handler
+    first checks the saga's status and returns when it is not the one the step
+    expects. Each closing handler returns only when the saga already sits at its
+    own end status, so a closing event that arrives early still ends the saga.
     """
 
     order_id: Identifier()
@@ -419,7 +424,6 @@ class OrderFulfillmentPM:
         """Request payment once stock is reserved."""
         if self.status != "reserving_stock":
             return
-        # Remember the reservation: the failure path needs it to compensate.
         self.reservation_id = event.reservation_id
         self.status = "awaiting_payment"
         current_domain.process(
@@ -437,15 +441,17 @@ class OrderFulfillmentPM:
     @handle(ShipmentDispatched, correlate="order_id")
     def on_shipment_dispatched(self, event: ShipmentDispatched) -> None:
         """Reach the success terminal, but never close the saga (no end=True)."""
-        if self.status != "shipping":
+        if self.status == "fulfilled":
             return
         self.status = "fulfilled"
 
     @handle(PaymentFailed, correlate="order_id")
     def on_payment_failed(self, event: PaymentFailed) -> None:
         """Compensate earlier steps, but never close the saga (no end=True)."""
-        if self.status != "awaiting_payment":
+        if self.status == "cancelled":
             return
         self.status = "cancelled"
-        current_domain.process(CancelReservation(reservation_id=self.reservation_id))
+        # Release by the order id, the reservation's identity: an early
+        # PaymentFailed arrives before reservation_id is stored.
+        current_domain.process(CancelReservation(reservation_id=self.order_id))
         current_domain.process(CancelOrder(order_id=self.order_id))

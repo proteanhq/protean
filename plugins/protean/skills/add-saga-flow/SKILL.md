@@ -72,9 +72,9 @@ A start handler opens the saga. Mark it `start=True`. It stores the fields the
 later steps need and issues the first command. A saga needs at least one; give it
 one per event that can begin the flow.
 
-A message can arrive more than once, so each handler first checks the saga's
-`status` and returns when it is not the one the step expects: the step has
-already run, or its event arrived early. The saga declares
+A message can arrive more than once, so each start and intermediate handler
+first checks the saga's `status` and returns when it is not the one the step
+expects: the step has already run, or its event arrived early. The saga declares
 `status: String(default="new")`, so a new instance starts at `"new"`. A repeated
 `OrderPlaced` then leaves a running saga where it is.
 
@@ -106,7 +106,6 @@ step's event again, so the saga still gets its reply.
 def on_stock_reserved(self, event: StockReserved) -> None:
     if self.status != "reserving_stock":
         return
-    # Remember the reservation: the failure path needs it to compensate.
     self.reservation_id = event.reservation_id
     self.status = "awaiting_payment"
     current_domain.process(RequestPayment(order_id=self.order_id, amount=self.total))
@@ -121,10 +120,16 @@ success path closes when the shipment goes out:
 # fragment
 @handle(ShipmentDispatched, correlate="order_id", end=True)
 def on_shipment_dispatched(self, event: ShipmentDispatched) -> None:
-    if self.status != "shipping":
+    if self.status == "fulfilled":
         return
     self.status = "fulfilled"
 ```
+
+A closing handler checks its status the other way round: it returns only when
+the saga already sits at its own end status. The framework closes the saga after
+an `end=True` handler returns, even when the handler returned early. So a closing
+event that arrives early, before the saga reaches its last step, must still set
+the end status, and on the failure path still compensate.
 
 The [saga lifecycle reference](references/saga-lifecycle.md) covers the start,
 intermediate, and end handler kinds in full.
@@ -139,15 +144,18 @@ stock reservation and cancels the order:
 # fragment
 @handle(PaymentFailed, correlate="order_id", end=True)
 def on_payment_failed(self, event: PaymentFailed) -> None:
-    if self.status != "awaiting_payment":
+    if self.status == "cancelled":
         return
     self.status = "cancelled"
-    current_domain.process(CancelReservation(reservation_id=self.reservation_id))
+    # Release by the order id, the reservation's identity: an early
+    # PaymentFailed arrives before reservation_id is stored.
+    current_domain.process(CancelReservation(reservation_id=self.order_id))
     current_domain.process(CancelOrder(order_id=self.order_id))
 ```
 
-The saga stored `reservation_id` when the stock was reserved. That is how the
-failure handler knows which reservation to release.
+The failure handler releases the reservation by the order id, which is the
+reservation's identity. It does not use the stored `reservation_id`, because an
+early `PaymentFailed` reaches the saga before `on_stock_reserved` stores it.
 
 The [compensation reference](references/compensation.md) covers the pattern in
 full.
