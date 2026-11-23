@@ -359,6 +359,8 @@ _TO_0_20 = (
     "get_generic_test_dir",
     "test_adapter_marker_capabilities",
     "test_adapter_test_dir",
+    "generate_proto_schemas",
+    "generate_proto_schema_standalone",
 )
 
 

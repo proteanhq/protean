@@ -17,6 +17,7 @@ import pytest
 from typer.testing import CliRunner
 
 from protean import Domain
+from protean._deprecation import RemovedInProtean020Warning
 from protean.cli import app
 from protean.cli.hooks import _check_compat_single
 from protean.fields import Identifier, Integer, String
@@ -459,7 +460,8 @@ class TestGeneratorAndCheckShareTheNumbering:
             "fields": _renamed_fields(),
         }
 
-        proto = generate_proto_schema(element)
+        with pytest.warns(RemovedInProtean020Warning):
+            proto = generate_proto_schema(element)
 
         written = {}
         for line in proto.splitlines():

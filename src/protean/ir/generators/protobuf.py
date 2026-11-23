@@ -4,13 +4,15 @@ Converts IR element dicts into ``.proto`` (proto3) source text.
 
 Usage::
 
-    from protean.ir.generators.protobuf import (
-        generate_proto_schema,
-        generate_proto_schemas,
+    from protean.ir.generators.protobuf import generate_proto_schema
+
+    proto_text = generate_proto_schema(
+        element_ir, all_elements=flat_index, import_path=paths.get
     )
 
-    proto_text = generate_proto_schema(element_ir, all_elements=flat_index)
-    all_protos = generate_proto_schemas(ir)
+To write every element's file, call
+``write_schemas(ir, output_dir, fmt="protobuf")`` from
+:mod:`protean.ir.generators.schema_writer`.
 
 Conventions:
 
@@ -22,9 +24,20 @@ Conventions:
 - With ``import_path``, a target the lookup has no file for is defined as a
   nested message inside the file's main message. Its full name then includes
   the main message's name, so two files in one package never define it twice.
+- A target defined in the same file, as a nested message or as a sibling
+  message, is declared under its short name. A nested target named like the
+  hidden entry message of one of the main message's map fields gets trailing
+  underscores instead. Two same-file targets that would be declared under one
+  name, or a target other than the element itself with the main message's
+  name, raise ``ValueError`` naming both FQNs. A field that refers to the
+  element itself names the main message. An imported target keeps its full
+  name, so it never collides.
 - Without ``import_path``, the referenced value objects and entities become
   sibling messages in the same file, so a single file still compiles on its
-  own.
+  own. This standalone mode is deprecated and removed in 0.20.0:
+  ``generate_proto_schemas()``, and ``generate_proto_schema()`` called without
+  ``import_path``, emit ``RemovedInProtean020Warning``. Use
+  ``write_schemas(..., fmt="protobuf")`` instead.
 - Optional fields use the proto3 ``optional`` label (explicit presence);
   list / has-many / value-object-list fields use ``repeated``.
 - Date/DateTime map to the well-known ``google.protobuf.Timestamp``, written
@@ -48,6 +61,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from protean._deprecation import warn_from_registry
 from protean.ir.generators.base import module_path, short_name
 from protean.ir.generators.schema import _build_flat_elements, iter_data_elements
 
@@ -204,30 +218,48 @@ def _declared_name(
 
 def _referenced_blocks(
     referenced: set[str],
-    main_name: str,
+    main: tuple[str, str],
     flat: dict[str, dict[str, Any]],
-    resolve: _Resolver,
-    local_name: Callable[[str], str],
+    types: _TypeNames,
 ) -> list[list[str]]:
     """Render the messages of referenced value objects and entities.
 
-    Walks the references transitively in a deterministic order, and renders
-    each message once.
+    ``main`` is the main message's ``(name, fqn)``. Walks the references
+    transitively in a deterministic order, and renders each message once.
+
+    Raises:
+        ValueError: When two targets with different FQNs would be declared
+            under one name, or a target other than the element itself has the
+            main message's name.
     """
+    main_name, main_fqn = main
     ref_blocks: list[list[str]] = []
-    seen: set[str] = set()
+    # Declared name -> the FQN declared under it in this file. Keyed on the
+    # declared name, because a renamed map-entry clash can land on a name
+    # another target already has.
+    declared = {main_name: main_fqn}
     queue = sorted(referenced)
     while queue:
         target_fqn = queue.pop(0)
-        ref_name = short_name(target_fqn)
-        if ref_name in seen or ref_name == main_name:
+        local_name = types._local_name(short_name(target_fqn))
+        if types._is_self(target_fqn) or declared.get(local_name) == target_fqn:
             continue
-        seen.add(ref_name)
+        if local_name in declared:
+            first, second = sorted((declared[local_name], target_fqn))
+            raise ValueError(
+                f"{first} and {second} would both be declared as message "
+                f"{local_name!r} in the .proto file of {main_fqn}, so one would "
+                f"replace the other. Give them distinct names."
+            )
+        declared[local_name] = target_fqn
         target = flat.get(target_fqn, {})
         nested_refs: set[str] = set()
         ref_blocks.append(
             _message_body(
-                local_name(ref_name), target.get("fields", {}), resolve, nested_refs
+                local_name,
+                target.get("fields", {}),
+                types._resolve,
+                nested_refs,
             )
         )
         queue.extend(sorted(nested_refs))
@@ -254,6 +286,10 @@ def generate_proto_schema(
 ) -> str:
     """Generate proto3 ``.proto`` source text for a single IR element.
 
+    Calling it without ``import_path`` is deprecated and emits
+    ``RemovedInProtean020Warning``. Use ``write_schemas(..., fmt="protobuf")``
+    instead.
+
     Args:
         element: The IR element dict to emit as the file's main message.
         all_elements: Flat FQN → element index used to look up the fields of
@@ -265,7 +301,29 @@ def generate_proto_schema(
             When it returns ``None`` or an empty string, the target is defined
             as a nested message inside this file's main message. When no
             lookup is given, every target is emitted as a sibling message.
+
+    Raises:
+        ValueError: When two targets defined in this file would be declared
+            under one name, or a target other than the element itself has the
+            element's name. The message names both FQNs.
     """
+    if import_path is None:
+        warn_from_registry(
+            "generate_proto_schema_standalone",
+            "generate_proto_schema() without import_path",
+        )
+    return _generate_proto_schema(
+        element, all_elements=all_elements, import_path=import_path
+    )
+
+
+def _generate_proto_schema(
+    element: dict[str, Any],
+    *,
+    all_elements: dict[str, dict[str, Any]] | None,
+    import_path: Callable[[str], str | None] | None,
+) -> str:
+    """:func:`generate_proto_schema` without the deprecation warning."""
     flat = all_elements or {}
     own_fqn = element.get("fqn", "")
     name = element.get("name", "") or short_name(own_fqn)
@@ -286,9 +344,7 @@ def generate_proto_schema(
     main_block = _message_body(
         name, element.get("fields", {}), types._resolve, referenced
     )
-    ref_blocks = _referenced_blocks(
-        referenced, name, flat, types._resolve, types._local_name
-    )
+    ref_blocks = _referenced_blocks(referenced, (name, own_fqn or name), flat, types)
 
     if nested and ref_blocks:
         message_blocks = [_nest_blocks(main_block, ref_blocks)]
@@ -330,6 +386,13 @@ class _TypeNames:
         self._import_path = import_path
         self.imports: set[str] = set()
 
+    def _is_self(self, target_fqn: str) -> bool:
+        """Whether ``target_fqn`` names this file's main message."""
+        # An element without an fqn can only be matched by its name.
+        if self._own_fqn:
+            return target_fqn == self._own_fqn
+        return short_name(target_fqn) == self._name
+
     def _local_name(self, ref_name: str) -> str:
         """The name a target defined in this file is declared under."""
         return _declared_name(ref_name, self._name, self._entry_names, self._taken)
@@ -343,21 +406,21 @@ class _TypeNames:
         ref_name = short_name(target_fqn)
         if not ref_name:
             return "map<string, string>"
-        # A self-reference names the message defined in this very file. An
-        # element without an fqn can only be matched by its name.
-        is_self = (
-            target_fqn == self._own_fqn if self._own_fqn else ref_name == self._name
-        )
-        path = (
-            self._import_path(target_fqn) if self._import_path and not is_self else None
-        )
+        nested = self._import_path is not None
+        if self._is_self(target_fqn):
+            # The main message is declared under the element's name, which
+            # can differ from the short name of its fqn.
+            return _local_type_name(
+                self._name, self._namespace, self._name, nested=nested
+            )
+        path = self._import_path(target_fqn) if self._import_path else None
         if not path:
             referenced.add(target_fqn)
             return _local_type_name(
                 self._local_name(ref_name),
                 self._namespace,
                 self._name,
-                nested=self._import_path is not None,
+                nested=nested,
             )
         self.imports.add(path)
         return f".{module_path(target_fqn) or 'protean'}.{ref_name}"
@@ -381,13 +444,22 @@ def _render_proto_file(
 def generate_proto_schemas(ir: dict[str, Any]) -> dict[str, str]:
     """Generate ``.proto`` text for every data-carrying element in the IR.
 
+    Deprecated: each call emits ``RemovedInProtean020Warning`` once. Use
+    ``write_schemas(..., fmt="protobuf")`` instead.
+
     The result maps FQNs to text and carries no file paths, so each text is
     self-contained: referenced value objects and entities are emitted as
     sibling messages, with no imports between files. The schema writer is the
     path that writes importing files.
+
+    Raises:
+        ValueError: When one element's file would declare two targets under
+            one name, or a target other than the element itself has the
+            element's name, as :func:`generate_proto_schema` does.
     """
+    warn_from_registry("generate_proto_schemas", "generate_proto_schemas()")
     flat = _build_flat_elements(ir)
     return {
-        fqn: generate_proto_schema(element, all_elements=flat)
+        fqn: _generate_proto_schema(element, all_elements=flat, import_path=None)
         for fqn, element in iter_data_elements(flat)
     }

@@ -13,6 +13,7 @@ import fastavro
 import jsonschema
 import pytest
 
+from protean._deprecation import RemovedInProtean020Warning
 from protean.core.aggregate import BaseAggregate
 from protean.core.value_object import BaseValueObject
 from protean.domain import Domain
@@ -300,7 +301,8 @@ class TestAvro:
 class TestProtobuf:
     def test_typed_dict_is_a_map_of_the_value_object_message(self, flat):
         _, index = flat
-        text = generate_proto_schema(_element(index, Contact), all_elements=index)
+        with pytest.warns(RemovedInProtean020Warning):
+            text = generate_proto_schema(_element(index, Contact), all_elements=index)
         assert re.search(
             r"^  map<string, Address> address_book = \d+;$", text, re.MULTILINE
         )
@@ -315,12 +317,14 @@ class TestProtobuf:
         self, flat, aggregate, name
     ):
         _, index = flat
-        text = generate_proto_schema(_element(index, aggregate), all_elements=index)
+        with pytest.warns(RemovedInProtean020Warning):
+            text = generate_proto_schema(_element(index, aggregate), all_elements=index)
         assert re.search(rf"^  map<string, string> {name} = \d+;$", text, re.MULTILINE)
 
     def test_value_object_used_twice_has_one_message(self, flat):
         _, index = flat
-        text = generate_proto_schema(_element(index, Customer), all_elements=index)
+        with pytest.warns(RemovedInProtean020Warning):
+            text = generate_proto_schema(_element(index, Customer), all_elements=index)
         assert re.search(
             r"^  map<string, Address> address_book = \d+;$", text, re.MULTILINE
         )
@@ -331,12 +335,14 @@ class TestProtobuf:
 
     def test_dict_only_value_object_message_has_its_fields(self, flat):
         _, index = flat
-        text = generate_proto_schema(_element(index, Directory), all_elements=index)
+        with pytest.warns(RemovedInProtean020Warning):
+            text = generate_proto_schema(_element(index, Directory), all_elements=index)
         assert "message Phone {\n  string number = 1;\n}" in text
 
     def test_entry_named_value_object_is_written_by_full_name(self, flat):
         _, index = flat
-        text = generate_proto_schema(_element(index, Account), all_elements=index)
+        with pytest.warns(RemovedInProtean020Warning):
+            text = generate_proto_schema(_element(index, Account), all_elements=index)
         package = re.search(r"^package (\S+);$", text, re.MULTILINE).group(1)
         assert f"  map<string, .{package}.LedgerEntry> ledger = " in text
         assert f"  optional .{package}.LedgerEntry primary = " in text
