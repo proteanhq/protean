@@ -142,7 +142,7 @@ class Order:
 
 # Missing domain.init() and domain_context!
 repo = domain.repository_for(Order)  # Returns a repository
-repo.add(Order(order_id="ORD-001"))  # AttributeError: databases
+repo.add(Order(order_id="ORD-001"))  # AttributeError: No active domain context
 ```
 
 **Instead**: Initialize the domain and use a domain context.

@@ -262,8 +262,32 @@ class TestProxyBehavior:
 
     @pytest.mark.no_test_domain
     def test_current_domain_attribute_access_outside_context_raises(self):
-        with pytest.raises(AttributeError):
+        with pytest.raises(AttributeError) as exc_info:
             _ = current_domain.config
+        assert exc_info.value.name == "config"
+        message = str(exc_info.value)
+        assert message.startswith(
+            "No active domain context: cannot access 'config' on current_domain."
+        )
+        assert "domain.domain_context()" in message
+
+    @pytest.mark.no_test_domain
+    def test_current_domain_attribute_set_outside_context_names_the_context(self):
+        with pytest.raises(AttributeError, match="No active domain context"):
+            current_domain.config = {}
+
+    @pytest.mark.no_test_domain
+    def test_hasattr_and_getattr_default_on_current_domain_outside_context(self):
+        assert hasattr(current_domain, "databases") is False
+        assert getattr(current_domain, "databases", "default") == "default"
+
+    @pytest.mark.no_test_domain
+    def test_current_uow_attribute_access_outside_uow_raises_plain_error(self):
+        assert bool(current_uow) is False
+        with pytest.raises(AttributeError) as exc_info:
+            _ = current_uow.anything
+        assert type(exc_info.value) is AttributeError
+        assert str(exc_info.value) == "anything"
 
     @pytest.mark.no_test_domain
     def test_current_uow_is_falsy_outside_context(self):
@@ -290,8 +314,10 @@ class TestProxyBehavior:
 
     @pytest.mark.no_test_domain
     def test_g_attribute_access_outside_context_raises(self):
-        with pytest.raises(AttributeError):
+        with pytest.raises(AttributeError) as exc_info:
             _ = g.missing
+        assert type(exc_info.value) is AttributeError
+        assert str(exc_info.value) == "missing"
 
     @pytest.mark.no_test_domain
     def test_g_repr_inside_context(self, fresh_domain):

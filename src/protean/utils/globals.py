@@ -29,6 +29,22 @@ documentation for more information.\
 """
 
 
+class _NoDomainContextError(AttributeError):
+    """Raised when ``current_domain`` is read, set or deleted with no active domain context.
+
+    It subclasses ``AttributeError`` so ``hasattr`` and ``getattr`` with a
+    default keep treating the attribute as missing. ``name`` is the attribute
+    the caller asked for.
+    """
+
+    def __init__(self, name: str) -> None:
+        super().__init__(
+            f"No active domain context: cannot access {name!r} on current_domain.\n"
+            f"{_domain_ctx_err_msg}",
+            name=name,
+        )
+
+
 class _ContextStack(Generic[_T]):
     """A contextvars-backed stack preserving ``push``/``pop`` nesting.
 
@@ -79,20 +95,28 @@ class _ContextLocalProxy(Generic[_T]):
             ``AttributeError`` or report the proxy type. Defaults to
             ``lookup``, so a proxy whose ``lookup`` warns must pass a quiet
             one.
+        missing_error: Builds the error raised when ordinary attribute
+            get, set or delete finds no object active. It receives the
+            attribute name. Defaults to ``AttributeError``. Dunder and tool
+            probes always raise a plain ``AttributeError``.
     """
 
     _lookup: Callable[[], _T | None]
     _quiet_lookup: Callable[[], _T | None]
+    _missing_error: Callable[[str], AttributeError]
 
     def __init__(
         self,
         lookup: Callable[[], _T | None],
         quiet_lookup: Callable[[], _T | None] | None = None,
+        *,
+        missing_error: Callable[[str], AttributeError] = AttributeError,
     ) -> None:
         object.__setattr__(self, "_lookup", lookup)
         object.__setattr__(
             self, "_quiet_lookup", quiet_lookup if quiet_lookup is not None else lookup
         )
+        object.__setattr__(self, "_missing_error", missing_error)
 
     def _get_current_object(self) -> _T | None:
         return self._lookup()
@@ -100,7 +124,7 @@ class _ContextLocalProxy(Generic[_T]):
     def _get_object_or_raise(self, name: str) -> _T:
         obj = self._get_current_object()
         if obj is None:
-            raise AttributeError(name)
+            raise self._missing_error(name)
         return obj
 
     @property  # type: ignore[misc]
@@ -254,7 +278,9 @@ def _domain_now(now: datetime | None = None) -> datetime:
 # context locals
 _domain_context_stack: _ContextStack[Any] = _ContextStack("protean.domain_context")
 _uow_context_stack: _ContextStack[Any] = _ContextStack("protean.uow_context")
-current_domain: "Domain" = _ContextLocalProxy(_find_domain, _quiet_find_domain)  # type: ignore[assignment]
+current_domain: "Domain" = _ContextLocalProxy(  # type: ignore[assignment]
+    _find_domain, _quiet_find_domain, missing_error=_NoDomainContextError
+)
 current_uow: "UnitOfWork" = _ContextLocalProxy(_find_uow)  # type: ignore[assignment]
 # ``g`` is a request-scoped scratch namespace that intentionally holds arbitrary
 # attributes; typing it ``Any`` reflects that dynamic contract.
