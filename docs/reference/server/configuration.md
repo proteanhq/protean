@@ -352,6 +352,17 @@ ValueError: External broker 'nonexistent_broker' configured in
 outbox.external_brokers but not found in domain broker configuration
 ```
 
+### Missing Outbox Table
+
+When the outbox is on, every managed database provider needs its outbox table.
+The server checks for it at startup and stops when it is missing. Starting the
+server before running `protean db setup` or `protean db setup-outbox` gives:
+
+```
+ConfigurationError: Outbox table not found for provider 'default'. Run
+'protean db setup' or 'protean db setup-outbox' to create it.
+```
+
 ### Published Events Without External Brokers
 
 If your domain has events with `published=True` but no `external_brokers`
