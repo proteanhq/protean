@@ -267,7 +267,7 @@ Always `raise_()` an event in the factory classmethod.
 
 ### Using standard repository with ES aggregate
 
-`repository_for()` returns the event-sourced repository automatically for an ES aggregate. For custom query methods, subclass `BaseEventSourcedRepository` and register it. A standard `@domain.repository` builds a state-based repository, which is the wrong persistence model for an ES aggregate.
+`repository_for()` returns the event-sourced repository automatically for an ES aggregate. For custom query methods, subclass `BaseEventSourcedRepository` and register it, and `repository_for()` returns an instance of that subclass. A standard `@domain.repository` registered for an ES aggregate raises `IncorrectUsageError`.
 
 See [Anti-patterns](references/anti-patterns.md) for more.
 

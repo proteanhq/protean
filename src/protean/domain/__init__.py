@@ -2376,7 +2376,20 @@ class Domain:
     def _event_sourced_repository_for(
         self, aggregate_cls: Any
     ) -> BaseEventSourcedRepository:
-        """Return a new event-sourced repository instance for the aggregate."""
+        """Return an event-sourced repository instance for the aggregate.
+
+        The instance is of the ``BaseEventSourcedRepository`` subclass
+        registered for the aggregate, the last one registered when there are
+        several. When none is registered, a subclass is generated.
+        """
+        registered = [
+            record.cls
+            for record in self.registry.event_sourced_repositories.values()
+            if record.cls.meta_.part_of is aggregate_cls
+        ]
+        if registered:
+            return cast(BaseEventSourcedRepository, registered[-1](self))
+
         repository_cls: type[BaseEventSourcedRepository] = type(
             aggregate_cls.__name__ + "Repository", (BaseEventSourcedRepository,), {}
         )

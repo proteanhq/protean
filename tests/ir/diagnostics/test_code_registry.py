@@ -61,8 +61,9 @@ ALLOWED_LEVELS = frozenset({"error", "warning", "info"})
 ALLOWED_KINDS = frozenset({"lint", "raise", "staleness"})
 
 # The producers that reference diagnostic codes, relative to the source root.
-# ``domain/__init__.py``, ``domain/config.py``, ``core/entity.py``, and
-# ``core/value_object.py`` reference the init/runtime ``kind="raise"`` codes;
+# ``domain/__init__.py``, ``domain/config.py``, ``core/entity.py``,
+# ``core/repository.py`` and ``core/value_object.py`` reference the
+# init/runtime ``kind="raise"`` codes;
 # ``ir/staleness.py`` references the ``kind="staleness"`` code; the rest
 # reference the ``kind="lint"`` rules.
 PRODUCER_FILES = (
@@ -71,6 +72,7 @@ PRODUCER_FILES = (
     "domain/__init__.py",
     "domain/config.py",
     "core/entity.py",
+    "core/repository.py",
     "core/value_object.py",
     "ir/staleness.py",
     "_deprecation.py",
@@ -179,6 +181,7 @@ class TestGoldenSnapshot:
             "USAGE_ELEMENT_NOT_REGISTERED",
             "USAGE_ENRICHER_NOT_CALLABLE",
             "USAGE_NOT_A_PROJECTION",
+            "USAGE_REPOSITORY_ON_EVENT_SOURCED_AGGREGATE",
             "USAGE_UNKNOWN_ELEMENT_TYPE",
             "VALUE_OBJECT_INVARIANT_FAILED",
             "VALUE_OBJECT_MUTABLE_FIELD",
@@ -205,6 +208,7 @@ class TestGoldenSnapshot:
             "USAGE_ELEMENT_NOT_REGISTERED",
             "USAGE_ENRICHER_NOT_CALLABLE",
             "USAGE_NOT_A_PROJECTION",
+            "USAGE_REPOSITORY_ON_EVENT_SOURCED_AGGREGATE",
             "USAGE_UNKNOWN_ELEMENT_TYPE",
             "VALUE_OBJECT_INVARIANT_FAILED",
         }
@@ -328,6 +332,7 @@ class TestMetadataSnapshot:
         "USAGE_ELEMENT_NOT_REGISTERED": "e84da23137dfaa03",
         "USAGE_ENRICHER_NOT_CALLABLE": "5c96e4c23003e66c",
         "USAGE_NOT_A_PROJECTION": "854b5708a5ec40a5",
+        "USAGE_REPOSITORY_ON_EVENT_SOURCED_AGGREGATE": "7fd7b2cc33e15ce9",
         "USAGE_UNKNOWN_ELEMENT_TYPE": "840400ec794f376d",
         "VALUE_OBJECT_INVARIANT_FAILED": "147df7e5751ce7c2",
         "VALUE_OBJECT_MUTABLE_FIELD": "1e01dfac9ba9bf00",

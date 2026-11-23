@@ -1,7 +1,7 @@
 import pytest
 
 from protean.core.entity import BaseEntity
-from protean.core.repository import BaseRepository
+from protean.core.repository import BaseRepository, repository_factory
 from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
@@ -165,3 +165,98 @@ class TestRepositoryRegistration:
             "`CustomUserRepository` declares database_type `UNKNOWN`, which no "
             "registered database adapter provides. Use `ALL` or one of: "
         )
+
+
+class TestRepositoryOnEventSourcedAggregate:
+    def test_registering_a_repository_for_an_event_sourced_aggregate_raises(
+        self, test_domain
+    ):
+        @test_domain.aggregate(event_sourced=True)
+        class Account:
+            name: String()
+
+        with pytest.raises(IncorrectUsageError) as exc:
+
+            @test_domain.repository(part_of=Account)
+            class AccountRepository:
+                def find_active(self):
+                    return []
+
+        assert exc.value.code == "USAGE_REPOSITORY_ON_EVENT_SOURCED_AGGREGATE"
+        assert exc.value.args[0] == (
+            "Repository `AccountRepository` cannot be associated with `Account`, "
+            "which is an event-sourced aggregate. Subclass "
+            "`BaseEventSourcedRepository` instead, and register it with "
+            "`domain.register(AccountRepository, part_of=Account)` to add "
+            "custom methods."
+        )
+
+    def test_a_string_part_of_naming_an_event_sourced_aggregate_raises_at_init(
+        self, test_domain
+    ):
+        @test_domain.aggregate(event_sourced=True)
+        class Account:
+            name: String()
+
+        @test_domain.repository(part_of="Account")
+        class AccountRepository:
+            def find_active(self):
+                return []
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            test_domain.init(traverse=False)
+
+        assert exc.value.code == "USAGE_REPOSITORY_ON_EVENT_SOURCED_AGGREGATE"
+        assert (
+            "`AccountRepository` cannot be associated with `Account`"
+            in (exc.value.args[0])
+        )
+        assert "`BaseEventSourcedRepository`" in exc.value.args[0]
+        assert (
+            "`domain.register(AccountRepository, part_of=Account)`"
+            in (exc.value.args[0])
+        )
+
+    def test_an_auto_constructed_repository_is_not_refused(self, test_domain):
+        @test_domain.aggregate(event_sourced=True)
+        class Account:
+            name: String()
+
+        class AccountRepository(BaseRepository):
+            pass
+
+        repository_cls = repository_factory(
+            AccountRepository, test_domain, part_of=Account, _auto_constructed=True
+        )
+
+        assert repository_cls.meta_.part_of is Account
+
+    def test_a_repository_for_a_state_based_aggregate_is_returned(self, test_domain):
+        @test_domain.aggregate
+        class Account:
+            name: String()
+
+        @test_domain.repository(part_of=Account)
+        class AccountRepository:
+            def find_active(self):
+                return []
+
+        test_domain.init(traverse=False)
+
+        assert isinstance(test_domain.repository_for(Account), AccountRepository)
+
+    def test_a_string_part_of_naming_a_state_based_aggregate_is_returned(
+        self, test_domain
+    ):
+        @test_domain.aggregate
+        class Account:
+            name: String()
+
+        @test_domain.repository(part_of="Account")
+        class AccountRepository:
+            def find_active(self):
+                return []
+
+        test_domain.init(traverse=False)
+
+        assert isinstance(test_domain.repository_for(Account), AccountRepository)

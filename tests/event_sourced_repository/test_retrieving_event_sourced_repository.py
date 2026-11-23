@@ -54,3 +54,74 @@ def test_that_an_event_sourced_repository_can_only_be_associated_with_an_event_s
     assert exc.value.args[0] == (
         "Repository `CustomRepository` can only be associated with an Event Sourced Aggregate"
     )
+
+
+class Account(BaseAggregate):
+    name: String()
+
+
+class Ledger(BaseAggregate):
+    name: String()
+
+
+class AccountESRepository(BaseEventSourcedRepository):
+    def find_es_custom(self):
+        return []
+
+
+class TestRegisteredEventSourcedRepositoryIsReturned:
+    def test_a_registered_event_sourced_repository_is_returned(self, test_domain):
+        test_domain.register(Account, event_sourced=True)
+        test_domain.register(AccountESRepository, part_of=Account)
+        test_domain.init(traverse=False)
+
+        repo = test_domain.repository_for(Account)
+
+        assert isinstance(repo, AccountESRepository)
+        assert hasattr(repo, "find_es_custom")
+
+    def test_a_repository_registered_with_a_string_part_of_is_returned(
+        self, test_domain
+    ):
+        test_domain.register(Account, event_sourced=True)
+        test_domain.register(AccountESRepository, part_of="Account")
+        test_domain.init(traverse=False)
+
+        repo = test_domain.repository_for(Account)
+
+        assert isinstance(repo, AccountESRepository)
+        assert hasattr(repo, "find_es_custom")
+
+    def test_a_repository_is_generated_when_none_is_registered(self, test_domain):
+        test_domain.register(Account, event_sourced=True)
+        test_domain.init(traverse=False)
+
+        repo = test_domain.repository_for(Account)
+
+        assert repo.element_type == DomainObjects.EVENT_SOURCED_REPOSITORY
+        assert not isinstance(repo, AccountESRepository)
+        assert type(repo).__name__ == "AccountRepository"
+
+    def test_a_repository_registered_for_another_aggregate_is_not_returned(
+        self, test_domain
+    ):
+        test_domain.register(Account, event_sourced=True)
+        test_domain.register(Ledger, event_sourced=True)
+        test_domain.register(AccountESRepository, part_of=Account)
+        test_domain.init(traverse=False)
+
+        repo = test_domain.repository_for(Ledger)
+
+        assert not isinstance(repo, AccountESRepository)
+        assert repo.meta_.part_of is Ledger
+
+    def test_the_last_registered_repository_is_returned(self, test_domain):
+        class AccountAuditRepository(BaseEventSourcedRepository):
+            pass
+
+        test_domain.register(Account, event_sourced=True)
+        test_domain.register(AccountESRepository, part_of=Account)
+        test_domain.register(AccountAuditRepository, part_of=Account)
+        test_domain.init(traverse=False)
+
+        assert isinstance(test_domain.repository_for(Account), AccountAuditRepository)

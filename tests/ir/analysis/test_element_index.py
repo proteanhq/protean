@@ -81,7 +81,8 @@ def domain():
     domain.register(elements.FundsDeposited, part_of=elements.Wallet)
     domain.register(elements.OpenWallet, part_of=elements.Wallet)
     domain.register(elements.CloseWallet, part_of=elements.Wallet)
-    domain.register(elements.WalletRepository, part_of=elements.Wallet)
+    domain.register(elements.Purse)
+    domain.register(elements.WalletRepository, part_of=elements.Purse)
     domain.register(elements.WalletEventSourcedRepository, part_of=elements.Wallet)
     domain.register(elements.WalletCommandHandler, part_of=elements.Wallet)
     domain.register(elements.WalletEventHandler, part_of=elements.Wallet)
@@ -808,11 +809,12 @@ class TestCachingAndDeterminism:
         partial.register(elements.Wallet, event_sourced=True)
         partial.register(elements.WalletOpened, part_of=elements.Wallet)
         partial.register(elements.FundsDeposited, part_of=elements.Wallet)
+        partial.register(elements.Purse)
         partial.init(traverse=False)
         index = ElementIndex(partial)
         assert index.role_of(elements.Wallet, "rename") is not None
 
-        partial.register(elements.WalletRepository, part_of=elements.Wallet)
+        partial.register(elements.WalletRepository, part_of=elements.Purse)
 
         assert index.roles(elements.WalletRepository) == {}
         assert ElementIndex(partial).roles(elements.WalletRepository) == {

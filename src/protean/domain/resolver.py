@@ -16,6 +16,7 @@ from protean.core.command_handler import derive_command_stream_category
 from protean.core.database_model import check_database_model_fields
 from protean.core.event_sourced_repository import check_event_sourced_part_of
 from protean.core.process_manager import BaseProcessManager
+from protean.core.repository import check_state_based_part_of
 from protean.exceptions import ConfigurationError, NotSupportedError
 from protean.utils import PART_OF_KINDS, DomainObjects, _check_part_of_kind
 
@@ -142,8 +143,9 @@ class ElementResolver:
         """Complete element wiring deferred when ``part_of`` was a string.
 
         Command and event handler factories derive their ``stream_category``
-        from the associated aggregate, and the event-sourced repository factory
-        checks that the aggregate is event sourced. A database model's fields
+        from the associated aggregate. The event-sourced repository factory
+        checks that the aggregate is event sourced, and the repository factory
+        checks that it is not. A database model's fields
         are checked against its target, and the model is filed under it; that
         target can be an aggregate, an entity or a projection. When
         ``part_of`` is given as a string reference, that work is skipped at
@@ -163,6 +165,8 @@ class ElementResolver:
             cls.meta_.stream_category = aggregate_cls.meta_.stream_category
         elif element_type == DomainObjects.EVENT_SOURCED_REPOSITORY:
             check_event_sourced_part_of(cls)
+        elif element_type == DomainObjects.REPOSITORY:
+            check_state_based_part_of(cls)
         elif element_type == DomainObjects.DATABASE_MODEL:
             check_database_model_fields(cls)
             self._domain._file_database_model(cls)

@@ -68,7 +68,8 @@ def element_domain():
     domain.register(elements.FundsDeposited, part_of=elements.Wallet)
     domain.register(elements.OpenWallet, part_of=elements.Wallet)
     domain.register(elements.CloseWallet, part_of=elements.Wallet)
-    domain.register(elements.WalletRepository, part_of=elements.Wallet)
+    domain.register(elements.Purse)
+    domain.register(elements.WalletRepository, part_of=elements.Purse)
     domain.register(elements.WalletCommandHandler, part_of=elements.Wallet)
     domain.init(traverse=False)
     return domain
@@ -926,11 +927,12 @@ class TestDomainElementClassification:
         domain.register(elements.Wallet, event_sourced=True)
         domain.register(elements.WalletOpened, part_of=elements.Wallet)
         domain.register(elements.FundsDeposited, part_of=elements.Wallet)
+        domain.register(elements.Purse)
         domain.init(traverse=False)
         resolver = SymbolResolver(domain)
         assert resolver.is_domain_element(f"{ELEMENTS_MODULE}.Wallet")
 
-        domain.register(elements.WalletRepository, part_of=elements.Wallet)
+        domain.register(elements.WalletRepository, part_of=elements.Purse)
 
         assert not resolver.is_domain_element(f"{ELEMENTS_MODULE}.WalletRepository")
         assert SymbolResolver(domain).is_domain_element(
