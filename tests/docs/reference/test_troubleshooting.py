@@ -169,7 +169,10 @@ class TestNoDomainContext:
         module.domain.init(traverse=False)
 
         with pytest.warns(UserWarning, match="^Working outside of domain context"):
-            with pytest.raises(AttributeError, match="repository_for"):
+            with pytest.raises(
+                AttributeError,
+                match="^No active domain context: cannot access .repository_for.",
+            ):
                 current_domain.repository_for(module.Order)
 
     def test_creating_an_aggregate_outside_a_context_fails_on_config(self):
@@ -177,7 +180,10 @@ class TestNoDomainContext:
         module.domain.init(traverse=False)
 
         with pytest.warns(UserWarning, match="^Working outside of domain context"):
-            with pytest.raises(AttributeError, match="config"):
+            with pytest.raises(
+                AttributeError,
+                match="^No active domain context: cannot access .config.",
+            ):
                 module.Order(customer_id="cust-1")
 
     def test_the_script_fix_reads_orders_inside_its_own_context(self):
