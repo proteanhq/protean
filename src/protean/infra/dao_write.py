@@ -9,8 +9,8 @@ The path keeps these guarantees:
 - Optimistic concurrency. A save of a persisted aggregate passes the
   aggregate's current ``_version`` to the adapter's ``update`` as the
   expected version. The adapter raises `ExpectedVersionError` when the
-  stored version differs. Under a Unit of Work, a relational adapter can
-  instead raise it when the session flushes or commits. A save that fails
+  stored version differs. Under a Unit of Work, the adapter can instead
+  raise it when the session flushes or commits. A save that fails
   puts a persisted aggregate's ``_version`` back; a failed first save leaves
   it advanced. When the error comes from a flush or the commit instead, the
   Unit of Work's rollback puts the version back on a provider that undoes
@@ -263,7 +263,8 @@ def _reflect_auto_fields(entity_obj: Any, model_obj: Any) -> None:
     for field_name, field_obj in declared_fields(entity_obj).items():
         if _is_pending_auto_field(entity_obj, field_name, field_obj):
             if isinstance(model_obj, dict):
-                # The memory model dict is keyed by field name.
+                # The memory adapter writes a generated value into its
+                # model dict under the field name.
                 field_val = model_obj[field_name]
             else:
                 # An object model (SQLAlchemy) exposes the generated column

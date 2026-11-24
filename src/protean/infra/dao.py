@@ -769,9 +769,10 @@ class DAO:
         aggregate, the post-invariants run once after the stamping and once
         after each enricher, unless the save runs inside an open
         ``atomic_change`` block. When a check fails, or a hook raises, that
-        hook's writes are undone and the save aborts. A ``ValidationError``
-        carries a ``location`` that names the hook; any other exception
-        propagates as it was raised.
+        hook's writes are undone and the save aborts. A failed check
+        raises a ``ValidationError`` whose ``location`` names the hook. A
+        ``ValidationError`` the hook raises gets that ``location`` only when
+        it has none. Any other exception propagates as it was raised.
 
         ``save`` calls this unless ``apply_hooks=False``. A caller that must run
         the hooks earlier than the write (so a raising enricher fails before any
