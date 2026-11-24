@@ -7,7 +7,7 @@ from collections import defaultdict
 from collections.abc import Callable, Container, Mapping
 from datetime import UTC, datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, Union, cast
+from typing import TYPE_CHECKING, Any, ClassVar, NoReturn, Self, Union, cast
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
@@ -19,6 +19,7 @@ from protean.exceptions import (
     DeserializationError,
     IncorrectUsageError,
     InvalidDataError,
+    NotSupportedError,
 )
 from protean.fields.association import Association, Reference
 from protean.fields.base import FieldBase
@@ -433,6 +434,16 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
         # `lenient_deserialization` config key.
         ("lenient", None),
     ]
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
+        # Refusing here, not in ``__init__``, also covers ``model_construct``,
+        # which skips ``__init__``.
+        if cls.meta_.abstract is True:
+            raise NotSupportedError(
+                f"{cls.__name__} class has been marked abstract"
+                " and cannot be instantiated"
+            )
+        return super().__new__(cls)
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
