@@ -398,7 +398,11 @@ class TestIrDiffCommand:
             (c["change_type"], c["element_fqn"], c["field_name"])
             for c in compatibility["breaking_changes"]
         )
+        # On the left no cluster holds TierPrice, so it sits in the top-level
+        # value_objects section; typing the dict moves it into Price's cluster,
+        # which reads as removed from the section and added to the cluster.
         assert breaks == [
+            ("element_removed", "shop.TierPrice", None),
             ("field_type_changed", PRICE_FQN, "tiers"),
             ("field_type_changed", EVENT_FQN, "tiers"),
         ]

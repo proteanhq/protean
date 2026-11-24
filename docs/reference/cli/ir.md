@@ -60,7 +60,7 @@ timestamp.
 The full IR document, pretty-printed with 2-space indentation. Contains the
 sections `domain`, `contracts`, `clusters`, `projections`, `flows`, `elements`,
 and `diagnostics`, plus `upcasters` and `enrichers` when the domain registers
-any. See the [IR specification](../../concepts/internals/ir-specification.md)
+any, and `value_objects` when a value object belongs to no cluster. See the [IR specification](../../concepts/internals/ir-specification.md)
 for the complete structure reference.
 
 Logs are written to stderr, so the JSON on stdout is safe to pipe (`protean ir
