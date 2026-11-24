@@ -8,8 +8,10 @@ import warnings
 import pytest
 
 from protean._deprecation import RemovedInProtean020Warning
+from protean.core.aggregate import BaseAggregate
 from protean.core.unit_of_work import UnitOfWork
 from protean.exceptions import ValidationError
+from protean.fields import String
 from protean.infra.dao import DAO
 from protean.port.database import DatabaseCapabilities
 from protean.utils.globals import current_uow
@@ -108,6 +110,32 @@ class TestDeprecatedUpdateChecksUniqueFields:
 
         assert "email" in exc.value.messages
         assert user_dao.get(jane.id).email == "jane@example.com"
+
+
+class Tool(BaseAggregate):
+    dao: String(max_length=50)
+
+
+class TestAFieldNamedDao:
+    @pytest.fixture
+    def tool_dao(self, test_domain):
+        test_domain.register(Tool)
+        test_domain.init(traverse=False)
+        return test_domain.repository_for(Tool)._dao
+
+    def test_create_accepts_a_field_named_dao(self, tool_dao):
+        tool = tool_dao.create(dao="hammer")
+
+        assert tool_dao.get(tool.id).dao == "hammer"
+
+    def test_update_accepts_a_field_named_dao(self, tool_dao):
+        tool = tool_dao.create(dao="hammer")
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RemovedInProtean020Warning)
+            tool_dao.update(tool, dao="saw")
+
+        assert tool_dao.get(tool.id).dao == "saw"
 
 
 class TestCreateInAUnitOfWork:

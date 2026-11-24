@@ -277,7 +277,7 @@ def _reflect_auto_fields(entity_obj: Any, model_obj: Any) -> None:
             setattr(entity_obj, field_name, field_val)
 
 
-def create(dao: DAO, *args: Any, **kwargs: Any) -> BaseEntity:
+def create(dao: DAO, /, *args: Any, **kwargs: Any) -> BaseEntity:
     """Build an entity from ``args`` and ``kwargs``, check its unique fields
     and write it as a new row."""
     logger.debug(f"Creating new `{dao.entity_cls.__name__}` object using data {kwargs}")
@@ -530,6 +530,7 @@ def _unique_key_taken(dao: DAO, entity_obj: Any) -> bool:
 
 def _apply_update(
     dao: DAO,
+    /,
     entity_obj: Any,
     *data: Any,
     apply_hooks: bool = True,
