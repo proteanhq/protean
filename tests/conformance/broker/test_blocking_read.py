@@ -21,9 +21,7 @@ def test_a_read_waits_for_a_message_published_while_it_waits(broker):
     # Join the group first, so the message published later is new to it.
     assert broker.read_blocking(STREAM, GROUP, CONSUMER, timeout_ms=0) == []
 
-    # The publishing thread has no domain context, which the service's
-    # ``publish`` needs, so it publishes through the adapter.
-    publisher = threading.Timer(0.1, broker._adapter.publish, (STREAM, {"n": 1}))
+    publisher = threading.Timer(0.1, broker.publish, (STREAM, {"n": 1}))
     publisher.start()
     started = time.monotonic()
     try:
@@ -58,7 +56,7 @@ def test_a_read_of_several_streams_waits_for_a_message_on_any_of_them(broker):
         other: [],
     }
 
-    publisher = threading.Timer(0.1, broker._adapter.publish, (other, {"n": 2}))
+    publisher = threading.Timer(0.1, broker.publish, (other, {"n": 2}))
     publisher.start()
     started = time.monotonic()
     try:
