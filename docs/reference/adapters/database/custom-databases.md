@@ -558,11 +558,10 @@ its DAO class does not subclass the port, the `DAO` service raises
 registers the entity's table. Any other provider builds it on the first use of
 a repository for the entity.
 
-The portable claim and delete run inside the adapter DAO's `claim_lock()`,
-which locks
-nothing by default. Override it when the store has no row locks, so that two
-claims in one process cannot take the same row. The memory adapter returns its
-provider's reentrant lock.
+The portable claim and delete, and `update_all`, run inside the adapter DAO's
+`claim_lock()`, which locks nothing by default. Override it when the store has
+no row locks, so that two claims in one process cannot take the same row. The
+memory adapter returns its provider's reentrant lock.
 
 !!!warning
     Only declare capabilities you actually implement. The conformance test

@@ -145,7 +145,9 @@ def _try_claim(
     if versioned:
         guard &= Q(_version=entity._version)
         values = {**claim_fields, "_version": entity._version + 1}
-    if dao.update_all(guard, values) > 0:
+    # The portable claim already holds ``claim_lock()``, so the write must
+    # not take it again: a custom adapter's lock need not be reentrant.
+    if dao._update_all_unlocked(guard, values) > 0:
         for attr, value in claim_fields.items():
             setattr(entity, attr, value)
         if versioned:
@@ -596,10 +598,21 @@ class DAO:
             domain validation, invariants, and the Unit of Work's tracking.
             Do not call it from domain-level code.
 
+        The match and the write run inside the adapter's ``claim_lock()``.
+        On the memory provider, no claim commits between them when this
+        method is called outside a Unit of Work. Inside a Unit of Work, the
+        write commits with the Unit of Work, after the lock is released.
+
         Returns:
             The number of rows that matched ``criteria``. The Elasticsearch
             adapter returns ``0`` when ``values`` is empty.
         """
+        with self._adapter.claim_lock():
+            return self._update_all_unlocked(criteria, values)
+
+    def _update_all_unlocked(self, criteria: Q, values: Mapping[str, Any]) -> int:
+        """:meth:`update_all` for a caller that already holds the adapter's
+        ``claim_lock()``."""
         with self.session_scope() as session:
             return self._adapter.update_all(session, criteria, values)
 

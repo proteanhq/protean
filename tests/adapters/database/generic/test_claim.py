@@ -612,7 +612,7 @@ class TestClaimHoldBack:
         _skip_if_postgresql(test_domain)
         _keyed(test_domain, _row("a", 0, "k1"), _row("b", 1, "k1"), _row("c", 2, "k2"))
         dao = test_domain.repository_for(KeyedJob)._dao
-        update_all = dao.update_all
+        update_all = dao._update_all_unlocked
 
         def another_worker_takes_a(criteria, values):
             # Another worker claims "a" between this call's read and its
@@ -621,7 +621,7 @@ class TestClaimHoldBack:
                 return 0
             return update_all(criteria, values)
 
-        monkeypatch.setattr(dao, "update_all", another_worker_takes_a)
+        monkeypatch.setattr(dao, "_update_all_unlocked", another_worker_takes_a)
 
         claimed = dao.claim(
             Q(status="ready"),
@@ -814,7 +814,7 @@ class TestClaimAdvancesVersion:
         repo = test_domain.repository_for(ClaimJob)
         job = _saved_twice(test_domain)
         dao = repo._dao
-        update_all = dao.update_all
+        update_all = dao._update_all_unlocked
 
         def another_writer_saves_the_row_first(criteria, values):
             stored = repo.get(job.id)
@@ -822,7 +822,9 @@ class TestClaimAdvancesVersion:
             repo.add(stored)
             return update_all(criteria, values)
 
-        monkeypatch.setattr(dao, "update_all", another_writer_saves_the_row_first)
+        monkeypatch.setattr(
+            dao, "_update_all_unlocked", another_writer_saves_the_row_first
+        )
 
         claimed = dao.claim(Q(status="ready"), {"status": "claimed"}, limit=10)
 

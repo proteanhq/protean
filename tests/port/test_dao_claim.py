@@ -121,7 +121,7 @@ class TestClaimContract:
 
         # Force every guarded update to report "nothing claimed", simulating a
         # competing worker that grabbed each candidate first.
-        monkeypatch.setattr(dao, "update_all", lambda criteria, values: 0)
+        monkeypatch.setattr(dao, "_update_all_unlocked", lambda criteria, values: 0)
 
         claimed = dao.claim(_ready(), CLAIM, limit=10)
         assert claimed == []

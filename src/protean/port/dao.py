@@ -205,8 +205,8 @@ class DAOPort(Protocol):
         """Whether the table, index or collection exists in the store."""
 
     def claim_lock(self) -> AbstractContextManager[object]:
-        """A lock that the portable claim and the portable bounded delete
-        hold while they run.
+        """A lock that the portable claim, the portable bounded delete and
+        ``DAO.update_all`` hold while they run.
 
         This default returns ``contextlib.nullcontext()``, which locks
         nothing. An adapter whose store has no row locks overrides it.

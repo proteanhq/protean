@@ -5,7 +5,8 @@ A provider flag (``RAW_QUERIES``, ``NATIVE_CLAIM``,
 ``FILTERED_CLAIM_CANDIDATES``, ``BOUNDED_DELETE``, ``INSERT_IF_ABSENT``)
 selects the adapter's operation. Building the service for an adapter class that
 does not subclass the matching port raises ``ConfigurationError``. The portable
-claim and the portable bounded delete run inside ``claim_lock()``. The portable
+claim, the portable bounded delete and ``update_all`` run inside
+``claim_lock()``. The portable
 ``save_if_absent`` checks the key and saves with no lock; only the adapter's
 ``INSERT_IF_ABSENT`` write runs inside ``claim_lock()``.
 """
@@ -265,3 +266,86 @@ class TestClaimLock:
         assert not any(thread.is_alive() for thread in threads)
 
         assert sorted(len(ids) for ids in claimed.values()) == [0, 1]
+
+    def test_a_claim_waits_for_a_memory_update_all(self, test_domain, monkeypatch):
+        """``update_all`` holds ``claim_lock`` from its match to its commit, so
+        a claim that starts while ``update_all`` writes sees the written row."""
+        test_domain.repository_for(Task).add(Task(status="ready"))
+        meet = threading.Barrier(2, timeout=0.5)
+        updating = threading.Event()
+        write = MemorySession.write
+
+        def write_after_meeting(self, *args, **kwargs):
+            if threading.current_thread().name == "updater":
+                updating.set()
+            with suppress(threading.BrokenBarrierError):
+                meet.wait()
+            return write(self, *args, **kwargs)
+
+        monkeypatch.setattr(MemorySession, "write", write_after_meeting)
+        results: dict[str, object] = {}
+
+        def updater() -> None:
+            with test_domain.domain_context():
+                dao = test_domain.repository_for(Task)._dao
+                results["updated"] = dao.update_all(
+                    Q(status="ready"), {"status": "done"}
+                )
+
+        def claimer() -> None:
+            assert updating.wait(timeout=5)
+            with test_domain.domain_context():
+                dao = test_domain.repository_for(Task)._dao
+                rows = dao.claim(Q(status="ready"), {"status": "claimed"}, limit=1)
+                results["claimed"] = [row.id for row in rows]
+
+        threads = [
+            threading.Thread(target=updater, name="updater", daemon=True),
+            threading.Thread(target=claimer, name="claimer", daemon=True),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+        assert not any(thread.is_alive() for thread in threads)
+
+        assert results["updated"] == 1
+        assert results["claimed"] == []
+        [stored] = test_domain.repository_for(Task)._dao.query.all().items
+        assert stored.status == "done"
+
+    def test_a_claim_takes_a_non_reentrant_claim_lock_once(
+        self, test_domain, monkeypatch
+    ):
+        """The portable claim's guarded writes do not take ``claim_lock``
+        again, so a custom adapter's plain ``threading.Lock`` does not
+        deadlock."""
+        repo = test_domain.repository_for(Task)
+        repo.add(Task(status="ready", seq=1))
+        repo.add(Task(status="ready", seq=2))
+        third = repo.add(Task(status="other", seq=3))
+        lock = threading.Lock()
+        calls: list[None] = []
+
+        def claim_lock(self):
+            calls.append(None)
+            return lock
+
+        monkeypatch.setattr(DictDAO, "claim_lock", claim_lock)
+        results: dict[str, object] = {}
+
+        def run() -> None:
+            with test_domain.domain_context():
+                dao = test_domain.repository_for(Task)._dao
+                rows = dao.claim(Q(status="ready"), {"status": "claimed"}, limit=2)
+                results["claimed"] = sorted(row.seq for row in rows)
+                results["updated"] = dao.update_all(Q(id=third.id), {"status": "done"})
+
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+
+        assert results["claimed"] == [1, 2]
+        assert len(calls) == 2
+        assert results["updated"] == 1
