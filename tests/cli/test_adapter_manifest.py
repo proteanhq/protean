@@ -108,6 +108,8 @@ def collected_markers(tmp_path_factory) -> dict[str, dict[str, list[str]]]:
             "-p",
             "no:cacheprovider",
             "-p",
+            "no:randomly",
+            "-p",
             "tests.support.adapter_markers",
             "--ignore=tests/support/",
             "tests",
