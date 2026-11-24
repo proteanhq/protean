@@ -20,6 +20,7 @@ from protean.core.process_manager import BaseProcessManager
 from protean.core.unit_of_work import UnitOfWork
 from protean.core.upcaster import BaseUpcaster
 from protean.domain import Domain
+from protean.exceptions import ConfigurationError
 from protean.fields import Identifier, Integer, String
 from protean.infra.dao import DAO
 from protean.port.event_store import SNAPSHOT_TYPE
@@ -1151,6 +1152,62 @@ class TestReconcileHonorsTheProvider:
         assert reconcile_outbox(domain, provider_name="analytics") == 1
         assert len(analytics_repo.find_all_by_message_id(report_event_id)) == 1
         assert analytics_repo.find_all_by_message_id(fund_id) == []
+
+
+@pytest.mark.no_test_domain
+class TestReconcileRejectsAnUnknownProvider:
+    """An unknown provider is a configuration error, never "nothing to
+    reconcile", while a known provider with no event-sourced aggregate still
+    returns 0."""
+
+    def test_unknown_provider_raises_configuration_error(self, tmp_path):
+        domain = _make_domain(tmp_path)
+
+        with pytest.raises(
+            ConfigurationError, match=r"^No outbox for provider 'nope'\.$"
+        ) as exc_info:
+            reconcile_outbox(domain, provider_name="nope")
+
+        assert isinstance(exc_info.value.__cause__, KeyError)
+
+    def test_unknown_provider_raises_with_only_state_based_aggregates(self, tmp_path):
+        domain = Domain(name="Reconcile")
+        domain.config["databases"]["default"] = {
+            "provider": "sqlite",
+            "database_uri": f"sqlite:///{tmp_path / 'reconcile.db'}",
+        }
+        domain.config["enable_outbox"] = True
+        domain.config["server"] = {"default_subscription_type": "stream"}
+        domain.register(Account)
+        domain.register(Deposited, part_of=Account)
+        domain.init(traverse=False)
+
+        with pytest.raises(ConfigurationError, match="'nope'"):
+            reconcile_outbox(domain, provider_name="nope")
+
+    def test_known_provider_with_no_aggregates_returns_zero(self, tmp_path):
+        domain = Domain(name="Reconcile")
+        domain.config["databases"]["default"] = {
+            "provider": "sqlite",
+            "database_uri": f"sqlite:///{tmp_path / 'reconcile.db'}",
+        }
+        domain.config["enable_outbox"] = True
+        domain.config["server"] = {"default_subscription_type": "stream"}
+        domain.init(traverse=False)
+
+        assert reconcile_outbox(domain, provider_name="default") == 0
+
+    def test_domain_without_an_outbox_returns_zero_for_any_provider(self, tmp_path):
+        domain = Domain(name="Reconcile")
+        domain.config["databases"]["default"] = {
+            "provider": "sqlite",
+            "database_uri": f"sqlite:///{tmp_path / 'reconcile.db'}",
+        }
+        _register_wallet_and_account(domain)
+        domain.init(traverse=False)
+        assert not domain.has_outbox
+
+        assert reconcile_outbox(domain, provider_name="nope") == 0
 
 
 class UpcastWithdrawn(BaseUpcaster):

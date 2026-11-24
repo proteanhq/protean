@@ -145,6 +145,7 @@ def reconcile(
     derived_domain = load_domain(domain)
     with derived_domain.domain_context():
         _require_outbox(derived_domain)
+        _outbox_repo(derived_domain, provider)
 
         created = reconcile_outbox(derived_domain, provider_name=provider, limit=limit)
         if created:

@@ -8,7 +8,7 @@ from typer.testing import CliRunner
 
 from protean.cli import app
 from protean.cli import outbox as cli_outbox
-from protean.exceptions import NoDomainException
+from protean.exceptions import ConfigurationError, NoDomainException
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.outbox import Outbox, OutboxStatus
 from tests.cli._envelope import assert_envelope
@@ -448,8 +448,13 @@ class TestRowIdShape:
 class TestNewCommandsNeedTheOutbox:
     @pytest.mark.parametrize(
         "args",
-        [("halted",), ("retry", "1"), ("discard", "1", "--reason", "skip")],
-        ids=["halted", "retry", "discard"],
+        [
+            ("reconcile",),
+            ("halted",),
+            ("retry", "1"),
+            ("discard", "1", "--reason", "skip"),
+        ],
+        ids=["reconcile", "halted", "retry", "discard"],
     )
     def test_each_command_aborts_when_outbox_disabled(self, args):
         domain = _mock_domain(has_outbox=False)
@@ -485,11 +490,41 @@ class TestUnknownProvider:
 
     @pytest.mark.parametrize(
         "args",
-        [("halted",), ("retry", "1"), ("discard", "1", "--reason", "skip")],
-        ids=["halted", "retry", "discard"],
+        [
+            ("reconcile",),
+            ("halted",),
+            ("retry", "1"),
+            ("discard", "1", "--reason", "skip"),
+        ],
+        ids=["reconcile", "halted", "retry", "discard"],
     )
     def test_each_command_reports_an_unknown_provider(self, outbox_domain, args):
         result = _invoke(*args, "--provider", "no-such-provider")
 
         assert result.exit_code == 2
         assert "no-such-provider" in _flat(result.stderr)
+
+    def test_reconcile_reports_an_unknown_provider_instead_of_nothing_to_do(
+        self, outbox_domain
+    ):
+        result = _invoke("reconcile", "--provider", "typo")
+
+        assert result.exit_code == 2
+        assert "No outbox for provider 'typo'." in _flat(result.stderr)
+        assert "Nothing to reconcile" not in result.stdout
+        assert "Nothing to reconcile" not in result.stderr
+
+    def test_reconcile_reports_another_configuration_error_as_it_is(
+        self, outbox_domain, monkeypatch
+    ):
+        def store_down(*args, **kwargs):
+            raise ConfigurationError("Unable to connect to Event Store")
+
+        monkeypatch.setattr(cli_outbox, "reconcile_outbox", store_down)
+
+        result = _invoke("reconcile", "--provider", "default")
+
+        output = _flat(result.stdout + result.stderr)
+        assert result.exit_code != 0
+        assert "Unable to connect to Event Store" in output
+        assert "No outbox for provider" not in output
