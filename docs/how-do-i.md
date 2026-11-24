@@ -313,6 +313,7 @@ need by what you're trying to accomplish.
 | Use Redis as a cache                            | [Redis Cache](./reference/adapters/cache/redis.md) |
 | Use Message DB as an event store                | [Message DB](./reference/adapters/eventstore/message-db.md) |
 | Write an event-store adapter                    | [Write an Event-Store Adapter](./guides/write-an-adapter/event-store.md) |
+| Write a cache adapter                           | [Write a Cache Adapter](./guides/write-an-adapter/cache.md) |
 | Build a custom database adapter                 | [Custom Databases](./reference/adapters/database/custom-databases.md) |
 | Build a custom broker adapter                   | [Custom Brokers](./reference/adapters/broker/custom-brokers.md) |
 | Check what capabilities a database supports     | [Database Capabilities](./reference/adapters/database/index.md#database-capabilities) |

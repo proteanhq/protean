@@ -313,6 +313,7 @@ nav:
     - Write an Adapter:
       - guides/write-an-adapter/index.md
       - guides/write-an-adapter/event-store.md
+      - guides/write-an-adapter/cache.md
 
   - Reference:
     - reference/index.md

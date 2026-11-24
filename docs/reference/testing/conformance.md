@@ -27,7 +27,9 @@ The Protean repository has one folder per port under `tests/conformance/`:
 so you do not register it.
 
 The `cache` folder holds the cache suite. Each of its tests names the
-`CacheCapabilities` flags it needs. The `event_store` folder holds the
+`CacheCapabilities` flags it needs.
+[Write a Cache Adapter](../../guides/write-an-adapter/cache.md) runs this
+suite against a worked example adapter. The `event_store` folder holds the
 event-store suite, described in
 [The event-store suite](#the-event-store-suite). The `database` and `broker`
 folders each hold one placeholder test until their port's suite moves in. The

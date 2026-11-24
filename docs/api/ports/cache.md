@@ -10,7 +10,9 @@ subclasses `CacheTTLPort`, and one that declares
 calls the adapter through these Ports.
 
 See [Cache Adapters](../../reference/adapters/cache/index.md) for
-concrete adapter configuration.
+concrete adapter configuration, and
+[Write a Cache Adapter](../../guides/write-an-adapter/cache.md)
+for a worked adapter that implements these Ports.
 
 ::: protean.port.cache.CachePort
     options:

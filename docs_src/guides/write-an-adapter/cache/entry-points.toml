@@ -1,0 +1,2 @@
+[project.entry-points."protean.caches"]
+delegating_memory = "delegating_cache:register"

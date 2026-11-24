@@ -71,6 +71,9 @@ adapter that declares `TTL` also subclasses `CacheTTLPort`, and one that declare
 `PATTERN_MATCH` also subclasses `CachePatternPort`. `Domain.init()` raises
 `ConfigurationError` when an adapter declares `TTL` or `PATTERN_MATCH` and does
 not subclass the matching protocol.
+[Write a Cache Adapter](../../guides/write-an-adapter/cache.md) shows a
+complete cache adapter added to Protean itself, from the class to the
+conformance run.
 
 They register the same way as database and broker adapters. An event store's
 `register()` function calls `protean.infra.registry.event_stores`, and its entry
