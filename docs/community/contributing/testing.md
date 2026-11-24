@@ -60,6 +60,14 @@ The `redis-cache` entry lists `cache:redis`, so both run the cache suite on Redi
 
 The entry's `paths` must include `tests/conformance/<port>/`, so a change to the suite runs the leg. `tests/cli/test_adapter_manifest.py` fails when a path is missing.
 
+### Which leg runs a test with two adapter markers
+
+`tests/conftest.py` skips a test for each adapter marker whose flag the run does not pass. A test marked both `postgresql` and `message_db` runs only when the run passes `--postgresql` and `--message_db`. An entry's marker run passes `-m <marker> --<marker>`, so on its own it skips such a test.
+
+An entry's `enables` key lists the other adapter markers whose flags its marker run also passes. The `message-db` entry enables `postgresql` and `sqlite`, so its marker run is `-m message_db --message_db --postgresql --sqlite tests`. The `-m` expression still selects only the tests marked `message_db`. The entry's `services` must include the services of the markers it enables, so the `message-db` entry lists `postgres` next to `message-db`. The `redis-broker` entry enables `postgresql` and lists `postgres`, so the `redis` leg runs the tests marked `postgresql` and `redis`. When several entries in one leg share a marker, the leg's marker run passes the flags that any of them enables.
+
+`tests/cli/test_adapter_manifest.py` collects `tests/` and fails when a test carries two or more adapter markers and no leg passes the flag of each one and starts each one's service. Add the missing markers to the `enables` of one of the test's adapters, and their services to its `services`.
+
 ### Parallel runs
 
 `CORE` runs on [pytest-xdist](https://pytest-xdist.readthedocs.io/) with `--dist loadfile`, so all the tests in one file run on the same worker. `PR` runs its core suite the same way.

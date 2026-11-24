@@ -560,6 +560,7 @@ ADAPTER_ENTRY_KEYS = frozenset(
         "databases",
         "stores",
         "conformance",
+        "enables",
     }
 )
 
@@ -630,6 +631,9 @@ class AdapterEntry:
     stores: list[str]
     # The runs of tests/conformance/<port>/ the entry's leg makes.
     conformance: list[ConformanceRun] = field(default_factory=list)
+    # The other adapter markers whose flags its marker runs also pass, so a
+    # test that carries one of them and one of ``markers`` runs too.
+    enables: list[str] = field(default_factory=list)
 
     def matches(self, path: str) -> bool:
         """Whether a changed file is one of this adapter's paths."""
@@ -724,12 +728,48 @@ def load_adapter_manifest(path: Path = ADAPTER_MANIFEST) -> AdapterManifest:
                 databases=list(raw.get("databases", [])),
                 stores=list(raw.get("stores", [])),
                 conformance=_conformance_runs(name, raw.get("conformance", [])),
+                enables=_enabled_markers(name, raw.get("enables", [])),
             )
         )
+    _check_enables(adapters)
     return AdapterManifest(
         adapters=adapters,
         trigger_all=list(data.get("triggers", {}).get("all", [])),
     )
+
+
+def _enabled_markers(name: str, value: object) -> list[str]:
+    """Return an entry's ``enables`` value, or raise ``ValueError`` naming it."""
+    if not isinstance(value, list) or not all(isinstance(m, str) for m in value):
+        raise ValueError(
+            f"Adapter '{name}' has enables {value!r}; use a list of marker names"
+        )
+    return list(value)
+
+
+def _check_enables(adapters: list[AdapterEntry]) -> None:
+    """Raise ``ValueError`` naming the entry when an ``enables`` value is wrong.
+
+    An entry with ``enables`` must have ``markers``, and each name it enables
+    must be another entry's marker and not one of its own.
+    """
+    known = {m for e in adapters for m in e.markers}
+    for entry in adapters:
+        if entry.enables and not entry.markers:
+            raise ValueError(
+                f"Adapter '{entry.name}' has enables but no markers; "
+                "enables adds flags to the entry's marker runs"
+            )
+        for marker in entry.enables:
+            if marker in entry.markers:
+                raise ValueError(
+                    f"Adapter '{entry.name}' enables its own marker '{marker}'"
+                )
+            if marker not in known:
+                raise ValueError(
+                    f"Adapter '{entry.name}' enables '{marker}', which is no "
+                    f"entry's marker; use one of {sorted(known)}"
+                )
 
 
 def _registered_adapters(group: str) -> set[str]:
@@ -919,10 +959,13 @@ def build_adapter_suites(
 
     The same runs ``-c FULL`` makes for them: a marker run (``-m redis
     --redis``), the capability suites for each database and store, and the
-    conformance runs.
+    conformance runs. A marker run also passes the flag of each marker that an
+    adapter with that marker ``enables`` (``-m redis --redis --postgresql``),
+    and selects only the tests that carry its own marker.
     """
     suites: list[TestSuite] = []
     seen: set[str] = set()
+    marker_flags = _marker_flags(adapters)
 
     def add(name: str, pytest_cmd: list[str]) -> None:
         if name not in seen:
@@ -934,7 +977,7 @@ def build_adapter_suites(
             add(
                 f"Marker: {marker}",
                 runner.build_test_command(
-                    marker=marker, extra_flags=[f"--{marker}", "tests"]
+                    marker=marker, extra_flags=[*marker_flags[marker], "tests"]
                 ),
             )
         for db in entry.databases:
@@ -952,6 +995,23 @@ def build_adapter_suites(
             )
     suites.extend(build_conformance_suites(runner, adapters))
     return suites
+
+
+def _marker_flags(adapters: list[AdapterEntry]) -> dict[str, list[str]]:
+    """The flags of each marker run: ``--<marker>``, then each marker that an
+    adapter with that marker enables, in the order the adapters list them.
+    """
+    # Collected over every adapter: two adapters can share a marker run, and
+    # only the first one's suite is kept.
+    enabled: dict[str, list[str]] = {}
+    for entry in adapters:
+        for marker in entry.markers:
+            names = enabled.setdefault(marker, [])
+            names.extend(m for m in entry.enables if m not in names)
+    return {
+        marker: [f"--{m}" for m in [marker, *names]]
+        for marker, names in enabled.items()
+    }
 
 
 def run_pr_lane(
