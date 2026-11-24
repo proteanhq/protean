@@ -34,10 +34,16 @@ from protean.core.projection import BaseProjection
 from protean.domain import Domain
 from protean.fields import Identifier, String
 from protean.infra.cache import DEFAULT_TTL
+from protean.infra.registry import caches
 from protean.port.cache import CacheCapabilities
 from tests.support.snippets import extract_toml_blocks
 
 pytestmark = pytest.mark.no_test_domain
+
+# Importing the example registers it, and every xdist worker imports this
+# module at collection. Other tests read the registry's list of names, so the
+# name is removed here and registered only while this module's tests run.
+caches._paths.pop("delegating_memory", None)
 
 # The suite runs in a few seconds. The limit stops a run that hangs.
 _CONFORMANCE_TIMEOUT = 300
@@ -127,6 +133,13 @@ def _run_pytest(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
         check=False,
         timeout=_CONFORMANCE_TIMEOUT,
     )
+
+
+@pytest.fixture(autouse=True, scope="module")
+def registered_example() -> Iterator[None]:
+    delegating_cache.register()
+    yield
+    caches._paths.pop("delegating_memory", None)
 
 
 @pytest.fixture(scope="module")
