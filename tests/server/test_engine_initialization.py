@@ -73,28 +73,63 @@ class TestEngineObservatoryConfigFallback:
 # ---------------------------------------------------------------------------
 class TestEngineOutboxValidation:
     @pytest.mark.no_test_domain
-    def test_engine_raises_when_outbox_table_missing(self):
-        """Engine should raise ConfigurationError when outbox DAO is not accessible."""
+    def test_engine_lets_a_dao_error_reach_the_caller(self):
+        domain = Domain(name="Test")
+        domain.config["server"]["default_subscription_type"] = "stream"
+        domain.init(traverse=False)
+        boom = RuntimeError("boom")
+
+        with domain.domain_context():
+            for outbox_repo in domain._outbox_repos.values():
+                original_dao = type(outbox_repo)._dao
+                type(outbox_repo)._dao = property(
+                    lambda self: (_ for _ in ()).throw(boom)
+                )
+
+                try:
+                    with pytest.raises(RuntimeError, match="boom") as exc:
+                        Engine(domain, test_mode=True)
+                finally:
+                    type(outbox_repo)._dao = original_dao
+
+                assert exc.value is boom
+
+    @pytest.mark.no_test_domain
+    def test_engine_raises_when_the_store_has_no_outbox_table(self):
         domain = Domain(name="Test")
         domain.config["server"]["default_subscription_type"] = "stream"
         domain.init(traverse=False)
 
         with domain.domain_context():
-            # Sabotage the outbox repo to simulate missing table
-            for outbox_repo in domain._outbox_repos.values():
-                original_dao = type(outbox_repo)._dao
-                type(outbox_repo)._dao = property(
-                    lambda self: (_ for _ in ()).throw(Exception("table not found"))
-                )
+            outbox_repos = list(domain._outbox_repos.values())
+            assert outbox_repos
+            dao_cls = type(outbox_repos[0]._dao)
+            with patch.object(dao_cls, "has_table", return_value=False):
+                with pytest.raises(
+                    ConfigurationError,
+                    match=(
+                        r"Outbox table not found for provider 'default'\. "
+                        r"Run 'protean db setup' or 'protean db setup-outbox'"
+                    ),
+                ):
+                    Engine(domain, test_mode=True)
 
-                try:
-                    with pytest.raises(
-                        ConfigurationError,
-                        match="Outbox table not found",
-                    ):
-                        Engine(domain, test_mode=True)
-                finally:
-                    type(outbox_repo)._dao = original_dao
+    @pytest.mark.no_test_domain
+    def test_engine_lets_a_table_probe_error_reach_the_caller(self):
+        domain = Domain(name="Test")
+        domain.config["server"]["default_subscription_type"] = "stream"
+        domain.init(traverse=False)
+        boom = RuntimeError("boom")
+
+        with domain.domain_context():
+            outbox_repos = list(domain._outbox_repos.values())
+            assert outbox_repos
+            dao_cls = type(outbox_repos[0]._dao)
+            with patch.object(dao_cls, "has_table", side_effect=boom):
+                with pytest.raises(RuntimeError) as exc:
+                    Engine(domain, test_mode=True)
+
+            assert exc.value is boom
 
     @pytest.mark.no_test_domain
     def test_engine_reraises_a_capability_flag_mismatch_as_it_is(self):

@@ -62,6 +62,14 @@ outbox table without touching the rest of the schema:
 $ protean db setup-outbox --domain=my_domain
 ```
 
+The server refuses to start when a managed provider's outbox table is
+missing. It raises a `ConfigurationError` that names the provider:
+
+```
+ConfigurationError: Outbox table not found for provider 'default'. Run
+'protean db setup' or 'protean db setup-outbox' to create it.
+```
+
 On a database under schema migrations, run `protean db migrate` and
 `protean db upgrade` instead. The outbox table is part of the provider's tables
 when the outbox is enabled, so the migration creates it; see

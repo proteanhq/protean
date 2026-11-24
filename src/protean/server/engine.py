@@ -1060,7 +1060,7 @@ def _wire_outbox_processors(engine: Engine) -> None:
 
     Raises:
         ValueError: when the outbox broker or an external broker is not configured.
-        ConfigurationError: when an outbox table cannot be reached.
+        ConfigurationError: when a provider reports no outbox table.
     """
     logger.debug("engine.outbox_initializing")
     # Get the broker provider name from the config with validation
@@ -1110,7 +1110,7 @@ def _wire_outbox_processors(engine: Engine) -> None:
             engine, ext_broker_name, outbox_providers, tick_settings
         )
 
-    # Verify outbox repos are initialised and DAO-accessible
+    # Stop when a provider has no outbox table
     for provider_name, outbox_repo in engine.domain._outbox_repos.items():
         _check_outbox_repo(provider_name, outbox_repo, outbox_providers)
 
@@ -1148,19 +1148,17 @@ def _wire_external_outbox_processors(
 def _check_outbox_repo(
     provider_name: str, outbox_repo: Any, outbox_providers: list[str]
 ) -> None:
-    """Check an outbox repository's table, and warn about rows no processor publishes."""
-    try:
-        outbox_repo._dao  # noqa: B018
-    # A provider whose capability flags its DAO class cannot serve already
-    # names the flag and the class.
-    except ConfigurationError:
-        raise
-    # Any other DAO error is reported as a missing outbox table.
-    except Exception as e:
+    """Check a provider's outbox table, and warn about rows no processor publishes.
+
+    Raises `ConfigurationError` naming the provider when the store reports no
+    outbox table. Any other error from building the DAO or from asking the
+    store reaches the caller unchanged.
+    """
+    if not outbox_repo._dao.has_table():
         raise ConfigurationError(
             f"Outbox table not found for provider '{provider_name}'. "
             "Run 'protean db setup' or 'protean db setup-outbox' to create it."
-        ) from e
+        )
     if provider_name in outbox_providers:
         return
     # Rows left by an earlier deploy, before the last aggregate on
