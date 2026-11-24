@@ -67,20 +67,6 @@ class TestRequiredValueObjectDescriptor:
 
 
 # ---------------------------------------------------------------------------
-# Test: _postcheck method
-# ---------------------------------------------------------------------------
-class TestValueObjectPostcheck:
-    def test_postcheck_returns_empty_dict_when_no_invariants(self, test_domain):
-        """_postcheck calls _run_invariants('post')."""
-        test_domain.register(Email)
-        test_domain.init(traverse=False)
-
-        email = Email(address="test@example.com")
-        result = email._postcheck()
-        assert result == {}
-
-
-# ---------------------------------------------------------------------------
 # Test: Template dict pattern for VO
 # ---------------------------------------------------------------------------
 class TestValueObjectTemplateDict:

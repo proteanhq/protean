@@ -433,14 +433,6 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
 
         return dict(errors) if errors else {}
 
-    def _postcheck(self) -> dict[str, list[str]]:
-        """Invariant checks performed after initialization.
-
-        Returns a dict of errors (possibly empty) for compatibility with
-        entity invariant runner (entity.py _run_invariants).
-        """
-        return self._run_invariants("post")
-
     def replace(self, **kwargs: Any) -> Self:
         """Return a new value object with specified fields replaced.
 
