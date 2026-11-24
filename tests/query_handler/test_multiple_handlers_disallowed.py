@@ -211,3 +211,36 @@ class TestMultipleHandlersDisallowed:
         assert GetOrdersByCustomer.__type__ in OrderHandler._handlers
 
         assert test_domain.check(traverse=False)["errors"] == []
+
+    def test_dispatch_skips_a_handler_with_an_empty_entry_for_the_query(
+        self, test_domain
+    ):
+        """A handler registered first with an empty entry for the query does not win dispatch."""
+
+        class GetOrderById(BaseQuery):
+            order_id = Identifier(required=True)
+
+        test_domain.register(OrderSummary)
+        test_domain.register(GetOrdersByCustomer, part_of=OrderSummary)
+        test_domain.register(GetOrderById, part_of=OrderSummary)
+
+        class OrderHandler(BaseQueryHandler):
+            @read(GetOrderById)
+            def by_id(self, query):
+                return None
+
+        class CustomerHandler(BaseQueryHandler):
+            @read(GetOrdersByCustomer)
+            def by_customer(self, query):
+                return ["customer-orders"]
+
+        test_domain.register(OrderHandler, part_of=OrderSummary)
+        test_domain.register(CustomerHandler, part_of=OrderSummary)
+        test_domain.init(traverse=False)
+
+        # A missing key reads as an empty set and leaves it behind.
+        assert not OrderHandler._handlers[GetOrdersByCustomer.__type__]
+
+        query = GetOrdersByCustomer(customer_id="c1")
+        assert test_domain._query_processor.handler_for(query) is CustomerHandler
+        assert test_domain.dispatch(query) == ["customer-orders"]

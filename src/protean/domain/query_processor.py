@@ -79,6 +79,8 @@ class QueryProcessor:
             DomainObjects.QUERY_HANDLER.value
         ].values():
             handler_cls: type[BaseQueryHandler] = record.cls
-            if query.__class__.__type__ in handler_cls._handlers:
+            # `_handlers` is a defaultdict, so a past lookup can leave an
+            # empty set under a query the class does not read.
+            if handler_cls._handlers.get(query.__class__.__type__):
                 return handler_cls
         return None
