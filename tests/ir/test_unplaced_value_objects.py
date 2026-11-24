@@ -178,6 +178,27 @@ class TestBuilderSection:
 
         assert list(ir["value_objects"]) == [SHIPPING_FQN]
 
+    def test_internal_value_object_is_left_out(self):
+        class Tracker(BaseValueObject):
+            label = String()
+
+        ir = _ir(Tracker, ShippingAddress, CustomerCard, Tracker={"internal": True})
+
+        assert list(ir["value_objects"]) == [SHIPPING_FQN]
+
+    def test_list_only_value_object_is_in_the_section(self):
+        class Tag(BaseValueObject):
+            label = String()
+
+        class Holder(BaseAggregate):
+            tags = List(content_type=ValueObject(Tag))
+
+        ir = _ir(Holder, Tag)
+
+        assert fqn(Tag) not in ir["clusters"][fqn(Holder)]["value_objects"]
+        assert list(ir["value_objects"]) == [fqn(Tag)]
+        assert ir["value_objects"][fqn(Tag)]["fields"]["label"]["type"] == "String"
+
     def test_unheld_value_object_is_in_the_section(self, tmp_path):
         ir = _ir(ShippingAddress)
 
@@ -277,7 +298,11 @@ class TestSchemaTree:
             assert files[path]["imports"] == ["value_objects/ShippingAddress.v1.proto"]
             assert files[path]["messages"] == [projection]
 
-    def test_two_unplaced_value_objects_with_one_name_clash(self, tmp_path):
+    @pytest.mark.parametrize(
+        ("fmt", "ext"),
+        [("json", "json"), ("avro", "avsc"), ("protobuf", "proto")],
+    )
+    def test_two_unplaced_value_objects_with_one_name_clash(self, tmp_path, fmt, ext):
         ir = _ir(
             billing.Address,
             billing.BillingCard,
@@ -287,10 +312,10 @@ class TestSchemaTree:
         assert set(ir["value_objects"]) == {fqn(billing.Address), fqn(shipping.Address)}
 
         with pytest.raises(ValueError) as exc:
-            write_schemas(ir, tmp_path, fmt="protobuf")
+            write_schemas(ir, tmp_path, fmt=fmt)
 
         message = str(exc.value)
-        assert "value_objects/Address.v1.proto" in message
+        assert f"value_objects/Address.v1.{ext}" in message
         assert fqn(billing.Address) in message
         assert fqn(shipping.Address) in message
 

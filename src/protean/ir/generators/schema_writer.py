@@ -116,8 +116,8 @@ def _relative_schema_path(
 ) -> PurePosixPath:
     """Return where *element*'s schema file goes, relative to ``schemas/``.
 
-    Projections go under ``projections/`` and value objects that no cluster
-    places go under ``value_objects/``; every other element goes under its
+    Projections go under ``projections/``, and value objects that no cluster
+    places go under ``value_objects/``. Every other element goes under its
     owning cluster and element-type subdirectory. The writer places files with
     this path and the protobuf generator imports files by it, so both agree.
     """

@@ -696,6 +696,7 @@ set to `null`:
 
 - A value object that a cluster places never appears in this section
 - An abstract value object is left out, because nothing instantiates it
+- A value object registered as internal to the framework is left out
 - The section is omitted when every value object has a cluster, so such a
   domain keeps the same IR and checksum
 - Schema generation writes each entry to `schemas/value_objects/`, and
@@ -721,7 +722,7 @@ A flat lookup table mapping element types to sorted FQN lists:
 
 - Keys are `DomainObjects` enum values (uppercase)
 - Empty lists are included for types with no instances
-- Spans all sections (clusters, projections, flows)
+- Spans all sections (clusters, projections, flows, value_objects)
 - Derived, not canonical. Sections are the source of truth
 
 ---
