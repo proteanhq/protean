@@ -72,7 +72,7 @@ Use a base command when many commands share the same fields, such as audit info.
 3. Concrete commands MUST specify `part_of`
 4. Fields are inherited from all ancestors
 5. Concrete commands can override inherited field definitions
-6. Abstract commands are never submitted. Protean lets you build an instance, but it has no aggregate, so `domain.process()` fails on it. Submit a concrete subclass.
+6. Abstract commands cannot be instantiated: creating one raises `NotSupportedError`. Build and submit a concrete subclass.
 
 ## Related
 
