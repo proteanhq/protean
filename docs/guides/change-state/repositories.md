@@ -188,7 +188,12 @@ How it works:
 - If the aggregate has `event_sourced=True`, `repository_for()` returns an
   **event-sourced repository** backed by the event store. The event-sourced
   repository reconstructs aggregate state by replaying events from the
-  aggregate's stream. It does not read from a database table.
+  aggregate's stream. It does not read from a database table. When a
+  `BaseEventSourcedRepository` subclass is registered for the aggregate,
+  `repository_for()` returns an instance of it. A subclass registered with a
+  string `part_of` is found only after `domain.init()`. When none is found,
+  `repository_for()` returns a generated one. Registering a standard repository for an event-sourced
+  aggregate raises `IncorrectUsageError`.
 
 - Otherwise, it returns the aggregate's database-backed repository (custom if
   one is registered, default if not).

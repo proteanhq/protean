@@ -178,3 +178,10 @@ class WalletProjector(BaseProjector):
 
     def describe(self) -> None:
         """Public but undecorated — not an on-event method."""
+
+
+class Purse(BaseAggregate):
+    """A state-based aggregate for ``WalletRepository``: ``Wallet`` is event
+    sourced, and a standard repository cannot be registered for it."""
+
+    label: String()

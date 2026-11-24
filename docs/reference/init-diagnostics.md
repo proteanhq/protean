@@ -212,6 +212,24 @@ type has no read view or projection connection.
 **Fix.** Call the accessor with a projection, or use the accessor that matches the
 element's type.
 
+### USAGE_REPOSITORY_ON_EVENT_SOURCED_AGGREGATE { #usage-repository-on-event-sourced-aggregate }
+
+| | |
+|---|---|
+| **Category** | `usage` |
+| **Level** | `error` |
+| **Exception** | `IncorrectUsageError` |
+| **Raised by** | `Domain.register`, `Domain.init` |
+
+**Why.** An event-sourced aggregate is loaded and saved through an event-sourced
+repository, so a standard repository registered for it would never be used. With a
+class `part_of`, the registration raises when the aggregate is already event
+sourced. `domain.init()` checks every registered repository again, which covers a
+string `part_of` and a repository registered before its aggregate.
+
+**Fix.** Subclass `BaseEventSourcedRepository` and register it with
+`domain.register(<Repository>, part_of=<Aggregate>)`.
+
 ### USAGE_UNKNOWN_ELEMENT_TYPE { #usage-unknown-element-type }
 
 | | |

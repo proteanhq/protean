@@ -83,6 +83,9 @@ class DiagnosticCode(StrEnum):
     USAGE_ELEMENT_NOT_REGISTERED = "USAGE_ELEMENT_NOT_REGISTERED"
     USAGE_ENRICHER_NOT_CALLABLE = "USAGE_ENRICHER_NOT_CALLABLE"
     USAGE_NOT_A_PROJECTION = "USAGE_NOT_A_PROJECTION"
+    USAGE_REPOSITORY_ON_EVENT_SOURCED_AGGREGATE = (
+        "USAGE_REPOSITORY_ON_EVENT_SOURCED_AGGREGATE"
+    )
     USAGE_UNKNOWN_ELEMENT_TYPE = "USAGE_UNKNOWN_ELEMENT_TYPE"
     VALUE_OBJECT_INVARIANT_FAILED = "VALUE_OBJECT_INVARIANT_FAILED"
     VALUE_OBJECT_MUTABLE_FIELD = "VALUE_OBJECT_MUTABLE_FIELD"
@@ -909,6 +912,21 @@ REGISTRY: dict[DiagnosticCode, CodeMeta] = {
         fix=(
             "Call the accessor with a projection, or use the accessor that "
             "matches the element's type."
+        ),
+    ),
+    DiagnosticCode.USAGE_REPOSITORY_ON_EVENT_SOURCED_AGGREGATE: CodeMeta(
+        category="usage",
+        level="error",
+        kind="raise",
+        meaning="A standard repository was registered for an event-sourced aggregate.",
+        rationale=(
+            "An event-sourced aggregate is loaded and saved through an "
+            "event-sourced repository, so a standard repository registered for "
+            "it would never be used."
+        ),
+        fix=(
+            "Subclass `BaseEventSourcedRepository` and register it with "
+            "`domain.register(<Repository>, part_of=<Aggregate>)`."
         ),
     ),
     DiagnosticCode.USAGE_UNKNOWN_ELEMENT_TYPE: CodeMeta(

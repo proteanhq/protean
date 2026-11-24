@@ -86,6 +86,9 @@ _EXCLUDED_CODES = {
     "USAGE_ELEMENT_NOT_REGISTERED": "raised at runtime; check never emits it",
     "USAGE_ENRICHER_NOT_CALLABLE": "raised at runtime; check never emits it",
     "USAGE_NOT_A_PROJECTION": "raised at runtime; check never emits it",
+    "USAGE_REPOSITORY_ON_EVENT_SOURCED_AGGREGATE": (
+        "raised at runtime; check never emits it"
+    ),
     "USAGE_UNKNOWN_ELEMENT_TYPE": "raised at runtime; check never emits it",
     "VALUE_OBJECT_INVARIANT_FAILED": "raised at runtime; check never emits it",
     # kind="staleness": the fix is to regenerate the IR, a tooling step.

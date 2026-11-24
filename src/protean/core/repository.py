@@ -14,6 +14,7 @@ from protean.exceptions import (
 from protean.fields import HasMany, HasOne
 from protean.fields.tempdata import HasManyChanges, HasOneChanges
 from protean.infra.dao import DAO
+from protean.ir.diagnostics import DiagnosticCode
 from protean.port.database import BaseDatabase, DatabaseModelPort
 from protean.utils import (
     DomainObjects,
@@ -618,4 +619,40 @@ def repository_factory(element_cls: type[_T], domain: Any, **opts: Any) -> type[
             f"Repository `{repository_cls.__name__}` can only be associated with an Aggregate"
         )
 
+    # A string ``part_of`` is checked by ``domain.init()`` once it resolves.
+    if not auto_constructed and isinstance(repository_cls.meta_.part_of, type):
+        check_state_based_part_of(repository_cls, location="Domain.register")
+
     return element_cls
+
+
+def check_state_based_part_of(repository_cls: Any, location: str) -> None:
+    """Refuse a standard repository whose aggregate is event sourced.
+
+    ``domain.repository_for()`` serves an event-sourced aggregate through an
+    event-sourced repository, so a standard repository registered for one
+    would never be used.
+
+    Args:
+        repository_cls: The registered repository class.
+        location: The entry point reported on the error.
+
+    Raises:
+        IncorrectUsageError: When ``meta_.part_of`` is an event-sourced
+            aggregate.
+    """
+    aggregate_cls = repository_cls.meta_.part_of
+    if not aggregate_cls.meta_.is_event_sourced:
+        return
+
+    repository_name = repository_cls.__name__
+    aggregate_name = aggregate_cls.__name__
+    raise IncorrectUsageError(
+        f"Repository `{repository_name}` cannot be associated with "
+        f"`{aggregate_name}`, which is an event-sourced aggregate. "
+        f"To add custom methods, subclass `BaseEventSourcedRepository` and "
+        f"register the subclass with "
+        f"`domain.register(<Repository>, part_of={aggregate_name})`.",
+        code=DiagnosticCode.USAGE_REPOSITORY_ON_EVENT_SOURCED_AGGREGATE,
+        location=location,
+    )
