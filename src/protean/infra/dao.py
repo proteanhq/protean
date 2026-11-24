@@ -5,7 +5,9 @@ class's rows in the session it is given. `DAO` wraps one adapter for one
 entity class and builds the entity-level operations on top of it: getting,
 finding, creating, saving, updating and deleting entities, checking unique
 fields and versions, running pre-persist hooks, tracking aggregates in the
-Unit of Work, claiming rows and deleting them in batches.
+Unit of Work, claiming rows and deleting them in batches. The write path
+lives in `protean.infra.dao_write` and the read path in
+`protean.infra.dao_read`; the service's methods delegate to them.
 
 `DAO.session_scope` picks the session for each operation. Inside a Unit of
 Work it is the Unit of Work's session for the provider, and the Unit of Work
@@ -15,47 +17,35 @@ provider, which the service commits, rolls back on an error, and closes.
 
 from __future__ import annotations
 
-import datetime
-import logging
-import operator
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from functools import partial, reduce
-from typing import TYPE_CHECKING, Any, cast, get_args
+from functools import partial
+from typing import TYPE_CHECKING, Any, cast
 
 from protean._deprecation import deprecated_from_registry
-from protean.core.aggregate import BaseAggregate, _pre_persist_change
+from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
-from protean.core.index import Index
 from protean.core.queryset import QuerySet, ResultSet
-from protean.exceptions import (
-    ConfigurationError,
-    ObjectNotFoundError,
-    ValidationError,
-)
-from protean.infra import dao_read
+from protean.exceptions import ConfigurationError
+from protean.infra import dao_read, dao_write
 from protean.port.dao import (
     _FLAG_PORTS,
     BoundedDeletePort,
     ClaimCandidatesPort,
     DAOPort,
     HoldBack,
-    InsertIfAbsentPort,
     NativeClaimPort,
 )
 from protean.port.database import DatabaseCapabilities, DatabaseModelPort
-from protean.utils import DomainObjects, _callable_qualname
-from protean.utils.globals import _domain_now, current_domain, current_uow
+from protean.utils import DomainObjects
+from protean.utils.globals import current_domain, current_uow
 from protean.utils.query import Q
-from protean.utils.reflection import declared_fields, fields, id_field, unique_fields
+from protean.utils.reflection import id_field
 
 if TYPE_CHECKING:
     from protean.domain import Domain
-    from protean.fields.base import Field
     from protean.port.database import SessionProtocol
-
-logger = logging.getLogger(__name__)
 
 # Max identifiers per ``IN (...)`` clause in :func:`portable_delete_top`. Kept under SQLite's default ``SQLITE_MAX_VARIABLE_NUMBER`` of 999 so
 # the fallback path is safe on every backend regardless of batch size.
@@ -133,72 +123,6 @@ def _earlier_than(entity: Any, order: Sequence[str]) -> Q:
         earlier = earlier | (equal_so_far & before)
         equal_so_far = equal_so_far & same
     return earlier
-
-
-def _lifecycle_timestamp_fields(
-    entity_obj: Any, *, is_create: bool
-) -> dict[str, Field]:
-    """Return the ``auto_now`` / ``auto_now_add`` fields this save stamps.
-
-    Django-parity semantics: ``auto_now`` fields are stamped on every save;
-    ``auto_now_add`` fields only on the initial (create) save.
-    """
-    return {
-        name: field_obj
-        for name, field_obj in fields(entity_obj).items()
-        if getattr(field_obj, "auto_now", False)
-        or (is_create and getattr(field_obj, "auto_now_add", False))
-    }
-
-
-def _stamp_lifecycle_timestamps(entity_obj: Any, to_stamp: dict[str, Field]) -> None:
-    """Set each DateTime/Date field in ``to_stamp`` to the current time.
-
-    A single ``now``, read from the domain's injectable clock (so frozen-clock
-    tests apply), is shared across all stamped fields on this entity.
-    """
-    now = _domain_now()
-    for name, field_obj in to_stamp.items():
-        # ``_python_type`` may be Optional-wrapped (auto_now fields are not
-        # required); unwrap to the underlying date/datetime to pick the value.
-        base_type: Any = getattr(field_obj, "_python_type", None)
-        base_type = next(
-            (a for a in get_args(base_type) if a is not type(None)), base_type
-        )
-        value: datetime.date | datetime.datetime = (
-            now.date() if base_type is datetime.date else now
-        )
-        setattr(entity_obj, name, value)
-
-
-@contextmanager
-def _pre_persist_hook(
-    entity_obj: Any, location: str, *, writes_only_to_self: bool = False
-) -> Iterator[None]:
-    """Run one pre-persist hook's writes on ``entity_obj``.
-
-    When the object belongs to an aggregate, the writes run in a
-    ``_pre_persist_change`` block on the aggregate root. A projection, or an
-    entity saved on its own, has no aggregate to check, so its writes run as
-    they are. Inside a caller's own ``atomic_change`` block the aggregate may
-    be mid-change, so the block only undoes a raising hook's writes and leaves
-    the checks to the caller's block. That block checks the final state on its
-    exit and undoes the in-memory changes if it fails, but a save made inside
-    it has already written its row.
-    """
-    root = getattr(entity_obj, "_root", None) or entity_obj
-    if not isinstance(root, BaseAggregate):
-        yield
-        return
-
-    writes_only = entity_obj if writes_only_to_self else None
-    with _pre_persist_change(
-        root,
-        location,
-        writes_only=writes_only,
-        defer_checks=root._disable_invariant_checks,
-    ):
-        yield
 
 
 def _try_claim(
@@ -433,95 +357,6 @@ def portable_delete_top(
         return deleted
 
 
-def _unique_key_indexes(entity_cls: type[BaseEntity]) -> list[Index]:
-    """``entity_cls``'s ``Index`` declarations with ``unique=True`` and no
-    ``where`` predicate. Their fields make up the entity's unique keys."""
-    return [
-        index
-        for index in getattr(entity_cls.meta_, "indexes", ()) or ()
-        if isinstance(index, Index) and index.unique and index.where is None
-    ]
-
-
-def _stored_value(
-    database_model_cls: type[DatabaseModelPort], model_obj: Any, name: str
-) -> Any:
-    """The value ``model_obj`` stores under ``name``.
-
-    Reads it through the model class's ``_get_value()`` when the model defines
-    one, and reads an attribute otherwise.
-    """
-    # ``_get_value`` is not a ``DatabaseModelPort`` member, but every
-    # ``BaseDatabaseModel`` has it and adapters override it for dict records.
-    get_value = getattr(database_model_cls, "_get_value", None)
-    if get_value is not None:
-        return get_value(model_obj, name)
-    return getattr(model_obj, name)
-
-
-def _key_values(
-    entity_cls: type[BaseEntity],
-    database_model_cls: type[DatabaseModelPort],
-    model_obj: Any,
-    index: Index,
-) -> dict[str, Any] | None:
-    """``model_obj``'s values for ``index``'s fields, keyed by the name each
-    field is stored under, or ``None`` when any value is ``None``."""
-    entity_fields = fields(entity_cls)
-    values = {}
-    for name in index.fields:
-        field_obj = entity_fields.get(name)
-        # An index names either a field or the attribute it is stored under,
-        # and a filter matches stored names.
-        stored_name = getattr(field_obj, "attribute_name", None) or name
-        values[stored_name] = _stored_value(database_model_cls, model_obj, stored_name)
-    if any(value is None for value in values.values()):
-        return None
-    return values
-
-
-def _unique_key_criteria(
-    entity_cls: type[BaseEntity],
-    database_model_cls: type[DatabaseModelPort],
-    model_obj: Any,
-) -> Q | None:
-    """Match the other rows that share a unique key with ``model_obj``.
-
-    A unique key is the values of the fields of one of
-    :func:`_unique_key_indexes`. A key with a ``None`` among its values is
-    left out, and the result is ``None`` when no key is left. The row stored
-    under ``model_obj``'s own identifier never matches.
-    """
-    groups = [
-        Q(**values)
-        for index in _unique_key_indexes(entity_cls)
-        if (values := _key_values(entity_cls, database_model_cls, model_obj, index))
-        is not None
-    ]
-    if not groups:
-        return None
-
-    criteria = reduce(operator.or_, groups)
-    id_f = id_field(entity_cls)
-    assert id_f is not None and id_f.field_name is not None
-    id_attr = id_f.attribute_name or id_f.field_name
-    identifier = _stored_value(database_model_cls, model_obj, id_attr)
-    return criteria & ~Q(**{id_attr: identifier})
-
-
-def _log_save_failure(exc: Exception) -> None:
-    location = getattr(exc, "location", None)
-    logger.error(
-        f"Failed saving entity because {exc}"
-        + (f" (at {location})" if location else "")
-    )
-
-
-class _UniqueKeyTaken(Exception):
-    """An ``InsertIfAbsentPort`` member wrote nothing, because another row
-    holds a unique key of the entity being saved."""
-
-
 class DAO:
     """The entity-level operations on one entity class's rows, built on the
     database adapter's `DAOPort`.
@@ -529,7 +364,9 @@ class DAO:
     The lifecycle methods (``get``, ``save``, ``create``, ``update``,
     ``delete``) work on entities: they convert between entities and models,
     check versions, track the Unit of Work, and call the adapter in the
-    session :meth:`session_scope` picks.
+    session :meth:`session_scope` picks. The write methods delegate to
+    `protean.infra.dao_write`, and the read methods to
+    `protean.infra.dao_read`.
 
     Args:
         domain: The domain this DAO belongs to.
@@ -612,7 +449,7 @@ class DAO:
         finally:
             session.close()
 
-    def _flush(self) -> None:
+    def flush(self) -> None:
         """Run the session's pending writes inside its transaction, without
         committing.
 
@@ -783,12 +620,7 @@ class DAO:
         Raises:
             Exception: The adapter's error, logged and re-raised.
         """
-        try:
-            with self.session_scope() as session:
-                return self._adapter.delete_all(session, criteria)
-        except Exception as exc:
-            logger.error(f"Failed deletion of all records because of {exc}")
-            raise
+        return dao_write.delete_all(self, criteria)
 
     def claim(
         self,
@@ -912,117 +744,22 @@ class DAO:
         ``excludes_``."""
         return dao_read.exists(self, excludes_, **filters)
 
-    @staticmethod
-    def _is_pending_auto_field(
-        entity_obj: Any, field_name: str, field_obj: Any
-    ) -> bool:
-        """True if ``field_obj`` is an ``Auto(increment=True)`` field whose value
-        on ``entity_obj`` has not been generated yet (still ``None``).
-
-        A caller-supplied value is thus never treated as pending, so it is
-        neither flushed-for nor overwritten during reflection.
-        """
-        return getattr(field_obj, "increment", False) and (
-            getattr(entity_obj, field_name) is None
-        )
-
-    def _has_pending_auto_field(self, entity_obj: Any) -> bool:
-        """Return True if the entity has any ``Auto(increment=True)`` field still
-        awaiting a store-generated value.
-
-        Used to decide whether a pre-reflection flush is worth its cost: a
-        relational adapter assigns such a value only when the INSERT is flushed.
-        Entities identified by a client-supplied value (e.g. the common
-        UUID/string identifier) have no pending auto field and skip the flush.
-        """
-        return any(
-            self._is_pending_auto_field(entity_obj, field_name, field_obj)
-            for field_name, field_obj in declared_fields(entity_obj).items()
-        )
-
-    def _reflect_auto_fields(self, entity_obj: Any, model_obj: Any) -> None:
-        """Copy store-generated auto-increment values back onto the entity.
-
-        An ``Auto(increment=True)`` field's value is produced by the
-        persistence store during the create, not by the entity. After the
-        record is created, reflect that value back onto the in-memory instance
-        so the caller holds the same identity that was persisted. Only fields
-        still unset on the entity are updated, so a caller-supplied value is
-        never overwritten.
-        """
-        for field_name, field_obj in declared_fields(entity_obj).items():
-            if self._is_pending_auto_field(entity_obj, field_name, field_obj):
-                if isinstance(model_obj, dict):
-                    # The memory model dict is keyed by field name.
-                    field_val = model_obj[field_name]
-                else:
-                    # An object model (SQLAlchemy) exposes the generated column
-                    # under its attribute name, which differs from the field
-                    # name when ``referenced_as`` is set.
-                    attribute_name = field_obj.attribute_name
-                    assert attribute_name is not None
-                    field_val = getattr(model_obj, attribute_name)
-
-                setattr(entity_obj, field_name, field_val)
-
     def create(self, *args: Any, **kwargs: Any) -> BaseEntity:
-        """Create a new record in the data store.
+        """Build an entity from ``args`` and ``kwargs`` and write it as a new
+        row.
 
-        Performs validations for unique attributes before creating the entity
+        Inside a Unit of Work, an aggregate is tracked in it as saved.
 
-        Returns the created entity object.
+        Returns:
+            The created entity.
 
-        Throws `ValidationError` for validation failures on attribute values or uniqueness constraints.
-
-        :param args: Dictionary object containing the object's data.
-        :param kwargs: named attribute names and values
+        Raises:
+            ValidationError: A field value fails validation, or a unique
+                field's value is taken.
         """
-        logger.debug(
-            f"Creating new `{self.entity_cls.__name__}` object using data {kwargs}"
-        )
+        return dao_write.create(self, *args, **kwargs)
 
-        try:
-            # Build the entity from input arguments
-            # Raises validation errors, if any, at this point
-            entity_obj = self.entity_cls(*args, **kwargs)
-
-            # Check unique fields, write the row and reflect auto-increment
-            # values. Raises validation errors if unique constraints are violated.
-            self._write_insert(entity_obj, if_absent=False)
-
-            # Set Entity status to saved to let everybody know it has been persisted
-            entity_obj.state_.mark_saved()
-
-            # Track aggregate at the UoW level, to be able to perform actions on UoW commit,
-            #   like persisting events raised by the aggregate.
-            if current_uow and entity_obj.element_type == DomainObjects.AGGREGATE:
-                current_uow._add_to_identity_map(entity_obj, saved=True)
-
-            return entity_obj
-        except ValidationError as exc:
-            logger.error(f"Failed creating entity because of {exc}")
-            raise
-
-    def _validate_and_update_version(self, entity_obj: Any) -> int | None:
-        """Compute the expected version and advance the entity's version.
-
-        Returns the expected version that the persistence store must match
-        atomically during the adapter's subsequent ``update()`` call, or ``None``
-        for new (unpersisted) entities.
-        """
-        expected_version: int | None = None
-
-        if entity_obj.state_.is_persisted:
-            expected_version = entity_obj._version
-
-        # Advance to the next version: the model built from this entity
-        # carries it for the write. ``_next_version`` moves on only once the
-        # write is committed (see ``save`` and ``UnitOfWork.commit``).
-        entity_obj._version = entity_obj._next_version
-
-        return expected_version
-
-    def _apply_pre_persist_hooks(self, entity_obj: Any) -> None:
+    def apply_pre_persist_hooks(self, entity_obj: Any) -> None:
         """Stamp ``auto_now``/``auto_now_add`` fields, then run aggregate enrichers.
 
         Enrichers run only on aggregates the user registered. They never run on
@@ -1031,38 +768,18 @@ class DAO:
         The ``@invariant.pre`` checks do not run on these writes. On an
         aggregate, the post-invariants run once after the stamping and once
         after each enricher, unless the save runs inside an open
-        ``atomic_change`` block (see ``_pre_persist_hook``). When a check
-        fails, or a hook raises, that hook's writes are undone and the save
-        aborts. A ``ValidationError`` carries a ``location`` that names the
-        hook; any other exception propagates as it was raised.
+        ``atomic_change`` block. When a check fails, or a hook raises, that
+        hook's writes are undone and the save aborts. A failed check
+        raises a ``ValidationError`` whose ``location`` names the hook. A
+        ``ValidationError`` the hook raises gets that ``location`` only when
+        it has none. Any other exception propagates as it was raised.
 
         ``save`` calls this unless ``apply_hooks=False``. A caller that must run
         the hooks earlier than the write (so a raising enricher fails before any
         other store is touched) calls it directly and then saves with
         ``apply_hooks=False``.
         """
-        is_create = not entity_obj.state_.is_persisted
-        stamped = _lifecycle_timestamp_fields(entity_obj, is_create=is_create)
-        if stamped:
-            location = (
-                f"auto_now stamping of {', '.join(stamped)} "
-                f"on {type(entity_obj).__qualname__}"
-            )
-            with _pre_persist_hook(entity_obj, location, writes_only_to_self=True):
-                _stamp_lifecycle_timestamps(entity_obj, stamped)
-        if (
-            entity_obj.element_type == DomainObjects.AGGREGATE
-            and current_domain
-            and current_domain._aggregate_enrichers
-            and not current_domain._domain_registry.is_internal(self.entity_cls)
-        ):
-            for enricher in current_domain._aggregate_enrichers:
-                location = (
-                    f"aggregate enricher {_callable_qualname(enricher)} "
-                    f"on {type(entity_obj).__qualname__}"
-                )
-                with _pre_persist_hook(entity_obj, location):
-                    enricher(entity_obj)
+        dao_write.apply_pre_persist_hooks(self, entity_obj)
 
     def save(self, entity_obj: Any, *, apply_hooks: bool = True) -> Any:
         """Persist a fully formed entity: create it if it was never saved, else
@@ -1083,129 +800,7 @@ class DAO:
             ValidationError: A field value or a uniqueness constraint fails
                 validation.
         """
-        return self._save(entity_obj, apply_hooks=apply_hooks, if_absent=False)
-
-    def _save(self, entity_obj: Any, *, apply_hooks: bool, if_absent: bool) -> Any:
-        """Persist ``entity_obj`` as :meth:`save` states.
-
-        With ``if_absent``, the adapter's ``InsertIfAbsentPort`` members write
-        the row, and :class:`_UniqueKeyTaken` is raised when another row holds
-        a unique key of the entity.
-        """
-        logger.debug(f"Saving `{self.entity_cls.__name__}` object")
-
-        expected_version: int | None = None
-        if entity_obj.element_type == DomainObjects.AGGREGATE:
-            expected_version = self._validate_and_update_version(entity_obj)
-
-        try:
-            # Pre-persist hooks run while the entity is still a live object,
-            # before ``from_entity`` freezes it into a model. auto_now stamps
-            # run first, then registered enrichers (so an enricher may override
-            # a stamped timestamp). Both fire on create and update; a raised
-            # enricher aborts the save (the version advance is rolled back for an
-            # update in the ``except`` below).
-            if apply_hooks:
-                self._apply_pre_persist_hooks(entity_obj)
-
-            if entity_obj.state_.is_persisted:
-                self._write_update(entity_obj, expected_version, if_absent)
-            else:
-                self._write_insert(entity_obj, if_absent)
-
-            # Set Entity status to saved to let everybody know it has been persisted
-            entity_obj.state_.mark_saved()
-
-            # A standalone write is already committed, so match what a reload
-            # would give. Under a UoW the commit advances ``_next_version``
-            # instead: until then, events raised on this instance belong to
-            # the version this transaction writes.
-            if (
-                self._is_standalone
-                and entity_obj.element_type == DomainObjects.AGGREGATE
-            ):
-                entity_obj._next_version = entity_obj._version + 1
-
-            # Track aggregate at the UoW level, to be able to perform actions on UoW commit,
-            #   like persisting events raised by the aggregate.
-            if current_uow and entity_obj.element_type == DomainObjects.AGGREGATE:
-                # The element may have changed from the time it was loaded or may have been
-                #   updated multiple times. We retain the last copy in seen.
-                current_uow._add_to_identity_map(entity_obj, saved=True)
-
-            return entity_obj
-        except Exception as exc:
-            # Roll back the version advance so the entity stays consistent
-            # with the persistence store after a failed save.
-            if expected_version is not None:
-                entity_obj._version = expected_version
-            # ``save_if_absent`` logs a ``ValidationError`` only when it
-            # re-raises it, because a taken unique key turns it into ``None``.
-            if not isinstance(exc, _UniqueKeyTaken) and not (
-                if_absent and isinstance(exc, ValidationError)
-            ):
-                _log_save_failure(exc)
-            raise
-
-    def _write_insert(self, entity_obj: Any, if_absent: bool) -> None:
-        """Check ``entity_obj``'s unique fields, write it as a new row, and
-        copy store-generated auto-increment values back onto it.
-
-        Raises:
-            ValidationError: A unique field's value is taken.
-            _UniqueKeyTaken: With ``if_absent``, another row holds a unique
-                key of the entity.
-        """
-        # Perform unique checks. Raises validation errors if unique constraints are violated.
-        self._validate_unique(entity_obj)
-
-        model_obj = self.database_model_cls.from_entity(entity_obj)
-        with self.session_scope() as session:
-            if if_absent:
-                adapter = cast(InsertIfAbsentPort, self._adapter)
-                if not adapter.insert_if_absent(session, model_obj):
-                    raise _UniqueKeyTaken
-            else:
-                model_obj = self._adapter.insert(session, model_obj)
-
-            # A relational adapter assigns an Auto(increment=True) key only
-            # when the INSERT is flushed; under a UoW that flush is deferred
-            # to commit, after add() has returned. Force it here so the value
-            # materializes before we reflect it. A standalone session is
-            # committed (and flushed) when the scope ends, so this is UoW-only,
-            # and it is skipped entirely when no auto field is pending (the
-            # common client-supplied identifier).
-            if not self._is_standalone and self._has_pending_auto_field(entity_obj):
-                self.provider.flush(session)
-
-        # Reflect store-generated auto-increment values back onto the
-        # entity so an Auto(increment=True) field is populated after add().
-        self._reflect_auto_fields(entity_obj, model_obj)
-
-    def _write_update(
-        self, entity_obj: Any, expected_version: int | None, if_absent: bool
-    ) -> None:
-        """Write ``entity_obj``'s values to its stored row.
-
-        Raises:
-            ExpectedVersionError: The stored version differs from
-                ``expected_version``.
-            _UniqueKeyTaken: With ``if_absent``, another row holds a unique
-                key of the entity.
-        """
-        model_obj = self.database_model_cls.from_entity(entity_obj)
-        with self.session_scope() as session:
-            if not if_absent:
-                self._adapter.update(
-                    session, model_obj, expected_version=expected_version
-                )
-                return
-
-            adapter = cast(InsertIfAbsentPort, self._adapter)
-            if not adapter.update_if_absent(
-                session, model_obj, expected_version=expected_version
-            ):
-                raise _UniqueKeyTaken
+        return dao_write.save(self, entity_obj, apply_hooks=apply_hooks)
 
     def save_if_absent(self, entity_obj: Any, *, apply_hooks: bool = True) -> Any:
         """Save ``entity_obj`` unless another row already holds its unique key.
@@ -1248,47 +843,12 @@ class DAO:
             ValidationError: ``save`` rejected the entity, and no other row
                 holds the unique key.
         """
-        if not _uses_adapter_operation(self, DatabaseCapabilities.INSERT_IF_ABSENT):
-            return self._save_if_key_free(entity_obj, apply_hooks=apply_hooks)
-
-        version = (
-            entity_obj._version
-            if entity_obj.element_type == DomainObjects.AGGREGATE
-            else None
-        )
-        with self._adapter.claim_lock():
-            try:
-                return self._save(entity_obj, apply_hooks=apply_hooks, if_absent=True)
-            except _UniqueKeyTaken:
-                pass
-            except ValidationError as exc:
-                if not self._unique_key_taken(entity_obj):
-                    _log_save_failure(exc)
-                    raise
-            # ``_save`` raises before it marks the entity saved or tracks it
-            # in the Unit of Work, so only the version advance is left to undo.
-            if version is not None:
-                entity_obj._version = version
-            return None
+        return dao_write.save_if_absent(self, entity_obj, apply_hooks=apply_hooks)
 
     def _save_if_key_free(self, entity_obj: Any, *, apply_hooks: bool) -> Any:
         """Check for ``entity_obj``'s unique key, then save it when no other
         row holds the key. Returns ``None`` when one does."""
-        if self._unique_key_taken(entity_obj):
-            return None
-        return self.save(entity_obj, apply_hooks=apply_hooks)
-
-    def _unique_key_taken(self, entity_obj: Any) -> bool:
-        """Whether another stored row shares a unique key with ``entity_obj``."""
-        # The values as the store holds them: the model ``from_entity`` builds
-        # applies a ``Reference``'s identifier, a serialized ``Custom`` field,
-        # stored names and any transform a custom database model adds.
-        criteria = _unique_key_criteria(
-            self.entity_cls,
-            self.database_model_cls,
-            self.database_model_cls.from_entity(entity_obj),
-        )
-        return criteria is not None and self.count(criteria) > 0
+        return dao_write._save_if_key_free(self, entity_obj, apply_hooks=apply_hooks)
 
     @deprecated_from_registry("dao_update")
     def update(
@@ -1351,81 +911,18 @@ class DAO:
         warning once for every matched row. Not a public API; the deprecation
         lives on the :meth:`update` wrapper.
         """
-        logger.debug(
-            f"Updating existing `{self.entity_cls.__name__}` object with id {entity_obj.id}"
+        return dao_write._apply_update(
+            self, entity_obj, *data, apply_hooks=apply_hooks, **kwargs
         )
 
-        if not entity_obj.state_.is_persisted:
-            raise ObjectNotFoundError(
-                f"`{self.entity_cls.__name__}` object with identifier {entity_obj.id} "
-                f"does not exist."
-            )
-
-        entity_obj._update_data(*data, **kwargs)
-        # ``save`` skips the uniqueness check on its update branch, so run it here
-        # before delegating the persist (version advance, timestamps, enrichers).
-        self._validate_unique(entity_obj, create=False)
-        updated: BaseEntity = self.save(entity_obj, apply_hooks=apply_hooks)
-        return updated
-
-    def _validate_unique(self, entity_obj: Any, create: bool = True) -> None:
-        """Validate the unique constraints for the entity. Raise ValidationError, if constraints were violated.
-
-        This method internally uses each field object's fail method to construct a valid error message.
-
-        :param entity_obj: Entity object to be validated
-        :param create: boolean value to indicate that the validation is part of a create operation
-        """
-        # Build the filters from the unique constraints
-        filters, excludes = {}, {}
-
-        # Construct filter criteria based on unique fields defined in Entity class
-        for field_name, field_obj in unique_fields(self.entity_cls).items():
-            lookup_value = getattr(entity_obj, field_name, None)
-
-            # Ignore empty lookup values
-            if lookup_value in (None, "", [], (), {}):
-                continue
-
-            # Ignore identifiers on updates
-            if not create and field_obj.identifier:
-                excludes[field_name] = lookup_value
-                continue
-
-            filters[field_name] = lookup_value
-
-        # Lookup the objects by filters and raise error if objects exist
-        for filter_key, lookup_value in filters.items():
-            if self.exists(excludes, **{filter_key: lookup_value}):
-                field_obj = declared_fields(self.entity_cls)[filter_key]
-                field_obj.fail(
-                    "unique",
-                    entity_name=self.entity_cls.__name__,
-                    field_name=filter_key,
-                    value=lookup_value,
-                )
-
     def delete(self, entity_obj: Any) -> Any:
-        """Delete a record in the data store.
+        """Delete ``entity_obj``'s row, unless it is already destroyed, and
+        mark the entity destroyed.
 
-        Performs validations before data deletion.
+        Returns:
+            The entity.
 
-        Returns the deleted entity object.
-
-        Throws ObjectNotFoundError if the object was not found in the data store.
-
-        :param entity_obj: Entity object to be deleted from data store
+        Raises:
+            Exception: The adapter's error, logged and re-raised.
         """
-        try:
-            if not entity_obj.state_.is_destroyed:
-                model_obj = self.database_model_cls.from_entity(entity_obj)
-                with self.session_scope() as session:
-                    self._adapter.delete(session, model_obj)
-
-                # Set Entity status to destroyed to let everybody know the object is no longer referable
-                entity_obj.state_.mark_destroyed()
-
-            return entity_obj
-        except Exception as exc:  # logs any delete failure, then re-raises
-            logger.error(f"Failed entity deletion because of {exc}")
-            raise
+        return dao_write.delete(self, entity_obj)

@@ -51,8 +51,10 @@ Specifically:
 ### 1. OCC is always-on, not opt-in
 
 Every aggregate already has a `_version` field (auto-managed,
-starts at -1). The DAO's `_validate_and_update_version()` runs on every
-save and raises `ExpectedVersionError` on mismatch. The `@handle`
+starts at -1). Every save of a persisted aggregate passes the aggregate's
+current `_version` to the adapter's `update` as the expected version. A
+mismatch raises `ExpectedVersionError`, from the `update` or, under a Unit of
+Work, from the flush or commit. The `@handle`
 decorator retries with exponential backoff (3 retries, 50ms-1s,
 configurable via `[server.version_retry]`).
 

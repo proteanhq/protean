@@ -237,7 +237,7 @@ class BaseRepository(Element, OptionsMixin):
                 # child inserts. Without FK metadata on the generated models, the
                 # ORM cannot order parent-before-child at commit-time flush itself.
                 if root_persisted:
-                    self._dao._flush()
+                    self._dao.flush()
                 self._sync_children(item)
 
             # If we started a UnitOfWork, commit it now
@@ -565,7 +565,7 @@ def _sync_grandchildren(
 
     # Flush this level's child inserts so their rows exist in the
     # transaction before grandchild inserts reference them.
-    repo._dao._flush()
+    repo._dao.flush()
     if isinstance(field, HasMany):
         for item in getattr(entity, field_name):
             repo._sync_children(item)

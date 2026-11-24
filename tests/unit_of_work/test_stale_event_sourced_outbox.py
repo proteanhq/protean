@@ -27,6 +27,7 @@ from protean.exceptions import (
     ValidationError,
 )
 from protean.fields import Identifier, Integer, String
+from protean.infra import dao_write
 from protean.utils.globals import current_uow
 from tests.shared import MESSAGE_DB_URI, POSTGRES_URI, provider_adapter
 
@@ -302,12 +303,15 @@ class TestStaleWriteWithOutbox:
         stream_before = _stream(domain, account.account_id)
         outbox_before = _outbox_ids(domain)
 
-        def failing_insert(entity_obj, if_absent):
-            raise ValueError("outbox insert failed")
+        outbox_dao = domain._get_outbox_repo("default")._dao
+        real_insert = dao_write._write_insert
 
-        monkeypatch.setattr(
-            domain._get_outbox_repo("default")._dao, "_write_insert", failing_insert
-        )
+        def failing_insert(dao, entity_obj, if_absent):
+            if dao is outbox_dao:
+                raise ValueError("outbox insert failed")
+            return real_insert(dao, entity_obj, if_absent)
+
+        monkeypatch.setattr(dao_write, "_write_insert", failing_insert)
 
         with pytest.raises(TransactionError) as exc_info:
             _commit_deposits(domain, account, 10)
@@ -326,15 +330,16 @@ class TestStaleWriteWithOutbox:
         domain = make_domain(external_brokers=["ext"])
         account, _ = _open_and_load_twice(domain)
 
-        dao = domain._get_outbox_repo("default")._dao
-        real_insert = dao._write_insert
+        outbox_dao = domain._get_outbox_repo("default")._dao
+        real_insert = dao_write._write_insert
         seen_uows = []
 
-        def recording_insert(entity_obj, if_absent):
-            seen_uows.append(current_uow._get_current_object())
-            return real_insert(entity_obj, if_absent)
+        def recording_insert(dao, entity_obj, if_absent):
+            if dao is outbox_dao:
+                seen_uows.append(current_uow._get_current_object())
+            return real_insert(dao, entity_obj, if_absent)
 
-        monkeypatch.setattr(dao, "_write_insert", recording_insert)
+        monkeypatch.setattr(dao_write, "_write_insert", recording_insert)
 
         with UnitOfWork() as uow:
             account.deposit(10)

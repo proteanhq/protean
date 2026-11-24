@@ -21,7 +21,7 @@ from protean.exceptions import (
     ObjectNotFoundError,
     ValidationError,
 )
-from protean.infra.dao import _unique_key_indexes
+from protean.infra.dao_write import _unique_key_indexes
 from protean.infra.registry import databases
 from protean.port.dao import (
     BoundedDeletePort,

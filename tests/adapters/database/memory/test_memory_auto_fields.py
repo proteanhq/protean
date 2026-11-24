@@ -4,6 +4,7 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.fields import Auto, String
+from protean.infra import dao_write
 
 
 class AutoEntity(BaseAggregate):
@@ -130,12 +131,11 @@ def test_reflect_auto_fields_reads_object_model_via_getattr(test_domain):
     """
     from types import SimpleNamespace
 
-    dao = test_domain.repository_for(AutoEntity)._dao
     entity = AutoEntity(name="ObjectModel")
     assert entity.sequence is None
 
     # An object (non-dict) model whose generated value is read via getattr.
-    dao._reflect_auto_fields(entity, SimpleNamespace(sequence=7))
+    dao_write._reflect_auto_fields(entity, SimpleNamespace(sequence=7))
 
     assert entity.sequence == 7
 

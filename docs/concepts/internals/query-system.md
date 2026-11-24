@@ -64,10 +64,15 @@ methods use `self.query` and `self.find_by` (which delegate to the internal
 
 - `src/protean/core/repository.py`: `BaseRepository` with `add()`, `get()`,
   `_dao` property, and `_sync_children()` for cascading child entities.
-- `src/protean/infra/dao.py`: the `DAO` service with lifecycle methods
-  (`get`, `find_by`, `exists`, `create`, `save`, `update`, `delete`).
+- `src/protean/infra/dao.py`: the `DAO` service. It holds the claim and
+  batch-delete operations. Its lifecycle methods (`get`, `find_by`, `exists`,
+  `create`, `save`, `update`, `delete`) delegate to the read and write paths.
 - `src/protean/infra/dao_read.py`: the service's read path (`fetch`,
   `count`, `raw`, `get`, `find_by`, `exists`).
+- `src/protean/infra/dao_write.py`: the service's write path (`create`,
+  `save`, `save_if_absent`, `_apply_update` for `update`, `delete`,
+  `delete_all`), and the
+  version, pre-persist hook and uniqueness helpers.
 - `src/protean/port/dao.py`: `DAOPort`, with the methods concrete adapters
   implement (`filter`, `count`, `insert`, `update`, `delete`), and the
   optional ports such as `RawQueryDAOPort`.
@@ -599,12 +604,12 @@ aggregate in the meantime), an `ExpectedVersionError` is raised.
 
 ```python
 # fragment
-# In DAO.save():
+# In protean.infra.dao_write._save():
 if entity_obj.element_type == DomainObjects.AGGREGATE:
-    expected_version = self._validate_and_update_version(entity_obj)
+    expected_version = _validate_and_update_version(entity_obj)
 ```
 
 The service passes `expected_version` to the adapter's `update`, which checks
 the stored version and writes in one step.
 
-**Key source file:** `src/protean/infra/dao.py`
+**Key source file:** `src/protean/infra/dao_write.py`

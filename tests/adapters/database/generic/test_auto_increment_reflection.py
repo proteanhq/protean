@@ -161,17 +161,17 @@ class TestAutoIncrementReflection:
         self, test_domain, monkeypatch
     ):
         """An aggregate with a client-supplied identifier (no pending auto field)
-        must not pay a forced flush under a UoW — the guard exists precisely so the
-        common non-auto path is untouched."""
-        dao = test_domain.repository_for(Memo)._dao
+        must not pay a forced flush under a UoW. The guard skips the provider's
+        ``flush`` when no auto field is pending."""
+        provider = test_domain.repository_for(Memo)._dao.provider
         flush_calls = {"count": 0}
-        original_flush = type(dao)._flush
+        original_flush = type(provider).flush
 
-        def counting_flush(self):
+        def counting_flush(self, session):
             flush_calls["count"] += 1
-            return original_flush(self)
+            return original_flush(self, session)
 
-        monkeypatch.setattr(type(dao), "_flush", counting_flush)
+        monkeypatch.setattr(type(provider), "flush", counting_flush)
 
         with UnitOfWork():
             test_domain.repository_for(Memo).add(Memo(body="no auto here"))
