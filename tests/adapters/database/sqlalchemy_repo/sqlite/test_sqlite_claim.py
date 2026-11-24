@@ -125,7 +125,7 @@ class TestSqliteClaimHoldBackWithIntegerIdentity:
             other = IntKeyedJob(seq=2, key="k2")
             repo.add(other)
 
-            update_all = dao.update_all
+            update_all = dao._update_all_unlocked
 
             def another_worker_takes_the_head(criteria, values):
                 # Another worker claims the head row between this call's read
@@ -134,7 +134,9 @@ class TestSqliteClaimHoldBackWithIntegerIdentity:
                     return 0
                 return update_all(criteria, values)
 
-            monkeypatch.setattr(dao, "update_all", another_worker_takes_the_head)
+            monkeypatch.setattr(
+                dao, "_update_all_unlocked", another_worker_takes_the_head
+            )
 
             claimed = dao.claim(
                 Q(status="ready"),

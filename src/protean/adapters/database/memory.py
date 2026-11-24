@@ -1113,9 +1113,11 @@ class DictDAO(DAOPort, RawQueryDAOPort, BoundedDeletePort, InsertIfAbsentPort):
         not atomic across threads (it reads-then-writes). Holding the provider's
         lock across the whole read-and-claim section serializes concurrent
         claimers in-process, which is the strongest guarantee the single-process
-        memory store can offer. ``DAO.update_all`` holds the same lock from
-        before its session copies the store until the session commits, so no
-        claim commits between its match and its write.
+        memory store can offer. Called outside a Unit of Work, ``DAO.update_all``
+        holds the same lock from before its session copies the store until
+        the session commits, so no claim commits between its match and its
+        write. Inside a Unit of Work, the write commits with the Unit of Work,
+        after the lock is released.
 
         The lock is a reentrant ``RLock``: a session's write is committed
         while the claim or ``update_all`` holds the lock, and
