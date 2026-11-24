@@ -8,7 +8,7 @@ from typer.testing import CliRunner
 
 from protean.cli import app
 from protean.cli import outbox as cli_outbox
-from protean.exceptions import NoDomainException
+from protean.exceptions import ConfigurationError, NoDomainException
 from protean.utils.eventing import DomainMeta, MessageHeaders, Metadata
 from protean.utils.outbox import Outbox, OutboxStatus
 from tests.cli._envelope import assert_envelope
@@ -513,3 +513,18 @@ class TestUnknownProvider:
         assert "No outbox for provider 'typo'." in _flat(result.stderr)
         assert "Nothing to reconcile" not in result.stdout
         assert "Nothing to reconcile" not in result.stderr
+
+    def test_reconcile_reports_another_configuration_error_as_it_is(
+        self, outbox_domain, monkeypatch
+    ):
+        def store_down(*args, **kwargs):
+            raise ConfigurationError("Unable to connect to Event Store")
+
+        monkeypatch.setattr(cli_outbox, "reconcile_outbox", store_down)
+
+        result = _invoke("reconcile", "--provider", "default")
+
+        output = _flat(result.stdout + result.stderr)
+        assert result.exit_code != 0
+        assert "Unable to connect to Event Store" in output
+        assert "No outbox for provider" not in output
