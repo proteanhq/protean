@@ -267,7 +267,7 @@ def test_child_only_flush_conflict_raises_expected_version_error(concurrency_dom
 
     A child-only change re-saves the root, and because the aggregate has child
     rows to order, the root UPDATE is forced out at ``repo.add`` time via
-    ``_flush`` (not at UoW commit). A version bump committed out-of-band between
+    ``flush`` (not at UoW commit). A version bump committed out-of-band between
     the read and that flush makes the version_id_col predicate match zero rows;
     the resulting StaleDataError must surface as ExpectedVersionError from the
     forced flush, just as the commit path translates it."""

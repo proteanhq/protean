@@ -71,7 +71,7 @@ from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import ValueObject, _ShadowField
 from protean.fields.resolved import ResolvedField
 from protean.fields.spec import _UNSET, FieldSpec
-from protean.infra.dao import _unique_key_criteria
+from protean.infra.dao_write import _unique_key_criteria
 from protean.infra.registry import databases
 from protean.port.dao import (
     BoundedDeletePort,
@@ -1907,9 +1907,9 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
         # flush emits ``UPDATE … WHERE _version = :loaded`` and raises
         # ``StaleDataError`` when a concurrent commit already advanced the
         # version. Protean owns the version value (version_id_generator=False)
-        # via ``DAO._validate_and_update_version``, so the guard rides the
-        # UnitOfWork's real transaction and raises on a concurrent bump
-        # (ADR-0013, ADR-0027).
+        # via ``protean.infra.dao_write._validate_and_update_version``, so the
+        # guard rides the UnitOfWork's real transaction and raises on a
+        # concurrent bump (ADR-0013, ADR-0027).
         version_col = cls.__dict__.get("_version")
         if version_col is not None:
             cls.__mapper_args__ = {

@@ -933,7 +933,7 @@ def _provider_outbox_rows(
         for outbox_message in _outbox_rows_for_event(
             uow, event, sequence_number, settings
         ):
-            outbox_repo._dao._apply_pre_persist_hooks(outbox_message)
+            outbox_repo._dao.apply_pre_persist_hooks(outbox_message)
             rows.append((outbox_repo, outbox_message))
     return rows
 

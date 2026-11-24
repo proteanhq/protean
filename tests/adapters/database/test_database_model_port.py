@@ -13,7 +13,7 @@ from protean.adapters.database.sqlalchemy import SqlalchemyModel
 from protean.core.aggregate import BaseAggregate
 from protean.core.database_model import BaseDatabaseModel
 from protean.fields import String
-from protean.infra.dao import _stored_value
+from protean.infra.dao_write import _stored_value
 from protean.port.database import DatabaseModelPort
 
 PORT_SIGNATURES = {

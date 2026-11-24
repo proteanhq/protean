@@ -165,13 +165,13 @@ class TestAutoIncrementReflection:
         common non-auto path is untouched."""
         dao = test_domain.repository_for(Memo)._dao
         flush_calls = {"count": 0}
-        original_flush = type(dao)._flush
+        original_flush = type(dao).flush
 
         def counting_flush(self):
             flush_calls["count"] += 1
             return original_flush(self)
 
-        monkeypatch.setattr(type(dao), "_flush", counting_flush)
+        monkeypatch.setattr(type(dao), "flush", counting_flush)
 
         with UnitOfWork():
             test_domain.repository_for(Memo).add(Memo(body="no auto here"))

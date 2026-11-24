@@ -3,13 +3,13 @@
 Protean does not emit SQLAlchemy ``ForeignKey``/``relationship`` metadata for
 ``Reference`` fields, so the ORM cannot order parent-before-child inserts at
 commit-time flush on its own. ``_do_add`` / ``_sync_children`` therefore call
-``DAO._flush()`` after each parent level so the parent row materializes in
+``DAO.flush()`` after each parent level so the parent row materializes in
 the transaction before its FK-referencing children are written.
 
 Two layers of coverage:
 
 * ``TestFlushCascadeOrdering`` — provider-agnostic core tests that spy on the
-  no-op ``_flush`` hook to assert it fires once per parent level. These fail
+  no-op ``flush`` hook to assert it fires once per parent level. These fail
   without the fix and need no database.
 * ``TestForeignKeyInsertOrdering`` — ``@pytest.mark.database`` tests that hook
   SQLAlchemy's ``before_cursor_execute`` (via ``capture_queries``) to assert the
@@ -20,7 +20,7 @@ Two layers of coverage:
 
   These are a real fail-without-fix guard on **autoflush=False** providers
   (``MssqlDatabase`` / ``PostgresqlDatabase`` — see ``sqlalchemy.py``): with
-  nothing flushing early, disabling the ``_flush`` cascade makes the commit emit
+  nothing flushing early, disabling the ``flush`` cascade makes the commit emit
   children before parents (verified on MSSQL — child-first order). On **SQLite**
   they pass either way, because ``SqliteDatabase`` leaves ``autoflush`` at its
   default ``True``, so the per-save existence-check ``SELECT`` incidentally
@@ -148,23 +148,23 @@ def _assert_top_down(captured, *expected):
 
 
 # ---------------------------------------------------------------------------
-# Provider-agnostic core tests: spy on the no-op _flush hook
+# Provider-agnostic core tests: spy on the no-op flush hook
 # ---------------------------------------------------------------------------
 @pytest.fixture
 def flush_spy(monkeypatch):
-    """Count ``_flush`` calls on every DAO routed through a repository.
+    """Count ``flush`` calls on every DAO routed through a repository.
 
     Returns a dict with a mutable counter so a test can assert how many flushes
     the cascade issued.
     """
     counter = {"count": 0}
-    original = DAO._flush
+    original = DAO.flush
 
     def spy(self):
         counter["count"] += 1
         return original(self)
 
-    monkeypatch.setattr(DAO, "_flush", spy)
+    monkeypatch.setattr(DAO, "flush", spy)
     return counter
 
 
