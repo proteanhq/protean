@@ -19,31 +19,37 @@ def _publish_all(broker):
 
 
 def _read_and_ack(broker, group, limit, ack_limit):
-    """Read ``limit`` entries for ``group`` and acknowledge the first ``ack_limit``."""
+    """Read ``limit`` entries for ``group``, acknowledge the first ``ack_limit``
+    of them, and return the ``n`` of each acknowledged entry."""
     entries = broker.read(STREAM, group, limit)
     assert len(entries) == limit
-    for identifier, _ in entries[:ack_limit]:
+    acknowledged = set()
+    for identifier, message in entries[:ack_limit]:
         broker.ack(STREAM, identifier, group)
+        acknowledged.add(message["n"])
+    return acknowledged
 
 
 def test_trim_keeps_every_entry_a_group_has_not_read(broker):
     _publish_all(broker)
     _read_and_ack(broker, "fast", TOTAL, TOTAL)
-    _read_and_ack(broker, "slow", 100, 100)
+    acknowledged = _read_and_ack(broker, "slow", 100, 100)
 
     removed = broker._trim(STREAM)
 
     assert 0 <= removed <= 100
     remaining = broker.read(STREAM, "slow", TOTAL)
-    assert sorted(message["n"] for _, message in remaining) == list(range(100, TOTAL))
+    assert sorted(message["n"] for _, message in remaining) == sorted(
+        set(range(TOTAL)) - acknowledged
+    )
 
 
 def test_trim_keeps_every_entry_a_group_has_read_and_not_acknowledged(broker):
     _publish_all(broker)
     _read_and_ack(broker, "fast", TOTAL, TOTAL)
-    # Entries 50 to 199 are delivered to "slow" and stay pending, so a broker
+    # 150 of the 200 entries delivered to "slow" stay pending, so a broker
     # that trims up to the last delivered entry has a whole block to remove.
-    _read_and_ack(broker, "slow", 200, 50)
+    acknowledged = _read_and_ack(broker, "slow", 200, 50)
 
     removed = broker._trim(STREAM)
 
@@ -51,7 +57,9 @@ def test_trim_keeps_every_entry_a_group_has_read_and_not_acknowledged(broker):
     # A read without ``new_messages`` returns the new entries and then the
     # group's pending ones.
     remaining = broker.read(STREAM, "slow", TOTAL)
-    assert sorted(message["n"] for _, message in remaining) == list(range(50, TOTAL))
+    assert sorted(message["n"] for _, message in remaining) == sorted(
+        set(range(TOTAL)) - acknowledged
+    )
 
 
 def test_trim_removes_entries_every_group_has_acknowledged(broker):
