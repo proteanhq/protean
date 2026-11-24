@@ -239,6 +239,18 @@ class TestCommandRouting:
             "Command `UnknownCommand` needs to be associated with an aggregate"
         )
 
+    def test_command_instance_without_part_of_raises(self, test_domain, monkeypatch):
+        test_domain.init(traverse=False)
+        command = Register()
+        monkeypatch.setattr(Register.meta_, "part_of", None)
+
+        with pytest.raises(ConfigurationError) as exc:
+            test_domain._router.command_handler_for(command)
+
+        assert exc.value.args[0] == (
+            "Command `Register` needs to be associated with an aggregate"
+        )
+
 
 class TestEmptyRouter:
     def test_router_without_registry_has_no_routes(self, test_domain):

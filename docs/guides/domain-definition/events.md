@@ -38,8 +38,8 @@ concrete events can inherit:
 --8<-- "guides/domain-definition/events/004.py:events"
 ```
 
-Abstract events cannot be raised directly: raising one throws
-`ConfigurationError`. They don't require `part_of` since they are never
+Abstract events cannot be created: instantiating one throws
+`NotSupportedError`. They don't require `part_of` since they are never
 emitted to a stream.
 
 ---
@@ -480,6 +480,7 @@ IncorrectUsageError: 'Event/Command Objects are immutable and cannot be modified
 |---|---|
 | `ValidationError` | Event construction fails because a required field is missing or a field value is invalid. |
 | `IncorrectUsageError` | Attempting to modify an event attribute after creation; events are immutable. |
+| `NotSupportedError` | Creating an event registered with `abstract=True`; create a concrete subclass instead. |
 | `IncorrectUsageError` | Non-abstract event defined without `part_of`; every concrete event must be associated with an aggregate. |
 | `IncorrectUsageError` | Event's `part_of` names a class that is neither an aggregate nor a process manager, such as an entity. |
 | `ConfigurationError` | Event raised on an aggregate it is not associated with (`part_of` mismatch). |

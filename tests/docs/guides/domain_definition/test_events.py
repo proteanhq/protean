@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 import pytest
 
 from protean.exceptions import (
-    ConfigurationError,
     IncorrectUsageError,
+    NotSupportedError,
     ValidationError,
 )
 from protean.utils.reflection import declared_fields
@@ -109,16 +109,14 @@ def test_concrete_event_rejects_a_missing_inherited_field():
     assert "occurred_at" in exc.value.messages
 
 
-def test_abstract_event_cannot_be_raised():
+def test_abstract_event_cannot_be_created():
     example = load_example("guides/domain-definition/events/004.py")
     example.domain.init(traverse=False)
 
-    with example.domain.domain_context():
-        order = example.Order(customer_name="Jane")
-        base = example.BaseOrderEvent(order_id="1", occurred_at=datetime.now(UTC))
+    with example.domain.domain_context(), pytest.raises(NotSupportedError) as exc:
+        example.BaseOrderEvent(order_id="1", occurred_at=datetime.now(UTC))
 
-        with pytest.raises(ConfigurationError):
-            order.raise_(base)
+    assert "marked abstract and cannot be instantiated" in exc.value.args[0]
 
 
 def test_events_can_be_set_to_sync_processing():

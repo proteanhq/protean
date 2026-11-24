@@ -105,8 +105,13 @@ class MessageRouter:
             ConfigurationError: The command is not associated with an aggregate.
         """
         if not command.meta_.part_of:
+            name = (
+                command.__name__
+                if isinstance(command, type)
+                else type(command).__name__
+            )
             raise ConfigurationError(
-                f"Command `{command.__name__}` needs to be associated with an aggregate"
+                f"Command `{name}` needs to be associated with an aggregate"
             )
 
         stream_category = command.meta_.part_of.meta_.stream_category

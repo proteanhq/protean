@@ -2,9 +2,10 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
-from protean.exceptions import IncorrectUsageError
+from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import String
 from protean.fields.basic import Identifier
+from protean.utils.reflection import fields
 
 
 class User(BaseAggregate):
@@ -44,6 +45,69 @@ def test_that_abstract_events_can_be_defined_without_aggregate_or_stream(test_do
         pytest.fail(
             "Abstract events should be definable without being associated with an aggregate or a stream"
         )
+
+
+def test_that_abstract_events_cannot_be_instantiated(test_domain):
+    class AbstractEvent(BaseEvent):
+        foo: String()
+
+    test_domain.register(AbstractEvent, abstract=True)
+    test_domain.init(traverse=False)
+
+    with pytest.raises(NotSupportedError) as exc:
+        AbstractEvent(foo="bar")
+
+    assert exc.value.args[0] == (
+        "AbstractEvent class has been marked abstract and cannot be instantiated"
+    )
+
+
+def test_that_abstract_events_cannot_be_built_with_model_construct(test_domain):
+    class AbstractEvent(BaseEvent):
+        foo: String()
+
+    test_domain.register(AbstractEvent, abstract=True)
+    test_domain.init(traverse=False)
+
+    with pytest.raises(NotSupportedError) as exc:
+        AbstractEvent.model_construct(foo="bar")
+
+    assert exc.value.args[0] == (
+        "AbstractEvent class has been marked abstract and cannot be instantiated"
+    )
+
+
+def test_that_truthy_abstract_flag_also_refuses_instantiation(test_domain):
+    class AbstractEvent(BaseEvent):
+        foo: String()
+
+    test_domain.register(AbstractEvent, abstract=1)
+    test_domain.init(traverse=False)
+
+    with pytest.raises(NotSupportedError) as exc:
+        AbstractEvent(foo="bar")
+
+    assert exc.value.args[0] == (
+        "AbstractEvent class has been marked abstract and cannot be instantiated"
+    )
+
+
+def test_that_concrete_subclass_of_abstract_event_can_be_instantiated(test_domain):
+    class AbstractEvent(BaseEvent):
+        foo: String()
+
+    class ConcreteEvent(AbstractEvent):
+        bar: String()
+
+    test_domain.register(AbstractEvent, abstract=True)
+    test_domain.register(ConcreteEvent, part_of=User)
+    test_domain.init(traverse=False)
+
+    event = ConcreteEvent(foo="foo-value", bar="bar-value")
+
+    assert event.foo == "foo-value"
+    assert event.bar == "bar-value"
+    assert "foo" in fields(ConcreteEvent)
 
 
 def test_that_part_of_is_resolved_correctly():

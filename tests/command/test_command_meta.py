@@ -11,7 +11,7 @@ from protean._deprecation import (
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
-from protean.exceptions import IncorrectUsageError
+from protean.exceptions import IncorrectUsageError, NotSupportedError
 from protean.fields import String
 from protean.fields.basic import Identifier
 
@@ -50,6 +50,54 @@ def test_that_abstract_commands_can_be_defined_without_aggregate_or_stream(test_
         pytest.fail(
             "Abstract commands should be definable without being associated with an aggregate or a stream"
         )
+
+
+def test_that_abstract_commands_cannot_be_instantiated(test_domain):
+    class AbstractCommand(BaseCommand):
+        foo: String()
+
+    test_domain.register(AbstractCommand, abstract=True)
+    test_domain.init(traverse=False)
+
+    with pytest.raises(NotSupportedError) as exc:
+        AbstractCommand(foo="bar")
+
+    assert exc.value.args[0] == (
+        "AbstractCommand class has been marked abstract and cannot be instantiated"
+    )
+
+
+def test_that_truthy_abstract_flag_also_refuses_command_instantiation(test_domain):
+    class AbstractCommand(BaseCommand):
+        foo: String()
+
+    test_domain.register(AbstractCommand, abstract=1)
+    test_domain.init(traverse=False)
+
+    with pytest.raises(NotSupportedError) as exc:
+        AbstractCommand(foo="bar")
+
+    assert exc.value.args[0] == (
+        "AbstractCommand class has been marked abstract and cannot be instantiated"
+    )
+
+
+def test_that_concrete_subclass_of_abstract_command_can_be_instantiated(test_domain):
+    class AbstractCommand(BaseCommand):
+        foo: String()
+
+    class ConcreteCommand(AbstractCommand):
+        bar: String()
+
+    test_domain.register(User)
+    test_domain.register(AbstractCommand, abstract=True)
+    test_domain.register(ConcreteCommand, part_of=User)
+    test_domain.init(traverse=False)
+
+    command = ConcreteCommand(foo="foo-value", bar="bar-value")
+
+    assert command.foo == "foo-value"
+    assert command.bar == "bar-value"
 
 
 @pytest.mark.eventstore
