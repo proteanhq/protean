@@ -59,6 +59,8 @@ synchronously and return immediately.
 
 Each query can only be handled by one handler method. Command handlers follow
 the same constraint. With one handler per query, routing is never ambiguous.
+When two handler classes read the same query, `domain.init()` raises
+`IncorrectUsageError`, and `protean check` reports the same error.
 
 ## Best Practices
 
