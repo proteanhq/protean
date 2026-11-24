@@ -163,6 +163,7 @@ PAGES = (
     "guides/testing/fixtures-and-patterns.md",
     "guides/testing/integration-tests.md",
     "guides/testing/query-shape-tests.md",
+    "guides/write-an-adapter/cache.md",
     "guides/write-an-adapter/event-store.md",
     "index.md",
     "patterns/aggregate-state-machines.md",
@@ -416,6 +417,10 @@ GUIDE_TOML_INCLUDES = {
     ],
     "guides/multi-domain-applications.md": [
         "guides/multi-domain-applications/catalogue.toml",
+    ],
+    "guides/write-an-adapter/cache.md": [
+        "guides/write-an-adapter/cache/domain.toml",
+        "guides/write-an-adapter/cache/entry-points.toml",
     ],
     "guides/write-an-adapter/event-store.md": [
         "guides/write-an-adapter/event-store/domain.toml",

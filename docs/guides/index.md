@@ -78,10 +78,11 @@ with DDD and evolve later.
 
     ---
 
-    Add an adapter for a new event store to Protean itself.
+    Add an adapter for a new event store or cache to Protean itself.
 
     [:material-arrow-right-box: Write an Adapter](./write-an-adapter/index.md)
     [:material-arrow-right-box: Event-Store Adapter](./write-an-adapter/event-store.md)
+    [:material-arrow-right-box: Cache Adapter](./write-an-adapter/cache.md)
 
 </div>
 

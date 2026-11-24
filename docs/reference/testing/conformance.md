@@ -36,6 +36,9 @@ database suite is still in `tests/adapters/database/generic/`, and
 `protean test test-adapter --port <port>` runs the port's folder; see
 [CLI: `protean test test-adapter`](#cli-protean-test-test-adapter).
 
+[Write a Cache Adapter](../../guides/write-an-adapter/cache.md) shows the
+cache suite run against a worked example adapter.
+
 Each test runs against one adapter. With no options, a test runs against the
 default adapter of its folder's port: `inline` for `broker`, `memory` for the
 other three. A plain `pytest tests/conformance` needs no services.

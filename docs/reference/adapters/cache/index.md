@@ -214,7 +214,8 @@ An adapter implements the `CachePort` protocol from `protean.port.cache`. An
 adapter that declares `TTL` also subclasses `CacheTTLPort`, and one that
 declares `PATTERN_MATCH` also subclasses `CachePatternPort`. The
 [cache port API reference](../../../api/ports/cache.md) lists the members of
-each.
+each, and [Write a Cache Adapter](../../../guides/write-an-adapter/cache.md)
+walks through a complete adapter.
 
 ## Configuring a cache
 
@@ -234,3 +235,5 @@ each.
   and how they relate to caches
 - Learn about [projectors](../../../guides/consume-state/projectors.md)
   that populate caches
+- Write a [cache adapter](../../../guides/write-an-adapter/cache.md) for a
+  store Protean does not support yet
