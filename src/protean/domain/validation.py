@@ -125,6 +125,7 @@ class DomainValidator:
         self._validate_association_fields()
         self._validate_event_sourced_aggregates()
         self._validate_unique_command_handlers()
+        self._validate_unique_query_handlers()
         self._validate_entity_providers()
         self._validate_database_types()
         self._validate_projector_associations()
@@ -160,6 +161,7 @@ class DomainValidator:
             self._validate_association_fields,
             self._validate_event_sourced_aggregates,
             self._validate_unique_command_handlers,
+            self._validate_unique_query_handlers,
             self._validate_entity_providers,
             self._validate_database_types,
             self._validate_projector_associations,
@@ -279,6 +281,34 @@ class DomainValidator:
         if duplicates:
             raise IncorrectUsageError(
                 f"Commands cannot be handled by multiple handlers: "
+                f"{', '.join(duplicates)}"
+            )
+
+    def _validate_unique_query_handlers(self) -> None:
+        """Check that no query is handled by more than one query handler class.
+
+        Intra-class duplicates (two ``@read`` methods for the same query
+        inside a single handler) are caught earlier by
+        ``HandlerConfigurator.setup_query_handlers``.  This validation
+        covers the cross-class case, which dispatch would otherwise resolve
+        to the first registered handler.
+        """
+        registry = self._domain.registry
+        handlers_by_query: dict[str, list[str]] = {}
+        for qh_record in registry._elements[DomainObjects.QUERY_HANDLER.value].values():
+            for query_type in qh_record.cls._handlers:
+                handlers_by_query.setdefault(query_type, []).append(
+                    qh_record.cls.__name__
+                )
+
+        duplicates = sorted(
+            query_type
+            for query_type, handler_names in handlers_by_query.items()
+            if len(handler_names) > 1
+        )
+        if duplicates:
+            raise IncorrectUsageError(
+                f"Queries cannot be handled by multiple handlers: "
                 f"{', '.join(duplicates)}"
             )
 
