@@ -147,7 +147,7 @@ baseline against the current schema to clear it.
 | `elements` | Flat index by element type for O(1) lookup | Derived from all sections |
 | `diagnostics` | Builder warnings and errors | Informational, IR is valid regardless |
 | `enrichers` | Registered aggregate, command and event enrichers | `Domain.register_*_enricher()` |
-| `value_objects` | Value objects that no cluster places | Registered value objects outside every cluster |
+| `value_objects` | Value objects that no cluster places | Registered value objects outside every cluster, except abstract and internal ones |
 
 ### Top-Level Metadata
 
@@ -159,7 +159,7 @@ baseline against the current schema to clear it.
 | `checksum` | string | yes | `sha256:` prefixed hex digest |
 | `contracts` | object | no | Omitted when no published events |
 | `enrichers` | object | no | Omitted when the domain registers no enrichers |
-| `value_objects` | object | no | Omitted when every value object has a cluster |
+| `value_objects` | object | no | Omitted when every value object that is neither abstract nor internal has a cluster |
 | `diagnostics` | list | yes | May be empty `[]` |
 
 ### Checksum Algorithm
@@ -697,8 +697,8 @@ set to `null`:
 - A value object that a cluster places never appears in this section
 - An abstract value object is left out, because nothing instantiates it
 - A value object registered as internal to the framework is left out
-- The section is omitted when every value object has a cluster, so such a
-  domain keeps the same IR and checksum
+- The section is omitted when every value object that is neither abstract
+  nor internal has a cluster, so such a domain keeps the same IR and checksum
 - Schema generation writes each entry to `schemas/value_objects/`, and
   `protean ir diff` and `protean check` read the section as they read a
   cluster's value objects
