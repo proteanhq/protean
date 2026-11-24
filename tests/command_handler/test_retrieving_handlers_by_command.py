@@ -126,3 +126,29 @@ def test_duplicate_command_handlers_reported_by_check(test_domain):
     ]
     assert len(collisions) == 1
     assert Register.__type__ in collisions[0]["message"]
+
+
+def test_lookup_for_an_unhandled_command_is_not_a_duplicate(test_domain):
+    """A handler lookup for a command the class does not handle adds no handler.
+
+    ``_handlers`` is a ``defaultdict``, so the lookup leaves an empty set
+    under the command type; the check must not count that as a second handler.
+    """
+
+    class AddressCommandHandlers(BaseCommandHandler):
+        @handle(ChangeAddress)
+        def change_address(self, _: ChangeAddress) -> None:
+            pass
+
+    test_domain.register(User, event_sourced=True)
+    test_domain.register(Register, part_of=User)
+    test_domain.register(ChangeAddress, part_of=User)
+    test_domain.register(UserCommandHandlers, part_of=User)
+    test_domain.register(AddressCommandHandlers, part_of=User)
+    test_domain.init(traverse=False)
+
+    # A missing key reads as an empty set and leaves it behind.
+    assert not AddressCommandHandlers._handlers[Register.__type__]
+    assert Register.__type__ in AddressCommandHandlers._handlers
+
+    assert test_domain.check(traverse=False)["errors"] == []

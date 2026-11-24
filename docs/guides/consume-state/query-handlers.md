@@ -159,6 +159,10 @@ To *write* to a projection (inside a projector), use
 - The query class is not registered in the domain
 - No query handler is registered for the query
 
+`domain.init()` raises `IncorrectUsageError` earlier, before any dispatch, when
+two query handler classes read the same query. Each query has exactly one
+handler.
+
 Within handler methods, common runtime errors include:
 
 | Exception | When it occurs |

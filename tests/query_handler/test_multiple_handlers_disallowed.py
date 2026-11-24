@@ -101,3 +101,113 @@ class TestMultipleHandlersDisallowed:
                 ),
             }
         ]
+
+    def test_message_lists_every_duplicated_query_sorted(self, test_domain):
+        """The message names each duplicated query once, in sorted order."""
+
+        class ZListOrders(BaseQuery):
+            customer_id = Identifier(required=True)
+
+        class AGetOrder(BaseQuery):
+            order_id = Identifier(required=True)
+
+        test_domain.register(OrderSummary)
+        # The handlers read ZListOrders first, so only sorting puts AGetOrder first.
+        test_domain.register(ZListOrders, part_of=OrderSummary)
+        test_domain.register(AGetOrder, part_of=OrderSummary)
+
+        class FirstHandler(BaseQueryHandler):
+            @read(ZListOrders)
+            def fetch_orders(self, query):
+                return []
+
+            @read(AGetOrder)
+            def get_order(self, query):
+                return None
+
+        class SecondHandler(BaseQueryHandler):
+            @read(ZListOrders)
+            def fetch_orders(self, query):
+                return []
+
+            @read(AGetOrder)
+            def get_order(self, query):
+                return None
+
+        class ThirdHandler(BaseQueryHandler):
+            @read(ZListOrders)
+            def fetch_orders(self, query):
+                return []
+
+        test_domain.register(FirstHandler, part_of=OrderSummary)
+        test_domain.register(SecondHandler, part_of=OrderSummary)
+        test_domain.register(ThirdHandler, part_of=OrderSummary)
+
+        with pytest.raises(IncorrectUsageError) as exc:
+            test_domain.init(traverse=False)
+
+        assert exc.value.args[0] == (
+            "Queries cannot be handled by multiple handlers: "
+            f"{AGetOrder.__type__}, {ZListOrders.__type__}"
+        )
+
+    def test_handler_classes_for_different_queries_pass_init(self, test_domain):
+        """Two handler classes on one projection reading different queries are valid."""
+
+        class GetOrderById(BaseQuery):
+            order_id = Identifier(required=True)
+
+        test_domain.register(OrderSummary)
+        test_domain.register(GetOrdersByCustomer, part_of=OrderSummary)
+        test_domain.register(GetOrderById, part_of=OrderSummary)
+
+        class CustomerHandler(BaseQueryHandler):
+            @read(GetOrdersByCustomer)
+            def by_customer(self, query):
+                return []
+
+        class OrderHandler(BaseQueryHandler):
+            @read(GetOrderById)
+            def by_id(self, query):
+                return None
+
+        test_domain.register(CustomerHandler, part_of=OrderSummary)
+        test_domain.register(OrderHandler, part_of=OrderSummary)
+
+        test_domain.init(traverse=False)
+
+        assert test_domain.check(traverse=False)["errors"] == []
+
+    def test_lookup_for_an_unread_query_is_not_a_duplicate(self, test_domain):
+        """A handler lookup for a query the class does not read adds no handler.
+
+        ``_handlers`` is a ``defaultdict``, so the lookup leaves an empty set
+        under the query type; the check must not count that as a second handler.
+        """
+
+        class GetOrderById(BaseQuery):
+            order_id = Identifier(required=True)
+
+        test_domain.register(OrderSummary)
+        test_domain.register(GetOrdersByCustomer, part_of=OrderSummary)
+        test_domain.register(GetOrderById, part_of=OrderSummary)
+
+        class CustomerHandler(BaseQueryHandler):
+            @read(GetOrdersByCustomer)
+            def by_customer(self, query):
+                return []
+
+        class OrderHandler(BaseQueryHandler):
+            @read(GetOrderById)
+            def by_id(self, query):
+                return None
+
+        test_domain.register(CustomerHandler, part_of=OrderSummary)
+        test_domain.register(OrderHandler, part_of=OrderSummary)
+        test_domain.init(traverse=False)
+
+        # A missing key reads as an empty set and leaves it behind.
+        assert not OrderHandler._handlers[GetOrdersByCustomer.__type__]
+        assert GetOrdersByCustomer.__type__ in OrderHandler._handlers
+
+        assert test_domain.check(traverse=False)["errors"] == []

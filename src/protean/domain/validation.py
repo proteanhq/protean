@@ -268,7 +268,11 @@ class DomainValidator:
         for ch_record in registry._elements[
             DomainObjects.COMMAND_HANDLER.value
         ].values():
-            for command_type in ch_record.cls._handlers:
+            for command_type, methods in ch_record.cls._handlers.items():
+                # `_handlers` is a defaultdict, so a lookup for a command the
+                # handler does not handle leaves an empty set behind.
+                if not methods:
+                    continue
                 handlers_by_command.setdefault(command_type, []).append(
                     ch_record.cls.__name__
                 )
@@ -296,7 +300,11 @@ class DomainValidator:
         registry = self._domain.registry
         handlers_by_query: dict[str, list[str]] = {}
         for qh_record in registry._elements[DomainObjects.QUERY_HANDLER.value].values():
-            for query_type in qh_record.cls._handlers:
+            for query_type, methods in qh_record.cls._handlers.items():
+                # `_handlers` is a defaultdict, so a lookup for a query the
+                # handler does not read leaves an empty set behind.
+                if not methods:
+                    continue
                 handlers_by_query.setdefault(query_type, []).append(
                     qh_record.cls.__name__
                 )
