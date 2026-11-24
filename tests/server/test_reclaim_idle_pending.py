@@ -6,8 +6,13 @@ name, so no later read returns those entries. On startup a subscription claims
 the group's entries that have sat unacknowledged for ``reclaim_idle_seconds``,
 handles them, and keeps each entry's earlier deliveries toward ``max_retries``.
 
-Each test stands in for the stopped worker by reading entries under a consumer
-name of its own and leaving them unacknowledged.
+Each test stands in for the stopped worker by reading entries and leaving them
+unacknowledged. Most tests read under a consumer name of their own. Tests that
+need the stale-consumer cleanup to match the stopped worker read under the
+stopped subscription's consumer name.
+
+The trim tests check that a trim after the first batch keeps every entry still
+pending in the group.
 """
 
 import asyncio
@@ -30,6 +35,7 @@ from protean.server.subscription.profiles import CircuitBreakerState
 from protean.server.subscription.stream_subscription import StreamSubscription
 from protean.utils.eventing import Message
 from protean.utils.mixins import handle
+from tests.server.subscription.test_stream_retention import _record_trims
 from tests.server.test_trace_correlation import _attach_recording_redis
 from tests.shared import REDIS_URI
 
@@ -555,3 +561,113 @@ async def test_claiming_first_lets_cleanup_remove_the_stopped_consumer(domain):
     assert _pending_by_consumer(domain, category, second.consumer_group) == {
         second.consumer_name: 1
     }
+
+
+def _run_one_batch_per_poll(subscription: StreamSubscription) -> None:
+    """Make each ``poll()`` stop after the batch it processes and trims."""
+    process_batch = subscription.process_batch
+
+    async def process_then_stop(messages, stream=None):
+        result = await process_batch(messages, stream=stream)
+        subscription.keep_going = False
+        return result
+
+    subscription.process_batch = process_then_stop  # type: ignore[method-assign]
+
+
+async def _poll_one_batch(subscription: StreamSubscription) -> None:
+    # A poll that finds nothing to read loops until the timeout fails the test.
+    subscription.keep_going = True
+    await asyncio.wait_for(subscription.poll(), timeout=5)
+
+
+class TestTrimAfterRestart:
+    """A trim after a batch keeps the entries still pending in the group.
+
+    The trim is approximate (``MINID ~``), so Redis removes only whole stream
+    nodes, by default of up to 100 entries or 4,096 bytes. Each test publishes
+    1,000 entries and handles them in batches of 250. The first test leaves
+    all 1,000 pending and the second leaves 300. A trim bounded by the last
+    delivered entry instead of the oldest pending one removes whole nodes of
+    entries nobody has handled.
+    """
+
+    async def test_reclaimed_backlog_larger_than_one_batch_keeps_its_payloads(
+        self, domain
+    ):
+        category = Shipment.meta_.stream_category
+        labels = [str(i) for i in range(1000)]
+        first = _stream_subscription(domain)
+        await _start(first)
+        for label in labels:
+            _publish(domain, category, label)
+        _leave_pending(domain, category, first.consumer_group, 1000)
+
+        second = _stream_subscription(domain, messages_per_tick=250)
+        trims = _record_trims(domain)
+        _run_one_batch_per_poll(second)
+        await _start(second)
+        group = second.consumer_group
+        assert _pending_by_consumer(domain, category, group) == {
+            second.consumer_name: 1000
+        }
+
+        await _poll_one_batch(second)
+
+        assert handled == labels[:250]
+        assert len(trims) == 1
+        assert trims[0][0] == category
+        assert trims[0][1] > 0
+        client = domain.brokers["default"].get_connection()
+        pending_ids = {
+            entry["message_id"]
+            for entry in client.xpending_range(category, group, "-", "+", 1000)
+        }
+        assert len(pending_ids) == 750
+        kept = dict(client.xrange(category))
+        assert pending_ids <= kept.keys()
+
+        for _ in range(3):
+            await _poll_one_batch(second)
+
+        assert handled == labels
+        assert _pending_by_consumer(domain, category, group) == {}
+
+    async def test_fast_restart_keeps_the_entries_it_skipped(self, domain):
+        """The stopped worker's entries are too young to claim, so the new
+        worker reads past them. They stay pending, and the trim keeps them."""
+        category = Shipment.meta_.stream_category
+        domain.config["server"]["reclaim_idle_seconds"] = 60
+        labels = [str(i) for i in range(1000)]
+        first = _stream_subscription(domain)
+        await _start(first)
+        for label in labels:
+            _publish(domain, category, label)
+        client = domain.brokers["default"].get_connection()
+        reply = client.xreadgroup(
+            first.consumer_group, first.consumer_name, {category: ">"}, count=300
+        )
+        skipped_ids = [entry_id for entry_id, _ in reply[0][1]]
+        assert len(skipped_ids) == 300
+
+        second = _stream_subscription(domain, messages_per_tick=250)
+        trims = _record_trims(domain)
+        _run_one_batch_per_poll(second)
+        await _start(second)
+        await _poll_one_batch(second)
+
+        group = second.consumer_group
+        assert _pending_by_consumer(domain, category, group) == {
+            first.consumer_name: 300
+        }
+        assert trims == [(category, 0)]
+        assert handled == labels[300:550]
+        claimed = client.xclaim(
+            category,
+            group,
+            second.consumer_name,
+            min_idle_time=0,
+            message_ids=skipped_ids,
+        )
+        assert len(claimed) == 300
+        assert all(entry and entry[1] for entry in claimed)
