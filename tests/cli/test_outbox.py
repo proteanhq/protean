@@ -448,8 +448,13 @@ class TestRowIdShape:
 class TestNewCommandsNeedTheOutbox:
     @pytest.mark.parametrize(
         "args",
-        [("halted",), ("retry", "1"), ("discard", "1", "--reason", "skip")],
-        ids=["halted", "retry", "discard"],
+        [
+            ("reconcile",),
+            ("halted",),
+            ("retry", "1"),
+            ("discard", "1", "--reason", "skip"),
+        ],
+        ids=["reconcile", "halted", "retry", "discard"],
     )
     def test_each_command_aborts_when_outbox_disabled(self, args):
         domain = _mock_domain(has_outbox=False)
@@ -485,11 +490,26 @@ class TestUnknownProvider:
 
     @pytest.mark.parametrize(
         "args",
-        [("halted",), ("retry", "1"), ("discard", "1", "--reason", "skip")],
-        ids=["halted", "retry", "discard"],
+        [
+            ("reconcile",),
+            ("halted",),
+            ("retry", "1"),
+            ("discard", "1", "--reason", "skip"),
+        ],
+        ids=["reconcile", "halted", "retry", "discard"],
     )
     def test_each_command_reports_an_unknown_provider(self, outbox_domain, args):
         result = _invoke(*args, "--provider", "no-such-provider")
 
         assert result.exit_code == 2
         assert "no-such-provider" in _flat(result.stderr)
+
+    def test_reconcile_reports_an_unknown_provider_instead_of_nothing_to_do(
+        self, outbox_domain
+    ):
+        result = _invoke("reconcile", "--provider", "typo")
+
+        assert result.exit_code == 2
+        assert "No outbox for provider 'typo'." in _flat(result.stderr)
+        assert "Nothing to reconcile" not in result.stdout
+        assert "Nothing to reconcile" not in result.stderr

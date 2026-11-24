@@ -14,7 +14,11 @@ if TYPE_CHECKING:
 from protean.core.aggregate import BaseAggregate
 from protean.core.index import Index
 from protean.core.repository import BaseRepository
-from protean.exceptions import DeserializationError, ValidationError
+from protean.exceptions import (
+    ConfigurationError,
+    DeserializationError,
+    ValidationError,
+)
 from protean.fields import Auto
 from protean.infra.dao import _earlier_than
 from protean.port.dao import HoldBack
@@ -1552,6 +1556,8 @@ def reconcile_outbox(
 
     Returns ``0`` without reading the event store when the domain has no
     outbox, or when no event-sourced aggregate is on ``provider_name``.
+    Raises ``ConfigurationError`` when the domain has an outbox and
+    ``provider_name`` names no outbox.
     Otherwise the function reads the most recent ``limit`` messages of
     ``$all``, and repairs every event of the kinds described below that has
     no internal outbox row. ``limit`` counts every message in ``$all``,
@@ -1602,16 +1608,24 @@ def reconcile_outbox(
     """
     if not getattr(domain, "has_outbox", False):
         return 0
-    # Only event-sourced aggregates' events are repaired, so a provider with
-    # none has nothing to repair and skips the read of ``$all``.
-    if not _has_event_sourced_aggregate(domain, provider_name):
-        return 0
 
     # Enter the passed domain's context so the event store, repositories, and
     # the UnitOfWork below all resolve against THIS domain regardless of what
     # the caller has active. domain_context is re-entrant, so this is safe when
     # the caller (the CLI, the engine startup sweep) is already inside it.
     with domain.domain_context():
+        # Look the provider up before the event-sourced check: no aggregate
+        # names an unknown provider, so that check alone would report success.
+        try:
+            domain._get_outbox_repo(provider_name)
+        except KeyError as exc:
+            raise ConfigurationError(
+                f"No outbox for provider {provider_name!r}."
+            ) from exc
+        # Only event-sourced aggregates' events are repaired, so a provider with
+        # none has nothing to repair and skips the read of ``$all``.
+        if not _has_event_sourced_aggregate(domain, provider_name):
+            return 0
         return _reconcile_outbox(domain, provider_name, limit)
 
 

@@ -28,6 +28,7 @@ from rich.markup import escape
 
 from protean.cli._helpers import CTX_LOG_CONFIGURED, handle_cli_exceptions, load_domain
 from protean.cli.result import build_envelope, emit_usage_error, route_logs_to_stderr
+from protean.exceptions import ConfigurationError
 from protean.utils import IdentityType
 from protean.utils.outbox import HaltedKey, Outbox, OutboxRepository, reconcile_outbox
 
@@ -146,7 +147,14 @@ def reconcile(
     with derived_domain.domain_context():
         _require_outbox(derived_domain)
 
-        created = reconcile_outbox(derived_domain, provider_name=provider, limit=limit)
+        try:
+            created = reconcile_outbox(
+                derived_domain, provider_name=provider, limit=limit
+            )
+        except ConfigurationError:
+            emit_usage_error(
+                as_json=False, message=f"No outbox for provider {provider!r}."
+            )
         if created:
             print(f"Reconciled {created} outbox row(s) from the event store.")
         else:
