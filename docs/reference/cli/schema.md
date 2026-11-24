@@ -72,16 +72,16 @@ names the type by its full name with a leading dot, such as
 `.shared.kernel.Money`. The leading dot tells `protoc` to resolve the name from
 the root package. Compile the files with `-I <output>/schemas`, for example
 `protoc -I .protean/schemas --descriptor_set_out=out.pb $(find .protean/schemas -name '*.proto')`.
-Two cases are defined as a nested message inside the file that uses them,
-instead of being imported:
-
-- A value object that belongs to no aggregate cluster, such as one with no
-  `part_of` that only projections use, gets no file of its own.
-- Entities that refer to each other through `HasOne` or `HasMany` would import
-  each other in a cycle, which `protoc` rejects.
+A value object that belongs to no aggregate cluster, such as one with no
+`part_of` that only projections use, is written to `schemas/value_objects/`,
+and a file that uses it imports it from there. Entities that refer to each
+other through `HasOne` or `HasMany` would import each other in a cycle, which
+`protoc` rejects, so each is defined as a nested message inside the file that
+uses it.
 
 The command fails with an error when two elements would be written to the same
-file, for example two value objects with the same class name in one cluster.
+file, for example two value objects with the same class name in one cluster, or
+two value objects with the same class name that belong to no cluster.
 
 `--format all` emits every format into one `schemas/` tree in a single pass.
 Each element gets its JSON, Avro, and Protobuf files with distinct extensions,
@@ -91,7 +91,9 @@ toward a local schema registry.
 
 **Output structure**
 
-Schemas are written to `<output>/schemas/`, grouped by aggregate cluster:
+Schemas are written to `<output>/schemas/`, grouped by aggregate cluster.
+Projections go under `projections/`, and value objects that belong to no
+cluster go under `value_objects/`:
 
 ```
 .protean/
@@ -108,8 +110,10 @@ Schemas are written to `<output>/schemas/`, grouped by aggregate cluster:
     │   │   └── OrderPlaced.v2.json
     │   └── value_objects/
     │       └── Money.v1.json
-    └── projections/
-        └── OrderDashboard.v1.json
+    ├── projections/
+    │   └── OrderDashboard.v1.json
+    └── value_objects/
+        └── ShippingAddress.v1.json
 ```
 
 Filenames include the element version for events and commands. Other elements

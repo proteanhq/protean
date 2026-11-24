@@ -1173,8 +1173,8 @@ class TestProtobufSchemaTree:
         self, test_domain, tmp_path
     ):
         # A value object with no part_of that only projections use has no
-        # cluster, so it gets no file. Each projection defines it inside its
-        # own message, so the package does not define it twice.
+        # cluster. It is written once under the top-level value_objects/
+        # directory, and each projection imports it.
         test_domain.register(ShippingAddress)
         test_domain.register(CustomerCard)
         test_domain.register(CustomerReport)
@@ -1182,14 +1182,17 @@ class TestProtobufSchemaTree:
         write_schemas(test_domain.to_ir(), tmp_path, fmt="protobuf")
         files = _assert_valid_proto_tree(tmp_path / "schemas")
 
+        vo_path = "value_objects/ShippingAddress.v1.proto"
+        assert files[vo_path]["messages"] == ["ShippingAddress"]
+        vo_text = (tmp_path / "schemas" / vo_path).read_text()
+        assert "  optional string city = 1;" in vo_text
+
         card = files["projections/CustomerCard.v1.proto"]
         report = files["projections/CustomerReport.v1.proto"]
-        assert card["messages"] == ["CustomerCard", "CustomerCard.ShippingAddress"]
-        assert report["messages"] == [
-            "CustomerReport",
-            "CustomerReport.ShippingAddress",
-        ]
-        assert card["package"] == report["package"]
+        assert card["messages"] == ["CustomerCard"]
+        assert report["messages"] == ["CustomerReport"]
+        assert card["imports"] == [vo_path]
+        assert report["imports"] == [vo_path]
 
     def test_entities_referring_to_each_other_do_not_import_in_a_cycle(self, tmp_path):
         root = {

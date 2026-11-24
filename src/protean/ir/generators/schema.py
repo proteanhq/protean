@@ -333,7 +333,8 @@ def _build_flat_elements(ir: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Build a flat FQN → element dict from the IR for ``$defs`` resolution.
 
     Scans clusters for aggregates, entities, value objects, commands, and
-    events so that ``_collect_defs`` can look up any referenced element.
+    events, the top-level ``value_objects`` section, and projections, so that
+    ``_collect_defs`` can look up any referenced element.
     """
     elements: dict[str, dict[str, Any]] = {}
 
@@ -355,6 +356,9 @@ def _build_flat_elements(ir: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
         # Events
         elements.update(cluster.get("events", {}))
+
+    # Value objects that no cluster places
+    elements.update(ir.get("value_objects", {}))
 
     # Projections (nested under a "projection" key)
     for proj_fqn, proj_wrapper in ir.get("projections", {}).items():

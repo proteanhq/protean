@@ -85,7 +85,9 @@ FQNs and asks you to disambiguate.
 
 ## Output structure
 
-Schemas are organized by aggregate cluster:
+Schemas are organized by aggregate cluster. Projections go under
+`projections/`, and value objects that belong to no cluster, such as one only
+projections hold, go under `value_objects/`:
 
 ```
 .protean/
@@ -102,8 +104,10 @@ Schemas are organized by aggregate cluster:
     │   │   └── OrderPlaced.v2.json
     │   └── value_objects/
     │       └── Money.v1.json
-    └── projections/
-        └── OrderDashboard.v1.json
+    ├── projections/
+    │   └── OrderDashboard.v1.json
+    └── value_objects/
+        └── ShippingAddress.v1.json
 ```
 
 Filenames include the element version (`v1`, `v2`, etc.) for events and

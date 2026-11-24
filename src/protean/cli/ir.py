@@ -546,7 +546,8 @@ def _print_diff_header(summary: dict[str, Any]) -> None:
 
 
 def _print_element_sections(result: dict[str, Any]) -> None:
-    """Print the cluster, projection and flow changes, each under its heading."""
+    """Print the cluster, projection, unplaced value object and flow changes,
+    each under its heading."""
     # Clusters
     clusters = result.get("clusters", {})
     if clusters:
@@ -558,6 +559,12 @@ def _print_element_sections(result: dict[str, Any]) -> None:
     if projections:
         print("\n[bold]Projections[/bold]")
         _print_section_changes(projections)
+
+    # Value objects that no cluster places
+    value_objects = result.get("value_objects", {})
+    if value_objects:
+        print("\n[bold]Value Objects[/bold]")
+        _print_section_changes(value_objects)
 
     # Flows
     flows = result.get("flows", {})
