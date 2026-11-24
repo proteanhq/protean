@@ -1106,16 +1106,19 @@ class DictDAO(DAOPort, RawQueryDAOPort, BoundedDeletePort, InsertIfAbsentPort):
         return update_count
 
     def claim_lock(self) -> RLock:
-        """The provider's lock, held by the portable claim and bounded delete.
+        """The provider's lock, held by the portable claim, the bounded delete
+        and ``update_all``.
 
         The memory adapter has no row-level locking, and its ``update_all`` is
         not atomic across threads (it reads-then-writes). Holding the provider's
         lock across the whole read-and-claim section serializes concurrent
         claimers in-process, which is the strongest guarantee the single-process
-        memory store can offer.
+        memory store can offer. ``DAO.update_all`` holds the same lock from
+        before its session copies the store until the session commits, so no
+        claim commits between its match and its write.
 
-        The lock is a reentrant ``RLock``: a standalone ``update_all`` is
-        committed while the claim holds the lock, and
+        The lock is a reentrant ``RLock``: a session's write is committed
+        while the claim or ``update_all`` holds the lock, and
         :meth:`MemorySession.commit` re-acquires the same lock on this thread
         to run its compare-and-set, so it must nest without deadlocking.
         """

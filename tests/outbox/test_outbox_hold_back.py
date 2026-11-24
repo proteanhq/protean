@@ -8,14 +8,17 @@ published or claimed in the same call (ADR-0028, outbox-side ordering).
 Where a test seeds both rows at once, it inserts the later row first, so a
 claim that ignored the group would still return it.
 
-Marked ``transactional`` so the suite runs on the in-memory adapter and on every
-SQL database the test matrix covers.
+Most classes are marked ``transactional`` so they run on the in-memory adapter
+and on every SQL database the test matrix covers.
 """
 
+import threading
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from protean.adapters.database.memory import MemorySession
 from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.fields import Integer, String
@@ -586,6 +589,74 @@ class TestAnOperatorReleasesAHaltedKey:
         assert stored.retry_count == max_retries
         assert stored.last_error["message"] == f"attempt {max_retries}"
         assert "discard_reason" not in stored.last_error
+
+
+class TestAnOperatorChangeDoesNotOverlapAClaim:
+    """Runs on the memory provider only: the patched ``MemorySession.write``
+    never fires on a SQL provider."""
+
+    @pytest.mark.parametrize("action", ["retry", "discard"])
+    def test_a_claim_waits_for_the_operator_write(
+        self, test_domain, outbox_repo, now, monkeypatch, action
+    ):
+        _insert(
+            outbox_repo,
+            _failed(_row("a", minute=0), next_retry_at=now - timedelta(minutes=1)),
+        )
+        meet = threading.Barrier(2, timeout=0.5)
+        operator_writing = threading.Event()
+        write = MemorySession.write
+
+        def write_after_meeting(self, *args, **kwargs):
+            if threading.current_thread().name == "operator":
+                operator_writing.set()
+            with suppress(threading.BrokenBarrierError):
+                meet.wait()
+            return write(self, *args, **kwargs)
+
+        monkeypatch.setattr(MemorySession, "write", write_after_meeting)
+        results: dict[str, object] = {}
+
+        def operator() -> None:
+            with test_domain.domain_context():
+                repo = test_domain._get_outbox_repo("default")
+                row = _reload(repo, "a")
+                changed = (
+                    row.reset_for_retry()
+                    if action == "retry"
+                    else row.discard("poison")
+                )
+                assert changed is True
+                results["saved"] = repo.save_operator_change(
+                    row, OutboxStatus.FAILED.value, 1
+                )
+
+        def worker() -> None:
+            assert operator_writing.wait(timeout=5)
+            with test_domain.domain_context():
+                repo = test_domain._get_outbox_repo("default")
+                results["claimed"] = _labels(repo.claim_batch("worker-1", limit=10))
+
+        threads = [
+            threading.Thread(target=operator, name="operator", daemon=True),
+            threading.Thread(target=worker, name="worker", daemon=True),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+        assert not any(thread.is_alive() for thread in threads)
+
+        assert results["saved"] is True
+        stored = _reload(outbox_repo, "a")
+        if action == "discard":
+            assert results["claimed"] == []
+            assert stored.status == OutboxStatus.DISCARDED.value
+            assert stored.last_error["discard_reason"] == "poison"
+        else:
+            assert results["claimed"] == ["a"]
+            assert stored.status == OutboxStatus.PROCESSING.value
+            assert stored.locked_by == "worker-1"
 
 
 def _halted(outbox_repo) -> list[tuple[str, str, str, str, int]]:
