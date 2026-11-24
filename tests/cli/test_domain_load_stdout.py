@@ -55,8 +55,29 @@ class AccountOpened:
 )
 
 
-def _run_protean(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    env = {k: v for k, v in os.environ.items() if k != "PROTEAN_DOMAIN"}
+_LINT_RULE = """\
+print("LINTIMPORT")
+
+
+def check_names(ir):
+    print("LINTRUN")
+    return []
+"""
+
+
+def _run_protean(
+    cwd: Path, *args: str, pythonpath: Path | None = None
+) -> subprocess.CompletedProcess[str]:
+    # A caller's ``PROTEAN_LOG_*`` setting could silence the ``LOGGED`` line.
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k != "PROTEAN_DOMAIN" and not k.startswith("PROTEAN_LOG_")
+    }
+    if pythonpath is not None:
+        env["PYTHONPATH"] = os.pathsep.join(
+            p for p in (str(pythonpath), env.get("PYTHONPATH", "")) if p
+        )
     return subprocess.run(
         [sys.executable, "-B", "-m", "protean", *args],
         capture_output=True,
@@ -143,6 +164,14 @@ class TestAFailingModuleKeepsStdoutForTheCommand:
         assert "LOGGED" in result.stderr
 
 
+def _assert_a_result_payload(result: subprocess.CompletedProcess[str]) -> None:
+    """Stdout is one JSON document, and not an error envelope."""
+    payload = json.loads(result.stdout)
+    assert isinstance(payload, (dict, list)), result.stderr
+    if isinstance(payload, dict):
+        assert payload.get("status") != "error", result.stdout
+
+
 class TestALoadingModuleKeepsStdoutParseable:
     """A module that prints and logs, then defines a domain: stdout is JSON."""
 
@@ -170,11 +199,10 @@ class TestALoadingModuleKeepsStdoutParseable:
             protean_dir = tmp_path / ".protean"
             protean_dir.mkdir()
             shutil.copy(ir_file, protean_dir / "ir.json")
-            extra = ("--dir", str(protean_dir))
 
         result = _run_protean(tmp_path, *args, *extra, "--domain", str(module))
 
-        assert json.loads(result.stdout), result.stderr
+        _assert_a_result_payload(result)
         assert "LOADING" not in result.stdout
         assert "LOGGED" not in result.stdout
         assert "LOADING" in result.stderr
@@ -193,3 +221,76 @@ class TestALoadingModuleKeepsStdoutParseable:
         assert "LOADING" not in result.stdout
         assert "LOGGED" not in result.stdout
         assert "LOADING" in result.stderr
+
+    def test_verify_prints_only_the_envelope(self, tmp_path: Path) -> None:
+        module = _write_module(tmp_path / "domain", "noisy_loading", _LOADING_MODULE)
+
+        result = _run_protean(tmp_path, "verify", "--json", "--domain", str(module))
+
+        envelope = json.loads(result.stdout)
+        assert envelope["data"]["stages"]["init"]["status"] == "pass", result.stdout
+        assert "check" in envelope["data"]["stages"]
+        assert "LOADING" not in result.stdout
+        assert "LOGGED" not in result.stdout
+        assert "LOADING" in result.stderr
+
+
+class TestDatabaseCommandsKeepTheModuleOutputOffStdout:
+    """``db check`` and a ``db`` command that loads without connecting."""
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            pytest.param(("db", "check"), id="db-check"),
+            # ``--sql`` loads the domain with ``connect=False``.
+            pytest.param(("db", "upgrade", "--sql"), id="db-upgrade-sql"),
+        ],
+    )
+    def test_module_output_goes_to_stderr(
+        self, tmp_path: Path, args: tuple[str, ...]
+    ) -> None:
+        module = _write_module(tmp_path / "domain", "noisy_loading", _LOADING_MODULE)
+
+        result = _run_protean(tmp_path, *args, "--domain", str(module))
+
+        # No migrations folder exists, so both commands stop with an error after
+        # the load. The load itself must have run.
+        assert "No migrations found" in result.stdout + result.stderr
+        assert "LOADING" not in result.stdout
+        assert "LOGGED" not in result.stdout
+        assert "LOADING" in result.stderr
+
+
+class TestALintRuleKeepsStdoutParseable:
+    """A ``[lint].rules`` callable runs while the IR builds; its output is on stderr."""
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            pytest.param(("ir", "show"), id="ir-show"),
+            pytest.param(("ir", "diff", "--format", "json"), id="ir-diff"),
+            pytest.param(("schema", "show", "AccountOpened", "--raw"), id="schema"),
+            pytest.param(("events", "catalog", "--json"), id="events-catalog"),
+        ],
+    )
+    def test_stdout_parses_as_json(
+        self, tmp_path: Path, ir_file: Path, args: tuple[str, ...]
+    ) -> None:
+        module = _write_module(tmp_path / "domain", "noisy_loading", _LOADING_MODULE)
+        (tmp_path / "domain" / "domain.toml").write_text(
+            '[lint]\nrules = ["noisy_lint_rule_2103.check_names"]\n', encoding="utf-8"
+        )
+        # The rule sits outside the domain directory, so only the IR build
+        # imports it, never the domain's traversal.
+        rules = tmp_path / "rules"
+        _write_module(rules, "noisy_lint_rule_2103", _LINT_RULE)
+        extra = ("--right", str(ir_file)) if args[:2] == ("ir", "diff") else ()
+
+        result = _run_protean(
+            tmp_path, *args, *extra, "--domain", str(module), pythonpath=rules
+        )
+
+        _assert_a_result_payload(result)
+        assert "LINTIMPORT" not in result.stdout
+        assert "LINTRUN" not in result.stdout
+        assert "LINTRUN" in result.stderr

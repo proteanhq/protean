@@ -117,7 +117,9 @@ def load_domain_ir(
     derived_domain = load_domain(domain_path, as_json=as_json, usage_exit=usage_exit)
 
     try:
-        return derived_domain.to_ir()
+        # Building the IR imports and runs any ``[lint].rules`` callables.
+        with stdout_to_stderr():
+            return derived_domain.to_ir()
     except Exception as exc:  # noqa: BLE001 - CLI boundary: report any IR build failure
         _abort_load(
             f"Error generating IR from Protean domain: {exc}",

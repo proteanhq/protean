@@ -105,7 +105,7 @@ def _resolve_domains(
 
 
 def _load_live_ir(domain_path: str) -> dict[str, Any]:
-    """Load live IR from a domain module without depending on typer."""
+    """Load live IR from a domain module."""
     from protean.utils.domain_discovery import derive_domain  # noqa: PLC0415
 
     try:
@@ -125,7 +125,7 @@ def _load_live_ir(domain_path: str) -> dict[str, Any]:
     try:
         with stdout_to_stderr():
             domain.init()
-        return domain.to_ir()
+            return domain.to_ir()
     except Exception as exc:  # any IR failure becomes a printed error and exit 1
         print(f"Error generating IR: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
@@ -149,7 +149,7 @@ def _regenerate_ir(domain_module: str, protean_dir: Path) -> dict[str, Any]:
         raise SystemExit(f"Could not derive a Protean domain from {domain_module!r}")
     with stdout_to_stderr():
         domain.init()
-    live_ir = IRBuilder(domain).build()
+        live_ir = IRBuilder(domain).build()
 
     protean_dir.mkdir(parents=True, exist_ok=True)
     ir_path = protean_dir / "ir.json"

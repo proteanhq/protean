@@ -9,7 +9,9 @@ scaffold core ([`plan_add_slice`][protean.scaffold.add_plan.plan_add_slice] then
 [`apply_plan`][protean.scaffold.apply.apply_plan]).
 
 The module imports no MCP SDK, so it is importable and unit-testable without the
-``mcp`` extra. :mod:`protean.mcp.server` wraps these functions as MCP tools.
+``mcp`` extra. It does import :mod:`protean.cli.result` for the stdout redirect
+around a domain load, which loads the ``protean.cli`` package.
+:mod:`protean.mcp.server` wraps these functions as MCP tools.
 
 Domain resolution mirrors the CLI: read tools auto-discover the domain from the
 process working directory (the ``"."`` default `protean check` uses) and accept
@@ -168,7 +170,9 @@ def introspect(domain: str | None = None) -> dict[str, Any]:
     """
     derived = _load(domain)
     try:
-        return derived.to_ir()
+        # Building the IR imports and runs any ``[lint].rules`` callables.
+        with stdout_to_stderr():
+            return derived.to_ir()
     except Exception as exc:  # any IR error goes back to the client as McpToolError
         raise McpToolError(f"Error introspecting Protean domain: {exc}") from exc
 

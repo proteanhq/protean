@@ -322,6 +322,27 @@ class AccountOpened:
 """
 
 
+_LINT_RULE = """\
+print("LINTIMPORT")
+
+
+def check_names(ir):
+    print("LINTRUN")
+    return []
+"""
+
+
+def _forget_module(module_name):
+    """Drop ``module_name`` from ``sys.modules``, under any package prefix.
+
+    Traversal imports the domain file a second time as ``<dir>.<module_name>``.
+    """
+    for key in [
+        k for k in sys.modules if k == module_name or k.endswith(f".{module_name}")
+    ]:
+        del sys.modules[key]
+
+
 @pytest.mark.no_test_domain
 class TestDomainOutputStaysOffStdout:
     """A domain module's prints go to stderr, not the stdio transport's stdout.
@@ -347,8 +368,38 @@ class TestDomainOutputStaysOffStdout:
         try:
             assert tool(f"{module}:domain")
         finally:
-            sys.modules.pop(module_name, None)
+            _forget_module(module_name)
 
         captured = capsys.readouterr()
         assert captured.out == ""
         assert "LOADING" in captured.err
+
+    def test_introspect_sends_a_lint_rule_output_to_stderr(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        module_name = "noisy_mcp_lint_2103"
+        rule_name = "noisy_mcp_lint_rule_2103"
+        domain_dir = tmp_path / "domain"
+        domain_dir.mkdir()
+        module = domain_dir / f"{module_name}.py"
+        module.write_text(_NOISY_DOMAIN, encoding="utf-8")
+        (domain_dir / "domain.toml").write_text(
+            f'[lint]\nrules = ["{rule_name}.check_names"]\n', encoding="utf-8"
+        )
+        # The rule sits outside the domain directory, so only the IR build
+        # imports it.
+        rules = tmp_path / "rules"
+        rules.mkdir()
+        (rules / f"{rule_name}.py").write_text(_LINT_RULE, encoding="utf-8")
+        monkeypatch.syspath_prepend(str(rules))
+        monkeypatch.syspath_prepend(str(domain_dir))
+
+        try:
+            assert tools.introspect(f"{module}:domain")
+        finally:
+            _forget_module(module_name)
+            _forget_module(rule_name)
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "LINTRUN" in captured.err
