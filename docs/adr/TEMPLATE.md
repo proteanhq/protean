@@ -1,4 +1,4 @@
-# ADR-NNNN: A full sentence that states the decision
+# ADR-NNNN: Short imperative verb phrase that names the decision
 
 **Status:** Proposed | Accepted | Deprecated | Superseded by ADR-XXXX
 
@@ -13,10 +13,10 @@ discussion. Describe the state before the decision as "Before this decision,
 
 ## Decision
 
-### 1. A full sentence that states the first decision
-
-The decision as a short statement or a few bullets, specific enough to
-implement or check. Then one or two sentences of reason.
+1. A full sentence that states the first decision, specific enough to
+   implement or check. A few bullets may follow it. Then one or two sentences
+   of reason.
+2. The next decision, in the same form.
 
 ## Consequences
 

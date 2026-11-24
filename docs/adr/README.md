@@ -54,10 +54,12 @@ An ADR follows `TEMPLATE.md`.
 
 - It records one decision, or a few decisions that stand or fall together. A
   decision that someone could reopen on its own gets its own ADR.
-- The title and every decision heading are full sentences that state the
-  decision, such as "Provider `sql` serves SQLite and PostgreSQL".
-- Each decision is a short statement or a few bullets, followed by one or two
-  sentences of reason. A reader who missed the discussion follows it on one
+- The title is a short imperative verb phrase that names the decision, such as
+  "Serve SQLite and PostgreSQL through provider `sql`". The section headings are
+  the template's labels.
+- Each decision is a numbered item under Decision that opens with a full
+  sentence stating it. A few bullets may follow, then one or two sentences of
+  reason. A decision never gets a heading of its own. A reader who missed the discussion follows it on one
   read. Terms the reader already knows get no explanation.
 - Context states the problem and the facts that shaped the decision. The state
   before the decision reads "Before this decision, ...".
