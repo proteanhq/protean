@@ -94,9 +94,11 @@ test mode:
 ## "No domain context" errors
 
 **Symptoms:** A `UserWarning` that starts with `Working outside of domain
-context.`, followed by an `AttributeError` that names a domain attribute, such
-as `AttributeError: repository_for` or `AttributeError: config`. Protean warns
-first, then the call fails because there is no current domain to read from.
+context.`, followed by an `AttributeError` whose message starts with
+`No active domain context: cannot access '<name>' on current_domain.`
+`<name>` is the domain attribute the call tried to read, such as
+`repository_for`, `config` or `databases`. Protean warns first, then the call
+fails because there is no current domain to read from.
 
 **Cause:** Protean operations require an active domain context on the current
 thread. This is usually set up by middleware (FastAPI) or fixtures (tests).
