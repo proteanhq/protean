@@ -23,7 +23,9 @@ nothing about projections.
 - `get`, `put` and `delete`, which read, write and remove the value under one
   key
 - `clear`, which removes every entry
-- `ping` and `health`, which report whether the store is reachable
+- `ping`, which reports whether the store is reachable
+- `health`, which returns a `CacheHealth` with the connection pool's stats, or
+  `None` in its `pool` for a store without a pool
 - `get_connection`, which returns the store's native client, or the backing
   store for an adapter without one
 
