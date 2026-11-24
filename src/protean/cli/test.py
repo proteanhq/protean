@@ -961,11 +961,14 @@ def build_adapter_suites(
     --redis``), the capability suites for each database and store, and the
     conformance runs. A marker run also passes the flag of each marker that an
     adapter with that marker ``enables`` (``-m redis --redis --postgresql``),
-    and selects only the tests that carry its own marker.
+    and selects only the tests that carry its own marker. A marker run leaves
+    out the tests that another marker run in these suites runs with its flag
+    (``-m "postgresql and not redis"``).
     """
     suites: list[TestSuite] = []
     seen: set[str] = set()
     marker_flags = _marker_flags(adapters)
+    expressions = _marker_expressions(marker_flags)
 
     def add(name: str, pytest_cmd: list[str]) -> None:
         if name not in seen:
@@ -977,7 +980,8 @@ def build_adapter_suites(
             add(
                 f"Marker: {marker}",
                 runner.build_test_command(
-                    marker=marker, extra_flags=[*marker_flags[marker], "tests"]
+                    marker=expressions[marker],
+                    extra_flags=[*marker_flags[marker], "tests"],
                 ),
             )
         for db in entry.databases:
@@ -1012,6 +1016,21 @@ def _marker_flags(adapters: list[AdapterEntry]) -> dict[str, list[str]]:
         marker: [f"--{m}" for m in [marker, *names]]
         for marker, names in enabled.items()
     }
+
+
+def _marker_expressions(marker_flags: dict[str, list[str]]) -> dict[str, str]:
+    """The ``-m`` expression of each marker run: the marker, minus the markers
+    whose runs pass its flag, so a test with both markers runs once.
+    """
+    expressions: dict[str, str] = {}
+    for marker in marker_flags:
+        others = [
+            other
+            for other, flags in marker_flags.items()
+            if other != marker and f"--{marker}" in flags
+        ]
+        expressions[marker] = " and not ".join([marker, *others])
+    return expressions
 
 
 def run_pr_lane(

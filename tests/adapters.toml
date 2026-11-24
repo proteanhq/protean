@@ -24,7 +24,9 @@
 #   pass (`-m <m> --<m> --<e>`), so a test that carries both markers runs in
 #   this leg instead of being skipped. The `-m` still selects only marker <m>.
 #   Add the services those markers need to `services`. When entries in one
-#   leg share a marker, its run passes every flag they enable.
+#   leg share a marker, its run passes every flag they enable. When a run
+#   holds both, the enabled marker's run leaves those tests out
+#   (`-m "<e> and not <m>"`).
 # - databases, stores: capability suites (`--db=`, `--store=`), as
 #   `protean test -c FULL` runs them.
 # - conformance: "<port>:<adapter>" pairs, such as "event_store:message_db".

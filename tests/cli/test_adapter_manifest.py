@@ -956,6 +956,38 @@ class TestBuildAdapterSuites:
             "tests",
         ]
 
+    def test_a_marker_run_leaves_out_the_tests_an_enabling_run_takes(self, manifest):
+        suites = build_adapter_suites(
+            TestRunner(), manifest.resolve(["postgresql", "redis"])
+        )
+        by_name = {s.name: s.command for s in suites}
+        assert by_name["Marker: postgresql"][-4:] == [
+            "-m",
+            "postgresql and not redis",
+            "--postgresql",
+            "tests",
+        ]
+        assert by_name["Marker: redis"][-5:-3] == ["-m", "redis"]
+
+    def test_every_run_that_enables_a_marker_is_left_out_of_its_run(self, manifest):
+        suites = build_adapter_suites(
+            TestRunner(), manifest.resolve(["postgresql", "sqlite", "message-db"])
+        )
+        by_name = {s.name: s.command for s in suites}
+        assert by_name["Marker: postgresql"][-4:-2] == [
+            "-m",
+            "postgresql and not message_db",
+        ]
+        assert by_name["Marker: sqlite"][-4:-2] == ["-m", "sqlite and not message_db"]
+
+    def test_a_marker_run_keeps_its_tests_when_no_enabling_run_is_listed(
+        self, manifest
+    ):
+        (marker, *_) = build_adapter_suites(
+            TestRunner(), manifest.resolve(["postgresql"])
+        )
+        assert marker.command[-4:] == ["-m", "postgresql", "--postgresql", "tests"]
+
     def test_suites_are_coverage_wrapped_and_select_their_tests(self):
         runner = TestRunner()
         entry = _entry(

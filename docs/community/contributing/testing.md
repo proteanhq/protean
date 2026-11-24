@@ -66,6 +66,8 @@ The entry's `paths` must include `tests/conformance/<port>/`, so a change to the
 
 An entry's `enables` key lists the other adapter markers whose flags its marker run also passes. The `message-db` entry enables `postgresql` and `sqlite`, so its marker run is `-m message_db --message_db --postgresql --sqlite tests`. The `-m` expression still selects only the tests marked `message_db`. The entry's `services` must include the services of the markers it enables, so the `message-db` entry lists `postgres` next to `message-db`. The `redis-broker` entry enables `postgresql` and lists `postgres`, so the `redis` leg runs the tests marked `postgresql` and `redis`. When several entries in one leg share a marker, the leg's marker run passes the flags that any of them enables.
 
+When one run of `protean test` holds both runs, the run of an enabled marker leaves out the tests the enabling run takes. With `-a postgresql -a redis`, the postgresql marker run is `-m "postgresql and not redis" --postgresql tests`, so the test marked `postgresql` and `redis` runs once, in the redis marker run. With `-a postgresql` alone, the postgresql marker run keeps those tests and skips them.
+
 `tests/cli/test_adapter_manifest.py` collects `tests/` and fails when a test carries two or more adapter markers and no leg passes the flag of each one and starts each one's service. Add the missing markers to the `enables` of one of the test's adapters, and their services to its `services`.
 
 ### Parallel runs
