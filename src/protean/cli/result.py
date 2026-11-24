@@ -48,7 +48,10 @@ documented per command:
 
 from __future__ import annotations
 
+import contextlib
 import json
+import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Literal, NoReturn
 
@@ -126,6 +129,22 @@ def route_logs_to_stderr(log_already_configured: bool = False) -> None:
     # corrupt the payload. Domain.init configures logging only after the import,
     # and then sees the root handler installed here and leaves it alone.
     configure_logging()
+
+
+@contextlib.contextmanager
+def stdout_to_stderr() -> Iterator[None]:
+    """Send everything written to ``sys.stdout`` to ``sys.stderr`` while the block runs.
+
+    Wrap each call that imports a domain's modules (``derive_domain``,
+    ``Domain.init``, ``Domain._init``, ``Domain.check``) so a ``print()`` or an
+    unconfigured log line in a domain module cannot reach a command's stdout
+    payload. ``sys.stdout`` is restored when the block exits, including when the
+    body raises, so an error handler outside the block writes to its usual stream.
+    """
+    # Read sys.stderr at entry, not at import: Click's CliRunner swaps it per
+    # invocation.
+    with contextlib.redirect_stdout(sys.stderr):
+        yield
 
 
 def load_envelope_schema() -> dict[str, Any]:

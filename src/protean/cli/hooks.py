@@ -60,6 +60,7 @@ import sys
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from protean.cli.result import stdout_to_stderr
 from protean.exceptions import ConfigurationError, NoDomainException
 from protean.ir.diff import (
     CompatibilityReport,
@@ -108,7 +109,8 @@ def _load_live_ir(domain_path: str) -> dict[str, Any]:
     from protean.utils.domain_discovery import derive_domain  # noqa: PLC0415
 
     try:
-        domain = derive_domain(domain_path)
+        with stdout_to_stderr():
+            domain = derive_domain(domain_path)
     except NoDomainException as exc:
         print(f"Error loading domain: {exc.args[0]}", file=sys.stderr)
         raise SystemExit(1) from exc
@@ -121,7 +123,8 @@ def _load_live_ir(domain_path: str) -> dict[str, Any]:
         raise SystemExit(1)
 
     try:
-        domain.init()
+        with stdout_to_stderr():
+            domain.init()
         return domain.to_ir()
     except Exception as exc:  # any IR failure becomes a printed error and exit 1
         print(f"Error generating IR: {exc}", file=sys.stderr)
@@ -140,10 +143,12 @@ def _regenerate_ir(domain_module: str, protean_dir: Path) -> dict[str, Any]:
     from protean.ir.constants import canonical_ir_json  # noqa: PLC0415
     from protean.utils.domain_discovery import derive_domain  # noqa: PLC0415
 
-    domain = derive_domain(domain_module)
+    with stdout_to_stderr():
+        domain = derive_domain(domain_module)
     if domain is None:
         raise SystemExit(f"Could not derive a Protean domain from {domain_module!r}")
-    domain.init()
+    with stdout_to_stderr():
+        domain.init()
     live_ir = IRBuilder(domain).build()
 
     protean_dir.mkdir(parents=True, exist_ok=True)
@@ -214,7 +219,8 @@ def _check_staleness_single(
 ) -> bool:
     """Check staleness for a single domain.  Returns ``True`` if OK."""
     try:
-        result = check_staleness(domain_module, protean_dir, config=config)
+        with stdout_to_stderr():
+            result = check_staleness(domain_module, protean_dir, config=config)
     except NoDomainException as exc:
         print(f"Error ({domain_module}): {exc.args[0]}", file=sys.stderr)
         return False

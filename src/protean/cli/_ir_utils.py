@@ -15,7 +15,7 @@ import typer
 from rich import print
 from rich.markup import escape
 
-from protean.cli.result import emit_usage_error
+from protean.cli.result import emit_usage_error, stdout_to_stderr
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
 from protean.utils.logging import get_logger
@@ -68,7 +68,8 @@ def load_domain(
     ``usage_exit``).
     """
     try:
-        derived_domain = derive_domain(domain_path)
+        with stdout_to_stderr():
+            derived_domain = derive_domain(domain_path)
     except NoDomainException as exc:
         _abort_load(
             f"Error loading Protean domain: {exc.args[0]}",
@@ -90,7 +91,8 @@ def load_domain(
     assert derived_domain is not None
 
     try:
-        derived_domain.init()
+        with stdout_to_stderr():
+            derived_domain.init()
     except Exception as exc:  # noqa: BLE001 - CLI boundary: user domain code can raise anything
         _abort_load(
             f"Error initialising Protean domain: {exc}",

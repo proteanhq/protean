@@ -57,6 +57,7 @@ from protean.cli.result import (
     build_envelope,
     emit_usage_error,
     route_logs_to_stderr,
+    stdout_to_stderr,
 )
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
@@ -151,7 +152,8 @@ def check(
         )
 
     try:
-        derived_domain = derive_domain(domain)
+        with stdout_to_stderr():
+            derived_domain = derive_domain(domain)
     except NoDomainException as exc:
         msg = f"Error loading Protean domain: {exc.args[0]}"
         _fail_usage(format, msg)
@@ -161,7 +163,8 @@ def check(
     lint_level = _lint_level(derived_domain, format)
 
     try:
-        result = derived_domain.check()
+        with stdout_to_stderr():
+            result = derived_domain.check()
     # Traversal imports every sibling module of the domain file, and any of them
     # can raise. Report it as one line, never a traceback.
     except Exception as exc:  # noqa: BLE001 - CLI boundary: check runs user code

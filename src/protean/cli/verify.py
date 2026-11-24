@@ -84,7 +84,12 @@ from rich import print
 from rich.console import Console
 from rich.markup import escape
 
-from protean.cli.result import EnvelopeStatus, build_envelope, route_logs_to_stderr
+from protean.cli.result import (
+    EnvelopeStatus,
+    build_envelope,
+    route_logs_to_stderr,
+    stdout_to_stderr,
+)
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
 
@@ -221,7 +226,8 @@ def _run_stages(
     """Run init, check and tests in order and map the outcome to a result."""
     # --- Init stage -------------------------------------------------------
     try:
-        derived_domain = derive_domain(domain)
+        with stdout_to_stderr():
+            derived_domain = derive_domain(domain)
     except NoDomainException as exc:
         msg = f"Error loading Protean domain: {exc.args[0]}"
         stages["init"] = {"status": "fail", "error": msg}
@@ -258,7 +264,8 @@ def _run_stages(
         return _early_result(stages, _EXIT_USAGE, msg)
 
     try:
-        derived_domain.init(traverse=True)
+        with stdout_to_stderr():
+            derived_domain.init(traverse=True)
     except Exception as exc:  # noqa: BLE001 - CLI boundary: user domain code can raise anything
         msg = f"Domain failed to initialize: {exc}"
         stages["init"] = {"status": "fail", "error": msg}
@@ -436,7 +443,8 @@ def _run_check(domain: Any) -> tuple[bool, dict[str, Any]]:
         return True, _config_error_stage(config_error, "INVALID_LINT_CONFIG")
 
     try:
-        result = domain.check()
+        with stdout_to_stderr():
+            result = domain.check()
     except Exception as exc:  # noqa: BLE001 - CLI boundary: a crash must exit 4, not dump a traceback
         # Defensive: ``check()`` re-runs ``_prepare(traverse=True, validate=False)``
         # and builds the IR, neither wrapped here. init already succeeded above,

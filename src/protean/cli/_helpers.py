@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, NoReturn
 import typer
 from rich import print
 
-from protean.cli.result import emit_usage_error
+from protean.cli.result import emit_usage_error, stdout_to_stderr
 from protean.exceptions import NoDomainException
 from protean.utils.dependencies import (
     FEATURE_EXTRA_MODULES,
@@ -139,7 +139,8 @@ def load_domain(
     its databases, for a command that only renders SQL.
     """
     try:
-        derived_domain = derive_domain(domain_path)
+        with stdout_to_stderr():
+            derived_domain = derive_domain(domain_path)
     except NoDomainException as exc:
         msg = f"Error loading Protean domain: {exc.args[0]}"
         logger.error(msg)
@@ -151,10 +152,11 @@ def load_domain(
     assert derived_domain is not None
 
     try:
-        if connect:
-            derived_domain.init()
-        else:
-            derived_domain._init(connect=False)
+        with stdout_to_stderr():
+            if connect:
+                derived_domain.init()
+            else:
+                derived_domain._init(connect=False)
     except Exception as exc:
         # Under ``--json`` an init failure (bad config, an adapter that will not
         # connect) becomes the error envelope too, so the machine payload stays

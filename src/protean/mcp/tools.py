@@ -24,6 +24,7 @@ from __future__ import annotations
 import difflib
 from typing import TYPE_CHECKING, Any, TypedDict
 
+from protean.cli.result import stdout_to_stderr
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
 
@@ -97,7 +98,8 @@ def _derive(domain: str | None) -> Domain:
     """
     path = _resolve_path(domain, "domain")
     try:
-        derived = derive_domain(path)
+        with stdout_to_stderr():
+            derived = derive_domain(path)
     except NoDomainException as exc:
         raise McpToolError(f"Error loading Protean domain: {exc.args[0]}") from exc
     except Exception as exc:
@@ -118,7 +120,8 @@ def _load(domain: str | None) -> Domain:
     """
     derived = _derive(domain)
     try:
-        derived.init()
+        with stdout_to_stderr():
+            derived.init()
     except Exception as exc:  # any init error goes back to the client as McpToolError
         raise McpToolError(f"Error initialising Protean domain: {exc}") from exc
     return derived
@@ -134,7 +137,8 @@ def check(domain: str | None = None) -> dict[str, Any]:
     try:
         # ``check`` prepares the domain, which imports the rest of its package;
         # a broken sibling module raises here, so translate it like a load error.
-        return derived.check()
+        with stdout_to_stderr():
+            return derived.check()
     except Exception as exc:  # any check error goes back to the client as McpToolError
         raise McpToolError(f"Error checking Protean domain: {exc}") from exc
 

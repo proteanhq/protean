@@ -38,7 +38,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from protean.cli._ir_utils import load_domain_ir, load_ir_file
-from protean.cli.result import EXIT_FAILURE, EXIT_OK, emit_usage_error
+from protean.cli.result import EXIT_FAILURE, EXIT_OK, emit_usage_error, stdout_to_stderr
 from protean.exceptions import ConfigurationError, NoDomainException
 from protean.ir.config import CompatConfig, load_config
 from protean.ir.constants import canonical_ir_json
@@ -769,7 +769,8 @@ def check(
         raise typer.Exit(code=2) from exc
 
     try:
-        result = check_staleness(domain, Path(dir), config=config)
+        with stdout_to_stderr():
+            result = check_staleness(domain, Path(dir), config=config)
     except NoDomainException as exc:
         print(f"[red]Error:[/red] {exc.args[0]}")
         raise typer.Exit(code=2) from exc

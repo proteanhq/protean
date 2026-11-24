@@ -39,7 +39,12 @@ from protean.cli._helpers import (
     apply_domain_logging,
     handle_cli_exceptions,
 )
-from protean.cli.result import EXIT_FAILURE, emit_usage_error, route_logs_to_stderr
+from protean.cli.result import (
+    EXIT_FAILURE,
+    emit_usage_error,
+    route_logs_to_stderr,
+    stdout_to_stderr,
+)
 from protean.domain import Domain
 from protean.exceptions import NoDomainException
 from protean.upgrade import UpgradeFinding, run_upgrade_checks
@@ -166,7 +171,8 @@ def _validate_options(
 def _load_domain(domain_path: str) -> Domain:
     """Import the domain at ``domain_path``, or exit ``2`` on stderr."""
     try:
-        derived_domain = derive_domain(domain_path)
+        with stdout_to_stderr():
+            derived_domain = derive_domain(domain_path)
     except NoDomainException as exc:
         msg = f"Error loading Protean domain: {exc.args[0]}"
         logger.error(msg)
@@ -219,7 +225,8 @@ def _collect_findings(
         # introspect the configured databases. Element/config checks do not
         # require it, but the schema check does.
         with derived_domain.domain_context():
-            derived_domain.init(traverse=True)
+            with stdout_to_stderr():
+                derived_domain.init(traverse=True)
             return run_upgrade_checks(derived_domain)
     except (Exception, SystemExit) as exc:
         # CLI boundary: user domain code can raise anything, including a
