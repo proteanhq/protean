@@ -28,10 +28,14 @@ from typer.testing import CliRunner
 
 from protean.cli import app
 from protean.cli.dx import app as dx_app
+from tests.support.project_tests import passed_count, project_env, run_tests_in
 
 # These generate and start their own projects; the autouse domain fixture would
 # build an unrelated Domain per test for nothing.
 pytestmark = pytest.mark.no_test_domain
+
+# Real test files that the tests below copy into a generated project and run.
+_CHECKS = Path(__file__).parent / "project_checks"
 
 # Choices whose provider can start with nothing else running.
 OFFLINE_CHOICES: list[tuple[str, list[str]]] = [
@@ -70,33 +74,6 @@ def _generate(tmp_path: Path, extra: list[str], name: str = "scaffolded") -> Pat
     )
     assert result.exit_code == 0, f"protean new failed: {result.output}"
     return out / name
-
-
-def _subprocess_env(project: Path) -> dict[str, str]:
-    """Env for running the generated project uninstalled.
-
-    The project is not pip-installed, so its ``src/`` goes on ``PYTHONPATH``.
-    ``VIRTUAL_ENV`` is dropped so it cannot point the child at a different
-    interpreter or source tree than ``sys.executable``. ``PROTEAN_ENV`` and
-    ``PROTEAN_DEBUG`` are dropped too: Protean's pytest plugin only sets
-    ``PROTEAN_ENV`` with ``setdefault``, so a value already exported in the
-    parent shell would otherwise leak into the generated project's own test
-    run and make it non-deterministic. ``DATABASE_URL`` would point the
-    generated ``domain.toml`` at another database, and ``PYTEST_ADDOPTS``
-    could reorder or filter the child's tests.
-    """
-    src = str(project / "src")
-    existing = os.environ.get("PYTHONPATH", "")
-    env = {
-        **os.environ,
-        "PYTHONPATH": src + os.pathsep + existing if existing else src,
-    }
-    env.pop("VIRTUAL_ENV", None)
-    env.pop("PROTEAN_ENV", None)
-    env.pop("PROTEAN_DEBUG", None)
-    env.pop("DATABASE_URL", None)
-    env.pop("PYTEST_ADDOPTS", None)
-    return env
 
 
 class TestGeneratedProjectStarts:
@@ -170,7 +147,7 @@ class TestGeneratedProjectStarts:
         completed = subprocess.run(
             [sys.executable, "-m", "pytest", "-p", "no:randomly", "-q", "tests"],
             cwd=project,
-            env=_subprocess_env(project),
+            env=project_env(project),
             capture_output=True,
             text=True,
             check=False,
@@ -200,7 +177,7 @@ class TestGeneratedProjectStarts:
         completed = subprocess.run(
             [sys.executable, "-m", "pytest", "-p", "no:randomly", "-q", "tests"],
             cwd=project,
-            env=_subprocess_env(project),
+            env=project_env(project),
             capture_output=True,
             text=True,
             check=False,
@@ -238,52 +215,16 @@ class TestGeneratedProjectStarts:
         open for the whole session, under the per-test one, fails it.
         """
         project = _generate(tmp_path, extra)
-        (
-            project / "tests" / "scaffolded" / "application" / "test_isolation.py"
-        ).write_text(
-            "from scaffolded.domain import scaffolded as domain\n"
-            "from scaffolded.example.aggregate import Example\n"
-            "\n"
-            "\n"
-            "def test_1_writes_an_example():\n"
-            "    example = Example.create(name='Leaky')\n"
-            "    domain.repository_for(Example).add(example)\n"
-            "    assert domain.repository_for(Example).get(example.id).name == 'Leaky'\n"
-            "\n"
-            "\n"
-            "def test_2_sees_no_example():\n"
-            "    assert domain.repository_for(Example).query.all().total == 0\n"
-            "\n"
-            "\n"
-            "def test_3_runs_in_exactly_one_domain_context():\n"
-            "    from protean.utils.globals import _domain_context_stack\n"
-            "\n"
-            "    assert len(_domain_context_stack._var.get([])) == 1\n",
-            encoding="utf-8",
-        )
 
-        completed = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "pytest",
-                "-p",
-                "no:randomly",
-                "-q",
-                "tests/scaffolded/application/test_isolation.py",
-            ],
-            cwd=project,
-            env=_subprocess_env(project),
-            capture_output=True,
-            text=True,
-            check=False,
+        completed = run_tests_in(
+            project, [_CHECKS / "test_isolation.py"], "tests/scaffolded/application"
         )
 
         assert completed.returncode == 0, (
             f"Generated tests ({label}) leak data into each other:\n"
             f"{completed.stdout}\n{completed.stderr}"
         )
-        assert re.search(r"\b3 passed\b", completed.stdout), completed.stdout
+        assert passed_count(completed) == 3, completed.stdout
 
     def test_generated_suite_drops_the_schema_at_session_end(self, tmp_path):
         """The generated session fixture drops the tables it created.
@@ -298,7 +239,7 @@ class TestGeneratedProjectStarts:
         completed = subprocess.run(
             [sys.executable, "-m", "pytest", "-p", "no:randomly", "-q", "tests"],
             cwd=project,
-            env=_subprocess_env(project),
+            env=project_env(project),
             capture_output=True,
             text=True,
             check=False,
@@ -378,7 +319,7 @@ class TestGeneratedProjectStarts:
                 "src/scaffolded/domain.py:scaffolded",
             ],
             cwd=project,
-            env=_subprocess_env(project),
+            env=project_env(project),
             capture_output=True,
             text=True,
             check=False,
@@ -390,81 +331,18 @@ class TestGeneratedProjectStarts:
         )
 
 
-# Builds the generated project's shared value objects and prints one JSON
-# object recording, per case, the exception class raised (or None) and its
-# messages, or the resulting value.
-_SHARED_VALUE_OBJECTS = """
-import json, sys
-sys.path.insert(0, "src")
-from decimal import Decimal
-from scaffolded.domain import scaffolded as domain
-domain.init()
-
-def outcome(build):
-    try:
-        value = build()
-    except Exception as exc:
-        return {"raised": type(exc).__name__, "messages": getattr(exc, "messages", None)}
-    return {"raised": None, "value": value}
-
-with domain.domain_context():
-    from scaffolded.shared.value_objects import EmailAddress, Money
-
-    def money(op):
-        result = op()
-        return [type(result.amount).__name__, str(result.amount), result.currency]
-
-    usd, eur = Money(amount=Decimal("1"), currency="USD"), Money(amount=Decimal("1"), currency="EUR")
-    print(json.dumps({
-        "bad_email": outcome(lambda: EmailAddress(email="not-an-email").email),
-        "good_email": outcome(lambda: EmailAddress(email="a@example.com").email),
-        "add": outcome(lambda: money(lambda: Money(amount=Decimal("10.10"), currency="EUR").add(Money(amount=Decimal("0.20"), currency="EUR")))),
-        "subtract": outcome(lambda: money(lambda: Money(amount=Decimal("10.30"), currency="EUR").subtract(Money(amount=Decimal("0.20"), currency="EUR")))),
-        "add_mixed": outcome(lambda: usd.add(eur)),
-        "subtract_mixed": outcome(lambda: usd.subtract(eur)),
-    }))
-"""
-
-
-@pytest.fixture(scope="module")
-def outcomes(tmp_path_factory) -> dict:
-    """Run `_SHARED_VALUE_OBJECTS` once in a generated default project."""
-    project = _generate(tmp_path_factory.mktemp("shared_vos"), [])
-    completed = subprocess.run(
-        [sys.executable, "-c", _SHARED_VALUE_OBJECTS],
-        cwd=project,
-        env=_subprocess_env(project),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert completed.returncode == 0, completed.stderr
-    return json.loads(completed.stdout.strip().splitlines()[-1])
-
-
 class TestGeneratedSharedValueObjects:
-    """The generated `shared/value_objects.py` enforces its rules and adds and subtracts money exactly."""
+    def test_shared_value_objects_enforce_their_rules(self, tmp_path):
+        """The generated `shared/value_objects.py` rejects a bad email and adds
+        and subtracts money exactly, in one currency only."""
+        project = _generate(tmp_path, [])
 
-    def test_email_without_at_sign_is_rejected(self, outcomes):
-        assert outcomes["bad_email"]["raised"] == "ValidationError"
-        assert "email" in outcomes["bad_email"]["messages"]
+        result = run_tests_in(
+            project, [_CHECKS / "test_shared_value_objects.py"], "tests/scaffolded"
+        )
 
-    def test_valid_email_is_accepted(self, outcomes):
-        assert outcomes["good_email"] == {"raised": None, "value": "a@example.com"}
-
-    def test_money_adds_exactly_as_decimal(self, outcomes):
-        assert outcomes["add"] == {"raised": None, "value": ["Decimal", "10.30", "EUR"]}
-
-    def test_money_subtracts_exactly_as_decimal(self, outcomes):
-        assert outcomes["subtract"] == {
-            "raised": None,
-            "value": ["Decimal", "10.10", "EUR"],
-        }
-
-    @pytest.mark.parametrize("case", ["add_mixed", "subtract_mixed"])
-    def test_mixed_currencies_raise_validation_error(self, outcomes, case):
-        assert outcomes[case]["raised"] == "ValidationError"
-        assert "currency" in outcomes[case]["messages"]
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert passed_count(result) == 6, result.stdout
 
 
 class TestCommandsFindTheGeneratedDomain:
@@ -489,13 +367,13 @@ class TestCommandsFindTheGeneratedDomain:
 
 
 def _env_without_src(project: Path) -> dict[str, str]:
-    """`_subprocess_env` with the project's `src/` taken back off `PYTHONPATH`.
+    """`project_env` with the project's `src/` taken back off `PYTHONPATH`.
 
     A command run this way must find the domain through discovery alone, as it
     does when a developer runs it from the project root. `PROTEAN_DOMAIN` is
     dropped so a value exported in the parent shell cannot point it elsewhere.
     """
-    env = _subprocess_env(project)
+    env = project_env(project)
     env["PYTHONPATH"] = os.pathsep.join(
         entry
         for entry in env["PYTHONPATH"].split(os.pathsep)
