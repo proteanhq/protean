@@ -834,12 +834,12 @@ that an earlier step places keeps that cluster:
 2. A VO that an aggregate or entity holds in a field, including a list or dict
    field, goes to that aggregate.
 3. A VO that a command or event holds in a single-value field or a value-object
-   `Dict` field goes to the message's aggregate. Commands are scanned before
-   events, each in registration order.
+   `Dict` field goes to the message's aggregate. The builder scans commands
+   before events, each in registration order.
 4. A VO that a placed VO holds in a single-value field or a value-object `Dict`
    field goes to the holder's cluster. The builder visits VOs breadth-first,
    starting with the ones the first three steps placed, in the order they
-   placed them. It visits each VO once, so a cycle or a self-reference ends.
+   placed them. It visits each VO once.
 
 A `List` field on a command, an event or a VO does not place a VO. If none of
 the four steps places the VO, it appears only in the elements index.

@@ -2088,6 +2088,9 @@ class IRBuilder:
         ``vo_map``, in the order they were placed, and queues each value object
         it places behind them. A value object already in ``vo_map`` keeps its
         cluster and is not visited again, so a cycle or a self-reference ends.
+        The walk visits only registered value objects: an unregistered value
+        object is placed but its fields are not followed, whether an earlier
+        step or the walk placed it.
         """
         registry = self._domain._domain_registry
         registered = {
@@ -2104,7 +2107,8 @@ class IRBuilder:
                 vo_fqn = self._resolved_fqn(vo_cls)
                 if vo_fqn not in vo_map:
                     vo_map[vo_fqn] = agg_cls
-                    queue.append(vo_cls)
+                    if vo_fqn in registered:
+                        queue.append(registered[vo_fqn])
 
     def _held_value_objects(self, holder_cls: Any) -> list[type]:
         """Return the value object classes the fields of a message or value object hold.
@@ -3940,7 +3944,9 @@ class IRBuilder:
         checked: a VO that carries ``part_of``, one an aggregate or an entity
         holds in a field, one a command or an event holds in a single-value or
         value-object ``Dict`` field, and one a placed VO holds in such a field.
-        Emits one finding per offending field, naming it in the optional
+        A VO whose ``part_of`` names an abstract aggregate lands in that
+        abstract cluster and is not checked, even when a concrete aggregate
+        holds it in a field. Emits one finding per offending field, naming it in the optional
         ``field`` key (mirroring ``DEPRECATED_FIELD``).
         """
         abstract_fqns = self._abstract_aggregate_fqns()

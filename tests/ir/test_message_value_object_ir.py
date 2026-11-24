@@ -8,6 +8,7 @@ hold joins the message's aggregate cluster. A value object's own single-value
 field gets the same entry.
 """
 
+import copy
 import re
 from typing import Annotated
 
@@ -464,6 +465,16 @@ class SellerBinned(BaseEvent):
     bin = ValueObject(Bin)
 
 
+class BuyerBinsPacked(BaseEvent):
+    buyer_id = Identifier()
+    bins = Dict(value_type=ValueObject(Bin))
+
+
+class BinSeller(BaseCommand):
+    seller_id = Identifier()
+    bin = ValueObject(Bin)
+
+
 class TestMessageDictCluster:
     def test_command_and_event_dict_value_objects_join_the_message_cluster(
         self, test_domain
@@ -487,6 +498,19 @@ class TestMessageDictCluster:
         test_domain.register(SellerBinned, part_of=Seller)
         test_domain.init(traverse=False)
         assert _clusters_holding(test_domain.to_ir(), Bin) == [fqn(Buyer)]
+
+    def test_command_single_value_field_wins_over_an_earlier_event_dict(
+        self, test_domain
+    ):
+        # A dict pass before the single-value pass, or one pass in registration
+        # order across commands and events, would place Bin with Buyer.
+        test_domain.register(Bin)
+        test_domain.register(Buyer)
+        test_domain.register(BuyerBinsPacked, part_of=Buyer)
+        test_domain.register(Seller)
+        test_domain.register(BinSeller, part_of=Seller)
+        test_domain.init(traverse=False)
+        assert _clusters_holding(test_domain.to_ir(), Bin) == [fqn(Seller)]
 
 
 class Geo(BaseValueObject):
@@ -588,6 +612,23 @@ class TestValueObjectField:
         ir, index = held_by_aggregate
         assert _fields(index, Loose)["geo"] == {"kind": "standard", "type": "String"}
         assert _clusters_holding(ir, Far) == []
+
+    def test_diff_from_a_string_entry_is_a_breaking_type_change(
+        self, held_by_aggregate
+    ):
+        right, _ = held_by_aggregate
+        left = copy.deepcopy(right)
+        cluster = left["clusters"][fqn(Atlas)]
+        cluster["value_objects"][fqn(Place)]["fields"]["geo"] = {
+            "kind": "standard",
+            "type": "String",
+        }
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert [
+            (c.element_fqn, c.change_type, c.field_name)
+            for c in report.breaking_changes
+            if c.element_fqn == fqn(Place)
+        ] == [(fqn(Place), "field_type_changed", "geo")]
 
 
 class Leaf(BaseValueObject):

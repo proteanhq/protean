@@ -781,6 +781,24 @@ class Lowland(BaseAggregate):
     foothill = ValueObject(Foothill)
 
 
+class Crag(BaseValueObject):
+    peak = ValueObject(Peak)
+
+
+class Bluff(BaseValueObject):
+    peak = ValueObject(Peak)
+
+
+class Upland(BaseAggregate):
+    upland_id = Identifier(identifier=True)
+    crag = ValueObject(Crag)
+
+
+class Moor(BaseAggregate):
+    moor_id = Identifier(identifier=True)
+    bluff = ValueObject(Bluff)
+
+
 class TestWalkOrder:
     def test_walk_is_breadth_first(self, test_domain):
         # Depth-first from Highland would reach Peak through Range and Ridge
@@ -791,6 +809,17 @@ class TestWalkOrder:
             test_domain.register(vo_cls)
         test_domain.init(traverse=False)
         assert _clusters_holding(test_domain.to_ir(), Peak) == [fqn(Lowland)]
+
+    def test_walk_starts_in_placement_order(self, test_domain):
+        # Upland places Crag before Moor places Bluff, and both hold Peak.
+        # Bluff registers before Crag, so a walk that visits the last-placed
+        # value object first, or one in registration order, gives Peak to Moor.
+        test_domain.register(Upland)
+        test_domain.register(Moor)
+        for vo_cls in (Bluff, Crag, Peak):
+            test_domain.register(vo_cls)
+        test_domain.init(traverse=False)
+        assert _clusters_holding(test_domain.to_ir(), Peak) == [fqn(Upland)]
 
 
 class Node(BaseValueObject):
@@ -809,7 +838,9 @@ class TestSelfReference:
         test_domain.register(Node)
         test_domain.register(Tree)
         test_domain.init(traverse=False)
-        return test_domain.to_ir()
+        ir = test_domain.to_ir()
+        jsonschema.validate(ir, load_schema())
+        return ir
 
     def test_self_reference_is_a_value_object_entry(self, ir):
         cluster = ir["clusters"][fqn(Tree)]
@@ -829,7 +860,8 @@ class TestSelfReference:
         root = next(f for f in schema["fields"] if f["name"] == "root")
         _, record = root["type"]
         parent = next(f for f in record["fields"] if f["name"] == "parent")
-        assert parent["type"] == ["null", f"{record['namespace']}.Node"]
+        assert record["namespace"] == __name__
+        assert parent["type"] == ["null", f"{__name__}.Node"]
 
     def test_protobuf_refers_to_the_message(self, ir):
         with pytest.warns(RemovedInProtean020Warning):
@@ -881,6 +913,16 @@ class TestWalkReach:
         assert _clusters_holding(ir, Bracelet) == [fqn(Jeweller)]
         assert _clusters_holding(ir, Charm) == []
 
+    def test_unregistered_value_object_is_not_followed(self, test_domain):
+        # Seam is not registered, so its Pebble stays out of the cluster, the
+        # same as when an aggregate holds an unregistered value object directly.
+        for cls in (Vein, Pebble, QuarryField, Rock, Lode):
+            test_domain.register(cls)
+        test_domain.init(traverse=False)
+        ir = test_domain.to_ir()
+        assert _clusters_holding(ir, Vein) == [fqn(QuarryField)]
+        assert _clusters_holding(ir, Pebble) == []
+
 
 class Line(BaseValueObject):
     sku = String()
@@ -915,7 +957,9 @@ class TestPriceBookReproduction:
             test_domain.register(cls)
         test_domain.register(OrderPlaced, part_of=Order)
         test_domain.init(traverse=False)
-        return test_domain.to_ir()
+        ir = test_domain.to_ir()
+        jsonschema.validate(ir, load_schema())
+        return ir
 
     def test_cluster_lists_every_nested_value_object(self, ir):
         cluster = ir["clusters"][fqn(Order)]

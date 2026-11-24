@@ -154,7 +154,7 @@ metadata in `x-protean-*` extension fields:
 
 Value objects and entities referenced by an aggregate, value objects
 referenced by a command or event, and value objects referenced by another value
-object, are resolved as `$defs` with `$ref` pointers:
+object in an aggregate's cluster, are resolved as `$defs` with `$ref` pointers:
 
 ```json
 {
@@ -194,8 +194,9 @@ untyped `Dict()` stays a map of untyped values: `{"type": "object"}`,
 `{"type": "map", "values": "string"}` and `map<string, string>`.
 
 A value object can hold another value object, in a `ValueObject` field, a field
-annotated with the value object class, or a typed `Dict` field. The nested
-value object gets its own `$defs` entry, and the holder's field refers to it:
+annotated with the value object class, or a typed `Dict` field. When the
+holder is in an aggregate's cluster, the nested value object gets its own
+`$defs` entry, and the holder's field refers to it:
 
 ```python
 # fragment
