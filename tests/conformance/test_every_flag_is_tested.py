@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from protean.port.broker import BrokerCapabilities
 from protean.port.cache import CacheCapabilities
 from protean.port.event_store import EventStoreCapabilities
 from tests.conformance.flag_coverage import collect_items, untested_flags
@@ -60,6 +61,7 @@ def write_synthetic_suite(folder: Path) -> Path:
 # scratch folder to write a suite into.
 SUITES: list[tuple[type[Flag], Callable[[Path], Path]]] = [
     (SyntheticCapabilities, write_synthetic_suite),
+    (BrokerCapabilities, lambda _: Path(__file__).parent / "broker"),
     (CacheCapabilities, lambda _: Path(__file__).parent / "cache"),
     (EventStoreCapabilities, lambda _: Path(__file__).parent / "event_store"),
 ]

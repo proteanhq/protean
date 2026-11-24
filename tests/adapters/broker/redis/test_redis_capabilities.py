@@ -35,19 +35,12 @@ class TestRedisBrokerCapabilities:
         assert BrokerCapabilities.STREAM_RETENTION in broker.capabilities
         assert expected_caps in broker.capabilities
 
-        # Should not have some advanced capabilities it does not implement.
-        assert BrokerCapabilities.REPLAY not in broker.capabilities
-        assert BrokerCapabilities.ENTERPRISE_STREAMING not in broker.capabilities
+        # Every flag of the largest set
+        assert BrokerCapabilities.ENTERPRISE_STREAMING in broker.capabilities
 
         # At least one flag of a set
         assert bool(broker.capabilities & BrokerCapabilities.MESSAGE_ORDERING)
         assert bool(
             broker.capabilities
-            & (BrokerCapabilities.BLOCKING_READ | BrokerCapabilities.REPLAY)
+            & (BrokerCapabilities.BLOCKING_READ | BrokerCapabilities.STREAM_RETENTION)
         )
-        # Advertises STREAM_PARTITIONING but not REPLAY.
-        assert bool(
-            broker.capabilities
-            & (BrokerCapabilities.REPLAY | BrokerCapabilities.STREAM_PARTITIONING)
-        )
-        assert not (broker.capabilities & BrokerCapabilities.REPLAY)

@@ -77,11 +77,6 @@ class TestTestRunner:
         runner = TestRunner()
         assert runner.exit_status == 0
 
-        # Broker capability mappings
-        assert runner.broker_capabilities
-        assert runner.capability_hierarchy
-        assert runner.capability_markers
-
         # Database capability mappings
         assert runner.database_capabilities == {
             "MEMORY": "IN_MEMORY",
@@ -187,8 +182,8 @@ class TestTestRunner:
         """Test test suite generation."""
         suites = mock_runner.generate_test_suites()
 
-        # The two full matrix suites, one per database, one per broker, one
-        # per non-memory event store, and one per conformance pair in the
+        # The two full matrix suites, one per database, one per non-memory
+        # event store, and one per conformance pair in the
         # manifest. Every term is derived, so adding an adapter to TEST_CONFIGS
         # or a pair to the manifest that the generator does not pick up fails
         # here.
@@ -200,21 +195,17 @@ class TestTestRunner:
             for p in e.conformance
         }
         assert pairs
-        expected = (
-            2
-            + len(TEST_CONFIGS["databases"])
-            + len(TEST_CONFIGS["brokers"])
-            + len(event_stores)
-            + len(pairs)
-        )
+        expected = 2 + len(TEST_CONFIGS["databases"]) + len(event_stores) + len(pairs)
         assert len(suites) == expected
         suite_names = [suite.name for suite in suites]
 
         assert suite_names[:2] == [FULL_MATRIX_IN_MEMORY, FULL_MATRIX_SERVICES]
         assert all(f"Database: {db}" in suite_names for db in TEST_CONFIGS["databases"])
-        assert all(
-            f"Broker: {broker}" in suite_names for broker in TEST_CONFIGS["brokers"]
-        )
+        # The broker suite runs on Redis and Redis PubSub as conformance pairs.
+        # The core run covers the inline broker.
+        assert "Conformance: broker/redis" in suite_names
+        assert "Conformance: broker/redis_pubsub" in suite_names
+        assert not any(name.startswith("Broker: ") for name in suite_names)
         assert "Event Store: MESSAGE_DB" in suite_names
 
     def test_run_single_suite_success(self, mock_runner, capsys):
@@ -243,7 +234,8 @@ class TestTestRunner:
         "category,expected_runs",
         [
             ("DATABASE", len(TEST_CONFIGS["databases"])),
-            ("BROKER", len(TEST_CONFIGS["brokers"])),
+            # A conformance run per broker but inline.
+            ("BROKER", len(TEST_CONFIGS["brokers"]) - 1),
             # A marker run per store, and a conformance run per store but memory.
             ("EVENTSTORE", 2 * len(TEST_CONFIGS["eventstores"]) - 1),
         ],
@@ -253,6 +245,14 @@ class TestTestRunner:
         result = mock_runner.run_category_tests(category)
         assert result == 0
         assert mock_runner.run_command.call_count == expected_runs
+
+    def test_broker_category_runs_the_conformance_suite_per_broker(self, mock_runner):
+        mock_runner.run_category_tests("BROKER")
+        commands = [call.args[0] for call in mock_runner.run_command.call_args_list]
+        assert commands
+        assert all("tests/conformance/broker" in cmd for cmd in commands)
+        adapters = [cmd[cmd.index("--adapter") + 1] for cmd in commands]
+        assert adapters == ["redis", "redis_pubsub"]
 
     def test_run_category_tests_invalid_category(self, mock_runner):
         """Test run_category_tests with invalid category returns 0."""
@@ -1761,30 +1761,28 @@ class TestPortConformance:
     against the suites under tests/conformance/.
     """
 
-    def test_reports_unmarked_then_one_row_per_flag(self, capsys):
+    def test_the_broker_suite_passes_every_declared_flag_on_inline(self, capsys):
         not_declared = [
             "MESSAGE_ORDERING",
             "BLOCKING_READ",
-            "REPLAY",
             "STREAM_PARTITIONING",
             "STREAM_RETENTION",
         ]
         cli_test_adapter(port="broker", provider="inline")
 
         rows = _report_rows(capsys.readouterr().out)
-        assert rows[0] == ("unmarked", "PASS", "1/1")
         # Declared flags in definition order, then the undeclared ones.
         flag_names = [flag.name for flag in BrokerCapabilities]
-        assert [name for name, _, _ in rows[1:]] == [
+        assert [name for name, _, _ in rows] == ["unmarked"] + [
             name for name in flag_names if name not in not_declared
         ] + not_declared
-        skipped = [name for name, status, detail in rows if detail == "(not declared)"]
-        assert skipped == not_declared
-        assert all(status == "SKIP" for name, status, _ in rows if name in skipped)
-        # A declared flag with no gated test yet shows as not collected.
-        declared_rows = [r for r in rows[1:] if r[0] not in skipped]
-        assert declared_rows
-        assert all(r[1:] == ("SKIP", "(no tests collected)") for r in declared_rows)
+        assert [
+            name for name, status, detail in rows if detail == "(not declared)"
+        ] == not_declared
+        assert all(status == "SKIP" for name, status, _ in rows if name in not_declared)
+        assert all(
+            status == "PASS" for name, status, _ in rows if name not in not_declared
+        )
 
     def test_the_event_store_suite_passes_every_declared_flag_on_memory(self, capsys):
         cli_test_adapter(port="event_store", provider="memory")

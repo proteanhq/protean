@@ -1,7 +1,9 @@
 import pytest
 
+from protean.port.broker import BrokerCapabilities
 
-@pytest.mark.reliable_messaging
+
+@pytest.mark.requires(BrokerCapabilities.ACK_NACK)
 def test_nack_unknown_message(broker):
     """Test that nacking an unknown message returns False"""
     stream = "test_stream"
@@ -16,7 +18,7 @@ def test_nack_unknown_message(broker):
     assert nack_result is False
 
 
-@pytest.mark.reliable_messaging
+@pytest.mark.requires(BrokerCapabilities.ACK_NACK)
 def test_nack_already_processed_message(broker):
     """Test that nacking an already acknowledged message returns False"""
     stream = "test_stream"
@@ -37,7 +39,7 @@ def test_nack_already_processed_message(broker):
     assert nack_result is False
 
 
-@pytest.mark.reliable_messaging
+@pytest.mark.requires(BrokerCapabilities.ACK_NACK)
 def test_mixed_ack_nack_workflow(broker):
     """Test mixed ack and nack operations"""
     stream = "test_stream"
@@ -65,7 +67,7 @@ def test_mixed_ack_nack_workflow(broker):
     assert nack_result is True
 
 
-@pytest.mark.reliable_messaging
+@pytest.mark.requires(BrokerCapabilities.ACK_NACK)
 def test_nack_nonexistent_consumer_group(broker):
     """Test that nacking from a non-existent consumer group returns False"""
     stream = "test_stream"
@@ -83,7 +85,7 @@ def test_nack_nonexistent_consumer_group(broker):
     assert nack_result is False
 
 
-@pytest.mark.reliable_messaging
+@pytest.mark.requires(BrokerCapabilities.ACK_NACK)
 def test_nack_message_ownership_validation(broker):
     """Test that messages can only be nacked by the consumer group that received them"""
     stream = "test_stream"
@@ -108,7 +110,7 @@ def test_nack_message_ownership_validation(broker):
     assert nack_result is True
 
 
-@pytest.mark.reliable_messaging
+@pytest.mark.requires(BrokerCapabilities.ACK_NACK)
 def test_nack_with_invalid_consumer_group(broker):
     """Test nack with non-existent consumer group"""
     stream = "test_stream"
@@ -119,7 +121,7 @@ def test_nack_with_invalid_consumer_group(broker):
     assert result is False
 
 
-@pytest.mark.reliable_messaging
+@pytest.mark.requires(BrokerCapabilities.ACK_NACK)
 def test_nack_with_wrong_message_ownership(broker):
     """Test nack with message not owned by consumer group"""
     stream = "test_stream"
@@ -136,7 +138,7 @@ def test_nack_with_wrong_message_ownership(broker):
     assert result is False
 
 
-@pytest.mark.reliable_messaging
+@pytest.mark.requires(BrokerCapabilities.ACK_NACK)
 def test_ack_message_already_nacked(broker):
     """Test ack when message already nacked"""
     stream = "test_stream"
@@ -159,7 +161,7 @@ def test_ack_message_already_nacked(broker):
     assert ack_result is True
 
 
-@pytest.mark.reliable_messaging
+@pytest.mark.requires(BrokerCapabilities.ACK_NACK)
 def test_nack_message_already_acknowledged(broker):
     """Test nack when message already acknowledged"""
     stream = "test_stream"

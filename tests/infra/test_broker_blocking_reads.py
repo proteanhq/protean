@@ -250,6 +250,16 @@ class TestBlockingReadAdapter:
         assert len(reads) == 2
         assert reads[0] == reads[1]
 
+    def test_a_connection_error_is_logged_before_the_retry(
+        self, blocking_adapter, caplog
+    ):
+        blocking_adapter.blocking_errors = [ConnectionError("connection gone")]
+
+        with caplog.at_level("WARNING", logger="protean.infra.broker"):
+            Broker(blocking_adapter).read_blocking("s", "g", "c")
+
+        assert "Connection error during read_blocking: connection gone" in caplog.text
+
     @pytest.mark.parametrize(
         ("operation", "args"),
         [("read_blocking", ("s",)), ("read_blocking_streams", (["a", "b"],))],

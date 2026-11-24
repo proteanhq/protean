@@ -1,9 +1,9 @@
-"""Tests for the Redis broker DLQ management API.
+"""Tests for the Redis broker DLQ management API that only Redis has.
 
-Backfills coverage for the DLQ methods (`dlq_list`, `dlq_get`, `dlq_replay`,
-`dlq_replay_all`, `dlq_purge`, `dlq_trim`, `dlq_depth`), which had no Redis-side
-tests. Covers the core DLQ operations also tested in the inline broker's
-``test_dlq_management.py``, though not all edge cases are replicated here.
+The broker conformance suite checks the shared DLQ behaviour on every broker
+that declares ``DEAD_LETTER_QUEUE``. These tests cover the Redis-only cases:
+stream-ID lookups, trimming by the millisecond in a stream ID, keys that are
+not streams, and server errors.
 """
 
 import time
@@ -53,31 +53,6 @@ def _at_millisecond_of(dlq_id: str) -> datetime:
 
 @pytest.mark.redis
 class TestRedisDLQManagement:
-    def test_dlq_list_returns_entries_across_streams(self, test_domain):
-        broker = _broker(test_domain)
-        _seed(
-            broker,
-            "orders:dlq",
-            {"data": "one"},
-            original_stream="orders",
-            original_id="o1",
-        )
-        _seed(
-            broker,
-            "payments:dlq",
-            {"data": "two"},
-            original_stream="payments",
-            original_id="p1",
-        )
-
-        entries = broker.dlq_list(["orders:dlq", "payments:dlq"])
-        assert len(entries) == 2
-        assert {e.stream for e in entries} == {"orders", "payments"}
-
-    def test_dlq_list_empty_returns_empty(self, test_domain):
-        broker = _broker(test_domain)
-        assert broker.dlq_list(["nonexistent:dlq"]) == []
-
     def test_dlq_list_raises_for_a_key_that_is_not_a_stream(self, test_domain):
         broker = _broker(test_domain)
         broker._client.set("orders:dlq", "not-a-stream")
@@ -105,37 +80,6 @@ class TestRedisDLQManagement:
         assert len(entries) == 1
         assert entries[0].stream == "orders"
 
-    def test_dlq_list_respects_limit(self, test_domain):
-        broker = _broker(test_domain)
-        for i in range(5):
-            _seed(
-                broker,
-                "orders:dlq",
-                {"i": i},
-                original_stream="orders",
-                original_id=f"o{i}",
-            )
-        assert len(broker.dlq_list(["orders:dlq"], limit=3)) == 3
-
-    def test_dlq_get_found(self, test_domain):
-        broker = _broker(test_domain)
-        dlq_id = _seed(
-            broker,
-            "orders:dlq",
-            {"key": "value"},
-            original_stream="orders",
-            original_id="o1",
-            consumer_group="g1",
-        )
-
-        entry = broker.dlq_get("orders:dlq", dlq_id)
-        assert entry is not None
-        assert entry.dlq_id == dlq_id
-        assert entry.original_id == "o1"
-        assert entry.stream == "orders"
-        assert entry.consumer_group == "g1"
-        assert entry.payload["key"] == "value"
-
     def test_dlq_get_not_found(self, test_domain):
         broker = _broker(test_domain)
         _seed(
@@ -143,71 +87,9 @@ class TestRedisDLQManagement:
         )
         assert broker.dlq_get("orders:dlq", "9999999999999-0") is None
 
-    def test_dlq_replay_moves_message_to_target(self, test_domain):
-        broker = _broker(test_domain)
-        dlq_id = _seed(
-            broker,
-            "orders:dlq",
-            {"amount": 10},
-            original_stream="orders",
-            original_id="o1",
-        )
-
-        assert broker.dlq_replay("orders:dlq", dlq_id, "orders") is True
-        # Removed from the DLQ...
-        assert broker.dlq_get("orders:dlq", dlq_id) is None
-        # ...and republished (without DLQ metadata) to the target stream.
-        messages = broker.read("orders", "replay-group", limit=10)
-        assert len(messages) == 1
-        _, replayed_payload = messages[0]
-        assert replayed_payload["amount"] == 10
-        assert "_dlq_metadata" not in replayed_payload
-
-    def test_dlq_replay_all(self, test_domain):
-        broker = _broker(test_domain)
-        for i in range(3):
-            _seed(
-                broker,
-                "orders:dlq",
-                {"i": i},
-                original_stream="orders",
-                original_id=f"o{i}",
-            )
-
-        assert broker.dlq_replay_all("orders:dlq", "orders") == 3
-        assert broker.dlq_depth("orders:dlq") == 0
-        assert len(broker.read("orders", "replay-group", limit=10)) == 3
-
-    def test_dlq_purge(self, test_domain):
-        broker = _broker(test_domain)
-        for i in range(2):
-            _seed(
-                broker,
-                "orders:dlq",
-                {"i": i},
-                original_stream="orders",
-                original_id=f"o{i}",
-            )
-
-        assert broker.dlq_purge("orders:dlq") == 2
-        assert broker.dlq_depth("orders:dlq") == 0
-
     def test_dlq_purge_empty_stream(self, test_domain):
         broker = _broker(test_domain)
         assert broker.dlq_purge("nonexistent:dlq") == 0
-
-    def test_dlq_depth(self, test_domain):
-        broker = _broker(test_domain)
-        assert broker.dlq_depth("orders:dlq") == 0
-        for i in range(2):
-            _seed(
-                broker,
-                "orders:dlq",
-                {"i": i},
-                original_stream="orders",
-                original_id=f"o{i}",
-            )
-        assert broker.dlq_depth("orders:dlq") == 2
 
     def test_dlq_trim_removes_entries_below_cutoff(self, test_domain):
         broker = _broker(test_domain)

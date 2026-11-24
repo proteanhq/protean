@@ -59,7 +59,6 @@ def _entry(name: str, lane: str = "touched", **kwargs) -> AdapterEntry:
         "paths": [],
         "markers": [],
         "databases": [],
-        "brokers": [],
         "stores": [],
     }
     fields.update(kwargs)
@@ -117,13 +116,6 @@ class TestManifestIsCurrent:
                 ],
             ),
             (
-                "brokers",
-                [
-                    "src/protean/adapters/broker/__init__.py",
-                    "src/protean/infra/registry.py",
-                ],
-            ),
-            (
                 "stores",
                 [
                     "src/protean/adapters/event_store/__init__.py",
@@ -138,15 +130,48 @@ class TestManifestIsCurrent:
         self, manifest, suite, shared
     ):
         # Every database adapter loads through Databases and the DAO and
-        # provider ports, every broker through the Brokers collection, and
-        # every event store through the EventStore service and its port.
-        # Every database, broker and event store is resolved by
-        # its adapter registry. A change to one of them must run every such
+        # provider ports, and every event store through the EventStore service
+        # and its port. Every database and event store is resolved by its
+        # adapter registry. A change to one of them must run every such
         # adapter.
         missing = [
             f"{entry.name}: {path}"
             for entry in manifest.adapters
             if getattr(entry, suite)
+            for path in shared
+            if not entry.matches(path)
+        ]
+        assert not missing, (
+            f"Add these shared modules to their entry's paths in "
+            f"{ADAPTER_MANIFEST.name}: {missing}"
+        )
+
+    def test_every_broker_adapter_includes_the_shared_modules_it_runs_on(
+        self, manifest
+    ):
+        # Brokers have no capability suite, so an entry counts as a broker
+        # adapter when it names a broker module. Every broker loads through the
+        # Brokers collection, which resolves its class through the registry,
+        # and every call goes through the Broker service to the broker port.
+        shared = [
+            "src/protean/adapters/broker/__init__.py",
+            "src/protean/infra/broker.py",
+            "src/protean/infra/registry.py",
+            "src/protean/port/broker.py",
+        ]
+        broker_entries = [
+            entry
+            for entry in manifest.adapters
+            if any(p.startswith("src/protean/adapters/broker/") for p in entry.paths)
+        ]
+        assert {e.name for e in broker_entries} >= {
+            "memory",
+            "redis-broker",
+            "redis-pubsub",
+        }
+        missing = [
+            f"{entry.name}: {path}"
+            for entry in broker_entries
             for path in shared
             if not entry.matches(path)
         ]
@@ -223,13 +248,17 @@ class TestManifestIsCurrent:
     def test_every_suite_is_one_full_runs(self, manifest):
         for entry in manifest.adapters:
             assert set(entry.databases) <= set(TEST_CONFIGS["databases"])
-            assert set(entry.brokers) <= set(TEST_CONFIGS["brokers"])
             assert set(entry.stores) <= set(TEST_CONFIGS["eventstores"])
 
     def test_every_runnable_adapter_runs_something(self, manifest):
         for entry in manifest.adapters:
             if entry.lane in ("pr", "touched"):
-                assert entry.markers or entry.databases or entry.brokers or entry.stores
+                assert (
+                    entry.markers
+                    or entry.databases
+                    or entry.stores
+                    or entry.conformance
+                )
 
     def test_the_pr_lane_is_postgres_and_redis(self, manifest):
         assert {e.leg for e in manifest.pr_adapters()} == {"postgresql", "redis"}
@@ -454,6 +483,8 @@ class TestLoadAdapterManifest:
         names = [run.name for e in manifest.adapters for run in e.conformance]
         assert names == [
             "Conformance: event_store/sql (postgresql)",
+            "Conformance: broker/redis",
+            "Conformance: broker/redis_pubsub",
             "Conformance: cache/redis",
             "Conformance: event_store/sql",
             "Conformance: event_store/message_db",
@@ -599,8 +630,8 @@ class TestBuildAdapterSuites:
         suites = build_adapter_suites(TestRunner(), manifest.resolve(["redis"]))
         assert [s.name for s in suites] == [
             "Marker: redis",
-            "Broker: REDIS",
-            "Broker: REDIS_PUBSUB",
+            "Conformance: broker/redis",
+            "Conformance: broker/redis_pubsub",
             "Conformance: cache/redis",
         ]
 
@@ -610,7 +641,6 @@ class TestBuildAdapterSuites:
             "x",
             markers=["postgresql"],
             databases=["POSTGRESQL"],
-            brokers=["REDIS"],
             stores=["MESSAGE_DB"],
         )
         by_name = {s.name: s.command for s in build_adapter_suites(runner, [entry])}
@@ -622,9 +652,6 @@ class TestBuildAdapterSuites:
         database = by_name["Database: POSTGRESQL"]
         assert database[-1] == "--db=POSTGRESQL"
         assert runner.get_database_marker_expression("POSTGRESQL") in database
-
-        broker = by_name["Broker: REDIS"]
-        assert broker[-1] == "--broker=REDIS"
 
         store = by_name["Event Store: MESSAGE_DB"]
         assert store[-3:] == ["-m", "eventstore", "--store=MESSAGE_DB"]

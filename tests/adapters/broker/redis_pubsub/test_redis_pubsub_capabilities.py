@@ -36,6 +36,6 @@ class TestRedisPubSubBrokerCapabilities:
             & (
                 BrokerCapabilities.ACK_NACK
                 | BrokerCapabilities.MESSAGE_ORDERING
-                | BrokerCapabilities.REPLAY
+                | BrokerCapabilities.STREAM_PARTITIONING
             )
         )

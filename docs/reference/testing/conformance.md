@@ -26,11 +26,11 @@ The Protean repository has one folder per port under `tests/conformance/`:
 `tests/conformance/conftest.py`. pytest loads it as the folder's `conftest.py`,
 so you do not register it.
 
-The `cache` folder holds the cache suite. Each of its tests names the
-`CacheCapabilities` flags it needs. The `event_store` folder holds the
-event-store suite, described in
-[The event-store suite](#the-event-store-suite). The `database` and `broker`
-folders each hold one placeholder test until their port's suite moves in. The
+The `broker` and `cache` folders hold the broker and cache suites. Each of
+their tests names the `BrokerCapabilities` or `CacheCapabilities` flags it
+needs. The `event_store` folder holds the event-store suite, described in
+[The event-store suite](#the-event-store-suite). The `database` folder holds
+one placeholder test until the database suite moves in. The
 database suite is still in `tests/adapters/database/generic/`, and
 `protean test test-adapter` runs it. For the other three ports,
 `protean test test-adapter --port <port>` runs the port's folder; see

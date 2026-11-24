@@ -708,3 +708,70 @@ class TestTheEventStoreSuite:
         assert found["test_returns_only_the_streams_of_the_exact_category[plain]"] == (
             "passed"
         )
+
+
+REGISTER_OUT_OF_ORDER_BROKER = """
+from protean.infra.registry import brokers
+
+brokers.register(
+    "out_of_order", "tests.conformance.out_of_order_broker.OutOfOrderBroker"
+)
+"""
+
+
+@pytest.fixture
+def broker_suite(tmp_path: Path) -> Path:
+    """The real broker suite, with a broker that reverses each read."""
+    root = tmp_path / "conformance"
+    root.mkdir()
+    (root / "__init__.py").write_text("")
+    shutil.copy(PLUGIN, root / "conftest.py")
+    shutil.copytree(
+        CONFORMANCE_DIR / "broker",
+        root / "broker",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    (tmp_path / "conftest.py").write_text(REGISTER_OUT_OF_ORDER_BROKER)
+    (tmp_path / "pytest.ini").write_text("[pytest]\naddopts = --strict-markers\n")
+    return tmp_path
+
+
+class TestTheBrokerSuite:
+    def test_fails_a_broker_that_declares_message_ordering_and_reorders(
+        self, broker_suite
+    ):
+        result = run(
+            broker_suite,
+            "conformance/broker",
+            "--port",
+            "broker",
+            "--adapter",
+            "out_of_order",
+        )
+
+        assert result.returncode == 1, result.stdout + result.stderr
+        failed = {
+            line.split(" - ")[0].removeprefix("FAILED ")
+            for line in result.stdout.splitlines()
+            if line.startswith("FAILED ")
+        }
+        module = "conformance/broker/test_message_ordering.py"
+        assert failed == {
+            f"{module}::test_one_read_returns_messages_in_publish_order",
+            f"{module}::test_successive_reads_continue_in_publish_order",
+        }
+        assert outcomes(result)["test_read_multiple_messages"] == "passed"
+
+    def test_skips_a_test_whose_flag_the_broker_does_not_declare(self, broker_suite):
+        result = run(
+            broker_suite,
+            "conformance/broker/test_blocking_read.py",
+            "--port",
+            "broker",
+            "--adapter",
+            "inline",
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        reasons = [reason for reason in outcomes(result).values() if reason != "passed"]
+        assert reasons == ["inline does not declare BLOCKING_READ"] * 3

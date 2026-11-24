@@ -77,7 +77,6 @@ class BrokerCapabilities(Flag):
 
     # Tier 4: Advanced Features (Various dependencies)
     DEAD_LETTER_QUEUE = auto()  # Handle failed messages (depends on ACK_NACK)
-    REPLAY = auto()  # Re-read historical messages (depends on PERSISTENCE)
     STREAM_PARTITIONING = auto()  # Partition streams for scalability
     STREAM_RETENTION = auto()  # Trim stream entries every consumer group acknowledged
 
@@ -93,7 +92,6 @@ class BrokerCapabilities(Flag):
     ENTERPRISE_STREAMING = (
         ORDERED_MESSAGING
         | DEAD_LETTER_QUEUE
-        | REPLAY
         | STREAM_PARTITIONING
         | STREAM_RETENTION
         | BLOCKING_READ

@@ -10,8 +10,6 @@ import pytest
 from protean.core.unit_of_work import UnitOfWork
 from protean.domain import Domain
 
-from ..elements import Person, PersonAdded
-
 
 @pytest.mark.no_test_domain
 class TestBrokerRouting:
@@ -29,8 +27,6 @@ class TestBrokerRouting:
         domain.config["event_processing"] = "sync"
         domain.config["message_processing"] = "sync"
 
-        domain.register(Person)
-        domain.register(PersonAdded, part_of=Person)
         domain.init(traverse=False)
 
         with domain.domain_context():

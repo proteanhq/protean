@@ -4,6 +4,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.subscriber import BaseSubscriber
 from protean.fields import Identifier, String
+from protean.port.broker import BrokerCapabilities
 from protean.server import Engine
 from protean.utils import fqn
 from protean.utils.mixins import handle
@@ -61,7 +62,7 @@ def register_elements(test_domain):
 class TestConsumerGroupCreation:
     """Test consumer group creation functionality"""
 
-    @pytest.mark.simple_queuing
+    @pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
     def test_consumer_group_created_on_engine_initialization(self, test_domain):
         """Test that consumer groups are created when engine is initialized"""
         Engine(test_domain, test_mode=True)
@@ -83,7 +84,7 @@ class TestConsumerGroupCreation:
         assert user_subscriber_fqn in consumer_groups
         assert order_subscriber_fqn in consumer_groups
 
-    @pytest.mark.simple_queuing
+    @pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
     def test_consumer_group_structure(self, test_domain):
         """Test that consumer groups have the correct structure"""
         Engine(test_domain, test_mode=True)
@@ -103,7 +104,7 @@ class TestConsumerGroupCreation:
         assert isinstance(group_info["consumer_count"], int)
         assert group_info["consumer_count"] == 0  # No active consumers yet
 
-    @pytest.mark.simple_queuing
+    @pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
     def test_multiple_engines_create_same_groups(self, test_domain):
         """Test that multiple engines create the same consumer groups"""
         Engine(test_domain, test_mode=True)
@@ -118,7 +119,7 @@ class TestConsumerGroupCreation:
         assert user_subscriber_fqn in consumer_groups
         assert order_subscriber_fqn in consumer_groups
 
-    @pytest.mark.simple_queuing
+    @pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
     def test_consumer_group_names_use_subscriber_fqn(self, test_domain):
         """Test that consumer group names use the subscriber's fully qualified name"""
         Engine(test_domain, test_mode=True)
@@ -139,7 +140,7 @@ class TestConsumerGroupCreation:
         assert "test_consumer_group_creation" in order_subscriber_fqn
         assert "OrderSubscriber" in order_subscriber_fqn
 
-    @pytest.mark.simple_queuing
+    @pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
     def test_consumer_groups_are_consistent_across_calls(self, test_domain):
         """Test that the broker reports the same consumer groups across calls"""
         Engine(test_domain, test_mode=True)
@@ -160,7 +161,7 @@ class TestConsumerGroupCreation:
         assert group1["created_at"] == group2["created_at"]
         assert group1["consumer_count"] == group2["consumer_count"]
 
-    @pytest.mark.simple_queuing
+    @pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
     def test_create_group_is_idempotent(self, test_domain):
         """Test that _create_group is idempotent"""
         Engine(test_domain, test_mode=True)
@@ -181,7 +182,7 @@ class TestConsumerGroupCreation:
 
         assert created_at_before == created_at_after
 
-    @pytest.mark.simple_queuing
+    @pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
     def test_different_subscribers_create_different_groups(self, test_domain):
         """Test that different subscribers create different consumer groups"""
         Engine(test_domain, test_mode=True)
@@ -205,7 +206,7 @@ class TestConsumerGroupCreation:
         assert "created_at" in user_group
         assert "created_at" in order_group
 
-    @pytest.mark.simple_queuing
+    @pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
     def test_data_reset_clears_consumer_groups(self, test_domain):
         """Test that clear() removes consumer groups"""
         Engine(test_domain, test_mode=True)
@@ -224,7 +225,7 @@ class TestConsumerGroupCreation:
         assert len(info_after) == 0
 
 
-@pytest.mark.simple_queuing
+@pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
 def test_consumer_groups_are_keyed_by_group_name(broker):
     """_consumer_groups() returns one entry per created group, keyed by its name"""
     broker._create_group("s", "g1")

@@ -14,7 +14,6 @@ class TestBrokerCapabilities:
         assert BrokerCapabilities.MESSAGE_ORDERING
         assert BrokerCapabilities.BLOCKING_READ
         assert BrokerCapabilities.DEAD_LETTER_QUEUE
-        assert BrokerCapabilities.REPLAY
         assert BrokerCapabilities.STREAM_PARTITIONING
         assert BrokerCapabilities.STREAM_RETENTION
 
@@ -72,7 +71,6 @@ class TestBrokerCapabilities:
         assert BrokerCapabilities.MESSAGE_ORDERING in capabilities
         assert BrokerCapabilities.BLOCKING_READ in capabilities
         assert BrokerCapabilities.DEAD_LETTER_QUEUE in capabilities
-        assert BrokerCapabilities.REPLAY in capabilities
         assert BrokerCapabilities.STREAM_PARTITIONING in capabilities
         assert BrokerCapabilities.STREAM_RETENTION in capabilities
 
@@ -102,7 +100,7 @@ class TestBrokerCapabilities:
 
         assert BrokerCapabilities.PUBLISH in without_dlq
         assert BrokerCapabilities.DEAD_LETTER_QUEUE not in without_dlq
-        assert BrokerCapabilities.REPLAY in without_dlq
+        assert BrokerCapabilities.STREAM_RETENTION in without_dlq
 
     def test_capability_checks_with_flag_operators(self):
         """`in` checks every flag of a set, and `&` finds a shared flag."""
@@ -111,14 +109,14 @@ class TestBrokerCapabilities:
         # Should have individual capabilities
         assert BrokerCapabilities.PUBLISH in reliable
         assert BrokerCapabilities.ACK_NACK in reliable
-        assert BrokerCapabilities.REPLAY not in reliable
+        assert BrokerCapabilities.BLOCKING_READ not in reliable
 
         # Should have all basic capabilities
         basic = BrokerCapabilities.PUBLISH | BrokerCapabilities.SUBSCRIBE
         assert basic in reliable
 
         # Should have some advanced capabilities
-        advanced = BrokerCapabilities.REPLAY | BrokerCapabilities.ACK_NACK
+        advanced = BrokerCapabilities.BLOCKING_READ | BrokerCapabilities.ACK_NACK
         assert (reliable & advanced) == BrokerCapabilities.ACK_NACK
 
         # Should not have all advanced capabilities
@@ -126,7 +124,7 @@ class TestBrokerCapabilities:
 
         # Shares no flag with a set it lacks entirely
         assert not reliable & (
-            BrokerCapabilities.REPLAY | BrokerCapabilities.STREAM_PARTITIONING
+            BrokerCapabilities.BLOCKING_READ | BrokerCapabilities.STREAM_PARTITIONING
         )
 
         # The empty set is in every set and shares no flag with any

@@ -97,27 +97,6 @@ def test_reliable_messaging_broker_publish_generates_uuid_format(broker):
 # ============= Consuming Tests =============
 
 
-def test_get_next_basic_consumption(broker):
-    """Test basic message consumption."""
-    stream = "test_stream"
-    consumer_group = "test_group"
-    message = {"foo": "bar"}
-
-    # Publish a message
-    identifier = broker.publish(stream, message)
-
-    # Consume the message
-    result = broker.get_next(stream, consumer_group)
-    assert result is not None
-    retrieved_id, retrieved_msg = result
-    assert retrieved_id == identifier
-    assert retrieved_msg == message
-
-    # No more messages available
-    result = broker.get_next(stream, consumer_group)
-    assert result is None
-
-
 def test_reliable_messaging_broker_retrieved_message_has_uuid_identifier(broker):
     """Test that retrieved messages have UUID identifiers."""
     stream = "test_stream"
@@ -166,37 +145,6 @@ def test_reliable_messaging_broker_get_next_generates_uuid_identifier(broker):
         # Verify it matches published ID
         assert retrieved_id == published_ids[i]
         assert retrieved_msg == expected_msg
-
-
-def test_cross_stream_message_isolation(broker):
-    """Test that messages in different streams are isolated."""
-    stream1 = "stream1"
-    stream2 = "stream2"
-    consumer_group = "test_consumer_group"
-    message1 = {"stream": "1"}
-    message2 = {"stream": "2"}
-
-    # Publish to different streams
-    id1 = broker.publish(stream1, message1)
-    id2 = broker.publish(stream2, message2)
-
-    # Consume from stream1
-    result = broker.get_next(stream1, consumer_group)
-    assert result is not None
-    retrieved_id, retrieved_msg = result
-    assert retrieved_id == id1
-    assert retrieved_msg == message1
-
-    # No more messages in stream1
-    result = broker.get_next(stream1, consumer_group)
-    assert result is None
-
-    # Stream2 still has its message
-    result = broker.get_next(stream2, consumer_group)
-    assert result is not None
-    retrieved_id, retrieved_msg = result
-    assert retrieved_id == id2
-    assert retrieved_msg == message2
 
 
 def test_message_deduplication_within_consumer_group(broker):
