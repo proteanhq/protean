@@ -7,7 +7,8 @@
 # adapter is outside that adapter's paths, or when a database, broker,
 # event-store or cache entry leaves out the shared modules it loads through.
 #
-# Each [adapters.<name>] entry has:
+# Each [adapters.<name>] entry has the keys below and no others. The runner
+# rejects an entry with an unknown key.
 #
 # - lane: "core" (the in-memory CORE suite covers it, no leg of its own),
 #   "pr" (runs on every PR), "touched" (runs on a PR only when the PR changes

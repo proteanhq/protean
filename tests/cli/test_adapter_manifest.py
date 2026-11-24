@@ -278,6 +278,15 @@ class TestLoadAdapterManifest:
         with pytest.raises(ValueError, match="lane 'sometimes'"):
             load_adapter_manifest(path)
 
+    def test_an_unknown_key_is_rejected(self, tmp_path):
+        path = tmp_path / "adapters.toml"
+        path.write_text('[adapters.broker]\nlane = "touched"\nbrokers = ["REDIS"]\n')
+        with pytest.raises(
+            ValueError,
+            match=r"Adapter 'broker' in adapters\.toml has unknown keys \['brokers'\]",
+        ):
+            load_adapter_manifest(path)
+
     def write(self, tmp_path, conformance: str) -> Path:
         path = tmp_path / "adapters.toml"
         path.write_text(

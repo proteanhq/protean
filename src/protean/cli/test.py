@@ -550,6 +550,18 @@ class TestRunner:
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 ADAPTER_MANIFEST = REPO_ROOT / "tests" / "adapters.toml"
 ADAPTER_LANES = ("core", "pr", "touched", "off")
+ADAPTER_ENTRY_KEYS = frozenset(
+    {
+        "lane",
+        "leg",
+        "services",
+        "paths",
+        "markers",
+        "databases",
+        "stores",
+        "conformance",
+    }
+)
 
 # The entry-point group each port's adapters register under, as in
 # ``protean.infra.registry``. The manifest check reads only the names in these
@@ -677,12 +689,24 @@ def _path_matches(path: str, pattern: str) -> bool:
 
 
 def load_adapter_manifest(path: Path = ADAPTER_MANIFEST) -> AdapterManifest:
-    """Read tests/adapters.toml."""
+    """Read tests/adapters.toml.
+
+    Raises ``ValueError`` naming the entry when an entry has an unknown lane or
+    a key outside ``ADAPTER_ENTRY_KEYS``.
+    """
     with path.open("rb") as f:
         data = tomllib.load(f)
 
     adapters = []
     for name, raw in data.get("adapters", {}).items():
+        # A key the runner does not read, such as a removed one, would
+        # otherwise load cleanly and run nothing.
+        unknown = sorted(set(raw) - ADAPTER_ENTRY_KEYS)
+        if unknown:
+            raise ValueError(
+                f"Adapter '{name}' in {path.name} has unknown keys {unknown}; "
+                f"use only {sorted(ADAPTER_ENTRY_KEYS)}"
+            )
         lane = raw.get("lane", "")
         if lane not in ADAPTER_LANES:
             raise ValueError(

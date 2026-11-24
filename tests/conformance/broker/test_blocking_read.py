@@ -25,12 +25,16 @@ def test_a_read_waits_for_a_message_published_while_it_waits(broker):
     # ``publish`` needs, so it publishes through the adapter.
     publisher = threading.Timer(0.1, broker._adapter.publish, (STREAM, {"n": 1}))
     publisher.start()
+    started = time.monotonic()
     try:
         messages = broker.read_blocking(STREAM, GROUP, CONSUMER, timeout_ms=TIMEOUT_MS)
+        elapsed = time.monotonic() - started
     finally:
         publisher.join()
 
     assert [message for _, message in messages] == [{"n": 1}]
+    # The publish ends the wait, before the timeout runs out.
+    assert elapsed < TIMEOUT_MS / 1000
 
 
 @pytest.mark.requires(BrokerCapabilities.BLOCKING_READ)
@@ -56,12 +60,15 @@ def test_a_read_of_several_streams_waits_for_a_message_on_any_of_them(broker):
 
     publisher = threading.Timer(0.1, broker._adapter.publish, (other, {"n": 2}))
     publisher.start()
+    started = time.monotonic()
     try:
         result = broker.read_blocking_streams(
             [STREAM, other], GROUP, CONSUMER, timeout_ms=TIMEOUT_MS
         )
+        elapsed = time.monotonic() - started
     finally:
         publisher.join()
 
     assert result[STREAM] == []
     assert [message for _, message in result[other]] == [{"n": 2}]
+    assert elapsed < TIMEOUT_MS / 1000

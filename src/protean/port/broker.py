@@ -542,7 +542,9 @@ class StreamRetentionPort(BrokerPort, Protocol):
         The stream subscription calls it after each processed batch. The trim
         removes only entries that every consumer group on ``stream`` has read
         and acknowledged when it runs, so no existing group loses a message it
-        still needs. It need not remove all of them.
+        still needs. It need not remove all of them, but when every group has
+        acknowledged every entry of a stream of a few hundred entries, it
+        removes some.
 
         Returns:
             The number of entries removed.
