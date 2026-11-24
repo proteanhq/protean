@@ -767,6 +767,21 @@ class TestLoadAdapterManifest:
         with pytest.raises(ValueError, match=message):
             load_adapter_manifest(self.write_enables(tmp_path, enables, markers))
 
+    def test_two_markers_that_enable_each_other_are_rejected(self, tmp_path):
+        # Each run would leave out the tests that carry both markers.
+        path = tmp_path / "adapters.toml"
+        path.write_text(
+            '[adapters.pg]\nlane = "pr"\nmarkers = ["postgresql"]\n'
+            'enables = ["redis"]\n'
+            '[adapters.cache]\nlane = "pr"\nmarkers = ["redis"]\n'
+            'enables = ["postgresql"]\n'
+        )
+        with pytest.raises(
+            ValueError,
+            match="Adapter 'pg' enables 'redis', whose marker run enables 'postgresql'",
+        ):
+            load_adapter_manifest(path)
+
     def test_a_manifest_without_triggers_has_none(self, tmp_path):
         path = tmp_path / "adapters.toml"
         path.write_text("")

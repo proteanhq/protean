@@ -1,4 +1,5 @@
 import copy
+import itertools
 import json
 import os
 import re
@@ -751,7 +752,8 @@ def _check_enables(adapters: list[AdapterEntry]) -> None:
     """Raise ``ValueError`` naming the entry when an ``enables`` value is wrong.
 
     An entry with ``enables`` must have ``markers``, and each name it enables
-    must be another entry's marker and not one of its own.
+    must be another entry's marker and not one of its own. Two markers must not
+    enable each other.
     """
     known = {m for e in adapters for m in e.markers}
     for entry in adapters:
@@ -769,6 +771,22 @@ def _check_enables(adapters: list[AdapterEntry]) -> None:
                 raise ValueError(
                     f"Adapter '{entry.name}' enables '{marker}', which is no "
                     f"entry's marker; use one of {sorted(known)}"
+                )
+    _check_no_mutual_enables(adapters)
+
+
+def _check_no_mutual_enables(adapters: list[AdapterEntry]) -> None:
+    """Raise ``ValueError`` naming the entry when two markers enable each other."""
+    # A run leaves out the tests of each run that enables its marker, so two
+    # runs that enable each other would both leave out the tests with both.
+    enabled = _marker_flags(adapters)
+    for entry in adapters:
+        for marker, own in itertools.product(entry.enables, entry.markers):
+            if f"--{own}" in enabled[marker]:
+                raise ValueError(
+                    f"Adapter '{entry.name}' enables '{marker}', whose "
+                    f"marker run enables '{own}'; only one of the two "
+                    "runs can enable the other"
                 )
 
 
