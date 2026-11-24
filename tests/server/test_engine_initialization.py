@@ -115,6 +115,23 @@ class TestEngineOutboxValidation:
                     Engine(domain, test_mode=True)
 
     @pytest.mark.no_test_domain
+    def test_engine_lets_a_table_probe_error_reach_the_caller(self):
+        domain = Domain(name="Test")
+        domain.config["server"]["default_subscription_type"] = "stream"
+        domain.init(traverse=False)
+        boom = RuntimeError("boom")
+
+        with domain.domain_context():
+            outbox_repos = list(domain._outbox_repos.values())
+            assert outbox_repos
+            dao_cls = type(outbox_repos[0]._dao)
+            with patch.object(dao_cls, "has_table", side_effect=boom):
+                with pytest.raises(RuntimeError) as exc:
+                    Engine(domain, test_mode=True)
+
+            assert exc.value is boom
+
+    @pytest.mark.no_test_domain
     def test_engine_reraises_a_capability_flag_mismatch_as_it_is(self):
         domain = Domain(name="Test")
         domain.config["server"]["default_subscription_type"] = "stream"

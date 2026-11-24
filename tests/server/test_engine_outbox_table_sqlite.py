@@ -48,3 +48,24 @@ class TestEngineOutboxTableOnSqlite:
         engine = Engine(domain, test_mode=True)
 
         assert "outbox-processor-default-to-default" in engine._outbox_processors
+
+
+@pytest.mark.sqlite
+@pytest.mark.no_test_domain
+def test_engine_skips_the_check_when_the_outbox_is_off(tmp_path):
+    domain = Domain(name="Test")
+    domain.config["databases"]["default"] = {
+        "provider": "sqlite",
+        "database_uri": f"sqlite:///{tmp_path / 'test.db'}",
+    }
+    domain.config["server"]["default_subscription_type"] = "event_store"
+    domain.register(Record)
+    domain.init(traverse=False)
+
+    with domain.domain_context():
+        try:
+            engine = Engine(domain, test_mode=True)
+
+            assert engine._outbox_processors == {}
+        finally:
+            domain.close()
