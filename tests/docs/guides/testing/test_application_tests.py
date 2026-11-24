@@ -1,10 +1,11 @@
-"""The BDD examples on ``docs/guides/testing/application-tests.md`` pass under pytest-bdd.
+"""The examples on ``docs/guides/testing/application-tests.md`` pass under pytest.
 
 Each step file runs with the conftests above it: the root ``conftest.py`` that
 initializes the ``myapp`` domain with sync processing, the shared
 ``the domain is initialized`` step with the marker registration for the
 Gherkin tags, and the ordering steps. Every scenario in the feature files must
 pass, and each tag selection the page lists must pick the tagged scenarios.
+The plain pytest tests for the order handler run with the root conftest.
 """
 
 import re
@@ -73,3 +74,12 @@ def test_the_tag_selections_on_the_page_pick_the_tagged_scenarios(selection, exp
         assert len(passed) == expected
     else:
         assert passed == expected
+
+
+def test_the_order_handler_tests_pass():
+    result = run_example_tests(
+        "guides/testing/application-tests/test_place_order_handler.py"
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert outcome_counts(result) == {"passed": 4}

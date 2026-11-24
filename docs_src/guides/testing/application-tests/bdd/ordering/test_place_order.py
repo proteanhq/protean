@@ -17,7 +17,6 @@ def place_order(customer, book, name, qty, title):
         PlaceOrder(
             customer_id=customer.id,
             items=[OrderItemVO(book_id=book.id, quantity=qty)],
-            total=book.price.amount * qty,
         )
     )
     orders = domain.repository_for(Order).query.all()
@@ -59,7 +58,6 @@ def try_place_order(customer, book, name, qty, title):
             PlaceOrder(
                 customer_id=customer.id,
                 items=[OrderItemVO(book_id=book.id, quantity=qty)],
-                total=book.price.amount * qty,
             )
         )
         return {"success": True}
@@ -99,7 +97,6 @@ def place_order_from_cart(customer, cart, name):
         PlaceOrder(
             customer_id=customer.id,
             items=[OrderItemVO(book_id=cart["book"].id, quantity=cart["quantity"])],
-            total=cart["book"].price.amount * cart["quantity"],
         )
     )
     orders = domain.repository_for(Order).query.all()
