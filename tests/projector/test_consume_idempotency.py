@@ -497,7 +497,11 @@ class TestMarkerAgeOnTheDomainClock:
         other.clock = FrozenClock(T0 + timedelta(days=30))
 
         with owner.domain_context():
-            _register(owner, idempotent=True)
+            # Register nothing here. A projector keeps the handler map from its
+            # first registration, so registering ``RatingProjector`` in a domain
+            # named "Owner" keys it by "Owner.*" types, and every later test in
+            # the "Test" domain finds no handler. The marker repository is created
+            # on first use, so this test needs no projector.
             owner.clock = FrozenClock(T0)
             repo = owner._get_processed_message_repo("default")
 
