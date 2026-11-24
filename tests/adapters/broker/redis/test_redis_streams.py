@@ -50,28 +50,6 @@ def test_redis_streams_pending_messages_redelivery(redis_broker):
 
 
 @pytest.mark.redis
-def test_redis_streams_read_multiple(redis_broker):
-    """Test reading multiple messages at once"""
-    stream = "test_stream"
-    consumer_group = "test_group"
-    messages = [{"data": f"message_{i}", "id": i} for i in range(5)]
-
-    # Publish multiple messages
-    identifiers = []
-    for message in messages:
-        identifier = redis_broker.publish(stream, message)
-        identifiers.append(identifier)
-
-    # Read multiple messages
-    results = redis_broker.read(stream, consumer_group, 3)
-    assert len(results) == 3
-
-    for i, (result_id, result_message) in enumerate(results):
-        assert result_id == identifiers[i]
-        assert result_message == messages[i]
-
-
-@pytest.mark.redis
 def test_redis_streams_unique_identifiers(redis_broker):
     """Test that Redis Streams generates unique identifiers in timestamp-sequence format"""
     stream = "test_stream"
@@ -209,29 +187,6 @@ def test_redis_streams_message_expiration_and_cleanup(redis_broker):
     if consumer_group in groups_after_ack:
         # Pending count should be 0 or less than before
         assert groups_after_ack[consumer_group]["pending"] == 0
-
-
-@pytest.mark.redis
-def test_redis_streams_message_ordering(redis_broker):
-    """Test that messages are delivered in order (Redis Streams guarantee)"""
-    stream = "test_stream"
-    consumer_group = "test_group"
-
-    # Publish messages with identifiable order
-    messages = [{"order": i, "data": f"msg_{i}"} for i in range(10)]
-    identifiers = []
-
-    for message in messages:
-        identifier = redis_broker.publish(stream, message)
-        identifiers.append(identifier)
-
-    # Consume all messages
-    consumed_messages = redis_broker.read(stream, consumer_group, 10)
-
-    # Check order is preserved
-    for i, (msg_id, msg_data) in enumerate(consumed_messages):
-        assert msg_data["order"] == i
-        assert msg_id == identifiers[i]
 
 
 @pytest.mark.redis

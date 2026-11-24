@@ -28,6 +28,7 @@ Categories:
   capabilities (e.g., `basic_storage`, `transactional`, `raw_queries`,
   `native_json`). See [Adapter Conformance
   Testing](../../reference/testing/conformance.md) for details.
+- `BROKER`: Runs the broker conformance suite on Redis Streams and Redis PubSub
 - `FULL`: Runs the complete test suite for all adapters
 - `COVERAGE`: Runs the complete test suite with all adapters and generates coverage report
 - `PR`: Runs what a pull request's CI runs: the core suite and the adapter suites from `tests/adapters.toml`, all under coverage. `protean test -c PR -a elasticsearch` runs the core suite and the Elasticsearch suites only. A pull request that touches Elasticsearch runs the PostgreSQL and Redis suites too; `protean test -c PR -a postgresql -a redis -a elasticsearch` runs what its CI runs.
@@ -51,9 +52,11 @@ An entry in `tests/adapters.toml` names the other adapters with its `conformance
 - in the entry's leg, such as `protean test -c PR --no-core -a message-db`. An entry whose lane is `core` or `off` has no leg.
 - in `protean test -c FULL` and `protean test -c COVERAGE`, unless the entry's lane is `off`.
 
-The `redis-cache` entry lists `cache:redis`, so both run the cache suite on Redis. The `message-db` entry lists `event_store:message_db`, so both run the event-store suite on Message DB. The `sqlite` entry lists `event_store:sql`, so both run the event-store suite on the SQL event store with its built-in SQLite configuration. The `postgresql` entry lists a table for `event_store:sql` with a PostgreSQL `database_uri`. A table run is named after its entry, as in `Conformance: event_store/sql (postgresql)`, so one adapter can run on two databases.
+The `redis-cache` entry lists `cache:redis`, so both run the cache suite on Redis. The `message-db` entry lists `event_store:message_db`, so both run the event-store suite on Message DB. The `sqlite` entry lists `event_store:sql`, so both run the event-store suite on the SQL event store with its built-in SQLite configuration. The `postgresql` entry lists a table for `event_store:sql` with a PostgreSQL `database_uri`. The `redis-broker` entry lists `broker:redis` and the `redis-pubsub` entry lists `broker:redis_pubsub`, so both run the broker suite on Redis Streams and on Redis PubSub. A table run is named after its entry, as in `Conformance: event_store/sql (postgresql)`, so one adapter can run on two databases.
 
 `protean test -c EVENTSTORE` does not read `tests/adapters.toml`. It runs the event-store suite on each event store in its own store list except memory, without coverage, like its `eventstore` runs. Its list holds `MEMORY` and `MESSAGE_DB`, so it runs the suite on Message DB.
+
+`protean test -c BROKER` does not read `tests/adapters.toml` either. It runs the broker suite on each broker in its own broker list except inline, without coverage. Its list holds `REDIS`, `INLINE` and `REDIS_PUBSUB`, so it runs the suite on Redis Streams and on Redis PubSub.
 
 The entry's `paths` must include `tests/conformance/<port>/`, so a change to the suite runs the leg. `tests/cli/test_adapter_manifest.py` fails when a path is missing.
 

@@ -3,9 +3,9 @@ from unittest.mock import Mock
 import pytest
 
 from protean.core.unit_of_work import UnitOfWork
+from protean.port.broker import BrokerCapabilities
 from protean.utils import Processing
-
-from ..elements import Person, PersonAdded
+from tests.conformance.broker.elements import Person, PersonAdded
 
 
 @pytest.fixture(autouse=True)
@@ -15,7 +15,7 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
-@pytest.mark.basic_pubsub
+@pytest.mark.requires(BrokerCapabilities.PUBLISH)
 def test_publish_generic_message_to_stream(broker):
     stream = "test_stream"
     message = {"foo": "bar"}
@@ -28,7 +28,7 @@ def test_publish_generic_message_to_stream(broker):
     assert len(identifier) > 0
 
 
-@pytest.mark.basic_pubsub
+@pytest.mark.requires(BrokerCapabilities.PUBLISH)
 def test_event_message_to_stream(broker):
     person = Person.add_newcomer(
         {"id": "1", "first_name": "John", "last_name": "Doe", "age": 21}
@@ -43,7 +43,7 @@ def test_event_message_to_stream(broker):
     assert len(identifier) > 0
 
 
-@pytest.mark.basic_pubsub
+@pytest.mark.requires(BrokerCapabilities.PUBLISH)
 def test_multiple_messages_unique_identifiers(broker):
     """Test that multiple messages get unique identifiers"""
     stream = "test_stream"
@@ -61,7 +61,7 @@ def test_multiple_messages_unique_identifiers(broker):
     assert identifier1 != identifier2
 
 
-@pytest.mark.basic_pubsub
+@pytest.mark.requires(BrokerCapabilities.PUBLISH)
 def test_message_content_unchanged_after_publishing(broker):
     """Test that the original message content is not modified during publishing"""
     stream = "test_stream"
@@ -81,7 +81,7 @@ def test_message_content_unchanged_after_publishing(broker):
     assert "_identifier" not in original_message  # Ensure no _identifier was added
 
 
-@pytest.mark.basic_pubsub
+@pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
 def test_retrieved_message_unchanged(broker):
     """Test that retrieved messages don't contain identifier modifications"""
     stream = "test_stream"
@@ -98,6 +98,7 @@ def test_retrieved_message_unchanged(broker):
     assert len(identifier) > 0
 
 
+@pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
 def test_message_push_after_uow_exit(test_domain, broker):
     with UnitOfWork():
         person = Person.add_newcomer(
@@ -120,6 +121,7 @@ def test_message_push_after_uow_exit(test_domain, broker):
     assert "_metadata" in message
 
 
+@pytest.mark.requires(BrokerCapabilities.SUBSCRIBE)
 def test_sync_message_processing_after_uow_exit(test_domain, broker):
     """Test that synchronous message processing occurs after UnitOfWork exit when configured"""
 
@@ -164,12 +166,12 @@ def test_sync_message_processing_after_uow_exit(test_domain, broker):
     assert "_metadata" in message_data
 
 
-@pytest.mark.basic_pubsub
+@pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
 def test_get_next_from_empty_stream(broker):
     assert broker.get_next("person_added", "test_consumer_group") is None
 
 
-@pytest.mark.basic_pubsub
+@pytest.mark.requires(BrokerCapabilities.PUBLISH)
 def test_default_publish_generates_uuid(broker):
     """Test default publish method generates UUID"""
     stream = "test_stream"
@@ -183,7 +185,7 @@ def test_default_publish_generates_uuid(broker):
     assert len(identifier) > 0
 
 
-@pytest.mark.basic_pubsub
+@pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
 def test_publish_to_multiple_streams(broker):
     """Test publishing to different streams maintains separation"""
     stream1 = "stream1"
@@ -222,7 +224,7 @@ def test_publish_to_multiple_streams(broker):
     assert broker.get_next(stream2, consumer_group) is None
 
 
-@pytest.mark.basic_pubsub
+@pytest.mark.requires(BrokerCapabilities.PUBLISH)
 def test_publish_empty_dict_raises_validation_error(broker):
     """Test that publishing an empty dict raises ValidationError"""
     from protean.exceptions import ValidationError
@@ -237,7 +239,7 @@ def test_publish_empty_dict_raises_validation_error(broker):
     assert exc_info.value.messages == {"message": ["Message cannot be empty"]}
 
 
-@pytest.mark.basic_pubsub
+@pytest.mark.requires(BrokerCapabilities.PUBLISH)
 def test_publish_none_as_dict_raises_validation_error(broker):
     """Test that publishing None as message raises ValidationError when it evaluates to falsy"""
     from protean.exceptions import ValidationError
@@ -251,7 +253,7 @@ def test_publish_none_as_dict_raises_validation_error(broker):
     assert exc_info.value.messages == {"message": ["Message cannot be empty"]}
 
 
-@pytest.mark.basic_pubsub
+@pytest.mark.requires(BrokerCapabilities.PUBLISH)
 def test_publish_valid_non_empty_dict_succeeds(broker):
     """Test that publishing a non-empty dict succeeds"""
     stream = "test_stream"
@@ -265,7 +267,7 @@ def test_publish_valid_non_empty_dict_succeeds(broker):
     assert len(identifier) > 0
 
 
-@pytest.mark.basic_pubsub
+@pytest.mark.requires(BrokerCapabilities.PUBLISH)
 def test_publish_dict_with_false_values_succeeds(broker):
     """Test that publishing a dict with falsy values but non-empty dict succeeds"""
     stream = "test_stream"
@@ -279,7 +281,7 @@ def test_publish_dict_with_false_values_succeeds(broker):
     assert len(identifier) > 0
 
 
-@pytest.mark.basic_pubsub
+@pytest.mark.requires(BrokerCapabilities.PUBLISH)
 def test_publish_dict_with_empty_string_succeeds(broker):
     """Test that publishing a dict with empty string values succeeds"""
     stream = "test_stream"
@@ -293,7 +295,7 @@ def test_publish_dict_with_empty_string_succeeds(broker):
     assert len(identifier) > 0
 
 
-@pytest.mark.basic_pubsub
+@pytest.mark.requires(BrokerCapabilities.PUBLISH)
 def test_publish_nested_empty_dict_succeeds(broker):
     """Test that publishing a dict containing empty dicts succeeds"""
     stream = "test_stream"
@@ -307,7 +309,7 @@ def test_publish_nested_empty_dict_succeeds(broker):
     assert len(identifier) > 0
 
 
-@pytest.mark.basic_pubsub
+@pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
 def test_publish_complex_nested_message(broker):
     """Test publishing complex nested message structure"""
     stream = "test_stream"

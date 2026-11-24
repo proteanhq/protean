@@ -354,10 +354,13 @@ or `protean outbox discard`).
 ## Broker
 
 Brokers carry messages to external subscribers. Inside a Unit of Work,
-`publish` waits until after the database commit. Each broker declares a
-capability tier (Inline is `reliable_messaging`, Redis PubSub is
-`simple_queuing`, Redis Streams is `ordered_messaging`). A broker without a
-capability returns empty or warns.
+`publish` waits until after the database commit. Each broker declares the
+capability flags it supports. Inline declares `PUBLISH`, `SUBSCRIBE`,
+`CONSUMER_GROUPS`, `ACK_NACK`, `DELIVERY_GUARANTEES` and `DEAD_LETTER_QUEUE`.
+Redis PubSub declares `PUBLISH`, `SUBSCRIBE` and `CONSUMER_GROUPS`. Redis
+Streams declares the flags of Inline plus `MESSAGE_ORDERING`, `BLOCKING_READ`,
+`STREAM_PARTITIONING` and `STREAM_RETENTION`. A broker without a capability
+returns empty or warns.
 
 | Adapter | Ordering | Delivery | Durability |
 |---|---|---|---|

@@ -503,5 +503,5 @@ def publish(self, stream: str, message: dict[str, Any]) -> str:
 
 - Review [existing broker implementations](https://github.com/proteanhq/protean/tree/main/src/protean/adapters/broker) for examples
 - Understand [broker capabilities](./index.md#broker-capabilities) in detail
-- Test with the [broker test suite](https://github.com/proteanhq/protean/tree/main/tests/adapters/broker)
+- Test with the [broker conformance suite](../../testing/conformance.md#cli-protean-test-test-adapter), `protean test test-adapter --port broker --provider <name>`
 - Share your broker with the [Protean community](https://github.com/proteanhq/protean/discussions)

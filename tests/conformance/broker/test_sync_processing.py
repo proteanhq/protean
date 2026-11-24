@@ -1,6 +1,7 @@
 import pytest
 
 from protean.core.subscriber import BaseSubscriber
+from protean.port.broker import BrokerCapabilities
 from protean.utils import Processing
 
 counter = 0
@@ -16,7 +17,7 @@ class DummySubscriber(BaseSubscriber):
         count_up()
 
 
-@pytest.mark.basic_pubsub
+@pytest.mark.requires(BrokerCapabilities.SUBSCRIBE)
 def test_subscriber_sync_invocation(test_domain):
     test_domain.config["message_processing"] = Processing.SYNC.value
 

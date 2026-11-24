@@ -70,7 +70,7 @@ Brokers are organized into capability tiers, each building upon the previous:
 2. **SIMPLE_QUEUING**: Basic pub/sub + consumer groups
 3. **RELIABLE_MESSAGING**: Simple queuing + acknowledgment/rejection
 4. **ORDERED_MESSAGING**: Reliable messaging + message ordering
-5. **ENTERPRISE_STREAMING**: Full features including DLQ, replay, partitioning, stream retention and blocking reads. A custom broker that declares it subclasses `BlockingReadPort`, `DeadLetterQueuePort`, `PartitioningPort` and `StreamRetentionPort` (see [Custom Brokers](custom-brokers.md#architecture))
+5. **ENTERPRISE_STREAMING**: Full features including DLQ, partitioning, stream retention and blocking reads. A custom broker that declares it subclasses `BlockingReadPort`, `DeadLetterQueuePort`, `PartitioningPort` and `StreamRetentionPort` (see [Custom Brokers](custom-brokers.md#architecture))
 
 ### Checking Capabilities
 

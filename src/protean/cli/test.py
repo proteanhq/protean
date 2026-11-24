@@ -85,6 +85,10 @@ TEST_CONFIGS = {
 # the conformance run of ``-c EVENTSTORE``.
 EVENT_STORE_ADAPTERS = {"MEMORY": "memory", "MESSAGE_DB": "message_db"}
 
+# The adapter registry name of each ``TEST_CONFIGS["brokers"]`` value, for the
+# conformance run of ``-c BROKER``.
+BROKER_ADAPTERS = {"REDIS": "redis", "INLINE": "inline", "REDIS_PUBSUB": "redis_pubsub"}
+
 # The two suites of FULL's first phase, split by the suite's own
 # ``--service-tests`` option (tests/conftest.py). The in-memory suite needs no
 # service, so it can spread over every CPU. The services suite stays in one
@@ -140,31 +144,6 @@ class TestRunner:
         self.exit_status = 0
         self._database_locks: dict[str, threading.Lock] = {}
         self._database_locks_guard = threading.Lock()
-
-        # Broker capability mappings
-        self.broker_capabilities = {
-            "INLINE": "RELIABLE_MESSAGING",
-            "REDIS": "ORDERED_MESSAGING",
-            "REDIS_PUBSUB": "SIMPLE_QUEUING",
-        }
-
-        # Capability hierarchy (from lowest to highest)
-        self.capability_hierarchy = [
-            "BASIC_PUBSUB",
-            "SIMPLE_QUEUING",
-            "RELIABLE_MESSAGING",
-            "ORDERED_MESSAGING",
-            "ENTERPRISE_STREAMING",
-        ]
-
-        # Capability to marker mapping
-        self.capability_markers = {
-            "BASIC_PUBSUB": "basic_pubsub",
-            "SIMPLE_QUEUING": "simple_queuing",
-            "RELIABLE_MESSAGING": "reliable_messaging",
-            "ORDERED_MESSAGING": "ordered_messaging",
-            "ENTERPRISE_STREAMING": "enterprise_streaming",
-        }
 
         # Database capability mappings
         self.database_capabilities: dict[str, str] = {
@@ -267,30 +246,6 @@ class TestRunner:
                 html = html.replace("</head>", f"{STYLE_BLOCK}\n</head>")
                 path.write_text(html, encoding="utf-8")
 
-    def get_capability_marker_expression(self, broker: str) -> str:
-        """Get marker expression for broker's capabilities.
-
-        Returns a marker expression like 'basic_pubsub or simple_queuing or reliable_messaging'
-        that includes all capabilities up to and including the broker's level.
-        """
-        broker_capability = self.broker_capabilities.get(broker)
-        if not broker_capability:
-            return ""
-
-        # Find the index of the broker's capability
-        try:
-            capability_index = self.capability_hierarchy.index(broker_capability)
-        except ValueError:
-            return ""
-
-        # Get all capabilities up to and including the broker's level
-        applicable_capabilities = self.capability_hierarchy[: capability_index + 1]
-
-        # Convert to marker names and create OR expression
-        marker_names = [self.capability_markers[cap] for cap in applicable_capabilities]
-
-        return " or ".join(marker_names)
-
     def get_database_marker_expression(self, database: str) -> str:
         """Get marker expression for database's capabilities.
 
@@ -346,22 +301,6 @@ class TestRunner:
                         shared_database=SHARED_DATABASES.get(db),
                     )
                 )
-
-        # Capability-based broker tests
-        all_brokers = TEST_CONFIGS["brokers"]
-        for broker in all_brokers:
-            # Get marker expression for this broker's capabilities
-            marker_expression = self.get_capability_marker_expression(broker)
-
-            if marker_expression:
-                # Use marker-based selection for broker tests
-                cmd = self.build_coverage_command(
-                    self.build_test_command(
-                        marker=marker_expression, extra_flags=[f"--broker={broker}"]
-                    )
-                )
-
-                suites.append(TestSuite(f"Broker: {broker}", cmd))
 
         # Eventstore tests
         for store in ["MESSAGE_DB"]:  # Only MESSAGE_DB for full suite
@@ -488,20 +427,7 @@ class TestRunner:
                     )
                     self.track_exit_code(self.run_command(cmd))
         elif category == "BROKER":
-            # Use capability-based testing for brokers
-            all_brokers = TEST_CONFIGS["brokers"]
-            for broker in all_brokers:
-                marker_expression = self.get_capability_marker_expression(broker)
-
-                if marker_expression:
-                    broker_capability = self.broker_capabilities.get(broker, "UNKNOWN")
-                    print(f"Running tests for BROKER: {broker} ({broker_capability})…")
-
-                    # Use marker-based selection for broker tests
-                    cmd = self.build_test_command(
-                        marker=marker_expression, extra_flags=[f"--broker={broker}"]
-                    )
-                    self.track_exit_code(self.run_command(cmd))
+            self._run_broker_conformance()
 
         return self.exit_status
 
@@ -515,6 +441,18 @@ class TestRunner:
                 continue
             run = ConformanceRun("event_store", EVENT_STORE_ADAPTERS[store])
             print(f"Running tests for EVENTSTORE: {run.name}…")
+            self.track_exit_code(self.run_command(conformance_run(self, run)))
+
+    def _run_broker_conformance(self) -> None:
+        """Run the broker conformance suite on each broker but inline.
+
+        The core run already runs the suite on the inline broker.
+        """
+        for broker in TEST_CONFIGS["brokers"]:
+            if broker == "INLINE":
+                continue
+            run = ConformanceRun("broker", BROKER_ADAPTERS[broker])
+            print(f"Running tests for BROKER: {run.name}…")
             self.track_exit_code(self.run_command(conformance_run(self, run)))
 
     def run_full_suite_with_matrix_first(self, suites: list[TestSuite]) -> int:
@@ -612,6 +550,18 @@ class TestRunner:
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 ADAPTER_MANIFEST = REPO_ROOT / "tests" / "adapters.toml"
 ADAPTER_LANES = ("core", "pr", "touched", "off")
+ADAPTER_ENTRY_KEYS = frozenset(
+    {
+        "lane",
+        "leg",
+        "services",
+        "paths",
+        "markers",
+        "databases",
+        "stores",
+        "conformance",
+    }
+)
 
 # The entry-point group each port's adapters register under, as in
 # ``protean.infra.registry``. The manifest check reads only the names in these
@@ -677,7 +627,6 @@ class AdapterEntry:
     paths: list[str]
     markers: list[str]
     databases: list[str]
-    brokers: list[str]
     stores: list[str]
     # The runs of tests/conformance/<port>/ the entry's leg makes.
     conformance: list[ConformanceRun] = field(default_factory=list)
@@ -740,12 +689,24 @@ def _path_matches(path: str, pattern: str) -> bool:
 
 
 def load_adapter_manifest(path: Path = ADAPTER_MANIFEST) -> AdapterManifest:
-    """Read tests/adapters.toml."""
+    """Read tests/adapters.toml.
+
+    Raises ``ValueError`` naming the entry when an entry has an unknown lane or
+    a key outside ``ADAPTER_ENTRY_KEYS``.
+    """
     with path.open("rb") as f:
         data = tomllib.load(f)
 
     adapters = []
     for name, raw in data.get("adapters", {}).items():
+        # A key the runner does not read, such as a removed one, would
+        # otherwise load cleanly and run nothing.
+        unknown = sorted(set(raw) - ADAPTER_ENTRY_KEYS)
+        if unknown:
+            raise ValueError(
+                f"Adapter '{name}' in {path.name} has unknown keys {unknown}; "
+                f"use only {sorted(ADAPTER_ENTRY_KEYS)}"
+            )
         lane = raw.get("lane", "")
         if lane not in ADAPTER_LANES:
             raise ValueError(
@@ -761,7 +722,6 @@ def load_adapter_manifest(path: Path = ADAPTER_MANIFEST) -> AdapterManifest:
                 paths=list(raw.get("paths", [])),
                 markers=list(raw.get("markers", [])),
                 databases=list(raw.get("databases", [])),
-                brokers=list(raw.get("brokers", [])),
                 stores=list(raw.get("stores", [])),
                 conformance=_conformance_runs(name, raw.get("conformance", [])),
             )
@@ -958,7 +918,8 @@ def build_adapter_suites(
     """The coverage-wrapped pytest runs for these adapters, without repeats.
 
     The same runs ``-c FULL`` makes for them: a marker run (``-m redis
-    --redis``) and the capability suites for each database, broker and store.
+    --redis``), the capability suites for each database and store, and the
+    conformance runs.
     """
     suites: list[TestSuite] = []
     seen: set[str] = set()
@@ -982,14 +943,6 @@ def build_adapter_suites(
                 runner.build_test_command(
                     marker=runner.get_database_marker_expression(db),
                     extra_flags=[f"--db={db}"],
-                ),
-            )
-        for broker in entry.brokers:
-            add(
-                f"Broker: {broker}",
-                runner.build_test_command(
-                    marker=runner.get_capability_marker_expression(broker),
-                    extra_flags=[f"--broker={broker}"],
                 ),
             )
         for store in entry.stores:

@@ -5,44 +5,6 @@ import time
 import pytest
 
 
-def test_dlq_list_returns_entries_across_streams(broker):
-    """Test dlq_list returns entries from multiple streams."""
-    broker._adapter._max_retries = 0
-
-    # Publish to two streams and NACK both
-    id1 = broker.publish("stream1", {"data": "one"})
-    broker.get_next("stream1", "group1")
-    broker.nack("stream1", id1, "group1")
-
-    id2 = broker.publish("stream2", {"data": "two"})
-    broker.get_next("stream2", "group1")
-    broker.nack("stream2", id2, "group1")
-
-    entries = broker.dlq_list(["stream1:dlq", "stream2:dlq"])
-    assert len(entries) == 2
-    streams = {e.stream for e in entries}
-    assert streams == {"stream1", "stream2"}
-
-
-def test_dlq_list_with_limit(broker):
-    """Test dlq_list respects the limit parameter."""
-    broker._adapter._max_retries = 0
-
-    for i in range(5):
-        msg_id = broker.publish("stream1", {"i": i})
-        broker.get_next("stream1", "group1")
-        broker.nack("stream1", msg_id, "group1")
-
-    entries = broker.dlq_list(["stream1:dlq"], limit=3)
-    assert len(entries) == 3
-
-
-def test_dlq_list_empty_returns_empty(broker):
-    """Test dlq_list with no messages returns empty list."""
-    entries = broker.dlq_list(["nonexistent:dlq"])
-    assert entries == []
-
-
 def test_dlq_list_filters_by_stream(broker):
     """Test dlq_list only returns entries for requested streams."""
     broker._adapter._max_retries = 0
@@ -89,12 +51,6 @@ def test_dlq_get_found(broker):
     assert entry.dlq_stream == "stream1:dlq"
 
 
-def test_dlq_get_not_found(broker):
-    """dlq_get returns None when there is no such entry."""
-    entry = broker.dlq_get("stream1:dlq", "nonexistent-id")
-    assert entry is None
-
-
 def test_dlq_get_wrong_stream(broker):
     """dlq_get returns None when searching another DLQ stream."""
     broker._adapter._max_retries = 0
@@ -105,72 +61,10 @@ def test_dlq_get_wrong_stream(broker):
     assert entry is None
 
 
-def test_dlq_replay_success(broker):
-    """Test dlq_replay moves message back to target stream."""
-    broker._adapter._max_retries = 0
-
-    _dead_letter_one(broker, "stream1", {"key": "value"})
-
-    [entry] = broker.dlq_list(["stream1:dlq"])
-
-    result = broker.dlq_replay("stream1:dlq", entry.dlq_id, "stream1")
-    assert result is True
-
-    # DLQ should be empty
-    assert len(broker.dlq_list(["stream1:dlq"])) == 0
-
-    # Message should be available on the target stream for new consumers
-    # (It was published as a new message)
-    retrieved = broker.get_next("stream1", "new_consumer")
-    assert retrieved is not None
-    _, msg = retrieved
-    assert msg == {"key": "value"}
-
-
-def test_dlq_replay_not_found(broker):
-    """Test dlq_replay returns False when message doesn't exist."""
-    result = broker.dlq_replay("stream1:dlq", "nonexistent", "stream1")
-    assert result is False
-
-
-def test_dlq_replay_all_drains_stream(broker):
-    """Test dlq_replay_all replays all messages and clears DLQ."""
-    broker._adapter._max_retries = 0
-
-    ids = []
-    for i in range(3):
-        msg_id = broker.publish("stream1", {"i": i})
-        broker.get_next("stream1", "group1")
-        broker.nack("stream1", msg_id, "group1")
-        ids.append(msg_id)
-
-    assert len(broker.dlq_list(["stream1:dlq"])) == 3
-
-    count = broker.dlq_replay_all("stream1:dlq", "stream1")
-    assert count == 3
-    assert len(broker.dlq_list(["stream1:dlq"])) == 0
-
-
 def test_dlq_replay_all_empty_stream(broker):
     """Test dlq_replay_all returns 0 for empty DLQ."""
     count = broker.dlq_replay_all("nonexistent:dlq", "stream1")
     assert count == 0
-
-
-def test_dlq_purge_clears_messages(broker):
-    """Test dlq_purge removes all messages from a DLQ stream."""
-    broker._adapter._max_retries = 0
-
-    for i in range(4):
-        msg_id = broker.publish("stream1", {"i": i})
-        broker.get_next("stream1", "group1")
-        broker.nack("stream1", msg_id, "group1")
-
-    assert len(broker.dlq_list(["stream1:dlq"])) == 4
-
-    count = broker.dlq_purge("stream1:dlq")
-    assert count == 4
-    assert len(broker.dlq_list(["stream1:dlq"])) == 0
 
 
 def test_dlq_purge_empty_stream(broker):

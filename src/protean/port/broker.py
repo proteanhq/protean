@@ -77,7 +77,6 @@ class BrokerCapabilities(Flag):
 
     # Tier 4: Advanced Features (Various dependencies)
     DEAD_LETTER_QUEUE = auto()  # Handle failed messages (depends on ACK_NACK)
-    REPLAY = auto()  # Re-read historical messages (depends on PERSISTENCE)
     STREAM_PARTITIONING = auto()  # Partition streams for scalability
     STREAM_RETENTION = auto()  # Trim stream entries every consumer group acknowledged
 
@@ -93,7 +92,6 @@ class BrokerCapabilities(Flag):
     ENTERPRISE_STREAMING = (
         ORDERED_MESSAGING
         | DEAD_LETTER_QUEUE
-        | REPLAY
         | STREAM_PARTITIONING
         | STREAM_RETENTION
         | BLOCKING_READ
@@ -544,7 +542,9 @@ class StreamRetentionPort(BrokerPort, Protocol):
         The stream subscription calls it after each processed batch. The trim
         removes only entries that every consumer group on ``stream`` has read
         and acknowledged when it runs, so no existing group loses a message it
-        still needs. It need not remove all of them.
+        still needs. It need not remove all of them, but when every group has
+        acknowledged every entry of a stream of a few hundred entries, it
+        removes some.
 
         Returns:
             The number of entries removed.

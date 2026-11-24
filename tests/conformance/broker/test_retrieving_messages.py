@@ -1,13 +1,15 @@
 import pytest
 
+from protean.port.broker import BrokerCapabilities
 
-@pytest.mark.simple_queuing
+
+@pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
 def test_for_no_error_on_no_message(broker):
     message = broker.get_next("test_stream", "test_consumer_group")
     assert message is None
 
 
-@pytest.mark.simple_queuing
+@pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
 def test_get_next_message(broker):
     stream = "test_stream"
     consumer_group = "test_consumer_group"
@@ -30,7 +32,7 @@ def test_get_next_message(broker):
     assert retrieved_message is None
 
 
-@pytest.mark.simple_queuing
+@pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
 def test_read_with_no_messages_available(broker):
     """Test read method when no messages are available"""
     stream = "test_stream"
@@ -41,7 +43,7 @@ def test_read_with_no_messages_available(broker):
     assert len(messages) == 0
 
 
-@pytest.mark.simple_queuing
+@pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
 def test_read_fewer_messages_than_requested(broker):
     """Test read method when fewer messages available than requested"""
     stream = "test_stream"
@@ -56,7 +58,7 @@ def test_read_fewer_messages_than_requested(broker):
     assert len(messages) == 2
 
 
-@pytest.mark.simple_queuing
+@pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
 def test_read_multiple_messages(broker):
     """Test reading multiple messages at once"""
     stream = "test_stream"
@@ -75,13 +77,15 @@ def test_read_multiple_messages(broker):
     # Should get exactly 3 messages
     assert len(retrieved_messages) == 3
 
-    # Verify messages are correct
-    for i, (identifier, message) in enumerate(retrieved_messages):
-        assert identifier == identifiers[i]
-        assert message == messages[i]
+    # Each message read is a distinct published message. The order is checked
+    # only for brokers that declare MESSAGE_ORDERING.
+    published = dict(zip(identifiers, messages, strict=True))
+    assert len({identifier for identifier, _ in retrieved_messages}) == 3
+    for identifier, message in retrieved_messages:
+        assert published[identifier] == message
 
 
-@pytest.mark.simple_queuing
+@pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
 def test_read_more_than_available(broker):
     """Test reading more messages than available"""
     stream = "test_stream"
@@ -100,7 +104,7 @@ def test_read_more_than_available(broker):
     assert retrieved_messages[0][1] == message
 
 
-@pytest.mark.simple_queuing
+@pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
 def test_read_from_empty_stream(broker):
     """Test reading from empty stream"""
     stream = "empty_stream"
@@ -113,7 +117,7 @@ def test_read_from_empty_stream(broker):
     assert len(retrieved_messages) == 0
 
 
-@pytest.mark.simple_queuing
+@pytest.mark.requires(BrokerCapabilities.CONSUMER_GROUPS)
 def test_get_next_generates_uuid_identifier(broker):
     """Test that get_next returns messages with UUID identifiers"""
     stream = "test_stream"
@@ -135,7 +139,7 @@ def test_get_next_generates_uuid_identifier(broker):
     assert retrieved_identifier == identifier
 
 
-@pytest.mark.reliable_messaging
+@pytest.mark.requires(BrokerCapabilities.DELIVERY_GUARANTEES)
 def test_adapter_read_new_messages_skips_delivered_unacked_messages(broker):
     """An adapter read with new_messages=True returns only undelivered messages"""
     stream = "test_stream"
