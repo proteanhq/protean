@@ -20,6 +20,13 @@
 #   tests, the shared modules it loads through, and the core files only its
 #   tests reach. A path ending in "/" is a folder.
 # - markers: pytest markers to enable and select (`-m <m> --<m>`).
+# - enables: other adapters' markers whose flags the entry's marker runs also
+#   pass (`-m <m> --<m> --<e>`), so a test that carries both markers runs in
+#   this leg instead of being skipped. The `-m` still selects only marker <m>.
+#   Add the services those markers need to `services`. When entries in one
+#   leg share a marker, its run passes every flag they enable. When a run
+#   holds both, the enabled marker's run leaves those tests out
+#   (`-m "<e> and not <m>"`).
 # - databases, stores: capability suites (`--db=`, `--store=`), as
 #   `protean test -c FULL` runs them.
 # - conformance: "<port>:<adapter>" pairs, such as "event_store:message_db".
@@ -113,10 +120,12 @@ conformance = [
     { port = "event_store", adapter = "sql", config = { database_uri = "postgresql://postgres:postgres@localhost:55432/postgres" } },
 ]
 
+# The redis marker run also runs the tests marked postgresql and redis, so
+# the leg enables postgresql and starts postgres.
 [adapters.redis-broker]
 lane = "pr"
 leg = "redis"
-services = ["redis"]
+services = ["redis", "postgres"]
 paths = [
     "src/protean/infra/registry.py",
     "src/protean/adapters/broker/__init__.py",
@@ -130,6 +139,7 @@ paths = [
 ]
 markers = ["redis"]
 conformance = ["broker:redis"]
+enables = ["postgresql"]
 
 [adapters.redis-pubsub]
 lane = "pr"
@@ -289,9 +299,11 @@ paths = [
 markers = ["elasticsearch"]
 databases = ["ELASTICSEARCH"]
 
+# The message_db marker run also runs the tests marked message_db and
+# postgresql or sqlite, so it enables both and starts postgres.
 [adapters.message-db]
 lane = "touched"
-services = ["message-db"]
+services = ["message-db", "postgres"]
 paths = [
     "src/protean/infra/registry.py",
     "src/protean/adapters/event_store/__init__.py",
@@ -315,5 +327,6 @@ paths = [
     "tests/docs/reference/adapters/eventstore/test_message_db.py",
 ]
 markers = ["message_db"]
+enables = ["postgresql", "sqlite"]
 stores = ["MESSAGE_DB"]
 conformance = ["event_store:message_db"]

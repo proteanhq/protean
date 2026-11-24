@@ -8,7 +8,10 @@ the PR lane cannot silently stop testing an adapter.
 """
 
 import json
+import os
 import re
+import subprocess
+import sys
 import tomllib
 from importlib import metadata
 from pathlib import Path
@@ -16,6 +19,7 @@ from unittest.mock import patch
 
 import pytest
 import typer
+from _pytest.mark.expression import Expression
 from typer.testing import CliRunner
 
 from protean.cli import app
@@ -37,7 +41,9 @@ from protean.cli.test import (
     load_adapter_manifest,
     run_pr_lane,
 )
+from tests.conftest import OPT_IN_MARKERS
 from tests.shared import POSTGRES_URI
+from tests.support.adapter_markers import MARKERS_FILE
 
 # The manifest and the PR lane are file and CLI work; none of it loads a domain.
 pytestmark = pytest.mark.no_test_domain
@@ -45,6 +51,20 @@ pytestmark = pytest.mark.no_test_domain
 ADAPTERS_SRC = REPO_ROOT / "src" / "protean" / "adapters"
 TESTS_DIR = REPO_ROOT / "tests"
 TEST_SUITE_ACTION = REPO_ROOT / ".github" / "actions" / "test-suite" / "action.yml"
+
+# The opt-in markers that need an adapter's flag and, through it, its service.
+ADAPTER_MARKERS = frozenset(OPT_IN_MARKERS) - {"slow", "pending"}
+
+# The pytest options in a suite's command that take the next argument.
+VALUE_OPTIONS = {"-m", "--port", "--adapter", "--adapter-config"}
+
+# The tests that carry two adapter markers, as of the change that let one leg
+# run them. The guard checks that collection still finds them.
+DUAL_MARKED_FILES = {
+    "tests/outbox/test_reconciliation.py",
+    "tests/server/test_outbox_hold_back_repro.py",
+    "tests/unit_of_work/test_stale_event_sourced_outbox.py",
+}
 
 
 @pytest.fixture(scope="module")
@@ -66,6 +86,124 @@ def _entry(name: str, lane: str = "touched", **kwargs) -> AdapterEntry:
         ConformanceRun(*pair.split(":")) for pair in kwargs.get("conformance", [])
     ]
     return AdapterEntry(name=name, lane=lane, **fields)
+
+
+@pytest.fixture(scope="module")
+def collected_markers(tmp_path_factory) -> dict[str, dict[str, list[str]]]:
+    """The markers and marker-name keywords of every test under tests/.
+
+    pytest collects tests/ in a child process, so the parent run's ``-m`` and
+    flags do not change what it finds.
+    """
+    out = tmp_path_factory.mktemp("markers") / "markers.json"
+    env = {k: v for k, v in os.environ.items() if k != "PYTEST_ADDOPTS"}
+    env[MARKERS_FILE] = str(out)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--collect-only",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "-p",
+            "no:randomly",
+            "-p",
+            "tests.support.adapter_markers",
+            "--ignore=tests/support/",
+            "tests",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return json.loads(out.read_text(encoding="utf-8"))
+
+
+def _pytest_args(command: list[str]) -> tuple[str | None, set[str], list[str]]:
+    """The ``-m`` expression, the ``--<name>`` flags and the paths of a suite."""
+    args = command[command.index("pytest") + 1 :]
+    expression, flags, paths = None, set(), []
+    values = iter(args)
+    for arg in values:
+        if arg in VALUE_OPTIONS:
+            value = next(values)
+            if arg == "-m":
+                expression = value
+        elif arg.startswith("-"):
+            flags.add(arg.removeprefix("--"))
+        else:
+            paths.append(arg)
+    return expression, flags, paths or ["tests"]
+
+
+def _runs(command: list[str], nodeid: str, markers: set[str], needs: set[str]):
+    """Whether ``command`` selects the test and passes a flag for each need."""
+    expression, flags, paths = _pytest_args(command)
+    selected = expression is None or Expression.compile(expression).evaluate(
+        lambda name, **kwargs: name in markers
+    )
+    in_paths = any(
+        nodeid == p or nodeid.startswith((p.rstrip("/") + "/", p + "::")) for p in paths
+    )
+    return selected and in_paths and needs <= flags
+
+
+def _legs(adapters: list[AdapterEntry]) -> list[tuple[set[str], list[list[str]]]]:
+    """The services and suite commands of each leg the runnable adapters form."""
+    legs: dict[str, list[AdapterEntry]] = {}
+    for entry in adapters:
+        if entry.lane in ("pr", "touched"):
+            legs.setdefault(entry.leg, []).append(entry)
+    runner = TestRunner()
+    return [
+        (
+            {s for e in entries for s in e.services},
+            [s.command for s in build_adapter_suites(runner, entries)],
+        )
+        for entries in legs.values()
+    ]
+
+
+def _uncovered(
+    collected: dict[str, dict[str, list[str]]], adapters: list[AdapterEntry]
+) -> list[str]:
+    """The tests with two adapter markers that no leg of ``adapters`` runs.
+
+    A leg runs a test when one of its suites selects it and passes the flag of
+    each adapter marker it carries, and the leg starts the services of the
+    adapters that have those markers.
+    """
+    legs = _legs(adapters)
+    services_of = {
+        marker: {s for e in adapters if marker in e.markers for s in e.services}
+        for marker in ADAPTER_MARKERS
+    }
+
+    uncovered = []
+    for nodeid, names in collected.items():
+        needs = ADAPTER_MARKERS & {*names["markers"], *names["keywords"]}
+        if len(needs) < 2:
+            continue
+        services = {s for marker in needs for s in services_of[marker]}
+        if not any(
+            services <= leg_services
+            and _leg_runs(commands, nodeid, set(names["markers"]), needs)
+            for leg_services, commands in legs
+        ):
+            uncovered.append(f"{nodeid} {sorted(needs)}")
+    return uncovered
+
+
+def _leg_runs(
+    commands: list[list[str]], nodeid: str, markers: set[str], needs: set[str]
+) -> bool:
+    """Whether one of a leg's suite commands runs the test."""
+    return any(_runs(cmd, nodeid, markers, needs) for cmd in commands)
 
 
 class TestManifestIsCurrent:
@@ -262,6 +400,97 @@ class TestManifestIsCurrent:
 
     def test_the_pr_lane_is_postgres_and_redis(self, manifest):
         assert {e.leg for e in manifest.pr_adapters()} == {"postgresql", "redis"}
+
+    def test_every_test_with_two_adapter_markers_runs_in_a_leg(
+        self, manifest, collected_markers
+    ):
+        # tests/conftest.py skips a test for each adapter marker whose flag is
+        # missing, so a test with two markers runs only in a leg that passes
+        # both flags and starts both services.
+        found = {
+            nodeid.split("::")[0]
+            for nodeid, names in collected_markers.items()
+            if len(ADAPTER_MARKERS & {*names["markers"], *names["keywords"]}) > 1
+        }
+        assert found >= DUAL_MARKED_FILES
+        uncovered = _uncovered(collected_markers, manifest.adapters)
+        assert not uncovered, (
+            f"No leg runs these tests: add their other markers to an entry's "
+            f"enables in {ADAPTER_MANIFEST.name}, and those markers' services "
+            f"to its services: {uncovered}"
+        )
+
+
+class TestDualMarkedGuard:
+    TEST = "tests/x/test_both.py::test_it"
+    BOTH = {TEST: {"markers": ["message_db", "postgresql"], "keywords": []}}
+
+    def adapters(
+        self, enables: list[str] | None = None, services: list[str] | None = None
+    ) -> list[AdapterEntry]:
+        return [
+            _entry("postgresql", markers=["postgresql"], services=["postgres"]),
+            _entry(
+                "message-db",
+                markers=["message_db"],
+                services=services or ["message-db"],
+                enables=enables or [],
+            ),
+        ]
+
+    def test_a_test_no_leg_enables_is_uncovered(self):
+        assert _uncovered(self.BOTH, self.adapters()) == [
+            f"{self.TEST} ['message_db', 'postgresql']"
+        ]
+
+    def test_a_leg_with_the_flag_but_not_the_service_is_not_enough(self):
+        adapters = self.adapters(enables=["postgresql"])
+        assert _uncovered(self.BOTH, adapters) == [
+            f"{self.TEST} ['message_db', 'postgresql']"
+        ]
+
+    def test_a_leg_with_the_flag_and_the_service_covers_it(self):
+        adapters = self.adapters(
+            enables=["postgresql"], services=["message-db", "postgres"]
+        )
+        assert _uncovered(self.BOTH, adapters) == []
+
+    def test_an_off_entry_covers_nothing(self):
+        adapters = self.adapters(
+            enables=["postgresql"], services=["message-db", "postgres"]
+        )
+        adapters[1].lane = "off"
+        assert _uncovered(self.BOTH, adapters) != []
+
+    def test_a_folder_keyword_needs_its_flag_too(self):
+        # tests/conftest.py skips by keyword, so a test under a redis/ folder
+        # needs --redis without the redis marker.
+        collected = {
+            "tests/redis/test_x.py::test_it": {
+                "markers": ["postgresql"],
+                "keywords": ["postgresql", "redis"],
+            }
+        }
+        adapters = [
+            _entry("postgresql", markers=["postgresql"], services=["postgres"]),
+            _entry("redis", markers=["redis"], services=["redis"]),
+        ]
+        assert _uncovered(collected, adapters) != []
+        adapters[0].enables = ["redis"]
+        adapters[0].services = ["postgres", "redis"]
+        assert _uncovered(collected, adapters) == []
+
+    def test_a_test_with_one_adapter_marker_is_left_to_its_own_leg(self):
+        collected = {self.TEST: {"markers": ["postgresql", "slow"], "keywords": []}}
+        assert _uncovered(collected, self.adapters()) == []
+
+    def test_a_run_on_other_paths_does_not_cover_it(self):
+        command = ["pytest", "-m", "message_db", "--message_db", "--postgresql"]
+        needs = {"message_db", "postgresql"}
+        assert _runs([*command, "tests"], self.TEST, needs, needs)
+        assert _runs([*command, "tests/x/"], self.TEST, needs, needs)
+        assert not _runs([*command, "tests/xy"], self.TEST, needs, needs)
+        assert not _runs([*command, "tests/y"], self.TEST, needs, needs)
 
 
 class TestLoadAdapterManifest:
@@ -499,6 +728,60 @@ class TestLoadAdapterManifest:
             "Conformance: event_store/message_db",
         ]
 
+    def write_enables(self, tmp_path, enables: str, markers: str = '["redis"]'):
+        path = tmp_path / "adapters.toml"
+        path.write_text(
+            '[adapters.pg]\nlane = "pr"\nmarkers = ["postgresql"]\n'
+            f'[adapters.cache]\nlane = "pr"\nmarkers = {markers}\n'
+            f"enables = {enables}\n"
+        )
+        return path
+
+    def test_enables_is_read(self, tmp_path):
+        _, cache = load_adapter_manifest(
+            self.write_enables(tmp_path, '["postgresql"]')
+        ).adapters
+        assert cache.enables == ["postgresql"]
+
+    def test_an_entry_without_enables_enables_none(self, tmp_path):
+        path = tmp_path / "adapters.toml"
+        path.write_text('[adapters.solo]\nlane = "touched"\nmarkers = ["redis"]\n')
+        (entry,) = load_adapter_manifest(path).adapters
+        assert entry.enables == []
+
+    @pytest.mark.parametrize(
+        "enables, markers, message",
+        [
+            ('["mysql"]', '["redis"]', "Adapter 'cache' enables 'mysql', which is no"),
+            (
+                '["redis"]',
+                '["redis"]',
+                "Adapter 'cache' enables its own marker 'redis'",
+            ),
+            ('"postgresql"', '["redis"]', "Adapter 'cache' has enables 'postgresql'"),
+            ("[1]", '["redis"]', r"Adapter 'cache' has enables \[1\]"),
+            ('["postgresql"]', "[]", "Adapter 'cache' has enables but no markers"),
+        ],
+    )
+    def test_a_bad_enables_is_rejected(self, tmp_path, enables, markers, message):
+        with pytest.raises(ValueError, match=message):
+            load_adapter_manifest(self.write_enables(tmp_path, enables, markers))
+
+    def test_two_markers_that_enable_each_other_are_rejected(self, tmp_path):
+        # Each run would leave out the tests that carry both markers.
+        path = tmp_path / "adapters.toml"
+        path.write_text(
+            '[adapters.pg]\nlane = "pr"\nmarkers = ["postgresql"]\n'
+            'enables = ["redis"]\n'
+            '[adapters.cache]\nlane = "pr"\nmarkers = ["redis"]\n'
+            'enables = ["postgresql"]\n'
+        )
+        with pytest.raises(
+            ValueError,
+            match="Adapter 'pg' enables 'redis', whose marker run enables 'postgresql'",
+        ):
+            load_adapter_manifest(path)
+
     def test_a_manifest_without_triggers_has_none(self, tmp_path):
         path = tmp_path / "adapters.toml"
         path.write_text("")
@@ -643,6 +926,82 @@ class TestBuildAdapterSuites:
             "Conformance: broker/redis_pubsub",
             "Conformance: cache/redis",
         ]
+
+    def test_the_redis_marker_run_also_enables_postgresql(self, manifest):
+        (marker, *_) = build_adapter_suites(TestRunner(), manifest.resolve(["redis"]))
+        assert marker.command[-5:] == [
+            "-m",
+            "redis",
+            "--redis",
+            "--postgresql",
+            "tests",
+        ]
+
+    def test_the_message_db_marker_run_also_enables_postgresql_and_sqlite(
+        self, manifest
+    ):
+        (marker, *_) = build_adapter_suites(
+            TestRunner(), manifest.resolve(["message-db"])
+        )
+        assert marker.name == "Marker: message_db"
+        assert marker.command[-6:] == [
+            "-m",
+            "message_db",
+            "--message_db",
+            "--postgresql",
+            "--sqlite",
+            "tests",
+        ]
+
+    def test_a_shared_marker_run_passes_the_flags_of_every_entry(self):
+        # Only the first suite of a name is kept, so the flags enabled by the
+        # second entry must reach it.
+        entries = [
+            _entry("a", leg="r", markers=["redis"]),
+            _entry("b", leg="r", markers=["redis"], enables=["postgresql"]),
+            _entry("c", leg="r", markers=["redis"], enables=["sqlite", "postgresql"]),
+        ]
+        (suite,) = build_adapter_suites(TestRunner(), entries)
+        assert suite.command[-6:] == [
+            "-m",
+            "redis",
+            "--redis",
+            "--postgresql",
+            "--sqlite",
+            "tests",
+        ]
+
+    def test_a_marker_run_leaves_out_the_tests_an_enabling_run_takes(self, manifest):
+        suites = build_adapter_suites(
+            TestRunner(), manifest.resolve(["postgresql", "redis"])
+        )
+        by_name = {s.name: s.command for s in suites}
+        assert by_name["Marker: postgresql"][-4:] == [
+            "-m",
+            "postgresql and not redis",
+            "--postgresql",
+            "tests",
+        ]
+        assert by_name["Marker: redis"][-5:-3] == ["-m", "redis"]
+
+    def test_every_run_that_enables_a_marker_is_left_out_of_its_run(self, manifest):
+        suites = build_adapter_suites(
+            TestRunner(), manifest.resolve(["postgresql", "sqlite", "message-db"])
+        )
+        by_name = {s.name: s.command for s in suites}
+        assert by_name["Marker: postgresql"][-4:-2] == [
+            "-m",
+            "postgresql and not message_db",
+        ]
+        assert by_name["Marker: sqlite"][-4:-2] == ["-m", "sqlite and not message_db"]
+
+    def test_a_marker_run_keeps_its_tests_when_no_enabling_run_is_listed(
+        self, manifest
+    ):
+        (marker, *_) = build_adapter_suites(
+            TestRunner(), manifest.resolve(["postgresql"])
+        )
+        assert marker.command[-4:] == ["-m", "postgresql", "--postgresql", "tests"]
 
     def test_suites_are_coverage_wrapped_and_select_their_tests(self):
         runner = TestRunner()
@@ -870,3 +1229,25 @@ class TestSelectAdaptersCli:
         assert legs == ["postgresql", "redis", "elasticsearch"]
         # The `test` callback must not run CORE before a subcommand.
         run.assert_not_called()
+
+    def select(self, tmp_path: Path, *files: str) -> dict[str, str]:
+        changed = tmp_path / "changed.txt"
+        changed.write_text("".join(f"{f}\n" for f in files))
+        result = CliRunner().invoke(app, ["test", "select-adapters", str(changed)])
+        assert result.exit_code == 0, result.output
+        return {
+            leg["leg"]: leg["services"] for leg in json.loads(result.output)["include"]
+        }
+
+    def test_no_changes_run_the_redis_leg_with_postgres(self, tmp_path: Path):
+        assert self.select(tmp_path) == {
+            "postgresql": "postgres",
+            "redis": "redis postgres",
+        }
+
+    def test_a_message_db_test_change_starts_postgres_in_its_leg(self, tmp_path):
+        legs = self.select(
+            tmp_path, "tests/unit_of_work/test_stale_event_sourced_outbox.py"
+        )
+        assert list(legs) == ["postgresql", "redis", "sqlite", "message-db"]
+        assert legs["message-db"] == "message-db postgres"
