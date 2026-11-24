@@ -62,6 +62,36 @@ def test_that_abstract_events_cannot_be_instantiated(test_domain):
     )
 
 
+def test_that_abstract_events_cannot_be_built_with_model_construct(test_domain):
+    class AbstractEvent(BaseEvent):
+        foo: String()
+
+    test_domain.register(AbstractEvent, abstract=True)
+    test_domain.init(traverse=False)
+
+    with pytest.raises(NotSupportedError) as exc:
+        AbstractEvent.model_construct(foo="bar")
+
+    assert exc.value.args[0] == (
+        "AbstractEvent class has been marked abstract and cannot be instantiated"
+    )
+
+
+def test_that_truthy_abstract_flag_also_refuses_instantiation(test_domain):
+    class AbstractEvent(BaseEvent):
+        foo: String()
+
+    test_domain.register(AbstractEvent, abstract=1)
+    test_domain.init(traverse=False)
+
+    with pytest.raises(NotSupportedError) as exc:
+        AbstractEvent(foo="bar")
+
+    assert exc.value.args[0] == (
+        "AbstractEvent class has been marked abstract and cannot be instantiated"
+    )
+
+
 def test_that_concrete_subclass_of_abstract_event_can_be_instantiated(test_domain):
     class AbstractEvent(BaseEvent):
         foo: String()

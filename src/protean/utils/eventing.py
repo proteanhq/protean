@@ -437,8 +437,9 @@ class BaseMessageType(Element, BaseModel, OptionsMixin):
 
     def __new__(cls, *args: Any, **kwargs: Any) -> Self:
         # Refusing here, not in ``__init__``, also covers ``model_construct``,
-        # which skips ``__init__``.
-        if cls.meta_.abstract is True:
+        # which skips ``__init__``. Registration reads ``abstract`` by
+        # truthiness, so this check must too.
+        if cls.meta_.abstract:
             raise NotSupportedError(
                 f"{cls.__name__} class has been marked abstract"
                 " and cannot be instantiated"
