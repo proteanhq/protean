@@ -27,9 +27,7 @@ The Protean repository has one folder per port under `tests/conformance/`:
 so you do not register it.
 
 The `cache` folder holds the cache suite. Each of its tests names the
-`CacheCapabilities` flags it needs.
-[Write a Cache Adapter](../../guides/write-an-adapter/cache.md) runs this
-suite against a worked example adapter. The `event_store` folder holds the
+`CacheCapabilities` flags it needs. The `event_store` folder holds the
 event-store suite, described in
 [The event-store suite](#the-event-store-suite). The `database` and `broker`
 folders each hold one placeholder test until their port's suite moves in. The
@@ -37,6 +35,9 @@ database suite is still in `tests/adapters/database/generic/`, and
 `protean test test-adapter` runs it. For the other three ports,
 `protean test test-adapter --port <port>` runs the port's folder; see
 [CLI: `protean test test-adapter`](#cli-protean-test-test-adapter).
+
+[Write a Cache Adapter](../../guides/write-an-adapter/cache.md) shows the
+cache suite run against a worked example adapter.
 
 Each test runs against one adapter. With no options, a test runs against the
 default adapter of its folder's port: `inline` for `broker`, `memory` for the

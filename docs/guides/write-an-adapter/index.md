@@ -1,8 +1,8 @@
 # Write an Adapter
 
 A contributor adds an adapter to Protean in Protean's own repository. The
-conformance suite that checks each port's adapters lives there too, under
-`tests/conformance/`.
+conformance suites these guides run live there too, under
+`tests/conformance/event_store/` and `tests/conformance/cache/`.
 
 - [Write an Event-Store Adapter](event-store.md): implement `EventStorePort`
   for a new event store.

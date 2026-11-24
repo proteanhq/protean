@@ -40,7 +40,7 @@ class DelegatingCache(CacheTTLPort, CachePatternPort):
         return self._delegate.health()
 
     def get_connection(self) -> object:
-        # Open your store's client here, on the first call
+        # Return the client the constructor built
         return self._delegate.get_connection()
 
     def close(self) -> None:

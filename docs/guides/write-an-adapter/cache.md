@@ -23,7 +23,9 @@ nothing about projections.
 - `get`, `put` and `delete`, which read, write and remove the value under one
   key
 - `clear`, which removes every entry
-- `ping`, `health` and `get_connection` for connection checks
+- `ping` and `health`, which report whether the store is reachable
+- `get_connection`, which returns the store's native client, or the backing
+  store for an adapter without one
 
 `close` has a default that does nothing. When the store holds connections,
 override `close`.
@@ -51,9 +53,9 @@ seconds it was given. An adapter that declares `TTL` subclasses
 `CachePatternPort`. `Domain.init()` raises `ConfigurationError` when an
 adapter declares either flag and does not subclass the matching protocol.
 
-Declare only the flags the store keeps. The conformance suite runs the tests
-a flag gates only when the adapter declares that flag, so a flag the store
-does not keep fails those tests.
+Declare only the flags the store supports. The conformance suite runs the
+tests a flag gates only when the adapter declares that flag, so a flag the
+store does not support fails those tests.
 
 The example's `capabilities` property, in the next section, returns the
 memory cache's flags, `LOCAL`: `KEY_VALUE`, `TTL` and `PATTERN_MATCH`. The

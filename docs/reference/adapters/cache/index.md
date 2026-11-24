@@ -235,3 +235,5 @@ walks through a complete adapter.
   and how they relate to caches
 - Learn about [projectors](../../../guides/consume-state/projectors.md)
   that populate caches
+- Write a [cache adapter](../../../guides/write-an-adapter/cache.md) for a
+  store Protean does not support yet

@@ -55,14 +55,18 @@ _SECTIONS = [
     "Configure it in `domain.toml`",
 ]
 
-# The conformance module whose every test needs the flag, from the markers in
-# tests/conformance/cache/. SHARED and DURABLE share a module.
-_FLAG_MODULES = {
-    CacheCapabilities.KEY_VALUE: "test_roundtrip.py",
-    CacheCapabilities.TTL: "test_ttl.py",
-    CacheCapabilities.PATTERN_MATCH: "test_key_patterns.py",
-    CacheCapabilities.SHARED: "test_shared_and_durable.py",
-    CacheCapabilities.DURABLE: "test_shared_and_durable.py",
+# For each flag, a node id prefix that matches only tests needing the flag,
+# from the markers in tests/conformance/cache/. SHARED and DURABLE share a
+# module, so their prefixes name the one test each flag gates.
+_SHARED_AND_DURABLE = "test_shared_and_durable.py::"
+_FLAG_TESTS = {
+    CacheCapabilities.KEY_VALUE: "test_roundtrip.py::",
+    CacheCapabilities.TTL: "test_ttl.py::",
+    CacheCapabilities.PATTERN_MATCH: "test_key_patterns.py::",
+    CacheCapabilities.SHARED: _SHARED_AND_DURABLE
+    + "test_a_second_adapter_from_the_same_config_reads_the_first_ones_writes",
+    CacheCapabilities.DURABLE: _SHARED_AND_DURABLE
+    + "test_an_entry_outlasts_the_adapter_that_wrote_it",
 }
 
 
@@ -147,9 +151,9 @@ def test_conformance_suite_passes_against_the_example(conformance_run):
     assert "failed" not in counts and "errors" not in counts, output
 
 
-def test_every_single_flag_has_a_conformance_module():
+def test_every_single_flag_has_conformance_tests():
     # Iterating a Flag yields its single flags only, not composites like LOCAL.
-    assert set(CacheCapabilities) == set(_FLAG_MODULES)
+    assert set(CacheCapabilities) == set(_FLAG_TESTS)
 
 
 def test_conformance_run_executes_the_tests_the_declared_flags_gate(
@@ -159,7 +163,7 @@ def test_conformance_run_executes_the_tests_the_declared_flags_gate(
 
     for flag in CacheCapabilities:
         skip_line = f"delegating_memory does not declare {flag.name}"
-        passed_line = f"PASSED tests/conformance/cache/{_FLAG_MODULES[flag]}::"
+        passed_line = f"PASSED tests/conformance/cache/{_FLAG_TESTS[flag]}"
         if flag in declared:
             assert skip_line not in conformance_run.stdout, flag.name
             assert passed_line in conformance_run.stdout, flag.name
@@ -196,15 +200,17 @@ def test_ttl_from_domain_toml_reaches_get_ttl(tmp_path):
     domain.register(Summary, cache="default")
     domain.init(traverse=False)
 
+    # The page's TTL differs from the default, so a value near it cannot come
+    # from the default.
+    assert ttl < DEFAULT_TTL
+
     with domain.domain_context():
         cache = domain.cache_for(Summary)
         cache.add(Summary(summary_id="1", title="First"))
 
         remaining = cache.get_ttl(cache.key_for(Summary, "1"))
-        # A value at or below the page's TTL, which is shorter than the
-        # default, shows the page's value reached the adapter.
-        assert ttl < DEFAULT_TTL
-        assert remaining is not None and 0 < remaining <= ttl
+        # The lower bound allows for the time between the write and the read.
+        assert remaining is not None and ttl - 5 < remaining <= ttl
 
 
 def test_entry_point_names_the_register_function():
@@ -231,6 +237,30 @@ def test_written_entry_reaches_the_delegate(domain):
 
     assert adapter._delegate.get("summary:::1") == {"title": "First"}
     assert adapter.get("summary:::1") == {"title": "First"}
+
+
+class _RecordingCache(MemoryCache):
+    """A memory cache that reports itself unreachable and records `close`."""
+
+    closed = False
+
+    def ping(self) -> bool:
+        return False
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_connection_members_reach_the_delegate(domain):
+    adapter = domain.caches["default"]._adapter
+    assert adapter.get_connection() is adapter._delegate.get_connection()
+
+    delegate = _RecordingCache(adapter.name, domain, adapter.config)
+    adapter._delegate = delegate
+
+    assert adapter.ping() is False
+    adapter.close()
+    assert delegate.closed
 
 
 def test_pattern_reads_reach_the_delegate(domain):
