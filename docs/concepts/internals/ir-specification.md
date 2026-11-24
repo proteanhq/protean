@@ -827,12 +827,22 @@ Python's `json.dumps()` is the reference serializer. `0.0` serializes as
 
 A VO declared `part_of=Order` appears in the Order cluster, even if Payment
 also references it. The Payment field references the VO by FQN. Cross-cluster
-references are valid. A VO without `part_of` appears in the cluster of the
-aggregate or entity that holds it in a field, including a list or dict field.
-When no aggregate or entity holds it, the VO appears in the cluster of a
-command or event that holds it in a single-value field. A list or dict field on
-a command or event does not place it. If no aggregate, entity, command or event
-places the VO, it appears only in the elements index.
+references are valid. The IR builder places each VO in four steps, and a VO
+that an earlier step places keeps that cluster:
+
+1. A VO that declares `part_of` goes to that aggregate.
+2. A VO that an aggregate or entity holds in a field, including a list or dict
+   field, goes to that aggregate.
+3. A VO that a command or event holds in a single-value field or a value-object
+   `Dict` field goes to the message's aggregate. Commands are scanned before
+   events, each in registration order.
+4. A VO that a placed VO holds in a single-value field or a value-object `Dict`
+   field goes to the holder's cluster. The builder visits VOs breadth-first,
+   starting with the ones the first three steps placed, in the order they
+   placed them. It visits each VO once, so a cycle or a self-reference ends.
+
+A `List` field on a command, an event or a VO does not place a VO. If none of
+the four steps places the VO, it appears only in the elements index.
 
 ### Diagnostics in Checksum
 

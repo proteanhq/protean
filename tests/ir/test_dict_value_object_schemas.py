@@ -2,7 +2,9 @@
 
 A ``Dict(value_type=ValueObject(Address))`` field carries the value object's
 FQN as ``target`` in the IR, and each schema generator types the map's values
-as that value object. An untyped ``Dict()`` keeps the plain map output.
+as that value object. An untyped ``Dict()`` keeps the plain map output. A
+value object that a placed value object holds, in a ``Dict`` or a single-value
+field, joins the holder's cluster.
 """
 
 import io
@@ -15,14 +17,35 @@ import pytest
 
 from protean._deprecation import RemovedInProtean020Warning
 from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
+from protean.core.entity import BaseEntity
+from protean.core.event import BaseEvent
+from protean.core.projection import BaseProjection
 from protean.core.value_object import BaseValueObject
 from protean.domain import Domain
-from protean.fields import Dict, Identifier, Integer, String, ValueObject
+from protean.fields import (
+    Dict,
+    Float,
+    HasOne,
+    Identifier,
+    Integer,
+    List,
+    String,
+    ValueObject,
+)
 from protean.ir import load_schema
 from protean.ir.diff import classify_changes, diff_ir
-from protean.ir.generators.avro import generate_avro_schema
-from protean.ir.generators.protobuf import _map_entry_name, generate_proto_schema
-from protean.ir.generators.schema import _build_flat_elements, generate_element_schema
+from protean.ir.generators.avro import generate_avro_schema, generate_avro_schemas
+from protean.ir.generators.protobuf import (
+    _map_entry_name,
+    generate_proto_schema,
+    generate_proto_schemas,
+)
+from protean.ir.generators.schema import (
+    _build_flat_elements,
+    generate_element_schema,
+    generate_schemas,
+)
 from protean.ir.generators.schema_writer import write_schemas
 from protean.utils import fqn
 
@@ -567,3 +590,379 @@ class TestCompatibility:
             (c.element_fqn, c.change_type, c.field_name)
             for c in report.breaking_changes
         ] == [("book.Phone", "required_field_added", "zip")]
+
+
+def _clusters_holding(ir, vo_cls):
+    return [
+        agg_fqn
+        for agg_fqn, cluster in ir["clusters"].items()
+        if fqn(vo_cls) in cluster["value_objects"]
+    ]
+
+
+class Pebble(BaseValueObject):
+    grain = String()
+
+
+class Seam(BaseValueObject):
+    pebbles = Dict(value_type=ValueObject(Pebble))
+
+
+class Core(BaseValueObject):
+    name = String()
+
+
+class Vein(BaseValueObject):
+    seam = ValueObject(Seam)
+
+
+class Rock(BaseValueObject):
+    cores = Dict(value_type=ValueObject(Core))
+    veins = Dict(value_type=ValueObject(Vein))
+
+
+class Ore(BaseValueObject):
+    name = String()
+
+
+class Lode(BaseValueObject):
+    ore = ValueObject(Ore)
+
+
+class Quarry(BaseAggregate):
+    quarry_id = Identifier(identifier=True)
+
+
+class QuarryField(BaseAggregate):
+    quarry_id = Identifier(identifier=True)
+    rock = ValueObject(Rock)
+    lode = ValueObject(Lode)
+
+
+class Shaft(BaseEntity):
+    rock = ValueObject(Rock)
+    lode = ValueObject(Lode)
+
+
+class QuarryEntity(BaseAggregate):
+    quarry_id = Identifier(identifier=True)
+    shaft = HasOne(Shaft)
+
+
+class Mined(BaseEvent):
+    quarry_id = Identifier()
+    rock = ValueObject(Rock)
+    lode = ValueObject(Lode)
+
+
+class Stock(BaseCommand):
+    quarry_id = Identifier()
+    rocks = Dict(value_type=ValueObject(Rock))
+    lodes = Dict(value_type=ValueObject(Lode))
+
+
+def _held_by_aggregate_field(domain):
+    domain.register(QuarryField)
+    domain.register(Rock)
+    domain.register(Lode)
+    return QuarryField
+
+
+def _held_by_entity_field(domain):
+    domain.register(QuarryEntity)
+    domain.register(Shaft, part_of=QuarryEntity)
+    domain.register(Rock)
+    domain.register(Lode)
+    return QuarryEntity
+
+
+def _held_by_part_of(domain):
+    domain.register(Quarry)
+    domain.register(Rock, part_of=Quarry)
+    domain.register(Lode, part_of=Quarry)
+    return Quarry
+
+
+def _held_by_message_field(domain):
+    domain.register(Quarry)
+    domain.register(Mined, part_of=Quarry)
+    domain.register(Rock)
+    domain.register(Lode)
+    return Quarry
+
+
+def _held_by_message_dict(domain):
+    domain.register(Quarry)
+    domain.register(Stock, part_of=Quarry)
+    domain.register(Rock)
+    domain.register(Lode)
+    return Quarry
+
+
+_PLACEMENTS = pytest.mark.parametrize(
+    "place",
+    [
+        _held_by_aggregate_field,
+        _held_by_entity_field,
+        _held_by_part_of,
+        _held_by_message_field,
+        _held_by_message_dict,
+    ],
+    ids=["aggregate-field", "entity-field", "part-of", "message-field", "message-dict"],
+)
+
+
+def _register_nested(domain):
+    for vo_cls in (Pebble, Seam, Core, Vein, Ore):
+        domain.register(vo_cls)
+
+
+class TestNestedValueObjectCluster:
+    @_PLACEMENTS
+    def test_nested_value_objects_join_the_holder_cluster(self, test_domain, place):
+        aggregate = place(test_domain)
+        _register_nested(test_domain)
+        test_domain.init(traverse=False)
+        ir = test_domain.to_ir()
+        assert _clusters_holding(ir, Core) == [fqn(aggregate)]
+        assert _clusters_holding(ir, Ore) == [fqn(aggregate)]
+
+    def test_walk_follows_both_field_kinds_transitively(self, test_domain):
+        _held_by_aggregate_field(test_domain)
+        _register_nested(test_domain)
+        test_domain.init(traverse=False)
+        ir = test_domain.to_ir()
+        jsonschema.validate(ir, load_schema())
+        assert list(ir["clusters"][fqn(QuarryField)]["value_objects"]) == sorted(
+            fqn(cls) for cls in (Rock, Lode, Core, Ore, Vein, Seam, Pebble)
+        )
+
+    def test_mutable_field_on_a_walked_value_object_is_reported(self, test_domain):
+        _held_by_aggregate_field(test_domain)
+        _register_nested(test_domain)
+        test_domain.init(traverse=False)
+        findings = sorted(
+            (d["element"], d["field"])
+            for d in test_domain.to_ir()["diagnostics"]
+            if d["code"] == "VALUE_OBJECT_MUTABLE_FIELD"
+        )
+        assert findings == sorted(
+            [
+                (fqn(Rock), "cores"),
+                (fqn(Rock), "veins"),
+                (fqn(Seam), "pebbles"),
+            ]
+        )
+
+
+class Peak(BaseValueObject):
+    name = String()
+
+
+class Ridge(BaseValueObject):
+    peak = ValueObject(Peak)
+
+
+class Range(BaseValueObject):
+    ridge = ValueObject(Ridge)
+
+
+class Foothill(BaseValueObject):
+    peak = ValueObject(Peak)
+
+
+class Highland(BaseAggregate):
+    highland_id = Identifier(identifier=True)
+    range = ValueObject(Range)
+
+
+class Lowland(BaseAggregate):
+    lowland_id = Identifier(identifier=True)
+    foothill = ValueObject(Foothill)
+
+
+class TestWalkOrder:
+    def test_walk_is_breadth_first(self, test_domain):
+        # Depth-first from Highland would reach Peak through Range and Ridge
+        # before Lowland's Foothill is visited.
+        test_domain.register(Highland)
+        test_domain.register(Lowland)
+        for vo_cls in (Peak, Ridge, Range, Foothill):
+            test_domain.register(vo_cls)
+        test_domain.init(traverse=False)
+        assert _clusters_holding(test_domain.to_ir(), Peak) == [fqn(Lowland)]
+
+
+class Node(BaseValueObject):
+    name = String()
+    parent: "Node | None" = None
+
+
+class Tree(BaseAggregate):
+    tree_id = Identifier(identifier=True)
+    root = ValueObject(Node)
+
+
+class TestSelfReference:
+    @pytest.fixture
+    def ir(self, test_domain):
+        test_domain.register(Node)
+        test_domain.register(Tree)
+        test_domain.init(traverse=False)
+        return test_domain.to_ir()
+
+    def test_self_reference_is_a_value_object_entry(self, ir):
+        cluster = ir["clusters"][fqn(Tree)]
+        assert list(cluster["value_objects"]) == [fqn(Node)]
+        assert cluster["value_objects"][fqn(Node)]["fields"]["parent"] == {
+            "kind": "value_object",
+            "target": fqn(Node),
+        }
+
+    def test_json_schema_refers_to_itself(self, ir):
+        node = generate_schemas(ir)[fqn(Tree)]["$defs"]["Node"]
+        assert node["properties"]["parent"]["anyOf"][0] == {"$ref": "#/$defs/Node"}
+
+    def test_avro_refers_to_the_record_by_full_name(self, ir):
+        schema = generate_avro_schemas(ir)[fqn(Tree)]
+        fastavro.parse_schema(schema)
+        root = next(f for f in schema["fields"] if f["name"] == "root")
+        _, record = root["type"]
+        parent = next(f for f in record["fields"] if f["name"] == "parent")
+        assert parent["type"] == ["null", f"{record['namespace']}.Node"]
+
+    def test_protobuf_refers_to_the_message(self, ir):
+        with pytest.warns(RemovedInProtean020Warning):
+            text = generate_proto_schemas(ir)[fqn(Tree)]
+        assert re.search(r"^  optional Node parent = \d+;$", text, re.MULTILINE)
+        assert text.count("message Node {") == 1
+
+
+class Shade(BaseValueObject):
+    name = String()
+
+
+class Ghost(BaseValueObject):
+    shade = ValueObject(Shade)
+
+
+class Haunt(BaseProjection):
+    haunt_id = Identifier(identifier=True)
+    ghost = ValueObject(Ghost)
+
+
+class Charm(BaseValueObject):
+    name = String()
+
+
+class Bracelet(BaseValueObject):
+    charms = List(content_type=ValueObject(Charm))
+
+
+class Jeweller(BaseAggregate):
+    jeweller_id = Identifier(identifier=True)
+    bracelet = ValueObject(Bracelet)
+
+
+class TestWalkReach:
+    def test_projection_value_objects_stay_out_of_every_cluster(self, test_domain):
+        for cls in (Shade, Ghost, Haunt, Quarry):
+            test_domain.register(cls)
+        test_domain.init(traverse=False)
+        ir = test_domain.to_ir()
+        assert _clusters_holding(ir, Ghost) == []
+        assert _clusters_holding(ir, Shade) == []
+
+    def test_list_on_a_placed_value_object_places_nothing(self, test_domain):
+        for cls in (Charm, Bracelet, Jeweller):
+            test_domain.register(cls)
+        test_domain.init(traverse=False)
+        ir = test_domain.to_ir()
+        assert _clusters_holding(ir, Bracelet) == [fqn(Jeweller)]
+        assert _clusters_holding(ir, Charm) == []
+
+
+class Line(BaseValueObject):
+    sku = String()
+
+
+class Rate(BaseValueObject):
+    code = String()
+
+
+class Geo(BaseValueObject):
+    lat = Float()
+
+
+class PriceBook(BaseValueObject):
+    rates = Dict(value_type=ValueObject(Rate))
+    geo = ValueObject(Geo)
+
+
+class Order(BaseAggregate):
+    book = ValueObject(PriceBook)
+
+
+class OrderPlaced(BaseEvent):
+    order_id = Identifier()
+    lines = Dict(value_type=ValueObject(Line))
+
+
+class TestPriceBookReproduction:
+    @pytest.fixture
+    def ir(self, test_domain):
+        for cls in (Line, Rate, Geo, PriceBook, Order):
+            test_domain.register(cls)
+        test_domain.register(OrderPlaced, part_of=Order)
+        test_domain.init(traverse=False)
+        return test_domain.to_ir()
+
+    def test_cluster_lists_every_nested_value_object(self, ir):
+        cluster = ir["clusters"][fqn(Order)]
+        assert list(cluster["value_objects"]) == sorted(
+            fqn(cls) for cls in (Geo, Line, PriceBook, Rate)
+        )
+        assert cluster["value_objects"][fqn(PriceBook)]["fields"]["geo"] == {
+            "kind": "value_object",
+            "target": fqn(Geo),
+        }
+
+    def test_json_schema_defines_each_value_object(self, ir):
+        schemas = generate_schemas(ir)
+        assert set(schemas[fqn(OrderPlaced)]["$defs"]["Line"]["properties"]) == {"sku"}
+        defs = schemas[fqn(Order)]["$defs"]
+        assert set(defs["Rate"]["properties"]) == {"code"}
+        assert set(defs["Geo"]["properties"]) == {"lat"}
+        assert defs["PriceBook"]["properties"]["geo"]["anyOf"] == [
+            {"$ref": "#/$defs/Geo"},
+            {"type": "null"},
+        ]
+
+    @staticmethod
+    def _avro_field(record, name):
+        return next(f for f in record["fields"] if f["name"] == name)
+
+    def test_avro_writes_each_value_object_record(self, ir):
+        schemas = generate_avro_schemas(ir)
+        for schema in schemas.values():
+            fastavro.parse_schema(schema)
+        _, line_map = self._avro_field(schemas[fqn(OrderPlaced)], "lines")["type"]
+        assert [f["name"] for f in line_map["values"]["fields"]] == ["sku"]
+        _, book = self._avro_field(schemas[fqn(Order)], "book")["type"]
+        null, geo = self._avro_field(book, "geo")["type"]
+        assert null == "null"
+        assert (geo["name"], [f["name"] for f in geo["fields"]]) == ("Geo", ["lat"])
+        _, rate_map = self._avro_field(book, "rates")["type"]
+        assert [f["name"] for f in rate_map["values"]["fields"]] == ["code"]
+
+    def test_protobuf_writes_each_value_object_message(self, ir):
+        with pytest.warns(RemovedInProtean020Warning):
+            schemas = generate_proto_schemas(ir)
+        order = schemas[fqn(Order)]
+        assert re.search(r"^  optional Geo geo = \d+;$", order, re.MULTILINE)
+        assert re.search(r"message Geo \{\n  optional double lat = 1;\n\}", order)
+        assert re.search(r"message Rate \{\n  optional string code = 1;\n\}", order)
+        assert re.search(
+            r"message Line \{\n  optional string sku = 1;\n\}",
+            schemas[fqn(OrderPlaced)],
+        )

@@ -19,6 +19,7 @@ import json
 import logging
 import types as _types
 import typing
+from collections import deque
 from collections.abc import Callable, Iterator
 from datetime import datetime
 from enum import Enum
@@ -772,17 +773,19 @@ class IRBuilder:
         return entry
 
     def _message_value_object(self, cls: Any, field: ResolvedField) -> type | None:
-        """Return the value object class a command or event field holds, if any.
+        """Return the value object class a single-value field holds, if any.
 
-        A command or event turns its ``ValueObject`` fields into plain resolved
-        fields typed by the value object class (``Addr`` or ``Addr | None``), the
-        same type a bare annotation such as ``addr: Addr`` gives. Fields of any
-        other element, list or dict fields, and unions of more than one type
-        besides ``None`` (``Addr | str``) return ``None``.
+        A command, an event or a value object turns its ``ValueObject`` fields
+        into plain resolved fields typed by the value object class (``Addr`` or
+        ``Addr | None``), the same type a bare annotation such as ``addr: Addr``
+        gives. Fields of any other element, list and dict fields, and unions of
+        more than one type besides ``None`` (``Addr | str``) return ``None``.
+        A value-object ``Dict`` field is read by ``_dict_value_object`` instead.
         """
         if getattr(cls, "element_type", None) not in (
             DomainObjects.COMMAND,
             DomainObjects.EVENT,
+            DomainObjects.VALUE_OBJECT,
         ):
             return None
         return self._single_value_object(field._python_type)
@@ -2003,28 +2006,29 @@ class IRBuilder:
         return None
 
     def _build_vo_cluster_map(self) -> dict[str, type]:
-        """Build a mapping of VO FQN → aggregate class from fields and ``part_of``.
+        """Build a mapping of VO FQN → aggregate class.
 
-        Value objects don't get ``aggregate_cluster`` set by the resolver,
-        so we derive it from which aggregate/entity embeds them via
-        ``ValueObject``, ``ValueObjectList`` or value-object ``Dict`` fields,
-        then from an explicit ``part_of``. A value object none of these place
-        goes to the aggregate of a command or event that holds it in a
-        single-value field; a list or dict field on a message does not place it.
+        Value objects don't get ``aggregate_cluster`` set by the resolver, so
+        the cluster is derived in four steps. A value object an earlier step
+        places keeps that cluster:
+
+        1. A value object that declares ``part_of`` goes to that aggregate.
+        2. A value object an aggregate or entity holds in a ``ValueObject``,
+           ``ValueObjectList`` or value-object ``Dict`` field goes to that
+           aggregate.
+        3. A value object a command or event holds in a single-value field or a
+           value-object ``Dict`` field goes to the message's aggregate.
+        4. A value object that a placed value object holds in a single-value
+           field or a value-object ``Dict`` field goes to the holder's cluster,
+           breadth-first from the value objects the first three steps placed.
+
+        A ``List`` field on a command, an event or a value object places nothing.
         """
         vo_map: dict[str, type] = {}
-
-        # Scan aggregates and entities for VO field references
-        self._map_embedded_value_objects(vo_map)
-
-        # Also check VOs that have explicit part_of
         self._map_part_of_value_objects(vo_map)
-
-        # Last, value objects held only by commands and events. Running after
-        # the scans above means a value object an aggregate, an entity or
-        # ``part_of`` places keeps that cluster.
+        self._map_embedded_value_objects(vo_map)
         self._map_message_value_objects(vo_map)
-
+        self._map_nested_value_objects(vo_map)
         return vo_map
 
     def _map_embedded_value_objects(self, vo_map: dict[str, type]) -> None:
@@ -2058,11 +2062,12 @@ class IRBuilder:
                     vo_map[vo_fqn] = part_of
 
     def _map_message_value_objects(self, vo_map: dict[str, type]) -> None:
-        """Add to ``vo_map`` each value object a message's single-value field holds.
+        """Add to ``vo_map`` each value object a command or event field holds.
 
-        A value object already in ``vo_map`` keeps its cluster. When messages of
-        two aggregates hold the same value object, the first message scanned
-        wins: commands are scanned before events, each in registration order.
+        Covers single-value fields and value-object ``Dict`` fields. A value
+        object already in ``vo_map`` keeps its cluster. When messages of two
+        aggregates hold the same value object, the first message scanned wins:
+        commands are scanned before events, each in registration order.
         Messages with no resolvable aggregate, such as an abstract base event,
         are skipped.
         """
@@ -2073,15 +2078,46 @@ class IRBuilder:
                 agg_cls = self._resolve_aggregate_cls(message_cls)
                 if agg_cls is None:
                     continue
-                for vo_cls in self._message_value_objects(message_cls):
+                for vo_cls in self._held_value_objects(message_cls):
                     vo_map.setdefault(self._resolved_fqn(vo_cls), agg_cls)
 
-    def _message_value_objects(self, message_cls: Any) -> list[type]:
-        """Return the value object classes the fields of a command or event hold."""
+    def _map_nested_value_objects(self, vo_map: dict[str, type]) -> None:
+        """Add to ``vo_map`` each value object that a placed value object holds.
+
+        The walk is breadth-first: it starts from the value objects already in
+        ``vo_map``, in the order they were placed, and queues each value object
+        it places behind them. A value object already in ``vo_map`` keeps its
+        cluster and is not visited again, so a cycle or a self-reference ends.
+        """
+        registry = self._domain._domain_registry
+        registered = {
+            fqn(record.cls): record.cls
+            for record in registry._elements.get("VALUE_OBJECT", {}).values()
+        }
+        queue: deque[type] = deque(
+            registered[vo_fqn] for vo_fqn in vo_map if vo_fqn in registered
+        )
+        while queue:
+            holder_cls = queue.popleft()
+            agg_cls = vo_map[fqn(holder_cls)]
+            for vo_cls in self._held_value_objects(holder_cls):
+                vo_fqn = self._resolved_fqn(vo_cls)
+                if vo_fqn not in vo_map:
+                    vo_map[vo_fqn] = agg_cls
+                    queue.append(vo_cls)
+
+    def _held_value_objects(self, holder_cls: Any) -> list[type]:
+        """Return the value object classes the fields of a message or value object hold.
+
+        Lists each single-value field's value object and each value-object
+        ``Dict`` field's value object, in field declaration order.
+        """
         vo_classes: list[type] = []
-        for field_obj in declared_fields(message_cls).values():
+        for field_obj in declared_fields(holder_cls).values():
             if isinstance(field_obj, ResolvedField):
-                vo_cls = self._message_value_object(message_cls, field_obj)
+                vo_cls = self._message_value_object(
+                    holder_cls, field_obj
+                ) or self._dict_value_object(field_obj)
                 if vo_cls is not None:
                     vo_classes.append(vo_cls)
         return vo_classes
@@ -3900,9 +3936,10 @@ class IRBuilder:
         """VALUE_OBJECT_MUTABLE_FIELD: a value object with a ``list``/``dict``
         field, which gives it mutable state and breaks equality-by-value.
 
-        Only value objects reachable from a (non-abstract) aggregate cluster are
-        checked: a VO an aggregate, an entity, a command or an event holds in a
-        field, or one that carries ``part_of``.
+        Only value objects placed in a (non-abstract) aggregate cluster are
+        checked: a VO that carries ``part_of``, one an aggregate or an entity
+        holds in a field, one a command or an event holds in a single-value or
+        value-object ``Dict`` field, and one a placed VO holds in such a field.
         Emits one finding per offending field, naming it in the optional
         ``field`` key (mirroring ``DEPRECATED_FIELD``).
         """

@@ -152,8 +152,9 @@ metadata in `x-protean-*` extension fields:
 
 ### Nested structures
 
-Value objects and entities referenced by an aggregate, and value objects
-referenced by a command or event, are resolved as `$defs` with `$ref` pointers:
+Value objects and entities referenced by an aggregate, value objects
+referenced by a command or event, and value objects referenced by another value
+object, are resolved as `$defs` with `$ref` pointers:
 
 ```json
 {
@@ -191,6 +192,37 @@ A value object that a `Dict` field and a `ValueObject` field both use gets one
 record, and Protobuf as a `map` whose value type is the `Address` message. An
 untyped `Dict()` stays a map of untyped values: `{"type": "object"}`,
 `{"type": "map", "values": "string"}` and `map<string, string>`.
+
+A value object can hold another value object, in a `ValueObject` field, a field
+annotated with the value object class, or a typed `Dict` field. The nested
+value object gets its own `$defs` entry, and the holder's field refers to it:
+
+```python
+# fragment
+@domain.value_object
+class Geo:
+    lat = Float()
+
+
+@domain.value_object
+class PriceBook:
+    geo = ValueObject(Geo)
+```
+
+```json
+{
+  "PriceBook": {
+    "type": "object",
+    "properties": {
+      "geo": { "anyOf": [{ "$ref": "#/$defs/Geo" }, { "type": "null" }] }
+    }
+  }
+}
+```
+
+Avro writes `geo` as the `Geo` record and Protobuf as a `Geo` message field. A
+value object can refer to itself, such as `parent: "Node | None" = None`. The
+field refers to the value object's own `$defs` entry, record or message.
 
 ### Optional fields
 
