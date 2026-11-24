@@ -1,30 +1,42 @@
 """The write path of the `DAO` service.
 
-Each function that reads or writes storage takes the `DAO` as its first
-argument and writes its entity class's rows in the session
-`DAO.session_scope` picks. The helpers that work only on an entity, a model
-object or an entity class take those and no `DAO`. The path keeps these
-guarantees:
+Each function that reads or writes storage, or reads the `DAO`'s entity
+class, takes the `DAO` as its first argument. A function that writes rows
+does so in the session `DAO.session_scope` picks. The helpers that work only
+on an entity, a model object or an entity class take those and no `DAO`.
+The path keeps these guarantees:
 
-- Optimistic concurrency. A save of a persisted aggregate passes the version
-  it was loaded at to the adapter's ``update``, which raises
-  `ExpectedVersionError` when the stored version differs. A failed save of a
-  persisted aggregate puts ``_version`` back; a failed first save leaves it
-  advanced. ``_next_version`` advances once the write commits: at once for a
-  standalone save, and on commit inside a Unit of Work.
-- Unit of Work. Inside a Unit of Work nothing commits until the Unit of Work
-  does, and a saved aggregate enters its identity map as saved. A pending
-  ``Auto(increment=True)`` key is flushed and copied back onto the entity
-  before the save returns.
+- Optimistic concurrency. A save of a persisted aggregate passes the
+  aggregate's current ``_version`` to the adapter's ``update`` as the
+  expected version. The adapter raises `ExpectedVersionError` when the
+  stored version differs. Under a Unit of Work, a relational adapter can
+  instead raise it when the session flushes or commits. A save that fails
+  puts a persisted aggregate's ``_version`` back; a failed first save leaves
+  it advanced. When the error comes from a flush or the commit instead, the
+  Unit of Work's rollback puts the version back on a provider that undoes
+  the write. ``_next_version`` advances
+  once the write commits: at once for a standalone save, and on commit
+  inside a Unit of Work.
+- Unit of Work. Inside a Unit of Work a write commits when the Unit of Work
+  does, unless the `DAO` was moved out of it with `DAO.outside_uow`. While
+  a Unit of Work is active, a saved or created aggregate enters its
+  identity map as saved. A pending ``Auto(increment=True)``
+  key is flushed and copied back onto the entity before the save returns.
 - Pre-persist hooks. ``auto_now`` and ``auto_now_add`` stamping runs first,
   then the domain's aggregate enrichers, which skip the framework's internal
-  aggregates. A hook that raises, or breaks an invariant, has its writes
-  undone and aborts the save, and its ``ValidationError`` names the hook in
-  ``location``. ``apply_hooks=False`` skips both.
-- Uniqueness. A create checks every unique field that holds a value; a
-  field that is ``None`` or empty is skipped. A save of a persisted
-  entity checks none. The deprecated ``update`` checks them and leaves out
-  the entity's own identifier.
+  aggregates. ``apply_hooks=False`` skips both. On an aggregate, a hook that
+  raises, or breaks an invariant, has its writes undone and aborts the save.
+  The ``ValidationError`` names the hook in ``location``, unless the hook
+  raised one that already has a ``location``. Inside a caller's own
+  ``atomic_change`` block, only a raising hook is undone, and the caller's
+  block checks the invariants when it exits. A projection, or an entity
+  saved on its own, gets no undo and no ``location``.
+- Uniqueness. A create, through ``create`` or a ``save`` of a new entity,
+  checks every unique field that holds a value; a field that is ``None`` or
+  empty is skipped. A ``save`` of a persisted entity checks none. A
+  ``save_if_absent`` of a persisted entity checks the keys of the unique
+  indexes. The deprecated ``update`` checks the unique fields and leaves
+  out the entity's own identifier.
 """
 
 from __future__ import annotations
@@ -468,8 +480,10 @@ def _write_update(
 def save_if_absent(dao: DAO, entity_obj: Any, *, apply_hooks: bool = True) -> Any:
     """Save ``entity_obj`` unless another row already holds its unique key,
     as `DAO.save_if_absent` states."""
+    # The call goes through the DAO method, so a patch of
+    # `DAO._save_if_key_free` applies here.
     if DatabaseCapabilities.INSERT_IF_ABSENT not in dao.provider.capabilities:
-        return _save_if_key_free(dao, entity_obj, apply_hooks=apply_hooks)
+        return dao._save_if_key_free(entity_obj, apply_hooks=apply_hooks)
 
     version = (
         entity_obj._version

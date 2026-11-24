@@ -180,8 +180,8 @@ Because an aggregate that has child rows forces its root `UPDATE` out at
 `repo.add` time (a flush to materialize the parent row before the child inserts
 that reference it, since Protean emits no SQLAlchemy foreign-key metadata to let
 the ORM order them) rather than at commit, a child-only version conflict can
-surface at that forced flush instead of at commit. The SQLAlchemy `_flush`
-translates the resulting `StaleDataError` to `ExpectedVersionError` there, the
+surface at that forced flush instead of at commit. The SQLAlchemy provider's
+`flush` translates the resulting `StaleDataError` to `ExpectedVersionError` there, the
 same mapping the commit path applies.
 
 ## Consequences

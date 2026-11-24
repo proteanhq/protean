@@ -64,13 +64,14 @@ methods use `self.query` and `self.find_by` (which delegate to the internal
 
 - `src/protean/core/repository.py`: `BaseRepository` with `add()`, `get()`,
   `_dao` property, and `_sync_children()` for cascading child entities.
-- `src/protean/infra/dao.py`: the `DAO` service, whose lifecycle methods
-  (`get`, `find_by`, `exists`, `create`, `save`, `update`, `delete`) delegate
-  to the read and write paths, and the claim and batch-delete operations.
+- `src/protean/infra/dao.py`: the `DAO` service. It holds the claim and
+  batch-delete operations. Its lifecycle methods (`get`, `find_by`, `exists`,
+  `create`, `save`, `update`, `delete`) delegate to the read and write paths.
 - `src/protean/infra/dao_read.py`: the service's read path (`fetch`,
   `count`, `raw`, `get`, `find_by`, `exists`).
 - `src/protean/infra/dao_write.py`: the service's write path (`create`,
-  `save`, `save_if_absent`, `update`, `delete`, `delete_all`), and the
+  `save`, `save_if_absent`, `_apply_update` for `update`, `delete`,
+  `delete_all`), and the
   version, pre-persist hook and uniqueness helpers.
 - `src/protean/port/dao.py`: `DAOPort`, with the methods concrete adapters
   implement (`filter`, `count`, `insert`, `update`, `delete`), and the

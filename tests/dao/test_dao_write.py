@@ -1,17 +1,26 @@
 """The write path puts a persisted aggregate's version back when its save
-fails, and the `DAO` exposes the pre-persist hooks and the flush as public
-methods."""
+fails, checks unique fields on the deprecated ``update``, tracks a created
+aggregate in the Unit of Work, and calls its patchable `DAO` methods. The
+`DAO` exposes the pre-persist hooks and the flush as public methods."""
+
+import warnings
 
 import pytest
 
+from protean._deprecation import RemovedInProtean020Warning
 from protean.core.unit_of_work import UnitOfWork
+from protean.exceptions import ValidationError
+from protean.infra.dao import DAO
+from protean.port.database import DatabaseCapabilities
+from protean.utils.globals import current_uow
 
-from .elements import Person
+from .elements import Person, User
 
 
 @pytest.fixture(autouse=True)
 def register_elements(test_domain):
     test_domain.register(Person)
+    test_domain.register(User)
     test_domain.init(traverse=False)
 
 
@@ -75,10 +84,67 @@ class TestPublicWriteMethods:
         assert person.last_name == "Enriched"
         assert not person.state_.is_persisted
 
-    def test_flush_runs_inside_a_unit_of_work(self, dao):
-        person = Person(first_name="John", last_name="Doe")
-        with UnitOfWork():
-            dao.save(person)
-            dao.flush()
+    def test_flush_flushes_the_unit_of_work_session(self, dao, monkeypatch):
+        flushed = []
+        monkeypatch.setattr(dao.provider, "flush", flushed.append)
 
-        assert dao.get(person.id).first_name == "John"
+        with UnitOfWork():
+            dao.flush()
+            uow_session = current_uow.get_session(dao.provider.name)
+
+        assert flushed == [uow_session]
+
+
+class TestDeprecatedUpdateChecksUniqueFields:
+    def test_update_to_a_taken_unique_value_raises(self, test_domain):
+        user_dao = test_domain.repository_for(User)._dao
+        user_dao.create(email="john@example.com")
+        jane = user_dao.create(email="jane@example.com")
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RemovedInProtean020Warning)
+            with pytest.raises(ValidationError) as exc:
+                user_dao.update(jane, email="john@example.com")
+
+        assert "email" in exc.value.messages
+        assert user_dao.get(jane.id).email == "jane@example.com"
+
+
+class TestCreateInAUnitOfWork:
+    def test_create_tracks_the_aggregate_as_saved(self, dao):
+        with UnitOfWork() as uow:
+            person = dao.create(first_name="John", last_name="Doe")
+
+            assert uow._tracked_instance(Person, person.id) is person
+            assert (Person.meta_.database, Person, person.id) in uow._saved
+
+
+class TestTheWritePathCallsTheDAOMethods:
+    def test_save_runs_the_hooks_through_the_dao_method(self, dao, monkeypatch):
+        seen = []
+        monkeypatch.setattr(
+            DAO, "apply_pre_persist_hooks", lambda self, entity: seen.append(entity)
+        )
+        person = Person(first_name="John", last_name="Doe")
+
+        dao.save(person)
+
+        assert seen == [person]
+
+    def test_save_if_absent_falls_back_through_the_dao_method(self, dao, monkeypatch):
+        monkeypatch.setattr(
+            type(dao.provider),
+            "capabilities",
+            property(lambda self: DatabaseCapabilities.IN_MEMORY),
+        )
+        calls = []
+
+        def key_free(self, entity, *, apply_hooks):
+            calls.append((entity, apply_hooks))
+            return "patched"
+
+        monkeypatch.setattr(DAO, "_save_if_key_free", key_free)
+        person = Person(first_name="John", last_name="Doe")
+
+        assert dao.save_if_absent(person, apply_hooks=False) == "patched"
+        assert calls == [(person, False)]
