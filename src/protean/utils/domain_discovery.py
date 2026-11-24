@@ -203,7 +203,7 @@ def prepare_import(path: str) -> str:
 def locate_domain(
     module_name: str, domain_name: str | None, raise_if_not_found: bool = True
 ) -> Domain | None:
-    __traceback_hide__ = True  # noqa: F841
+    __traceback_hide__ = True
 
     try:
         __import__(module_name)
