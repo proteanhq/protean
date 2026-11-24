@@ -4,9 +4,11 @@ A command or event turns its ``ValueObject`` fields into plain resolved fields
 typed by the value object class. The IR records each one as a ``value_object``
 field with the value object's FQN as ``target``, the kind and target an
 aggregate's ``ValueObject`` field gets, and a value object that only messages
-hold joins the message's aggregate cluster.
+hold joins the message's aggregate cluster. A value object's own single-value
+field gets the same entry.
 """
 
+import copy
 import re
 from typing import Annotated
 
@@ -23,7 +25,7 @@ from protean.core.projection import BaseProjection
 from protean.core.query import BaseQuery
 from protean.core.value_object import BaseValueObject
 from protean.domain import Domain
-from protean.fields import Custom, Identifier, List, String, ValueObject
+from protean.fields import Custom, Dict, Float, Identifier, List, String, ValueObject
 from protean.ir import load_schema
 from protean.ir.diff import classify_changes, diff_ir
 from protean.ir.generators.avro import generate_avro_schema
@@ -417,3 +419,276 @@ class TestCompatibility:
         changes = self._value_object_changes(held_by_aggregate=False)
         assert changes == [("book.Addr", "field_renamed", None, "safe")]
         assert changes == self._value_object_changes(held_by_aggregate=True)
+
+
+def _clusters_holding(ir, vo_cls):
+    return [
+        agg_fqn
+        for agg_fqn, cluster in ir["clusters"].items()
+        if fqn(vo_cls) in cluster["value_objects"]
+    ]
+
+
+class Bin(BaseValueObject):
+    label = String()
+
+
+class Crate(BaseValueObject):
+    label = String()
+
+
+class SortBins(BaseCommand):
+    acct_id = Identifier()
+    bins = Dict(value_type=ValueObject(Bin))
+
+
+class CratesPacked(BaseEvent):
+    acct_id = Identifier()
+    crates = Dict(value_type=ValueObject(Crate))
+
+
+class Buyer(BaseAggregate):
+    buyer_id = Identifier(identifier=True)
+
+
+class Seller(BaseAggregate):
+    seller_id = Identifier(identifier=True)
+
+
+class PackBuyerBins(BaseCommand):
+    buyer_id = Identifier()
+    bins = Dict(value_type=ValueObject(Bin))
+
+
+class SellerBinned(BaseEvent):
+    seller_id = Identifier()
+    bin = ValueObject(Bin)
+
+
+class BuyerBinsPacked(BaseEvent):
+    buyer_id = Identifier()
+    bins = Dict(value_type=ValueObject(Bin))
+
+
+class BinSeller(BaseCommand):
+    seller_id = Identifier()
+    bin = ValueObject(Bin)
+
+
+class TestMessageDictCluster:
+    def test_command_and_event_dict_value_objects_join_the_message_cluster(
+        self, test_domain
+    ):
+        test_domain.register(Bin)
+        test_domain.register(Crate)
+        test_domain.register(Acct)
+        test_domain.register(SortBins, part_of=Acct)
+        test_domain.register(CratesPacked, part_of=Acct)
+        test_domain.init(traverse=False)
+        cluster = test_domain.to_ir()["clusters"][fqn(Acct)]
+        assert list(cluster["value_objects"]) == [fqn(Bin), fqn(Crate)]
+
+    def test_dict_and_single_value_fields_share_one_pass(self, test_domain):
+        # A separate single-value pass before the dict pass would place Bin
+        # with the Seller event instead of the earlier Buyer command.
+        test_domain.register(Bin)
+        test_domain.register(Buyer)
+        test_domain.register(PackBuyerBins, part_of=Buyer)
+        test_domain.register(Seller)
+        test_domain.register(SellerBinned, part_of=Seller)
+        test_domain.init(traverse=False)
+        assert _clusters_holding(test_domain.to_ir(), Bin) == [fqn(Buyer)]
+
+    def test_command_single_value_field_wins_over_an_earlier_event_dict(
+        self, test_domain
+    ):
+        # A dict pass before the single-value pass, or one pass in registration
+        # order across commands and events, would place Bin with Buyer.
+        test_domain.register(Bin)
+        test_domain.register(Buyer)
+        test_domain.register(BuyerBinsPacked, part_of=Buyer)
+        test_domain.register(Seller)
+        test_domain.register(BinSeller, part_of=Seller)
+        test_domain.init(traverse=False)
+        assert _clusters_holding(test_domain.to_ir(), Bin) == [fqn(Seller)]
+
+
+class Geo(BaseValueObject):
+    lat = Float()
+
+
+class Place(BaseValueObject):
+    geo = ValueObject(Geo)
+
+
+class Spot(BaseValueObject):
+    geo: Geo | None = None
+
+
+class Pin(BaseValueObject):
+    geo = ValueObject(Geo, required=True)
+
+
+class Far(BaseValueObject):
+    lat = Float()
+
+
+class Loose(BaseValueObject):
+    geo: Far | str | None = None
+
+
+class Atlas(BaseAggregate):
+    atlas_id = Identifier(identifier=True)
+    place = ValueObject(Place)
+    spot = ValueObject(Spot)
+    pin = ValueObject(Pin)
+    loose = ValueObject(Loose)
+
+
+class Mapped(BaseEvent):
+    acct_id = Identifier()
+    place = ValueObject(Place)
+    spot = ValueObject(Spot)
+    pin = ValueObject(Pin)
+
+
+class TestValueObjectField:
+    @pytest.fixture
+    def held_by_aggregate(self, test_domain):
+        for vo_cls in (Geo, Place, Spot, Pin, Far, Loose):
+            test_domain.register(vo_cls)
+        test_domain.register(Atlas)
+        test_domain.init(traverse=False)
+        ir = test_domain.to_ir()
+        jsonschema.validate(ir, load_schema())
+        return ir, _build_flat_elements(ir)
+
+    @pytest.fixture
+    def held_by_event(self, test_domain):
+        for vo_cls in (Geo, Place, Spot, Pin):
+            test_domain.register(vo_cls)
+        test_domain.register(Acct)
+        test_domain.register(Mapped, part_of=Acct)
+        test_domain.init(traverse=False)
+        ir = test_domain.to_ir()
+        jsonschema.validate(ir, load_schema())
+        return ir, _build_flat_elements(ir)
+
+    @pytest.mark.parametrize("holder", [Place, Spot], ids=["field", "annotation"])
+    def test_held_by_an_aggregate(self, held_by_aggregate, holder):
+        _, index = held_by_aggregate
+        assert _fields(index, holder)["geo"] == {
+            "kind": "value_object",
+            "target": fqn(Geo),
+        }
+
+    @pytest.mark.parametrize("holder", [Place, Spot], ids=["field", "annotation"])
+    def test_held_by_an_event(self, held_by_event, holder):
+        _, index = held_by_event
+        assert _fields(index, holder)["geo"] == {
+            "kind": "value_object",
+            "target": fqn(Geo),
+        }
+
+    def test_required_field_is_required(self, held_by_aggregate):
+        _, index = held_by_aggregate
+        assert _fields(index, Pin)["geo"] == {
+            "kind": "value_object",
+            "required": True,
+            "target": fqn(Geo),
+        }
+
+    def test_value_object_an_aggregate_holds_places_its_nested_value_object(
+        self, held_by_aggregate
+    ):
+        assert _clusters_holding(held_by_aggregate[0], Geo) == [fqn(Atlas)]
+
+    def test_value_object_an_event_holds_places_its_nested_value_object(
+        self, held_by_event
+    ):
+        assert _clusters_holding(held_by_event[0], Geo) == [fqn(Acct)]
+
+    def test_union_with_another_type_keeps_its_string_entry(self, held_by_aggregate):
+        ir, index = held_by_aggregate
+        assert _fields(index, Loose)["geo"] == {"kind": "standard", "type": "String"}
+        assert _clusters_holding(ir, Far) == []
+
+    def test_diff_from_a_string_entry_is_a_breaking_type_change(
+        self, held_by_aggregate
+    ):
+        right, _ = held_by_aggregate
+        left = copy.deepcopy(right)
+        cluster = left["clusters"][fqn(Atlas)]
+        cluster["value_objects"][fqn(Place)]["fields"]["geo"] = {
+            "kind": "standard",
+            "type": "String",
+        }
+        report = classify_changes(diff_ir(left, right), left, right)
+        assert [
+            (c.element_fqn, c.change_type, c.field_name)
+            for c in report.breaking_changes
+            if c.element_fqn == fqn(Place)
+        ] == [(fqn(Place), "field_type_changed", "geo")]
+
+
+class Leaf(BaseValueObject):
+    name = String()
+
+
+class Branch(BaseValueObject):
+    leaf = ValueObject(Leaf)
+
+
+class Grove(BaseAggregate):
+    grove_id = Identifier(identifier=True)
+    branch = ValueObject(Branch)
+
+
+class Orchard(BaseAggregate):
+    orchard_id = Identifier(identifier=True)
+    leaf = ValueObject(Leaf)
+
+
+class Plain(BaseAggregate):
+    plain_id = Identifier(identifier=True)
+
+
+class PlainLeafed(BaseEvent):
+    plain_id = Identifier()
+    leaf = ValueObject(Leaf)
+
+
+class TestPlacementOrder:
+    def _register_grove(self, test_domain):
+        test_domain.register(Grove)
+        test_domain.register(Branch)
+
+    def test_aggregate_field_wins_over_the_walk(self, test_domain):
+        self._register_grove(test_domain)
+        test_domain.register(Leaf)
+        test_domain.register(Orchard)
+        test_domain.init(traverse=False)
+        assert _clusters_holding(test_domain.to_ir(), Leaf) == [fqn(Orchard)]
+
+    def test_part_of_wins_over_the_walk(self, test_domain):
+        self._register_grove(test_domain)
+        test_domain.register(Plain)
+        test_domain.register(Leaf, part_of=Plain)
+        test_domain.init(traverse=False)
+        assert _clusters_holding(test_domain.to_ir(), Leaf) == [fqn(Plain)]
+
+    def test_message_field_wins_over_the_walk(self, test_domain):
+        self._register_grove(test_domain)
+        test_domain.register(Leaf)
+        test_domain.register(Plain)
+        test_domain.register(PlainLeafed, part_of=Plain)
+        test_domain.init(traverse=False)
+        assert _clusters_holding(test_domain.to_ir(), Leaf) == [fqn(Plain)]
+
+    def test_part_of_wins_over_an_aggregate_field(self, test_domain):
+        # Orchard registers first and holds Leaf, but Leaf declares Plain.
+        test_domain.register(Orchard)
+        test_domain.register(Plain)
+        test_domain.register(Leaf, part_of=Plain)
+        test_domain.init(traverse=False)
+        assert _clusters_holding(test_domain.to_ir(), Leaf) == [fqn(Plain)]
