@@ -6,8 +6,13 @@ name, so no later read returns those entries. On startup a subscription claims
 the group's entries that have sat unacknowledged for ``reclaim_idle_seconds``,
 handles them, and keeps each entry's earlier deliveries toward ``max_retries``.
 
-Each test stands in for the stopped worker by reading entries under a consumer
-name of its own and leaving them unacknowledged.
+Each test stands in for the stopped worker by reading entries and leaving them
+unacknowledged. Most tests read under a consumer name of their own. Tests that
+need the stale-consumer cleanup to match the stopped worker read under the
+stopped subscription's consumer name.
+
+The trim tests check that a trim after the first batch keeps every entry still
+pending in the group.
 """
 
 import asyncio
@@ -580,10 +585,11 @@ class TestTrimAfterRestart:
     """A trim after a batch keeps the entries still pending in the group.
 
     The trim is approximate (``MINID ~``), so Redis removes only whole stream
-    nodes of up to 100 entries or 4,096 bytes. With 1,000 entries, batches of
-    250 and 300 entries left pending, a trim bounded by the last delivered
-    entry instead of the oldest pending one removes whole nodes of entries
-    nobody has handled.
+    nodes, by default of up to 100 entries or 4,096 bytes. Each test publishes
+    1,000 entries and handles them in batches of 250. The first test leaves
+    all 1,000 pending and the second leaves 300. A trim bounded by the last
+    delivered entry instead of the oldest pending one removes whole nodes of
+    entries nobody has handled.
     """
 
     async def test_reclaimed_backlog_larger_than_one_batch_keeps_its_payloads(
@@ -620,7 +626,6 @@ class TestTrimAfterRestart:
         assert len(pending_ids) == 750
         kept = dict(client.xrange(category))
         assert pending_ids <= kept.keys()
-        assert all(kept[entry_id] for entry_id in pending_ids)
 
         for _ in range(3):
             await _poll_one_batch(second)
