@@ -5,6 +5,7 @@ framework and import no MCP SDK. The tests point them at a real fixture domain
 and a scaffolded temp project, so they exercise the same paths the server does.
 """
 
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -296,3 +297,109 @@ class TestScaffold:
 
         with pytest.raises(tools.McpToolError):
             tools.scaffold("aggregate", "Order", project=str(project), apply=True)
+
+
+_NOISY_DOMAIN = """\
+import structlog
+
+print("LOADING")
+structlog.get_logger("noisy").warning("LOGGED")
+
+from protean import Domain
+from protean.fields import String
+
+domain = Domain(name="NoisyMcp")
+
+
+@domain.aggregate
+class Account:
+    name = String(max_length=50)
+
+
+@domain.event(part_of=Account)
+class AccountOpened:
+    name = String(max_length=50)
+"""
+
+
+_LINT_RULE = """\
+print("LINTIMPORT")
+
+
+def check_names(ir):
+    print("LINTRUN")
+    return []
+"""
+
+
+def _forget_module(module_name):
+    """Drop ``module_name`` from ``sys.modules``, under any package prefix.
+
+    Traversal imports the domain file a second time as ``<dir>.<module_name>``.
+    """
+    for key in [
+        k for k in sys.modules if k == module_name or k.endswith(f".{module_name}")
+    ]:
+        del sys.modules[key]
+
+
+@pytest.mark.no_test_domain
+class TestDomainOutputStaysOffStdout:
+    """A domain module's prints go to stderr, not the stdio transport's stdout.
+
+    Each test uses its own module name and directory: a module imports once per
+    process, so a reused name would print nothing and pass vacuously.
+    """
+
+    @pytest.mark.parametrize(
+        ("tool", "module_name"),
+        [
+            (tools.introspect, "noisy_mcp_introspect_2103"),
+            (tools.check, "noisy_mcp_check_2103"),
+        ],
+    )
+    def test_the_tool_writes_nothing_to_stdout(
+        self, tool, module_name, tmp_path, monkeypatch, capsys
+    ):
+        module = tmp_path / f"{module_name}.py"
+        module.write_text(_NOISY_DOMAIN, encoding="utf-8")
+        monkeypatch.syspath_prepend(str(tmp_path))
+
+        try:
+            assert tool(f"{module}:domain")
+        finally:
+            _forget_module(module_name)
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "LOADING" in captured.err
+
+    def test_introspect_sends_a_lint_rule_output_to_stderr(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        module_name = "noisy_mcp_lint_2103"
+        rule_name = "noisy_mcp_lint_rule_2103"
+        domain_dir = tmp_path / "domain"
+        domain_dir.mkdir()
+        module = domain_dir / f"{module_name}.py"
+        module.write_text(_NOISY_DOMAIN, encoding="utf-8")
+        (domain_dir / "domain.toml").write_text(
+            f'[lint]\nrules = ["{rule_name}.check_names"]\n', encoding="utf-8"
+        )
+        # The rule sits outside the domain directory, so only the IR build
+        # imports it.
+        rules = tmp_path / "rules"
+        rules.mkdir()
+        (rules / f"{rule_name}.py").write_text(_LINT_RULE, encoding="utf-8")
+        monkeypatch.syspath_prepend(str(rules))
+        monkeypatch.syspath_prepend(str(domain_dir))
+
+        try:
+            assert tools.introspect(f"{module}:domain")
+        finally:
+            _forget_module(module_name)
+            _forget_module(rule_name)
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "LINTRUN" in captured.err

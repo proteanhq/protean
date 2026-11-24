@@ -1649,3 +1649,88 @@ class TestConfigDomainsParsing:
         _write_config(tmp_path, 'domains = "not a table"\n')
         with pytest.raises(ValueError, match="domains must be a TOML table"):
             load_config(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# A domain module's output goes to stderr while a hook loads it
+# ---------------------------------------------------------------------------
+
+_NOISY_HOOK_DOMAIN = """\
+print("LOADING")
+
+from protean import Domain
+from protean.fields import String
+
+domain = Domain(name="NoisyHook")
+
+
+@domain.aggregate
+class Account:
+    name = String(max_length=50)
+"""
+
+
+@pytest.mark.no_test_domain
+class TestHooksKeepTheModuleOutputOffStdout:
+    """Each hook site sends a domain module's prints to stderr.
+
+    Each test writes its own module under a name no other test uses: a module
+    imports once per process, so a reused name would print nothing.
+    """
+
+    @pytest.fixture
+    def noisy_module(self, tmp_path, monkeypatch):
+        created = []
+
+        def write(module_name):
+            path = tmp_path / f"{module_name}.py"
+            path.write_text(_NOISY_HOOK_DOMAIN, encoding="utf-8")
+            created.append(module_name)
+            return str(path)
+
+        monkeypatch.syspath_prepend(str(tmp_path))
+        yield write
+        for module_name in created:
+            for key in [
+                k
+                for k in sys.modules
+                if k == module_name or k.endswith(f".{module_name}")
+            ]:
+                del sys.modules[key]
+
+    def test_load_live_ir(self, noisy_module, capsys):
+        path = noisy_module("noisy_hook_live_ir_2103")
+
+        assert _load_live_ir(path)["domain"]["name"] == "NoisyHook"
+
+        captured = capsys.readouterr()
+        assert "LOADING" not in captured.out
+        assert "LOADING" in captured.err
+
+    def test_regenerate_ir(self, noisy_module, tmp_path, capsys):
+        path = noisy_module("noisy_hook_regenerate_2103")
+
+        _regenerate_ir(path, tmp_path / ".protean")
+
+        assert (tmp_path / ".protean" / "ir.json").is_file()
+        captured = capsys.readouterr()
+        assert "LOADING" not in captured.out
+        assert "LOADING" in captured.err
+
+    def test_check_staleness_single(self, noisy_module, tmp_path, capsys):
+        path = noisy_module("noisy_hook_staleness_2103")
+        # A baseline with a wrong checksum makes check_staleness load the domain.
+        _write_ir(
+            tmp_path / ".protean",
+            {"ir_version": SCHEMA_VERSION, "checksum": "sha256:stale"},
+        )
+
+        ok = _check_staleness_single(
+            path, tmp_path / ".protean", fix=False, config=CompatConfig()
+        )
+
+        assert ok is False
+        captured = capsys.readouterr()
+        assert "IR is stale" in captured.err
+        assert "LOADING" not in captured.out
+        assert "LOADING" in captured.err

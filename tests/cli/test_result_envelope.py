@@ -10,6 +10,8 @@ class, validating every ``--json`` payload against ``load_envelope_schema()``.
 from __future__ import annotations
 
 import json
+import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -24,6 +26,7 @@ from protean.cli.result import (
     EXIT_USAGE,
     build_envelope,
     load_envelope_schema,
+    stdout_to_stderr,
 )
 
 # These build their own domains/projects; the autouse Test domain fixture would
@@ -390,3 +393,68 @@ class TestRouteLogsToStderrRespectsLogConfig:
         result = runner.invoke(app, ["verify", "-d", "nonexistent.module", "--json"])
         assert result.exit_code == EXIT_USAGE
         assert len(calls) == 1
+
+
+class TestStdoutToStderr:
+    """``stdout_to_stderr`` sends stdout writes to stderr only while the block runs."""
+
+    def test_a_write_inside_the_block_reaches_stderr(self, capsys):
+        with stdout_to_stderr():
+            print("inside")
+        print("outside")
+
+        captured = capsys.readouterr()
+        assert captured.out == "outside\n"
+        assert captured.err == "inside\n"
+
+    def test_stdout_is_restored_after_a_normal_exit(self):
+        original = sys.stdout
+        with stdout_to_stderr():
+            assert sys.stdout is sys.stderr
+        assert sys.stdout is original
+
+    def test_stdout_is_restored_when_the_body_raises(self):
+        original = sys.stdout
+        with pytest.raises(RuntimeError, match="boom"):
+            with stdout_to_stderr():
+                raise RuntimeError("boom")
+        assert sys.stdout is original
+
+    def test_overlapping_blocks_in_two_threads_restore_stdout(self):
+        # Without serialization, thread B saves the stderr that thread A put in
+        # place and restores it after A has exited, leaving stdout on stderr.
+        original = sys.stdout
+        a_inside = threading.Event()
+        a_left = threading.Event()
+        b_inside = threading.Event()
+
+        def first():
+            with stdout_to_stderr():
+                a_inside.set()
+                # With the lock, B cannot enter, so this waits out the timeout.
+                b_inside.wait(timeout=0.3)
+            a_left.set()
+
+        def second():
+            a_inside.wait()
+            with stdout_to_stderr():
+                b_inside.set()
+                a_left.wait(timeout=5)
+
+        threads = [threading.Thread(target=first), threading.Thread(target=second)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+
+        assert sys.stdout is original
+
+    def test_a_nested_block_in_the_same_thread_does_not_deadlock(self, capsys):
+        with stdout_to_stderr():
+            with stdout_to_stderr():
+                print("nested")
+        print("outside")
+
+        captured = capsys.readouterr()
+        assert captured.out == "outside\n"
+        assert captured.err == "nested\n"

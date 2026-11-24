@@ -13,7 +13,7 @@ from protean.adapters.database.schema_migrator import (
     migration_provider,
 )
 from protean.cli._helpers import handle_cli_exceptions, load_domain
-from protean.cli.result import EXIT_FAILURE, emit_usage_error
+from protean.cli.result import EXIT_FAILURE, emit_usage_error, stdout_to_stderr
 from protean.exceptions import (
     ConfigurationError,
     NoDomainException,
@@ -290,7 +290,8 @@ def _differences(domain_path: str, directory: Path) -> list[str]:
     # ``load_domain`` and ``_with_migrator`` abort, which exits 1, the code
     # for a difference, so this loads the domain and the migrator itself.
     try:
-        derived_domain = derive_domain(domain_path)
+        with stdout_to_stderr():
+            derived_domain = derive_domain(domain_path)
     except NoDomainException as exc:
         emit_usage_error(
             as_json=False, message=f"Error loading Protean domain: {exc.args[0]}"
@@ -303,7 +304,8 @@ def _differences(domain_path: str, directory: Path) -> list[str]:
     assert derived_domain is not None
 
     try:
-        derived_domain.init()
+        with stdout_to_stderr():
+            derived_domain.init()
     except Exception as exc:  # noqa: BLE001 - an environment error, such as an unreachable database
         emit_usage_error(
             as_json=False, message=f"Error initialising Protean domain: {exc}"

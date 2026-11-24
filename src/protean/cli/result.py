@@ -48,7 +48,11 @@ documented per command:
 
 from __future__ import annotations
 
+import contextlib
 import json
+import sys
+import threading
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Literal, NoReturn
 
@@ -126,6 +130,32 @@ def route_logs_to_stderr(log_already_configured: bool = False) -> None:
     # corrupt the payload. Domain.init configures logging only after the import,
     # and then sees the root handler installed here and leaves it alone.
     configure_logging()
+
+
+# ``redirect_stdout`` swaps a process-global. The MCP server runs sync tools in
+# worker threads, and two overlapping blocks would each restore the stream the
+# other saved, leaving ``sys.stdout`` on stderr. Re-entrant, so a block nested in
+# the same thread still works.
+_STDOUT_REDIRECT_LOCK = threading.RLock()
+
+
+@contextlib.contextmanager
+def stdout_to_stderr() -> Iterator[None]:
+    """Send everything written to ``sys.stdout`` to ``sys.stderr`` while the block runs.
+
+    Wrap each call that imports a domain's modules or runs its code, such as
+    ``derive_domain``, ``Domain.init``, ``Domain.check``, ``Domain.to_ir`` and
+    ``check_staleness``, so a ``print()`` or an unconfigured log line in a domain
+    module does not reach a command's stdout payload. A write that bypasses
+    ``sys.stdout`` (``os.write(1, ...)`` or ``sys.__stdout__``) is not caught.
+    ``sys.stdout`` is restored when the block exits, including when the body
+    raises, so an error handler outside the block writes to its usual stream.
+    Blocks in different threads run one at a time.
+    """
+    # Read sys.stderr at entry, not at import: Click's CliRunner swaps it per
+    # invocation.
+    with _STDOUT_REDIRECT_LOCK, contextlib.redirect_stdout(sys.stderr):
+        yield
 
 
 def load_envelope_schema() -> dict[str, Any]:

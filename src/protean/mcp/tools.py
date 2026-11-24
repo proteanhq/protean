@@ -9,7 +9,9 @@ scaffold core ([`plan_add_slice`][protean.scaffold.add_plan.plan_add_slice] then
 [`apply_plan`][protean.scaffold.apply.apply_plan]).
 
 The module imports no MCP SDK, so it is importable and unit-testable without the
-``mcp`` extra. :mod:`protean.mcp.server` wraps these functions as MCP tools.
+``mcp`` extra. It does import :mod:`protean.cli.result` for the stdout redirect
+around a domain load, which loads the ``protean.cli`` package.
+:mod:`protean.mcp.server` wraps these functions as MCP tools.
 
 Domain resolution mirrors the CLI: read tools auto-discover the domain from the
 process working directory (the ``"."`` default `protean check` uses) and accept
@@ -24,6 +26,7 @@ from __future__ import annotations
 import difflib
 from typing import TYPE_CHECKING, Any, TypedDict
 
+from protean.cli.result import stdout_to_stderr
 from protean.exceptions import NoDomainException
 from protean.utils.domain_discovery import derive_domain
 
@@ -97,7 +100,8 @@ def _derive(domain: str | None) -> Domain:
     """
     path = _resolve_path(domain, "domain")
     try:
-        derived = derive_domain(path)
+        with stdout_to_stderr():
+            derived = derive_domain(path)
     except NoDomainException as exc:
         raise McpToolError(f"Error loading Protean domain: {exc.args[0]}") from exc
     except Exception as exc:
@@ -118,7 +122,8 @@ def _load(domain: str | None) -> Domain:
     """
     derived = _derive(domain)
     try:
-        derived.init()
+        with stdout_to_stderr():
+            derived.init()
     except Exception as exc:  # any init error goes back to the client as McpToolError
         raise McpToolError(f"Error initialising Protean domain: {exc}") from exc
     return derived
@@ -134,7 +139,8 @@ def check(domain: str | None = None) -> dict[str, Any]:
     try:
         # ``check`` prepares the domain, which imports the rest of its package;
         # a broken sibling module raises here, so translate it like a load error.
-        return derived.check()
+        with stdout_to_stderr():
+            return derived.check()
     except Exception as exc:  # any check error goes back to the client as McpToolError
         raise McpToolError(f"Error checking Protean domain: {exc}") from exc
 
@@ -164,7 +170,9 @@ def introspect(domain: str | None = None) -> dict[str, Any]:
     """
     derived = _load(domain)
     try:
-        return derived.to_ir()
+        # Building the IR imports and runs any ``[lint].rules`` callables.
+        with stdout_to_stderr():
+            return derived.to_ir()
     except Exception as exc:  # any IR error goes back to the client as McpToolError
         raise McpToolError(f"Error introspecting Protean domain: {exc}") from exc
 

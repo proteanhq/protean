@@ -132,6 +132,12 @@ one JSON object and nothing else. Every log line, warning, and human error
 message goes to stderr, so `protean check --format json | jq` (or
 `protean verify --json | jq`) stays parseable.
 
+This also covers your own domain code. While the command imports, initializes
+or checks the domain, or builds its IR, anything a domain module writes through
+`sys.stdout` goes to stderr. That includes a `print()` call, a log line written
+before logging is configured, and the output of a custom lint rule. A write
+that bypasses `sys.stdout`, such as `os.write(1, ...)`, still reaches stdout.
+
 ## Related
 
 - [`protean check`](check.md): The exemplar command.
