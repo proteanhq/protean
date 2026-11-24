@@ -27,6 +27,7 @@ Usage:
 import logging
 
 from protean import Domain, handle
+from protean.exceptions import ObjectNotFoundError
 from protean.fields import Identifier, String
 
 # Domain setup
@@ -65,14 +66,25 @@ class CustomerCommandHandler:
 
     @handle(RegisterCustomer)
     def register_customer(self, command: RegisterCustomer):
-        """Create a new Customer aggregate from the registration command."""
-        customer = Customer(
-            id=command.customer_id,
-            name=command.name,
-            email=command.email,
-            source=command.source,
-        )
-        domain.repository_for(Customer).add(customer)
+        """Create a new Customer aggregate from the registration command.
+
+        A repeated registration finds the customer and changes nothing. The
+        external system can send the same message more than once.
+        """
+        repository = domain.repository_for(Customer)
+        try:
+            repository.get(command.customer_id)
+        except ObjectNotFoundError:
+            repository.add(
+                Customer(
+                    id=command.customer_id,
+                    name=command.name,
+                    email=command.email,
+                    source=command.source,
+                )
+            )
+        else:
+            return  # already registered; a repeated message must not fail
 
 
 @domain.subscriber(stream="erp_user_events")

@@ -13,6 +13,12 @@ The two checks:
   was. Events are delivered at least once and can arrive late, so each
   receiving command handler must skip work it has already applied.
 
+The module also delivers a message twice to the assets that create an
+aggregate without handing off: the ``$any`` audit asset and the two subscriber
+assets. Each must keep one record. It also checks that the ``$any`` audit on
+the event-handler pages keys its entry on the event's id, the way the asset
+does.
+
 Each asset runs under its own ``run_name`` so registrations cannot collide.
 """
 
@@ -20,6 +26,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import runpy
 import subprocess
 import sys
@@ -389,6 +396,152 @@ def test_redelivering_every_event_changes_nothing(asset: str) -> None:
             dispatch_events_sync([event], domain.handlers_for)
 
         assert _snapshot(domain) == before
+
+
+def test_any_audit_keeps_one_entry_per_redelivered_event() -> None:
+    """The ``$any`` audit asset creates an aggregate per event without handing
+    off to another one, so it has no scenario above. Its entry is keyed on the
+    audited event's id, so delivering every event again adds no entry."""
+    ns, domain = _load("event-handler/assets/event_handler_any_event.py")
+
+    with domain.domain_context():
+        task = ns["Task"](task_id="TASK-1", title="Write docs", assignee="alice")
+        task.create()
+        domain.repository_for(ns["Task"]).add(task)
+        task = domain.repository_for(ns["Task"]).get("TASK-1")
+        task.complete()
+        domain.repository_for(ns["Task"]).add(task)
+
+        events = _stored_events(domain)
+        assert [type(event).__name__ for event in events] == [
+            "TaskCreated",
+            "TaskCompleted",
+        ]
+
+        for event in reversed(events):
+            dispatch_events_sync([event], domain.handlers_for)
+
+        entries = _all(ns, domain, "AuditLog")
+        assert sorted(entry.entry_id for entry in entries) == sorted(
+            event._metadata.headers.id for event in events
+        )
+        assert sorted(entry.event_type for entry in entries) == [
+            "TaskCompleted",
+            "TaskCreated",
+        ]
+
+
+@pytest.mark.parametrize(
+    ("asset", "subscriber", "payload", "aggregate", "id_field", "record_id"),
+    [
+        (
+            "subscriber/assets/subscriber_anti_corruption.py",
+            "ERPUserSubscriber",
+            {
+                "event_type": "user.created",
+                "data": {
+                    "userId": "USR-1",
+                    "firstName": "Alice",
+                    "lastName": "Johnson",
+                    "emailAddress": "alice@example.com",
+                },
+            },
+            "Customer",
+            "id",
+            "USR-1",
+        ),
+        (
+            "add-subscriber-flow/assets/subscriber_with_command.py",
+            "ERPEmployeeSubscriber",
+            {
+                "eventType": "employee.hired",
+                "payload": {
+                    "empId": "EMP-1",
+                    "firstName": "Alice",
+                    "lastName": "Johnson",
+                    "emailAddr": "alice@corp.com",
+                    "dept": "Engineering",
+                },
+            },
+            "Employee",
+            "employee_id",
+            "EMP-1",
+        ),
+    ],
+)
+def test_a_repeated_external_message_keeps_one_record(
+    asset: str,
+    subscriber: str,
+    payload: dict[str, Any],
+    aggregate: str,
+    id_field: str,
+    record_id: str,
+) -> None:
+    """An external system can send the same message twice. The command handler
+    behind each subscriber finds the record and returns, so the second call
+    neither raises nor stores a second record."""
+    ns, domain = _load(asset)
+
+    with domain.domain_context():
+        ns[subscriber]()(payload)
+        first = [record.to_dict() for record in _all(ns, domain, aggregate)]
+        assert [record[id_field] for record in first] == [record_id]
+
+        ns[subscriber]()(payload)
+
+        assert [record.to_dict() for record in _all(ns, domain, aggregate)] == first
+
+
+def _is_any_handler(node: ast.AST) -> bool:
+    return isinstance(node, ast.FunctionDef) and any(
+        isinstance(decorator, ast.Call)
+        and [ast.unparse(arg) for arg in decorator.args] == ["'$any'"]
+        for decorator in node.decorator_list
+    )
+
+
+def _any_handlers(text: str) -> list[ast.FunctionDef]:
+    """Every ``@handle("$any")`` method a ``python`` block of a page defines."""
+    blocks = re.findall(r"```python\n(.*?)```", text, flags=re.DOTALL)
+    return [
+        node
+        for block in blocks
+        for node in ast.walk(ast.parse(block))
+        if isinstance(node, ast.FunctionDef) and _is_any_handler(node)
+    ]
+
+
+def _assert_keys_on_the_event_id(handler: ast.FunctionDef) -> None:
+    statements = [ast.unparse(node) for node in handler.body]
+    assert "entry_id = event._metadata.headers.id" in statements
+    [guard] = [node for node in handler.body if isinstance(node, ast.Try)]
+    assert [ast.unparse(node) for node in guard.body] == ["repository.get(entry_id)"]
+    [missing] = guard.handlers
+    assert ast.unparse(missing.type) == "ObjectNotFoundError"
+    [create] = [
+        node
+        for node in ast.walk(ast.Module(body=missing.body, type_ignores=[]))
+        if isinstance(node, ast.Call) and ast.unparse(node.func) == "AuditLog"
+    ]
+    assert "entry_id=entry_id" in [ast.unparse(k) for k in create.keywords]
+
+
+@pytest.mark.parametrize(
+    "page", ["event-handler/SKILL.md", "event-handler/references/any-handler.md"]
+)
+def test_the_any_audit_on_the_page_keys_on_the_event_id(page: str) -> None:
+    """The pages show the ``$any`` audit the asset runs. Each block that writes
+    an ``AuditLog`` keys the entry on the event's id and creates it only when
+    the lookup by that id finds nothing."""
+    auditors = [
+        handler
+        for handler in _any_handlers((SKILLS / page).read_text())
+        if "AuditLog(" in ast.unparse(handler)
+    ]
+    assert auditors, f"{page} must show the $any audit"
+
+    for handler in auditors:
+        _assert_keys_on_the_event_id(handler)
 
 
 # Runs in a child interpreter so the assets' registrations stay out of this

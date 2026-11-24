@@ -7,6 +7,7 @@ This example demonstrates:
 - Useful for logging, metrics, auditing, or event forwarding
 - Only one $any handler method is allowed per event handler class
 - $any acts as a fallback: specific handlers take precedence
+- Keying each audit entry on the event's id, so a redelivered event adds nothing
 
 Usage:
     task = Task(task_id="TASK-001", title="Write docs", assignee="alice")
@@ -16,6 +17,7 @@ Usage:
 """
 
 from protean import Domain, handle
+from protean.exceptions import ObjectNotFoundError
 from protean.fields import Identifier, String, Text
 
 # Domain setup
@@ -71,10 +73,12 @@ class Task:
 class AuditLog:
     """Audit log aggregate for recording all domain activity.
 
-    Uses the default auto-generated `id` field since audit entries
-    don't have a natural business identifier.
+    `entry_id` is the id of the audited event. Events are delivered at least
+    once, so the same event can arrive again, and its id tells the handler the
+    entry exists.
     """
 
+    entry_id: Identifier(identifier=True)
     event_type: String(required=True)
     details: Text(required=True)
 
@@ -100,14 +104,27 @@ class TaskAuditor:
     def on_any_task_event(self, event):
         """Handle any event on the Task stream.
 
-        Creates an audit log entry for every event, capturing
-        the event type and a text representation.
+        Creates one audit log entry per event, capturing the event type and
+        a text representation. A redelivered event finds its entry and adds
+        nothing.
         """
-        audit_entry = AuditLog(
-            event_type=event.__class__.__name__,
-            details=f"Event received: {event.__class__.__name__} - {event.to_dict()}",
-        )
-        domain.repository_for(AuditLog).add(audit_entry)
+        repository = domain.repository_for(AuditLog)
+        entry_id = event._metadata.headers.id
+        try:
+            repository.get(entry_id)
+        except ObjectNotFoundError:
+            repository.add(
+                AuditLog(
+                    entry_id=entry_id,
+                    event_type=event.__class__.__name__,
+                    details=(
+                        f"Event received: {event.__class__.__name__}"
+                        f" - {event.to_dict()}"
+                    ),
+                )
+            )
+        else:
+            return  # already recorded; a redelivered event must not log twice
 
 
 # Example usage

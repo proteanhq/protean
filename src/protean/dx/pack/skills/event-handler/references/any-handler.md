@@ -19,6 +19,8 @@ The examples on this page use these elements:
 ```python
 import logging
 
+from protean.exceptions import ObjectNotFoundError
+
 logger = logging.getLogger(__name__)
 
 @domain.aggregate
@@ -32,20 +34,32 @@ class TaskCreated:
 
 @domain.aggregate
 class AuditLog:
+    entry_id: Identifier(identifier=True)
     event_type: String(required=True)
     details: String()
 ```
+
+Events are delivered at least once, so the same event can arrive again. `AuditLog` takes the audited event's id as its identity, and the handler returns when an entry with that id exists:
 
 ```python
 @domain.event_handler(part_of=AuditLog, stream_category=Task.meta_.stream_category)
 class TaskAuditor:
     @handle("$any")
     def on_any_task_event(self, event):
-        audit_entry = AuditLog(
-            event_type=event.__class__.__name__,
-            details=f"Event received: {event.__class__.__name__}",
-        )
-        domain.repository_for(AuditLog).add(audit_entry)
+        repository = domain.repository_for(AuditLog)
+        entry_id = event._metadata.headers.id
+        try:
+            repository.get(entry_id)
+        except ObjectNotFoundError:
+            repository.add(
+                AuditLog(
+                    entry_id=entry_id,
+                    event_type=event.__class__.__name__,
+                    details=f"Event received: {event.__class__.__name__}",
+                )
+            )
+        else:
+            return  # already recorded; a redelivered event must not log twice
 ```
 
 ### Only One $any Per Handler
