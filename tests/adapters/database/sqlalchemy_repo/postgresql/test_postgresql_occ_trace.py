@@ -158,8 +158,8 @@ def test_standalone_flush_conflict_raises_expected_version_error(
     trace_domain, monkeypatch
 ):
     """A standalone flush that loses the version-id race raises StaleDataError; it
-    must surface as ExpectedVersionError, matching the UoW path and flush/_filter/
-    _count, so callers see one optimistic-concurrency error everywhere
+    must surface as ExpectedVersionError, matching the UoW path and flush/fetch/
+    count, so callers see one optimistic-concurrency error everywhere
     (:issue:`#1382`)."""
     _, do_save = _provoke_standalone_flush_conflict(trace_domain, monkeypatch)
     with pytest.raises(ExpectedVersionError):

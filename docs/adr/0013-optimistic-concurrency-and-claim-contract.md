@@ -115,7 +115,7 @@ siblings (`find_failed`, `find_abandoned`,
 `find_published`, `find_processing`).
 
 `_claim` adds to the optimistic-concurrency work (epic 5.1,
-`BaseDAO._validate_and_update_version`) and replaces none of it. Version
+`_validate_and_update_version` in `protean.infra.dao_write`) and replaces none of it. Version
 checking guards *aggregate updates* against lost writes, while `_claim` guards
 *queue-style claims* against double processing.
 
@@ -152,7 +152,7 @@ The version guard above protects the root's own fields, but an aggregate can be
 modified purely through a child entity (a `HasMany`/`HasOne` member). An
 example is a change to a line item's quantity, with no root-field change and no
 event. Such a change persists the child through the un-versioned path
-(`_update(expected_version=None)`). A child entity is not an aggregate, so
+(the adapter's `update` with `expected_version=None`). A child entity is not an aggregate, so
 `_validate_and_update_version` does not run for it. `Repository._do_add`
 re-saves the root only when the root itself is new or changed. A child-only
 change would therefore leave the root's version untouched. Two concurrent

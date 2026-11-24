@@ -1,7 +1,9 @@
 """The write path of the `DAO` service.
 
-Each function takes the `DAO` as its first argument and writes its entity
-class's rows in the session `DAO.session_scope` picks. The path keeps these
+Each function that reads or writes storage takes the `DAO` as its first
+argument and writes its entity class's rows in the session
+`DAO.session_scope` picks. The helpers that work only on an entity, a model
+object or an entity class take those and no `DAO`. The path keeps these
 guarantees:
 
 - Optimistic concurrency. A save of a persisted aggregate passes the version
@@ -19,7 +21,8 @@ guarantees:
   aggregates. A hook that raises, or breaks an invariant, has its writes
   undone and aborts the save, and its ``ValidationError`` names the hook in
   ``location``. ``apply_hooks=False`` skips both.
-- Uniqueness. A create checks every unique field. A save of a persisted
+- Uniqueness. A create checks every unique field that holds a value; a
+  field that is ``None`` or empty is skipped. A save of a persisted
   entity checks none. The deprecated ``update`` checks them and leaves out
   the entity's own identifier.
 """

@@ -1,5 +1,6 @@
-"""The write path puts an aggregate's version back when its save fails, and
-the `DAO` exposes the pre-persist hooks and the flush as public methods."""
+"""The write path puts a persisted aggregate's version back when its save
+fails, and the `DAO` exposes the pre-persist hooks and the flush as public
+methods."""
 
 import pytest
 
