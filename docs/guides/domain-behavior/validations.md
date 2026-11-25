@@ -152,10 +152,33 @@ ValidationError: {'email': ['Invalid Email Address - jane.doe@.gmail.com']}
 ```
 
 You can attach multiple validators to a single field with the `validators`
-list. Protean runs them in order, and on a basic field such as `String` the
-first failure stops evaluation and raises the error. On a `ValueObject` or
-`Reference` field every validator runs, and the error lists the message of
-each validator that failed.
+list. Protean runs them in order. On a simple field such as `String` or
+`Integer`, the first failure stops evaluation and raises the error. On a
+`ValueObject`, `ValueObjectList` or `Reference` field, every validator runs,
+and the error holds the messages of each one that failed.
+
+### Error shape
+
+`e.messages` on the raised `ValidationError` is a plain `dict` that maps a key
+to a list of message strings, on every field kind. A validator that raises a
+string or a list of strings puts them under the field name. A validator that
+raises a dict has each of its keys joined to the field name with a dot, and a
+dict nested inside it is joined the same way. For a field named `address`:
+
+| The validator raises | `e.messages` |
+|---|---|
+| `ValidationError("has x")` | `{'address': ['has x']}` |
+| `ValidationError(["m1", "m2"])` | `{'address': ['m1', 'm2']}` |
+| `ValidationError({"code": ["a", "b"]})` | `{'address.code': ['a', 'b']}` |
+| `ValidationError({"code": {"inner": ["m"]}})` | `{'address.code.inner': ['m']}` |
+
+A code the validator passes, as in `ValidationError("has x", code="PRT-X")`,
+appears in `e.codes`. Each code appears once, however many validators raise
+it.
+
+When several fields fail at construction, the error lists every failing
+field. An attribute assignment raises on the field being set, so the error
+holds that one field.
 
 For more details on the `validators` field option and the `error_messages`
 option for customizing error text, see the

@@ -43,9 +43,10 @@ from protean.fields import (
     ValueObject,
 )
 from protean.fields.association import Association, _ReferenceField
+from protean.fields.base import Field, merge_field_messages
 from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import _ShadowField
-from protean.fields.resolved import ResolvedField, convert_pydantic_errors
+from protean.fields.resolved import ResolvedField, pydantic_errors_and_codes
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.fields.tempdata import AssociationCache, HasManyChanges, HasOneChanges
 from protean.integrations.logging import (
@@ -558,8 +559,9 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         descriptor_kwargs = values.descriptor_kwargs
         shadow_kwargs = values.shadow_kwargs
 
-        # Collect all validation errors (Pydantic + required descriptors) before raising
+        # Collect all validation errors (Pydantic + descriptors) before raising
         collected_errors: dict[str, list[str]] = {}
+        collected_codes: list[str] = []
 
         # Push init context onto the thread-local stack so that
         # model_post_init (called by Pydantic inside super().__init__())
@@ -581,7 +583,13 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         try:
             super().__init__(**values.kwargs)
         except PydanticValidationError as e:
-            collected_errors.update(convert_pydantic_errors(e))
+            collected_errors, collected_codes = pydantic_errors_and_codes(e)
+            # ``model_post_init`` did not run, so the descriptor fields were
+            # never validated. Validate them here so every failing field
+            # reports at once.
+            _collect_descriptor_errors(
+                entity_cls, descriptor_kwargs, collected_errors, collected_codes
+            )
         finally:
             # ``model_post_init`` pops this call's entry on a successful init.
             # When construction raises before it runs (Pydantic field validation
@@ -598,7 +606,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         )
 
         if collected_errors:
-            raise ValidationError(collected_errors)
+            raise ValidationError(collected_errors, codes=collected_codes)
 
     def model_post_init(self, context: Any, /) -> None:
         if self.meta_.abstract is True:
@@ -617,7 +625,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         _write_shadow_values(self, shadow_kwargs)
         _rebuild_value_objects(self, descriptor_kwargs, shadow_kwargs)
 
-        _set_descriptor_values(self, descriptor_kwargs, shadow_kwargs)
+        _assign_descriptor_values(self, descriptor_kwargs)
 
         # Discover invariants from MRO
         self._discover_invariants()
@@ -951,7 +959,8 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             try:
                 super().__setattr__(name, value)
             except PydanticValidationError as e:
-                raise ValidationError(convert_pydantic_errors(e)) from e
+                errors, codes = pydantic_errors_and_codes(e)
+                raise ValidationError(errors, codes=codes) from e
 
             # Post-check invariants. A failure undoes this one assignment.
             with _undo_on_failure(snapshots):
@@ -1342,47 +1351,70 @@ def _add_missing_required_errors(
             collected_errors.setdefault(field_name, []).append("is required")
 
 
-def _set_descriptor_values(
-    element: Any,
-    descriptor_kwargs: dict[str, Any],
-    shadow_kwargs: dict[str, Any],
+def _merge_validation_error(
+    errors: dict[str, list[str]],
+    codes: list[str],
+    name: str,
+    err: ValidationError,
 ) -> None:
-    """Set each association or value object field given in ``descriptor_kwargs``.
+    """Add the messages and codes of ``err``, raised by descriptor field ``name``."""
+    # Every descriptor type raises its messages keyed by field name, through
+    # ``Field.fail``, ``Field._run_validators`` or a value object's own fields.
+    assert isinstance(err.messages, dict), name
+    merge_field_messages(errors, err.messages)
+    codes.extend(err.codes)
 
-    Raises ``ValidationError`` when a field rejects its value. The error holds
-    every rejected field's messages and diagnostic codes, and an ``is required``
-    error for each required descriptor field not given. It keeps the rejected
-    field's ``location`` when exactly one field failed.
+
+def _collect_descriptor_errors(
+    entity_cls: type[BaseEntity],
+    descriptor_kwargs: dict[str, Any],
+    collected_errors: dict[str, list[str]],
+    collected_codes: list[str],
+) -> None:
+    """Add the errors and codes of each descriptor value that fails to load.
+
+    Covers the descriptor fields that run field validators (``ValueObject``,
+    ``ValueObjectList``, ``Reference``). Each value is loaded and validated
+    and never assigned, so the entity is left untouched.
+    """
+    for name, value in descriptor_kwargs.items():
+        descriptor = BaseEntity._get_class_descriptor(entity_cls, name)
+        if not isinstance(descriptor, Field):
+            continue
+        try:
+            descriptor._load(value)
+        except ValidationError as err:
+            _merge_validation_error(collected_errors, collected_codes, name, err)
+
+
+def _assign_descriptor_values(
+    entity: Any, descriptor_kwargs: dict[str, Any]
+) -> None:
+    """Set each descriptor value on ``entity`` through its descriptor.
+
+    Raises one ``ValidationError`` that holds the errors and codes of every
+    value that failed, after trying them all.
     """
     errors: dict[str, list[str]] = {}
-    failures: list[ValidationError] = []
+    codes: list[str] = []
+    locations: list[str | None] = []
     for name, value in descriptor_kwargs.items():
+        # ``object.__setattr__`` runs the descriptor's ``__set__`` directly,
+        # bypassing the entity's ``__setattr__``, which hands names that are
+        # not Pydantic model fields to Pydantic.
         try:
-            # object.__setattr__ runs the descriptor's __set__ directly. The
-            # element's own __setattr__ hands unknown names to Pydantic, and
-            # descriptors are not Pydantic model fields.
-            object.__setattr__(element, name, value)
+            object.__setattr__(entity, name, value)
         except ValidationError as err:
-            # Pydantic does not wrap a Protean error raised in model_post_init,
-            # so the caller's __init__ never adds the missing required fields.
-            # Collect them here to report every field's error together.
-            by_field = (
-                err.messages if isinstance(err.messages, dict) else {name: [str(err)]}
-            )
-            for key, key_messages in by_field.items():
-                errors.setdefault(key, []).extend(key_messages)
-            failures.append(err)
+            _merge_validation_error(errors, codes, name, err)
+            locations.append(err.location)
 
     if errors:
-        _add_missing_required_errors(
-            type(element), descriptor_kwargs, shadow_kwargs, errors
-        )
         # A location names one raise site, so it carries over only when a
         # single field failed.
         raise ValidationError(
             errors,
-            codes=[code for failure in failures for code in failure.codes],
-            location=failures[0].location if len(failures) == 1 else None,
+            codes=codes,
+            location=locations[0] if len(locations) == 1 else None,
         )
 
 

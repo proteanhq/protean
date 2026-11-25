@@ -203,8 +203,11 @@ For tests, use test mode to process messages synchronously.
 --8<-- "reference/troubleshooting/001.py:validation"
 ```
 
-The `messages` dict maps field names to lists of error strings. Common
-causes:
+The `messages` dict maps field names to lists of error strings. When a field
+validator raises a dict, each of its keys is joined to the field name with a
+dot: `{"code": ["has x"]}` raised on a field named `address` gives
+`{'address.code': ['has x']}`. The codes the validators raised are in `codes`.
+Common causes:
 
 - **Missing required fields:** Fields with `required=True` must be provided
 - **Invariant violations:** `@invariant.post` checks run after every mutation

@@ -11,11 +11,11 @@ from pydantic import ValidationError as PydanticValidationError
 
 from protean.core.entity import (
     _add_missing_required_errors,
+    _assign_descriptor_values,
     _EntityState,
     _init_value_object_shadows,
     _pop_init_context,
     _rebuild_value_objects,
-    _set_descriptor_values,
     _split_init_values,
     _value_object_shadow_names,
     _write_shadow_values,
@@ -315,7 +315,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         _write_shadow_values(self, shadow_kwargs)
         _rebuild_value_objects(self, descriptor_kwargs, shadow_kwargs)
 
-        _set_descriptor_values(self, descriptor_kwargs, shadow_kwargs)
+        _assign_descriptor_values(self, descriptor_kwargs)
 
         _init_value_object_shadows(self)
 

@@ -259,6 +259,12 @@ class ValidationError(ProteanExceptionWithMessage):
     :param errors: An error message or a list of error messages or a
         dictionary of error message where key is field name and value is error
 
+    When an element's field validation fails, ``messages`` is a plain
+    ``dict[str, list[str]]`` keyed by field name. A field validator that raised
+    a dict has each of its keys joined to the field name with a dot, and a
+    nested dict is joined the same way: ``{"code": {"inner": ["m"]}}`` raised
+    on field ``b`` gives ``{"b.code.inner": ["m"]}``. ``codes`` holds the codes
+    the validators raised, each once.
     """
 
 

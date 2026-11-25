@@ -18,7 +18,6 @@ layer all consume ``ResolvedField`` instances via the
 import decimal
 import types as _types
 import typing
-from collections import defaultdict
 from datetime import date, datetime
 from enum import Enum
 from typing import Any
@@ -30,6 +29,11 @@ from pydantic_core import PydanticUndefined
 from typing_extensions import TypeForm
 
 from protean.exceptions import ValidationError
+from protean.fields.base import (
+    FieldValidatorError,
+    flatten_field_messages,
+    merge_field_messages,
+)
 
 # ---------------------------------------------------------------------------
 # Error message templates for ResolvedField.fail()
@@ -231,10 +235,28 @@ def _read_constraint_metadata(field: "ResolvedField", metadata: list[Any]) -> No
 # Pydantic error conversion helper
 # ---------------------------------------------------------------------------
 def convert_pydantic_errors(exc: PydanticValidationError) -> dict[str, list[str]]:
-    """Convert Pydantic's ValidationError to Protean's {field: [messages]} format."""
-    errors: dict[str, list[str]] = defaultdict(list)
+    """Convert Pydantic's ValidationError to Protean's {field: [messages]} format.
+
+    A field validator's messages are keyed by the rule in
+    ``flatten_field_messages``: a dict it raised becomes dotted keys under the
+    field.
+    """
+    return pydantic_errors_and_codes(exc)[0]
+
+
+def pydantic_errors_and_codes(
+    exc: PydanticValidationError,
+) -> tuple[dict[str, list[str]], list[str]]:
+    """Return the ``convert_pydantic_errors`` messages and the codes field validators raised."""
+    errors: dict[str, list[str]] = {}
+    codes: list[str] = []
     for error in exc.errors():
         field = str(error["loc"][0]) if error["loc"] else "_entity"
+        cause = error.get("ctx", {}).get("error")
+        if isinstance(cause, FieldValidatorError):
+            merge_field_messages(errors, flatten_field_messages(field, cause.messages))
+            codes.extend(cause.codes)
+            continue
         msg = error["msg"]
         # Normalise Pydantic's "Field required" to the Protean-canonical
         # "is required" so that downstream assertions stay consistent
@@ -244,8 +266,8 @@ def convert_pydantic_errors(exc: PydanticValidationError) -> dict[str, list[str]
         # Strip Pydantic's "Value error, " prefix from custom validator messages
         elif msg.startswith("Value error, "):
             msg = msg[len("Value error, ") :]
-        errors[field].append(msg)
-    return dict(errors)
+        errors.setdefault(field, []).append(msg)
+    return errors, codes
 
 
 # ---------------------------------------------------------------------------
