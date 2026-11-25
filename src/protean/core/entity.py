@@ -635,25 +635,18 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         _apply_hierarchy(self, ctx)
 
         _write_shadow_values(self, shadow_kwargs)
-        errors: dict[str, list[str]] = {}
-        codes: list[str] = []
-        _rebuild_value_objects(self, descriptor_kwargs, shadow_kwargs, errors, codes)
+        failures: list[tuple[str, ValidationError]] = []
+        _rebuild_value_objects(self, descriptor_kwargs, shadow_kwargs, failures)
         field_values, association_values = _split_association_values(
             type(self), descriptor_kwargs
         )
-        _assign_descriptor_values(self, field_values, errors, codes)
+        _assign_descriptor_values(self, field_values, failures)
         # A ``HasMany`` or ``HasOne`` setter links the given children to this
         # entity, so run the setters only once every field value has passed:
         # a failed construction must leave the caller's children unchanged.
-        if not errors:
-            _assign_descriptor_values(self, association_values, errors, codes)
-        if errors:
-            # ``__init__`` adds the missing-required errors only after this
-            # method returns, so add them here before raising.
-            _add_missing_required_errors(
-                type(self), descriptor_kwargs, shadow_kwargs, errors
-            )
-            raise ValidationError(errors, codes=codes)
+        if not failures:
+            _assign_descriptor_values(self, association_values, failures)
+        _raise_descriptor_failures(self, failures, descriptor_kwargs, shadow_kwargs)
 
         # Discover invariants from MRO
         self._discover_invariants()
@@ -1452,13 +1445,12 @@ def _collect_descriptor_errors(
 def _assign_descriptor_values(
     entity: Any,
     descriptor_kwargs: dict[str, Any],
-    errors: dict[str, list[str]],
-    codes: list[str],
+    failures: list[tuple[str, ValidationError]],
 ) -> None:
     """Set each descriptor value on ``entity`` through its descriptor.
 
-    Tries every value and adds the errors and codes of the values that
-    failed to ``errors`` and ``codes``.
+    Tries every value and adds ``(field name, error)`` to ``failures`` for
+    each value that failed.
     """
     for name, value in descriptor_kwargs.items():
         # ``object.__setattr__`` runs the descriptor's ``__set__`` directly,
@@ -1467,7 +1459,40 @@ def _assign_descriptor_values(
         try:
             object.__setattr__(entity, name, value)
         except ValidationError as err:
-            _merge_validation_error(errors, codes, name, err)
+            failures.append((name, err))
+
+
+def _raise_descriptor_failures(
+    element: Element,
+    failures: list[tuple[str, ValidationError]],
+    descriptor_kwargs: dict[str, Any],
+    shadow_kwargs: dict[str, Any],
+) -> None:
+    """Raise one ``ValidationError`` for the descriptor values in ``failures``.
+
+    The error holds every failure's messages and codes, and an ``is required``
+    error for each required descriptor field not given. It keeps the failing
+    field's ``location`` when exactly one field failed. Returns when
+    ``failures`` is empty.
+    """
+    if not failures:
+        return
+    errors: dict[str, list[str]] = {}
+    codes: list[str] = []
+    for name, err in failures:
+        _merge_validation_error(errors, codes, name, err)
+    # ``__init__`` adds the missing-required errors only after
+    # ``model_post_init`` returns, so add them here before raising.
+    _add_missing_required_errors(
+        type(element), descriptor_kwargs, shadow_kwargs, errors
+    )
+    # A location names one raise site, so it carries over only when a single
+    # field failed.
+    raise ValidationError(
+        errors,
+        codes=codes,
+        location=failures[0][1].location if len(failures) == 1 else None,
+    )
 
 
 def _pop_init_context(local: threading.local) -> dict[str, Any]:
@@ -1528,8 +1553,7 @@ def _rebuild_value_objects(
     instance: Element,
     descriptor_kwargs: dict[str, Any],
     shadow_kwargs: dict[str, Any],
-    errors: dict[str, list[str]] | None = None,
-    codes: list[str] | None = None,
+    failures: list[tuple[str, ValidationError]] | None = None,
 ) -> None:
     """Add to ``descriptor_kwargs`` each value object rebuilt from shadow kwargs.
 
@@ -1537,8 +1561,8 @@ def _rebuild_value_objects(
     already set (for example during repository retrieval), and at least one of
     its shadow values is not ``None``.
 
-    When ``errors`` and ``codes`` are given, a value object that fails to build
-    adds its messages and codes to them. Otherwise its ``ValidationError``
+    When ``failures`` is given, a value object that fails to build adds
+    ``(field name, error)`` to it. Otherwise its ``ValidationError``
     propagates.
     """
     for field_name, vo_cls, vo_kwargs in _shadow_value_object_kwargs(
@@ -1551,9 +1575,9 @@ def _rebuild_value_objects(
         try:
             descriptor_kwargs[field_name] = vo_cls(**vo_kwargs)
         except ValidationError as err:
-            if errors is None or codes is None:
+            if failures is None:
                 raise
-            _merge_validation_error(errors, codes, field_name, err)
+            failures.append((field_name, err))
 
 
 def _shadow_value_object_kwargs(

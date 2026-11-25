@@ -15,6 +15,7 @@ from protean.core.entity import (
     _EntityState,
     _init_value_object_shadows,
     _pop_init_context,
+    _raise_descriptor_failures,
     _rebuild_value_objects,
     _split_init_values,
     _value_object_shadow_names,
@@ -318,17 +319,10 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         shadow_kwargs: dict[str, Any] = ctx["shadow_kwargs"]
 
         _write_shadow_values(self, shadow_kwargs)
-        errors: dict[str, list[str]] = {}
-        codes: list[str] = []
-        _rebuild_value_objects(self, descriptor_kwargs, shadow_kwargs, errors, codes)
-        _assign_descriptor_values(self, descriptor_kwargs, errors, codes)
-        if errors:
-            # ``__init__`` adds the missing-required errors only after this
-            # method returns, so add them here before raising.
-            _add_missing_required_errors(
-                type(self), descriptor_kwargs, shadow_kwargs, errors
-            )
-            raise ValidationError(errors, codes=codes)
+        failures: list[tuple[str, ValidationError]] = []
+        _rebuild_value_objects(self, descriptor_kwargs, shadow_kwargs, failures)
+        _assign_descriptor_values(self, descriptor_kwargs, failures)
+        _raise_descriptor_failures(self, failures, descriptor_kwargs, shadow_kwargs)
 
         _init_value_object_shadows(self)
 
