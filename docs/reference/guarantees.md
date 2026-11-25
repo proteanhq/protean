@@ -108,7 +108,9 @@ guarantee but blocks where PostgreSQL skips.
     leaves no orphaned parent. The outbox row is saved on the same session and
     committed by the same `session.commit()` as the domain write. For an
     event-sourced aggregate the event-store append is written before the
-    relational commit, outside this transaction (ADR-0015).
+    relational commit, outside this transaction (ADR-0015). A `sql` event store
+    that shares the `default` database is the exception: it writes the append
+    on this session just before the commit, inside this transaction.
     `tests/adapters/database/sqlalchemy_repo/postgresql/test_postgresql_uow_atomicity_and_ryw.py`
     and its MSSQL mirror pin these guarantees.
 

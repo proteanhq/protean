@@ -119,7 +119,7 @@ variable, and uses the value after `|` when it is not set.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `provider` | `"memory"` | Event store provider (`memory`, `message_db` or `sql`) |
-| `database_uri` | —  | Connection string (required for Message DB and SQL) |
+| `database_uri` | —  | Connection string. Message DB requires it. A SQL store without it shares the `default` database. |
 
 ## Core Operations
 

@@ -104,9 +104,11 @@ class UnitOfWork:
 
     In a domain with ``command_processing = "sync"``, a command processed with
     ``domain.process(command, asynchronous=True)`` inside the block is stored
-    at once and handled after the block commits, in its own UnitOfWork. The
-    deferred commands run in the order they were processed, after the sync
-    event handlers of this commit. When this UnitOfWork commits inside a sync
+    at once and handled after the block commits, in its own UnitOfWork. A
+    ``sql`` event store that shares the ``default`` database stores it at the
+    commit instead, so a rollback discards it. The deferred commands run in
+    the order they were processed, after the sync event handlers of this
+    commit. When this UnitOfWork commits inside a sync
     event handler, its events wait for the dispatch already running, so its
     deferred commands run before their handlers. A command that a sync event
     handler defers belongs to the handler's own UnitOfWork, so it runs before
@@ -422,8 +424,9 @@ class UnitOfWork:
     def _run_before_commit(self) -> None:
         """Run every pre-commit callback in the order registered.
 
-        An exception propagates: nothing is durable yet, so the commit fails
-        and every session rolls back.
+        An exception propagates, so the commit fails and every session rolls
+        back. An event that a store outside the sessions already wrote stays
+        written.
         """
         # Index the list instead of iterating it, so a callback registered by
         # an earlier one still runs.

@@ -1301,9 +1301,10 @@ URI_KEYS = {
 }
 
 # The URI an adapter with no default of its own gets when ``--uri`` and
-# ``--config`` leave it unset. The sql event store raises without a
-# ``database_uri``, so the capability probe needs one before the suite's
-# own default applies, and the pytest rows then use the same file.
+# ``--config`` leave it unset. Without a ``database_uri`` the sql event store
+# shares the ``default`` database, and the capability probe's ``default`` is
+# the memory provider, which the store rejects. The probe needs a URI before
+# the suite's own default applies, and the pytest rows then use the same file.
 DEFAULT_URIS = {
     ("event_store", "sql"): "sqlite:///"
     + str(Path(tempfile.gettempdir()) / f"protean-test-adapter-sql-{os.getpid()}.db"),

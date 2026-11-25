@@ -656,8 +656,8 @@ class SqlEventStore(EventStorePort):
     ) -> None:
         """Take the lock of each category, in key order on PostgreSQL.
 
-        Two transactions that lock the same categories take them in one order,
-        so neither waits for a lock the other waits behind.
+        Transactions that lock the same categories take them in one order, so
+        none waits for a lock that another waits behind.
         """
         if self._backend != "postgresql":
             # The write lock BEGIN IMMEDIATE took is the lock.
