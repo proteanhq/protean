@@ -109,12 +109,17 @@ class EventStorePort(Protocol):
         data: Mapping[str, Any],
         metadata: Mapping[str, Any] | None = None,
         expected_version: int | None = None,
-    ) -> int:
+    ) -> int | None:
         """Append a message to ``stream_name`` and return its stream position.
+
+        Returns ``None`` when the store holds the message to write when the
+        active Unit of Work commits, and the position is assigned then. The
+        memory and Message DB stores always return the position.
 
         Raises:
             ExpectedVersionError: When ``expected_version`` is given and is not
-                the stream's current version. Nothing is written.
+                the stream's current version. Nothing is written. A store that
+                holds the message raises it from the Unit of Work's commit.
         """
 
     @abstractmethod

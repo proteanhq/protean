@@ -22,8 +22,11 @@ def build(test_domain, **config):
 
 @pytest.mark.sqlite
 class TestDatabaseUri:
-    def test_a_missing_database_uri_is_refused(self, test_domain):
-        with pytest.raises(ConfigurationError, match="without a database_uri"):
+    def test_a_missing_database_uri_on_a_memory_default_is_refused(self, test_domain):
+        with pytest.raises(
+            ConfigurationError,
+            match="without a database_uri, so it shares the 'default' database",
+        ):
             build(test_domain)
 
     @pytest.mark.parametrize("uri", ["not a url", "postgresql://h:port/db"])

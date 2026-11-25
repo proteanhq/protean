@@ -14,11 +14,18 @@ would notice.
 The contract is about repository access **during the invocation**, not about
 what the handler body does: an ``idempotent=True`` handler reads its marker
 before the body runs, and that read opens a session regardless.
+
+A sql event store that shares the ``default`` database amends this. A method
+that sends a command asynchronously reaches no repository, so its body still
+runs with no session. The store holds the command and writes it in the Unit of
+Work's transaction, so the method opens its transaction at commit, after its
+body returns.
 """
 
 import pytest
 
 from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.unit_of_work import UnitOfWork
@@ -28,6 +35,8 @@ from protean.utils.mixins import handle
 from tests.shared import provider_adapter
 
 observed: dict[str, list[str]] = {}
+# The pooled connections checked out while a handler body runs.
+checked_out: list[int] = []
 
 
 def _record(label: str) -> None:
@@ -49,6 +58,10 @@ class Placed(BaseEvent):
     order_id: Identifier()
 
 
+class Ship(BaseCommand):
+    order_id: Identifier()
+
+
 class Reactions(BaseEventHandler):
     @handle(Placed)
     def calls_out(self, event: Placed) -> None:
@@ -63,15 +76,26 @@ class Reactions(BaseEventHandler):
         repo.add(Order(name="o"))
         _record("persists")
 
+    @handle(Placed)
+    def sends(self, event: Placed) -> None:
+        from protean.utils.globals import current_domain
+
+        current_domain.process(Ship(order_id=event.order_id), asynchronous=True)
+        _record("sends")
+        pool = provider_adapter(current_domain, "default")._engine.pool
+        checked_out.append(pool.checkedout())
+
 
 @pytest.fixture(autouse=True)
 def registered(test_domain):
     observed.clear()
+    checked_out.clear()
     if test_domain is None:
         # The SQLite class carries `no_test_domain` and builds its own domain.
         return None
     test_domain.register(Order)
     test_domain.register(Placed, part_of=Order)
+    test_domain.register(Ship, part_of=Order)
     test_domain.register(Reactions, part_of=Order)
     test_domain.init(traverse=False)
     return test_domain
@@ -142,3 +166,40 @@ class TestTheGuaranteeHoldsOnSQLAlchemyToo:
             sqlite_domain.repository_for(Order).add(Order(name="o"))
 
             assert pool.checkedout() == 1
+
+
+@pytest.mark.sqlite
+@pytest.mark.no_test_domain
+class TestASharedSqlEventStoreOpensTheTransactionAtCommit:
+    @pytest.fixture
+    def shared_domain(self, tmp_path):
+        from protean.domain import Domain
+
+        domain = Domain(name="NoTxnShared")
+        domain.config["databases"]["default"] = {
+            "provider": "sqlite",
+            "database_uri": f"sqlite:///{tmp_path / 'shared.db'}",
+        }
+        domain.config["event_store"] = {"provider": "sql"}
+        domain.config["command_processing"] = "async"
+        domain.register(Order)
+        domain.register(Placed, part_of=Order)
+        domain.register(Ship, part_of=Order)
+        domain.register(Reactions, part_of=Order)
+        domain.init(traverse=False)
+        with domain.domain_context():
+            provider_adapter(domain, "default").create_schema()
+            domain.event_store._require_adapter().create_schema()
+            yield domain
+            domain.event_store._require_adapter().close()
+            provider_adapter(domain, "default").close()
+
+    def test_the_body_runs_with_no_session_and_the_command_commits(self, shared_domain):
+        Reactions._dispatch_handlers([Reactions.sends], Placed(order_id="1"))
+
+        assert observed["sends"] == []
+        assert checked_out == [0]
+        store = shared_domain.event_store._require_adapter()
+        types = [row["type"] for row in store.get_all_messages()]
+        assert len(types) == 1
+        assert types[0].endswith("Ship.v1")

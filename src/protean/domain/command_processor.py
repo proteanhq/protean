@@ -126,6 +126,23 @@ def _record_idempotency_success(store: IdempotencyStore, key: str, result: Any) 
     run_after_commit(lambda: store.record_success(key, result))
 
 
+def _record_async_idempotency(
+    store: IdempotencyStore, key: str | None, position: int | None
+) -> None:
+    """Record ``position`` as the outcome of the command stored under ``key``.
+
+    A position of ``None`` means the event store holds the command until the
+    active unit of work commits, so the outcome is recorded after that commit.
+    A rollback leaves the key unrecorded, and a retry stores the command again.
+    """
+    if not key or not store.is_active:
+        return
+    if position is None:
+        _record_idempotency_success(store, key, position)
+        return
+    store.record_success(key, position)
+
+
 def raise_if_expired(
     headers: MessageHeaders | None, command_type: str, metrics: Any = None
 ) -> None:
@@ -438,9 +455,11 @@ class CommandProcessor:
         handled after the caller's unit of work commits, in its own unit of
         work. A failure while it runs, such as a deadline that passed before
         the commit, makes the caller's commit raise ``TransactionError``. A
-        rollback of the caller means the command never runs. The built-in
-        event stores write outside the unit of work, so the command stays
-        stored and unhandled.
+        rollback of the caller means the command never runs. The memory and
+        Message DB stores, and a SQL store on its own database, write outside
+        the unit of work, so the command stays stored and unhandled. A SQL
+        store that shares the ``default`` database writes inside it, so the
+        rollback discards the command too.
 
         Args:
             command: Instance of a ``@domain.command``-decorated class.
@@ -466,7 +485,9 @@ class CommandProcessor:
             The command handler's return value when the command is handled
             synchronously. ``None`` when the command is deferred, and for a
             repeat of a deferred command's idempotency key in the same unit of
-            work. Otherwise, the command's position in the event store.
+            work. Otherwise, the command's position in the event store, or
+            ``None`` when the store holds the command until the active unit
+            of work commits.
 
         Raises:
             IncorrectUsageError: If the command is not registered with the
@@ -578,8 +599,7 @@ class CommandProcessor:
             # Async path: record enqueue (actual processing happens later)
             self._record_metrics(command_type, "enqueued", process_start)
 
-            if idempotency_key and store.is_active:
-                store.record_success(idempotency_key, position)
+            _record_async_idempotency(store, idempotency_key, position)
 
             return position
 

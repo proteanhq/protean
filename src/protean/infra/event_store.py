@@ -306,7 +306,7 @@ class EventStore:
         data: Mapping[str, Any],
         metadata: Mapping[str, Any] | None = None,
         expected_version: int | None = None,
-    ) -> int:
+    ) -> int | None:
         return self._require_adapter().write_message(
             stream_name, message_type, data, metadata, expected_version
         )
@@ -567,8 +567,11 @@ class EventStore:
     # Writing messages
     # ------------------------------------------------------------------
 
-    def append(self, message_object: BaseEvent | BaseCommand) -> int:
+    def append(self, message_object: BaseEvent | BaseCommand) -> int | None:
         """Write an event or command to its stream and return its stream position.
+
+        Returns ``None`` when the adapter holds the message to write when the
+        active Unit of Work commits.
 
         Raises:
             ExpectedVersionError: When the message carries an expected version
@@ -604,7 +607,8 @@ class EventStore:
                     else None,
                 )
 
-                span.set_attribute("protean.event_store.position", position)
+                if position is not None:
+                    span.set_attribute("protean.event_store.position", position)
                 return position
             except Exception as exc:  # marks the span as failed, then re-raises
                 set_span_error(span, exc)

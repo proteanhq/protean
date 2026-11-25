@@ -1,0 +1,6 @@
+[databases.default]
+provider = "sqlite"
+database_uri = "${DATABASE_URL|sqlite:///app.db}"
+
+[event_store]
+provider = "sql"

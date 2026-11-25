@@ -49,6 +49,8 @@ SQLite file or a PostgreSQL database, through SQLAlchemy.
 
 - **Requires**: the `sqlite` or `postgresql` extra
 - Persistent, durable storage
+- Without a `database_uri`, it shares the `default` database and commits
+  with the Unit of Work
 - `protean db setup` creates its tables
 - No consumer groups
 

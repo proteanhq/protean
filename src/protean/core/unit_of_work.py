@@ -147,6 +147,12 @@ class UnitOfWork:
         # (see ``run_after_commit``). A rollback discards it.
         self._after_commit: list[Callable[[], None]] = []
 
+        # Writes that must join this transaction at commit, after the
+        # aggregate events are appended and before the outbox rows are saved.
+        # A shared SQL event store registers one here to insert the messages it
+        # held. A rollback discards them.
+        self._before_commit: list[Callable[[], None]] = []
+
         # Commands processed with ``asynchronous=True`` inside this transaction
         # in a sync domain. Each runs once this transaction has committed, in
         # its own UnitOfWork. A rollback discards them.
@@ -413,6 +419,19 @@ class UnitOfWork:
 
             self._do_commit(span)
 
+    def _run_before_commit(self) -> None:
+        """Run every pre-commit callback in the order registered.
+
+        An exception propagates: nothing is durable yet, so the commit fails
+        and every session rolls back.
+        """
+        # Index the list instead of iterating it, so a callback registered by
+        # an earlier one still runs.
+        index = 0
+        while index < len(self._before_commit):
+            self._before_commit[index]()
+            index += 1
+
     def _run_after_commit(self) -> None:
         """Run every after-commit callback, logging each ``Exception`` it raises."""
         for callback in self._after_commit:
@@ -455,10 +474,13 @@ class UnitOfWork:
             # event-sourced aggregates' events, rather than leaving the store
             # missing a committed event. See ADR-0015.
             #
-            # The built-in event stores (memory, message-db, sql) write the append
-            # directly, outside this transaction. A genuine optimistic-concurrency
-            # conflict still raises and is re-driven by the handler-level version
-            # retry, which reloads the aggregate cleanly.
+            # The memory and message-db event stores, and a sql event store on
+            # its own database, write the append directly, outside this
+            # transaction. A sql event store that shares the ``default``
+            # database holds the appends and writes them in the pre-commit
+            # callbacks, inside this transaction. Either way, a genuine
+            # optimistic-concurrency conflict raises and is re-driven by the
+            # handler-level version retry, which reloads the aggregate cleanly.
             #
             # The append also runs before the outbox rows are saved. Outbox rows
             # carry the event's message id, which for an event-sourced aggregate
@@ -473,6 +495,7 @@ class UnitOfWork:
             # autoflush after the append.
             _flush_sessions(self)
             _append_events(all_events)
+            self._run_before_commit()
             _save_outbox_rows(outbox_rows)
             _commit_sessions(self)
 
@@ -685,6 +708,7 @@ class UnitOfWork:
         self._identity_map = defaultdict(dict)
         self._saved = set()
         self._after_commit = []
+        self._before_commit = []
         self._deferred_commands = []
         self._pending_idempotency_results = {}
         self._in_progress = False
