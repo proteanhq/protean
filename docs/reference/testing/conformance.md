@@ -197,8 +197,7 @@ Then each flag the adapter declares gets a row, in the order the port's
 capability type defines them. A declared flag runs the tests whose `requires`
 or `requires_any` marker names it. Each flag the adapter does not declare gets
 a `SKIP (not declared)` row after all the run rows, and the command does not
-run pytest for it. A row with no test, such as a declared flag no test names
-yet, is reported as `SKIP (no tests collected)`.
+run pytest for it.
 
 With `--capabilities`, the report has only the rows of the named flags and no
 `unmarked` row. A named set of the port's capability type, such as `BASIC`
@@ -217,6 +216,12 @@ On `--port database`, `--uri` and `--config` set only the configuration the
 command uses to read the provider's capabilities. The suite runs with
 `--db=<NAME>` against the database the repository's test configuration names
 for that provider.
+
+On every port, a row with no test, such as a declared flag no test names yet,
+is reported as `SKIP (no tests collected)`. A row where pytest skipped every
+test it ran is reported as `SKIP (all N tests skipped)`, where N is the number
+of skipped tests. A row that also has a passed, failed, xfailed or xpassed test
+is reported as PASS or FAIL from the pytest exit code.
 
 The command exits 1 when any row fails.
 

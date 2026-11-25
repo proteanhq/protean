@@ -29,10 +29,12 @@ from protean.cli.test import (
     TestSuite,
     _adapter_config,
     _get_applicable_markers,
+    _parse_summary_counts,
     _port_row_command,
     _print_conformance_report,
     _provider_has_capability_for_marker,
     _requested_capabilities,
+    _run_capability_command,
     _run_pytest_for_marker,
     build_full_conformance_suites,
     load_adapter_manifest,
@@ -1582,6 +1584,167 @@ class TestRunPytestForMarker:
         assert result.errors == 2
         assert result.total == 8
 
+    def test_mixed_passed_and_skipped_run_is_pass(self, tmp_path):
+        """A run with passed and skipped tests stays PASS, counting only the passed."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(
+                returncode=0, stdout="2 passed, 3 skipped in 0.10s\n", stderr=""
+            )
+            result = _run_pytest_for_marker(
+                marker="basic_storage",
+                db_name="MEMORY",
+                generic_test_dir=tmp_path,
+            )
+
+        assert result.status == "PASS"
+        assert result.passed == 2
+        assert result.skipped == 3
+        assert result.total == 2
+
+    def test_run_with_only_skipped_tests_is_skip(self, tmp_path):
+        """A real pytest run whose tests all skip is a SKIP row with a reason."""
+        test_dir = tmp_path / "skipped_only"
+        test_dir.mkdir()
+        (test_dir / "test_skipped.py").write_text(
+            "import pytest\n"
+            "\n"
+            "@pytest.mark.skip(reason='not supported')\n"
+            "def test_one():\n"
+            "    pass\n"
+            "\n"
+            "@pytest.mark.skip(reason='not supported')\n"
+            "def test_two():\n"
+            "    pass\n"
+            "\n"
+            "@pytest.mark.skip(reason='not supported')\n"
+            "def test_three():\n"
+            "    pass\n"
+        )
+        cmd = [
+            sys.executable,
+            "-m",
+            "pytest",
+            str(test_dir),
+            "-q",
+            "--tb=no",
+            "--no-header",
+            "-p",
+            "no:cacheprovider",
+            "-p",
+            "no:randomly",
+            f"--rootdir={test_dir}",
+        ]
+
+        result = _run_capability_command("row", cmd)
+
+        assert result.status == "SKIP"
+        assert result.skipped == 3
+        assert result.passed == 0
+        assert result.total == 0
+        assert result.reason == "all 3 tests skipped"
+
+    @pytest.mark.parametrize("returncode", [1, 3])
+    def test_skipped_only_summary_with_failing_exit_code_is_fail(
+        self, tmp_path, returncode
+    ):
+        """A run that exits non-zero stays FAIL even when its summary counts only skips."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(
+                returncode=returncode, stdout="2 skipped in 0.01s\n", stderr=""
+            )
+            result = _run_pytest_for_marker(
+                marker="basic_storage",
+                db_name="MEMORY",
+                generic_test_dir=tmp_path,
+            )
+
+        assert result.status == "FAIL"
+        assert result.skipped == 2
+        assert result.reason == ""
+
+    def test_xfailed_only_run_is_not_skip(self, tmp_path):
+        """A run with only an xfailed test and no skip is PASS, never SKIP."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(
+                returncode=0, stdout="1 xfailed in 0.01s\n", stderr=""
+            )
+            result = _run_pytest_for_marker(
+                marker="basic_storage",
+                db_name="MEMORY",
+                generic_test_dir=tmp_path,
+            )
+
+        assert result.status == "PASS"
+        assert result.reason == ""
+
+    def test_exit_0_without_summary_line_is_pass(self, tmp_path):
+        """A run that exits 0 with no summary line is PASS, never a skip row."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
+            result = _run_pytest_for_marker(
+                marker="basic_storage",
+                db_name="MEMORY",
+                generic_test_dir=tmp_path,
+            )
+
+        assert result.status == "PASS"
+        assert result.reason == ""
+
+    @pytest.mark.parametrize(
+        "stdout", ["1 skipped, 1 xpassed in 0.01s\n", "2 skipped, 1 xfailed in 0.01s\n"]
+    )
+    def test_skips_mixed_with_xfail_or_xpass_are_pass(self, tmp_path, stdout):
+        """A run that skips some tests and xfails or xpasses another is PASS."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout=stdout, stderr="")
+            result = _run_pytest_for_marker(
+                marker="basic_storage",
+                db_name="MEMORY",
+                generic_test_dir=tmp_path,
+            )
+
+        assert result.status == "PASS"
+        assert result.reason == ""
+
+
+class TestParseSummaryCounts:
+    """Test _parse_summary_counts on pytest summary lines."""
+
+    def test_skipped_only_summary(self):
+        assert _parse_summary_counts("3 skipped in 0.01s") == (0, 0, 0, 3, 0)
+
+    def test_deselected_does_not_count_as_skipped(self):
+        stdout = "2 passed, 3 skipped, 5 deselected in 0.10s"
+        assert _parse_summary_counts(stdout) == (2, 0, 0, 3, 0)
+
+    def test_deselected_only_summary_has_no_skipped_count(self):
+        stdout = "4 passed, 6 deselected in 0.10s"
+        assert _parse_summary_counts(stdout) == (4, 0, 0, 0, 0)
+
+    def test_xfailed_and_xpassed_are_counted_together(self):
+        stdout = "==== 2 skipped, 1 xfailed, 1 xpassed in 0.10s ===="
+        assert _parse_summary_counts(stdout) == (0, 0, 0, 2, 2)
+
+    def test_skip_reason_text_does_not_set_counts(self):
+        stdout = (
+            "s\n"
+            "SKIPPED [1] test_x.py:3: needs 2 passed flags and 3 failed retries\n"
+            "1 skipped in 0.01s\n"
+        )
+        assert _parse_summary_counts(stdout) == (0, 0, 0, 1, 0)
+
+    def test_warning_text_does_not_set_counts(self):
+        stdout = (
+            "x\n"
+            "test_x.py::test_a\n"
+            "  UserWarning: 4 skipped entries, 2 errors in config\n"
+            "1 xfailed, 1 warning in 0.01s\n"
+        )
+        assert _parse_summary_counts(stdout) == (0, 0, 0, 0, 1)
+
+    def test_output_without_summary_line_is_all_zero(self):
+        assert _parse_summary_counts("3 passed but no timing\n") == (0, 0, 0, 0, 0)
+
 
 class TestPrintConformanceReport:
     """Test _print_conformance_report output formatting."""
@@ -1639,6 +1802,30 @@ class TestPrintConformanceReport:
         assert "3 capabilities skipped" in captured.out
         for marker in skipped:
             assert marker in captured.out
+
+    def test_report_output_with_all_skipped_row(self, capsys):
+        """A row whose tests all skipped prints SKIP with its reason."""
+        results = [
+            CapabilityResult(
+                "unmarked", "SKIP", skipped=3, reason="all 3 tests skipped"
+            ),
+        ]
+        _print_conformance_report("test", "TestProvider", results, [])
+
+        captured = capsys.readouterr()
+        row_lines = [
+            line for line in captured.out.splitlines() if line.startswith("unmarked")
+        ]
+        assert len(row_lines) == 1
+        assert row_lines[0].split() == [
+            "unmarked",
+            "SKIP",
+            "(all",
+            "3",
+            "tests",
+            "skipped)",
+        ]
+        assert "PASS" not in captured.out
 
 
 @pytest.mark.no_test_domain
@@ -2000,7 +2187,9 @@ class TestPortConformance:
             patch("subprocess.run") as mock_run,
             pytest.raises(typer.Exit) as exc_info,
         ):
-            mock_run.return_value = Mock(returncode=1, stdout="1 failed\n", stderr="")
+            mock_run.return_value = Mock(
+                returncode=1, stdout="1 failed in 0.01s\n", stderr=""
+            )
             cli_test_adapter(port="cache", provider="memory")
         assert exc_info.value.exit_code == 1
 
