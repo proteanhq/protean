@@ -113,6 +113,27 @@ def test_update_through_a_unit_of_work_records_its_commit(trace_domain):
     ] == [(f"occ_trace_counter:{counter_id}", "committed", 0, 1)], recorded
 
 
+def test_an_update_to_a_row_inserted_in_the_same_unit_of_work_records_nothing(
+    trace_domain,
+):
+    """A row the Unit of Work inserted has no stored version to check, so a
+    second save of it records no ``committed`` that the stored row would
+    contradict."""
+    repo = trace_domain.repository_for(OCCTraceCounter)
+
+    with occ_trace.capture() as events:
+        with UnitOfWork():
+            counter = OCCTraceCounter(value=0)
+            repo.add(counter)
+            counter.value = 1
+            repo.add(counter)
+        recorded = list(events)
+
+    assert recorded == [], recorded
+    stored = repo.get(counter.id)
+    assert (stored.value, stored._version) == (1, 0)
+
+
 def _provoke_standalone_flush_conflict(domain, monkeypatch):
     """Return a ``save()`` that hits a standalone flush-time version conflict.
 
