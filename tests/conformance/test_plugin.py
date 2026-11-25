@@ -594,12 +594,47 @@ REGISTER_FORGETFUL_CACHE = """
 from protean.infra.registry import caches
 
 caches.register("forgetful", "forgetful_cache.ForgetfulCache")
+caches.register("volatile", "shared_volatile_cache.SharedVolatileCache")
+"""
+
+SHARED_VOLATILE_CACHE = """
+from protean.adapters.cache.memory import MemoryCache, TTLDict
+from protean.port.cache import CacheCapabilities
+
+_store = TTLDict(None)
+_open = 0
+
+
+class SharedVolatileCache(MemoryCache):
+    def __init__(self, name, domain, config):
+        global _open
+        super().__init__(name, domain, config)
+        self._db = _store
+        _open += 1
+
+    def close(self):
+        global _open
+        _open -= 1
+        if _open == 0:
+            _store.clear()
+
+    @property
+    def capabilities(self):
+        return (
+            CacheCapabilities.LOCAL
+            | CacheCapabilities.SHARED
+            | CacheCapabilities.DURABLE
+        )
 """
 
 
 @pytest.fixture
 def cache_suite(tmp_path: Path) -> Path:
-    """The real cache suite, with a memory cache that claims to be durable."""
+    """The real cache suite, with two memory caches that claim to be durable.
+
+    ``forgetful`` gives each adapter its own store. ``volatile`` shares one
+    store across its adapters and empties it when the last adapter closes.
+    """
     root = tmp_path / "conformance"
     root.mkdir()
     (root / "__init__.py").write_text("")
@@ -610,6 +645,7 @@ def cache_suite(tmp_path: Path) -> Path:
         ignore=shutil.ignore_patterns("__pycache__"),
     )
     (tmp_path / "forgetful_cache.py").write_text(FORGETFUL_CACHE)
+    (tmp_path / "shared_volatile_cache.py").write_text(SHARED_VOLATILE_CACHE)
     (tmp_path / "conftest.py").write_text(REGISTER_FORGETFUL_CACHE)
     (tmp_path / "pytest.ini").write_text("[pytest]\naddopts = --strict-markers\n")
     return tmp_path
@@ -642,6 +678,35 @@ class TestTheCacheSuite:
         assert found["test_add_then_get_round_trips"] == "passed"
         skipped = [reason for reason in found.values() if reason != "passed"]
         assert skipped == ["forgetful does not declare SHARED"]
+
+    def test_fails_a_cache_that_loses_its_entries_when_the_last_adapter_closes(
+        self, cache_suite
+    ):
+        result = run(
+            cache_suite,
+            "conformance/cache",
+            "--port",
+            "cache",
+            "--adapter",
+            "volatile",
+            "--adapter-config",
+            '{"TTL": 300}',
+        )
+
+        assert result.returncode == 1, result.stdout + result.stderr
+        failed = [
+            line.split(" - ")[0].removeprefix("FAILED ")
+            for line in result.stdout.splitlines()
+            if line.startswith("FAILED ")
+        ]
+        durable_test = "test_an_entry_outlasts_the_adapter_that_wrote_it"
+        assert failed == [
+            f"conformance/cache/test_shared_and_durable.py::{durable_test}"
+        ]
+        shared_test = (
+            "test_a_second_adapter_from_the_same_config_reads_the_first_ones_writes"
+        )
+        assert outcomes(result)[shared_test] == "passed"
 
 
 REGISTER_STALE_WRITE_EVENT_STORE = """
