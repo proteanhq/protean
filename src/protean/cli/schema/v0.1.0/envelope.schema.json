@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://protean.dev/cli/v0.1.0/envelope.schema.json",
+  "$id": "https://docs.proteanhq.com/assets/cli/v0.1.0/envelope.schema.json",
   "title": "Protean CLI result envelope v0.1.0",
   "description": "The shared result envelope every Protean command emits under --json. A coarse status plus command-specific detail under data and the typed Diagnostic list. See src/protean/cli/result.py.",
 
