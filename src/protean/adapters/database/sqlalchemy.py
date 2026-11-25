@@ -2236,6 +2236,11 @@ class SADAO(
                 # rolls back the savepoint and not the whole transaction.
                 self.provider.flush(session)
         except IntegrityError:
+            # The savepoint rolled back the insert, so the row with this key is
+            # another transaction's and its updates are version-checked.
+            created = session.info.get(_OCC_TRACE_CREATED)
+            if created:
+                created[:] = [entry for entry in created if entry[1] is not model]
             if not self._key_held_elsewhere(session, model):
                 raise
             return False

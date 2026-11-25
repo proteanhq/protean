@@ -19,6 +19,7 @@ through ``SADatabase.commit``. An update inside a Unit of Work commits through
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from protean import Domain, UnitOfWork
 from protean.core.aggregate import BaseAggregate
@@ -160,6 +161,36 @@ def test_an_update_to_an_inserted_row_with_a_database_assigned_key_records_nothi
     assert recorded == [], recorded
     stored = repo.get(tally.id)
     assert (stored.value, stored._version) == (1, 0)
+
+
+def test_a_rejected_insert_if_absent_leaves_later_updates_of_the_row_checked(
+    trace_domain,
+):
+    """An ``insert_if_absent`` that the stored row's identifier rejects rolls
+    back only its savepoint and inserts nothing, so a later update of the
+    stored row in the same session still records its commit."""
+    repo = trace_domain.repository_for(OCCTraceCounter)
+    adapter = repo._dao._adapter
+    provider = provider_adapter(trace_domain, "default")
+    (counter_id,) = _seed_counters(trace_domain, 1)
+
+    with occ_trace.capture() as events:
+        session = provider.new_session()
+        try:
+            duplicate = adapter.database_model_cls.from_entity(
+                OCCTraceCounter(id=counter_id, value=9)
+            )
+            with pytest.raises(IntegrityError):
+                adapter.insert_if_absent(session, duplicate)
+            _stage_updates(trace_domain, session, [counter_id])
+            provider.commit(session)
+        finally:
+            session.close()
+        recorded = list(events)
+
+    assert [
+        (e["stream"], e["outcome"], e["base"], e["version_after"]) for e in recorded
+    ] == [(f"occ_trace_counter:{counter_id}", "committed", 0, 1)], recorded
 
 
 def _provoke_standalone_flush_conflict(domain, monkeypatch):
