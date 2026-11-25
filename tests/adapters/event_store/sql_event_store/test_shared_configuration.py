@@ -145,6 +145,36 @@ class TestTheDefaultDatabaseIsolationLevel:
         finally:
             close(domain)
 
+    @pytest.mark.postgresql
+    def test_an_offline_init_checks_no_connection(self):
+        domain = Domain(name="SharedConfig")
+        domain.config["databases"] = {
+            "default": {
+                "provider": "postgresql",
+                "database_uri": "postgresql://postgres@localhost:1/unreachable",
+            }
+        }
+        domain.config["event_store"] = {"provider": "sql"}
+
+        domain._init(traverse=False, connect=False)
+
+        assert domain.event_store._require_adapter()._shared is True
+
+    @pytest.mark.postgresql
+    def test_an_offline_init_still_refuses_an_unsafe_configured_level(self):
+        domain = Domain(name="SharedConfig")
+        domain.config["databases"] = {
+            "default": {
+                "provider": "postgresql",
+                "database_uri": "postgresql://postgres@localhost:1/unreachable",
+                "isolation_level": "SERIALIZABLE",
+            }
+        }
+        domain.config["event_store"] = {"provider": "sql"}
+
+        with pytest.raises(ConfigurationError, match="'SERIALIZABLE'"):
+            domain._init(traverse=False, connect=False)
+
     @pytest.mark.sqlite
     def test_sqlite_refuses_autocommit(self, tmp_path):
         database = {

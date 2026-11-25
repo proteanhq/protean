@@ -226,6 +226,39 @@ class TestAStoreOfAnotherDomain:
         assert row_count(a, "messages") == 0
         assert row_count(b, "messages") == 1
 
+    def test_a_read_with_another_context_pushed_uses_its_own_database(self, domains):
+        a, b = domains
+        a_store = a.event_store._require_adapter()
+
+        with a.domain_context():
+            with UnitOfWork():
+                with b.domain_context():
+                    a_store.write_message("user-1", "Registered", {})
+                    # Opens the Unit of Work's session for the read.
+                    a_store.get_stream_messages("user-1")
+
+        assert row_count(a, "messages") == 1
+        assert row_count(b, "messages") == 0
+
+
+@pytest.mark.no_test_domain
+@pytest.mark.parametrize("backend", BACKENDS)
+class TestAHeldMessage:
+    def test_keeps_the_values_it_was_written_with(self, make_shared_domain):
+        domain = make_shared_domain()
+        store = domain.event_store._require_adapter()
+        data = {"tags": ["a"]}
+        metadata = {"headers": {"id": "1"}}
+
+        with UnitOfWork():
+            store.write_message("user-1", "Registered", data, metadata)
+            data["tags"].append("b")
+            metadata["headers"]["id"] = "2"
+
+        [row] = store.get_stream_messages("user-1")
+        assert row["data"] == {"tags": ["a"]}
+        assert row["metadata"]["headers"] == {"id": "1"}
+
 
 @pytest.mark.postgresql
 @pytest.mark.no_test_domain

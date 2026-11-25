@@ -87,7 +87,7 @@ psycopg2 otherwise. A URL that names a driver, such as
 
 The store raises `ConfigurationError` when it is built with:
 
-- a `database_uri` SQLAlchemy cannot parse
+- a `database_uri` that is not a string, or that SQLAlchemy cannot parse
 - a database other than SQLite or PostgreSQL
 - an in-memory SQLite database, such as `sqlite://` or `sqlite:///:memory:`.
   Each connection to an in-memory database sees a different, empty database,
@@ -110,7 +110,8 @@ through `connect_args` does not change the level the store's writes run at.
 A shared store writes at the level of the `default` database's connections.
 On PostgreSQL it opens one of those connections at start-up and reads its
 level, so a level set on the server, the role or through `connect_args` is
-checked too.
+checked too. A command that renders SQL without a database, such as
+`protean db upgrade --sql`, skips this connection check.
 
 A shared store raises `ConfigurationError` at start-up when its own config
 sets `schema`, or when the `default` database is:

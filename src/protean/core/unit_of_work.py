@@ -780,12 +780,16 @@ class UnitOfWork:
 
         self._reset()
 
-    def _get_session(self, provider_name: str) -> "SessionProtocol":
-        provider = self.domain.databases[provider_name]
+    def _get_session(
+        self, provider_name: str, domain: "Domain | None" = None
+    ) -> "SessionProtocol":
+        provider = (domain or self.domain).databases[provider_name]
         return provider.get_session()
 
-    def _initialize_session(self, provider_name: str) -> "SessionProtocol":
-        new_session = self._get_session(provider_name)
+    def _initialize_session(
+        self, provider_name: str, domain: "Domain | None" = None
+    ) -> "SessionProtocol":
+        new_session = self._get_session(provider_name, domain)
         self._sessions[provider_name] = new_session
         if not new_session.is_active:
             # ``begin()`` is an optional part of the session contract (see
@@ -797,12 +801,18 @@ class UnitOfWork:
                 begin()
         return new_session
 
-    def get_session(self, provider_name: str) -> "SessionProtocol":
-        """Get session for provider, initializing one if it doesn't exist"""
+    def get_session(
+        self, provider_name: str, *, domain: "Domain | None" = None
+    ) -> "SessionProtocol":
+        """Get session for provider, initializing one if it doesn't exist.
+
+        A new session comes from ``domain``'s provider, or from the active
+        domain's when ``domain`` is None.
+        """
         if provider_name in self._sessions:
             return self._sessions[provider_name]
         else:
-            return self._initialize_session(provider_name)
+            return self._initialize_session(provider_name, domain)
 
     @staticmethod
     def _extract_partition_key(

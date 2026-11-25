@@ -17,6 +17,7 @@ compute the same key.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import logging
 from collections.abc import Collection, Iterator, Mapping
@@ -241,7 +242,9 @@ def _shared_provider(
         )
     subject = f"Database 'default', which event store '{name}' shares,"
     _check_isolation_level(subject, provider.database_type, provider.config)
-    if provider.database_type == "postgresql":
+    # A domain initialized with ``connect=False`` renders SQL offline, so the
+    # database may be unreachable.
+    if provider.database_type == "postgresql" and domain.databases._connect:
         _check_connection_isolation_level(subject, provider._engine)
     return provider
 
@@ -489,8 +492,8 @@ class SqlEventStore(EventStorePort):
     the lock.
 
     Raises:
-        ConfigurationError: At construction, when ``database_uri`` is
-            unparseable, names a database other than SQLite or PostgreSQL,
+        ConfigurationError: At construction, when ``database_uri`` is not
+            a string, is unparseable, names a database other than SQLite or PostgreSQL,
             or is an in-memory SQLite database; when ``schema`` is set on
             SQLite, or on PostgreSQL is not a string, or is empty or only
             whitespace; when
@@ -512,6 +515,11 @@ class SqlEventStore(EventStorePort):
         self.config = config
 
         uri = config.get("database_uri")
+        if uri is not None and not isinstance(uri, str):
+            raise ConfigurationError(
+                f"Event store '{name}' has a database_uri that is not a string: "
+                f"{uri!r}."
+            )
         self._shared = not uri
         if uri:
             self._engine = self._own_engine(uri)
@@ -583,13 +591,13 @@ class SqlEventStore(EventStorePort):
         # databases, so this store writes at once on its own connection.
         return uow if uow._started_in is self.domain else None
 
-    @staticmethod
-    def _uow_connection(uow: UnitOfWork) -> Connection:
+    def _uow_connection(self, uow: UnitOfWork) -> Connection:
         """Return the connection of ``uow``'s session for ``default``.
 
-        Opens the session when the Unit of Work has none yet.
+        Opens the session on this store's domain when the Unit of Work has
+        none yet, even while another domain's context is active.
         """
-        session = cast("Session", uow.get_session("default"))
+        session = cast("Session", uow.get_session("default", domain=self.domain))
         return session.connection()
 
     @contextmanager
@@ -684,8 +692,10 @@ class SqlEventStore(EventStorePort):
         message = _Append(
             stream_name,
             message_type,
-            dict(data),
-            dict(metadata) if metadata is not None else None,
+            # A held message is serialized at the commit, so a caller that
+            # changes a nested value after this call must not change it.
+            copy.deepcopy(dict(data)),
+            copy.deepcopy(dict(metadata)) if metadata is not None else None,
             expected_version,
         )
         uow = self._active_uow()

@@ -41,6 +41,13 @@ class TestDatabaseUri:
         ):
             build(test_domain, database_uri="mysql+pymysql://u:p@h/db")
 
+    @pytest.mark.parametrize("uri", [False, 0, 1])
+    def test_a_database_uri_that_is_not_a_string_is_refused(self, test_domain, uri):
+        with pytest.raises(
+            ConfigurationError, match="database_uri that is not a string"
+        ):
+            build(test_domain, database_uri=uri)
+
     @pytest.mark.parametrize(
         "uri",
         [
