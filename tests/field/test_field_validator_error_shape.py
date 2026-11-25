@@ -460,3 +460,53 @@ def test_shadow_built_value_object_reported_beside_failing_descriptor(depot_cls)
         "city": ["String should have at most 3 characters"],
         "a": ["has x"],
     }
+
+
+def test_failed_create_leaves_given_children_with_their_owner(test_domain):
+    test_domain.register(Addr)
+    test_domain.register(Basket)
+    test_domain.register(Line, part_of=Basket)
+    test_domain.init(traverse=False)
+    line = Line(sku="ok")
+    basket = Basket(label="ok", lines=[line])
+
+    with pytest.raises(ValidationError) as exc:
+        Basket(label="ok", a=Addr(city="x"), lines=[line])
+
+    assert exc.value.messages == {"a": ["has x"]}
+    assert line._owner is basket
+    assert line._root is basket
+
+
+class RejectingAddr(ValueObject):
+    def _cast_to_type(self, value: Any) -> Any:
+        raise ValidationError("invalid address")
+
+
+class Office(BaseAggregate):
+    label = String(validators=[no_x])
+    a = RejectingAddr(Addr)
+
+
+@pytest.fixture
+def office_cls(test_domain):
+    test_domain.register(Addr)
+    test_domain.register(Office)
+    test_domain.init(traverse=False)
+    return Office
+
+
+def test_create_puts_a_string_cast_error_under_the_field(office_cls):
+    with pytest.raises(ValidationError) as exc:
+        office_cls(label="x", a=Addr(city="Paris"))
+
+    assert exc.value.messages == {"label": ["has x"], "a": ["invalid address"]}
+
+
+def test_update_puts_a_string_cast_error_under_the_field(office_cls):
+    office = office_cls(label="ok")
+
+    with pytest.raises(ValidationError) as exc:
+        office._update_data(a=Addr(city="Paris"))
+
+    assert exc.value.messages == {"a": ["invalid address"]}

@@ -43,7 +43,11 @@ from protean.fields import (
     ValueObject,
 )
 from protean.fields.association import Association, _ReferenceField
-from protean.fields.base import Field, merge_field_messages
+from protean.fields.base import (
+    Field,
+    flatten_field_messages,
+    merge_field_messages,
+)
 from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import _ShadowField
 from protean.fields.resolved import (
@@ -634,7 +638,15 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         errors: dict[str, list[str]] = {}
         codes: list[str] = []
         _rebuild_value_objects(self, descriptor_kwargs, shadow_kwargs, errors, codes)
-        _assign_descriptor_values(self, descriptor_kwargs, errors, codes)
+        field_values, association_values = _split_association_values(
+            type(self), descriptor_kwargs
+        )
+        _assign_descriptor_values(self, field_values, errors, codes)
+        # A ``HasMany`` or ``HasOne`` setter links the given children to this
+        # entity, so run the setters only once every field value has passed:
+        # a failed construction must leave the caller's children unchanged.
+        if not errors:
+            _assign_descriptor_values(self, association_values, errors, codes)
         if errors:
             # ``__init__`` adds the missing-required errors only after this
             # method returns, so add them here before raising.
@@ -1373,13 +1385,35 @@ def _merge_validation_error(
     name: str,
     err: ValidationError,
 ) -> None:
-    """Add the messages and codes of ``err``, raised by descriptor field ``name``."""
-    # Every descriptor type raises its messages as a dict, through
-    # ``Field.fail``, ``Field._run_validators``, a value object's own fields or
-    # an association's type check.
-    assert isinstance(err.messages, dict), name
-    merge_field_messages(errors, err.messages)
+    """Add the messages and codes of ``err``, raised by descriptor field ``name``.
+
+    Dict messages are already keyed by field. A string or a list of messages,
+    which an overridden ``_cast_to_type`` or ``_load`` can raise, goes under
+    ``name``.
+    """
+    if isinstance(err.messages, dict):
+        merge_field_messages(errors, err.messages)
+    else:
+        merge_field_messages(errors, flatten_field_messages(name, err.messages))
     codes.extend(err.codes)
+
+
+def _split_association_values(
+    entity_cls: type[BaseEntity], descriptor_kwargs: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Split ``descriptor_kwargs`` into field values and association values.
+
+    Association values are those of ``HasMany`` and ``HasOne`` fields.
+    """
+    field_values: dict[str, Any] = {}
+    association_values: dict[str, Any] = {}
+    for name, value in descriptor_kwargs.items():
+        descriptor = BaseEntity._get_class_descriptor(entity_cls, name)
+        if isinstance(descriptor, Association):
+            association_values[name] = value
+        else:
+            field_values[name] = value
+    return field_values, association_values
 
 
 def _collect_descriptor_errors(
@@ -1626,12 +1660,7 @@ def _collect_setattr_errors(
         try:
             setattr(entity, field_name, val)
         except ValidationError as err:
-            # Field/setattr validation always raises the dict form of
-            # ``messages`` (field name -> list of error strings).
-            err_messages = cast("dict[str, list[str]]", err.messages)
-            for fname in err_messages:
-                errors.setdefault(fname, []).extend(err_messages[fname])
-            codes.extend(err.codes)
+            _merge_validation_error(errors, codes, field_name, err)
 
 
 def _run_own_invariants(
