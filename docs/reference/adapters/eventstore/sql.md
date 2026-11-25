@@ -147,7 +147,10 @@ of Work back and run it again.
 
 The store joins only a Unit of Work started in its own domain. Inside a Unit
 of Work of another domain, it writes each message at once and returns the
-position.
+position. When a repository of another domain opens the Unit of Work's
+`default` session first, a read by the store raises `InvalidOperationError`
+and the commit raises `TransactionError`, so the store never writes to the
+other domain's database.
 `domain.process()` returns `None` for an asynchronous command it sends inside
 a Unit of Work, and records the command's idempotency key after the commit.
 Outside a Unit of Work, the store writes at once and returns the position.

@@ -596,8 +596,20 @@ class SqlEventStore(EventStorePort):
 
         Opens the session on this store's domain when the Unit of Work has
         none yet, even while another domain's context is active.
+
+        Raises:
+            InvalidOperationError: The Unit of Work's ``default`` session is
+                on another domain's database.
         """
         session = cast("Session", uow.get_session("default", domain=self.domain))
+        # The Unit of Work keys its sessions by provider name only, so a
+        # repository of another domain may have opened the ``default`` one.
+        if session.get_bind() is not self._engine:
+            raise InvalidOperationError(
+                "The Unit of Work's 'default' session is on another domain's "
+                "database, so the sql event store of domain "
+                f"'{self.domain.name}' cannot join its transaction."
+            )
         return session.connection()
 
     @contextmanager

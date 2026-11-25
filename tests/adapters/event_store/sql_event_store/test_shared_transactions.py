@@ -240,6 +240,21 @@ class TestAStoreOfAnotherDomain:
         assert row_count(a, "messages") == 1
         assert row_count(b, "messages") == 0
 
+    def test_refuses_a_default_session_another_domain_opened(self, domains):
+        a, b = domains
+        a_store = a.event_store._require_adapter()
+
+        with a.domain_context():
+            with pytest.raises(TransactionError, match="another domain"):
+                with UnitOfWork() as uow:
+                    with b.domain_context():
+                        uow.get_session("default")
+                    a_store.write_message("user-1", "Registered", {})
+                    uow.commit()
+
+        assert row_count(a, "messages") == 0
+        assert row_count(b, "messages") == 0
+
 
 @pytest.mark.no_test_domain
 @pytest.mark.parametrize("backend", BACKENDS)
