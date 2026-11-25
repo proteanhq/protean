@@ -229,8 +229,9 @@ keeps apart from its events.
   shared file every transaction takes the lock, reads included.
 - **Late global positions on a shared PostgreSQL store.** A shared store
   takes each message's `global_position` when it inserts the held messages,
-  and the row becomes visible when the Unit of Work's transaction commits,
-  after the outbox rows are saved and the other databases commit. A Unit of
+  and the row becomes visible when the Unit of Work's transaction on
+  `default` commits, after the outbox rows are saved. The Unit of Work
+  commits `default` before any other database. A Unit of
   Work on another category can commit a higher position in that time. A
   `$all` subscription waits `gap_timeout_seconds` (5 by default) at the
   missing position, then skips it for good. Keep the work after the insert

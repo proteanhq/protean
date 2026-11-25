@@ -97,10 +97,13 @@ no transaction spans both. Protean appends events to the
 carries aggregate state and the outbox rows. The event store, the source of
 truth for event-sourced replay, is the durable anchor.
 
-A `sql` event store that shares the `default` database is the exception. It
-writes the events inside the relational transaction, so the events, the
-aggregate state and the outbox rows commit or roll back together, and the
-crash window below does not exist for it.
+A `sql` event store that shares the `default` database is the exception when
+the aggregate and its outbox are also on `default`. The store writes the events
+inside the relational transaction on `default`, so the events, the aggregate
+state and the outbox rows commit or roll back together, and the crash window
+below does not exist for that work. The Unit of Work commits `default` before
+any other database, so an aggregate or outbox on another database keeps the
+window.
 
 This ordering trades an unrecoverable failure for a recoverable one. If the
 process dies between the two writes, the events are durable in the store while

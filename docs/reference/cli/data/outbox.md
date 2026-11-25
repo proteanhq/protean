@@ -307,8 +307,11 @@ The commit sequence appends events to the event store *before* committing the
 relational transaction that carries aggregate state and the outbox rows, so the
 event store is the durable anchor. A crash in the window between the two leaves
 events stored but their outbox rows uncommitted. A `sql` event store that
-shares the `default` database writes the events in the relational transaction,
-so it leaves no such window. Reconciliation reads those
+shares the `default` database writes the events in the transaction on
+`default`, so it leaves no such window for an aggregate whose state and outbox
+rows are also on `default`. The Unit of Work commits `default` before any other
+database, so an aggregate or outbox on another database keeps the window.
+Reconciliation reads those
 events back from the store and re-derives the missing rows of event-sourced
 aggregates' events. It skips state-based aggregates' events, for the reason
 given under [`protean outbox reconcile`](#protean-outbox-reconcile). The full rationale,

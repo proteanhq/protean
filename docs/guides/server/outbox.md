@@ -328,7 +328,9 @@ missing a committed event, but it leaves a narrow window. If the process dies
 between the append and the relational commit, the event is durable in the store
 while its outbox row never committed, so the event would never be published.
 A `sql` event store that shares the `default` database writes the events in the
-relational transaction, so it has no such window.
+transaction on `default`. An aggregate whose state and outbox rows are also on
+`default` has no such window. The Unit of Work commits `default` before any
+other database, so an aggregate or outbox on another database keeps the window.
 
 Reconciliation repairs that window for event-sourced aggregates by re-deriving
 the missing outbox rows directly from the event store. It does not repair
