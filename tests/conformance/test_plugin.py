@@ -659,7 +659,7 @@ class SharedVolatileCache(MemoryCache):
 
 @pytest.fixture
 def cache_suite(tmp_path: Path) -> Path:
-    """The real cache suite, with two memory caches that claim to be durable.
+    """The real cache suite, with three memory caches that claim to be durable.
 
     ``forgetful`` gives each adapter its own store. ``volatile`` shares one
     store across its adapters and empties it when the last adapter closes.
