@@ -331,8 +331,9 @@ The operation says what differs:
   database lacks, or that the database has and the domain does not declare.
 
 A constraint with no name is named by its columns, such as
-`add_constraint order.sku` for a unique field. A table in the database that
-the domain does not declare is not reported. When the database and the domain
+`add_constraint order.sku` for a unique field. A table in a schema other than
+the provider's is named with its schema, such as `add_table reporting.archive`.
+A table in the database that the domain does not declare is not reported. When the database and the domain
 agree, the command prints `The database matches the table definitions.`
 
 The command compares a database at the latest migration only. When the
