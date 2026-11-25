@@ -54,6 +54,13 @@
     "enrichers": {
       "$ref": "#/$defs/enrichers"
     },
+    "value_objects": {
+      "type": "object",
+      "description": "Value objects that no cluster places, keyed by value object FQN (omitted when every value object has a cluster)",
+      "additionalProperties": {
+        "$ref": "#/$defs/value_object"
+      }
+    },
     "diagnostics": {
       "type": "array",
       "description": "Builder warnings and errors (may be empty)",

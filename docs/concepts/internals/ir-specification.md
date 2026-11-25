@@ -147,6 +147,7 @@ baseline against the current schema to clear it.
 | `elements` | Flat index by element type for O(1) lookup | Derived from all sections |
 | `diagnostics` | Builder warnings and errors | Informational, IR is valid regardless |
 | `enrichers` | Registered aggregate, command and event enrichers | `Domain.register_*_enricher()` |
+| `value_objects` | Value objects that no cluster places | Registered value objects outside every cluster, except abstract and internal ones |
 
 ### Top-Level Metadata
 
@@ -158,6 +159,7 @@ baseline against the current schema to clear it.
 | `checksum` | string | yes | `sha256:` prefixed hex digest |
 | `contracts` | object | no | Omitted when no published events |
 | `enrichers` | object | no | Omitted when the domain registers no enrichers |
+| `value_objects` | object | no | Omitted when every value object that is neither abstract nor internal has a cluster |
 | `diagnostics` | list | yes | May be empty `[]` |
 
 ### Checksum Algorithm
@@ -666,6 +668,43 @@ other callable object without its own `__qualname__` is named by its class.
 
 ---
 
+## Unplaced Value Objects
+
+The `value_objects` section holds the value objects that no aggregate cluster
+places, keyed by FQN. A value object with no `part_of` that only projections
+hold is one example, and a value object that nothing holds is another. Each
+entry has the same shape as a value object entry in a cluster, with `part_of`
+set to `null`:
+
+```json
+{
+  "value_objects": {
+    "ecommerce.addresses.ShippingAddress": {
+      "element_type": "VALUE_OBJECT",
+      "fields": {
+        "city": {"kind": "standard", "max_length": 255, "type": "String"}
+      },
+      "fqn": "ecommerce.addresses.ShippingAddress",
+      "invariants": {"post": [], "pre": []},
+      "module": "ecommerce.addresses",
+      "name": "ShippingAddress",
+      "part_of": null
+    }
+  }
+}
+```
+
+- A value object that a cluster places never appears in this section
+- An abstract value object is left out, because nothing instantiates it
+- A value object registered as internal to the framework is left out
+- The section is omitted when every value object that is neither abstract
+  nor internal has a cluster, so such a domain keeps the same IR and checksum
+- Schema generation writes each entry to `schemas/value_objects/`, and
+  `protean ir diff` and `protean check` read the section as they read a
+  cluster's value objects
+
+---
+
 ## Elements Index
 
 A flat lookup table mapping element types to sorted FQN lists:
@@ -683,7 +722,7 @@ A flat lookup table mapping element types to sorted FQN lists:
 
 - Keys are `DomainObjects` enum values (uppercase)
 - Empty lists are included for types with no instances
-- Spans all sections (clusters, projections, flows)
+- Spans all sections (clusters, projections, flows, value_objects)
 - Derived, not canonical. Sections are the source of truth
 
 ---

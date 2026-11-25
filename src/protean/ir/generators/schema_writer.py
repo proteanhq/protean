@@ -29,8 +29,13 @@ Directory layout::
         │   │   └── OrderPlaced.v2.json
         │   └── value_objects/
         │       └── Money.v1.json
-        └── projections/
-            └── OrderDashboard.v1.json
+        ├── projections/
+        │   └── OrderDashboard.v1.json
+        └── value_objects/
+            └── ShippingAddress.v1.json
+
+A value object that no cluster places (one only projections hold, for
+example) goes under the top-level ``value_objects/`` directory.
 """
 
 from __future__ import annotations
@@ -111,7 +116,8 @@ def _relative_schema_path(
 ) -> PurePosixPath:
     """Return where *element*'s schema file goes, relative to ``schemas/``.
 
-    Projections go under ``projections/``; every other element goes under its
+    Projections go under ``projections/``, and value objects that no cluster
+    places go under ``value_objects/``. Every other element goes under its
     owning cluster and element-type subdirectory. The writer places files with
     this path and the protobuf generator imports files by it, so both agree.
     """
@@ -122,6 +128,9 @@ def _relative_schema_path(
     if element.get("element_type", "").upper() == "PROJECTION":
         return PurePosixPath("projections", filename)
 
+    if fqn in ir.get("value_objects", {}):
+        return PurePosixPath("value_objects", filename)
+
     cluster_name = _cluster_for_fqn(fqn, ir) or short_name(fqn)
     subdir = _ELEMENT_TYPE_TO_DIR.get(element.get("element_type", "").upper(), "other")
     return PurePosixPath(cluster_name, subdir, filename)
@@ -130,9 +139,10 @@ def _relative_schema_path(
 def _check_unique_paths(paths: dict[str, PurePosixPath]) -> None:
     """Raise if two elements would be written to the same schema file.
 
-    Two elements with the same short name in one cluster (or two aggregates
-    with the same short name in different modules) map to one path, and the
-    second file would silently replace the first.
+    Two elements with the same short name in one cluster (or two aggregates,
+    two projections or two unplaced value objects with the same short name in
+    different modules) map to one path, and the second file would silently
+    replace the first.
     """
     by_path: dict[PurePosixPath, list[str]] = {}
     for fqn, path in paths.items():

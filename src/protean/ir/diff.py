@@ -41,8 +41,10 @@ def diff_ir(
     """Compare two IR dicts and return a structured diff.
 
     The result contains per-section diffs (clusters, projections, flows,
-    contracts, diagnostics, domain, enrichers) plus a summary with counts and
-    breaking-change flags. An enricher kind whose list changed, including a
+    contracts, diagnostics, domain, enrichers, and ``value_objects``, the
+    value objects that no cluster places) plus a summary with counts and
+    breaking-change flags. A value object that moves between that section and
+    a cluster appears as removed from one and added to the other. An enricher kind whose list changed, including a
     change of order, appears under ``enrichers["changed"]`` with its left and
     right lists. The keys in :data:`protean.ir.constants.VOLATILE_IR_KEYS`
     are not compared.
@@ -73,6 +75,11 @@ def diff_ir(
         left.get("projections", {}),
         right.get("projections", {}),
         _diff_projection_group,
+    )
+    result["value_objects"] = _diff_keyed_section(
+        left.get("value_objects", {}),
+        right.get("value_objects", {}),
+        _diff_element,
     )
     result["flows"] = _diff_flows(
         left.get("flows", {}),
@@ -505,6 +512,7 @@ def _element_entries(ir: Mapping[str, Any]) -> Iterator[tuple[str, Mapping[str, 
         entries.append(group.get("projection"))
         for section in _PROJECTION_SUBSECTIONS:
             entries.extend(_as_mapping(group.get(section)).values())
+    entries.extend(_as_mapping(ir.get("value_objects")).values())
     flows = _as_mapping(ir.get("flows"))
     for section in _FLOW_SUBSECTIONS:
         entries.extend(_as_mapping(flows.get(section)).values())
@@ -966,7 +974,7 @@ def _build_summary(
     total_removed = 0
     total_changed = 0
 
-    for section_name in ("clusters", "projections"):
+    for section_name in ("clusters", "projections", "value_objects"):
         counts = _count_changes(result.get(section_name, {}))
         total_added += counts["added"]
         total_removed += counts["removed"]
@@ -1208,9 +1216,9 @@ def classify_changes(
 ) -> CompatibilityReport:
     """Classify persisted-schema changes in a diff result as breaking or safe.
 
-    Classifies the persisted elements in the ``clusters`` and ``projections``
-    sections of *diff_result*: aggregates, entities, value objects, commands,
-    events, database models and projections. Handlers, repositories,
+    Classifies the persisted elements in the ``clusters``, ``projections``
+    and ``value_objects`` sections of *diff_result*: aggregates, entities,
+    value objects, commands, events, database models and projections. Handlers, repositories,
     application services and flows are not classified. Replay hazards on an
     event-sourced aggregate are read from *left_ir* and *right_ir*.
 
@@ -1241,6 +1249,9 @@ def classify_changes(
 
     _classify_clusters(diff_result.get("clusters", {}), report, current_version)
     _classify_projections(diff_result.get("projections", {}), report, current_version)
+    _classify_unplaced_value_objects(
+        diff_result.get("value_objects", {}), report, current_version
+    )
     # Replay hazards on an event-sourced aggregate: read from the two IRs rather
     # than the diff, because the question is about the aggregate's state on both
     # sides (is it event-sourced at all?), not only about what moved.
@@ -1823,6 +1834,19 @@ def _classify_clusters(
                 _classify_element_delta(
                     element_delta, fqn, element_type, report, current_version
                 )
+
+
+def _classify_unplaced_value_objects(
+    section_diff: dict[str, Any],
+    report: CompatibilityReport,
+    current_version: str | None = None,
+) -> None:
+    """Classify the top-level ``value_objects`` section as a cluster's."""
+    _classify_added_and_removed(section_diff, "VALUE_OBJECT", report)
+    for fqn, element_delta in section_diff.get("changed", {}).items():
+        _classify_element_delta(
+            element_delta, fqn, "VALUE_OBJECT", report, current_version
+        )
 
 
 def _classify_added_and_removed(

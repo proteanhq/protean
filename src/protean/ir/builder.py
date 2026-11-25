@@ -15,6 +15,7 @@ import datetime as _dt
 import decimal
 import hashlib
 import importlib
+import itertools
 import json
 import logging
 import types as _types
@@ -600,6 +601,12 @@ class IRBuilder:
         enrichers = self._build_enrichers()
         if enrichers:
             ir["enrichers"] = enrichers
+
+        # Sparse for the same reason: a domain whose value objects all have a
+        # cluster keeps its IR.
+        value_objects = self._build_unplaced_value_objects(ir["clusters"])
+        if value_objects:
+            ir["value_objects"] = value_objects
 
         # Materialize raise/invoke edges as a post-pass over the assembled
         # clusters, flows and projections (the per-element extractors do not
@@ -2223,6 +2230,31 @@ class IRBuilder:
                     clusters[agg_fqn]["value_objects"][vo_fqn] = (
                         self._extract_value_object(cls, record, agg_fqn)
                     )
+
+    def _build_unplaced_value_objects(self, clusters: dict[str, Any]) -> dict[str, Any]:
+        """Return the value objects no cluster places, keyed by FQN.
+
+        Each entry has the shape a cluster's value object entry has, with
+        ``part_of`` set to ``None``. Internal and abstract value objects are
+        left out.
+        """
+        placed = {
+            vo_fqn
+            for cluster in clusters.values()
+            for vo_fqn in cluster["value_objects"]
+        }
+        registry = self._domain._domain_registry
+        unplaced: dict[str, Any] = {}
+        for record in registry._elements.get("VALUE_OBJECT", {}).values():
+            cls = record.cls
+            vo_fqn = fqn(cls)
+            if record.internal or cls.meta_.abstract or vo_fqn in placed:
+                continue
+            entry = self._extract_value_object(cls, record)
+            # ``$defs/value_object`` requires the key, so write it as null.
+            entry["part_of"] = None
+            unplaced[vo_fqn] = dict(sorted(entry.items()))
+        return dict(sorted(unplaced.items()))
 
     # ------------------------------------------------------------------
     # Method edges (raise / invoke derivation)
@@ -3940,33 +3972,39 @@ class IRBuilder:
         """VALUE_OBJECT_MUTABLE_FIELD: a value object with a ``list``/``dict``
         field, which gives it mutable state and breaks equality-by-value.
 
-        Only value objects placed in a (non-abstract) aggregate cluster are
-        checked: a VO that carries ``part_of``, one an aggregate or an entity
-        holds in a field, one a command or an event holds in a single-value or
-        value-object ``Dict`` field, and one a placed VO holds in such a field.
-        A VO whose ``part_of`` names an abstract aggregate lands in that
-        abstract cluster and is not checked, even when a concrete aggregate
-        holds it in a field. Emits one finding per offending field, naming it in the optional
-        ``field`` key (mirroring ``DEPRECATED_FIELD``).
+        Checks the value objects placed in a (non-abstract) aggregate cluster
+        and the ones in the top-level ``value_objects`` section, which no
+        cluster places. A cluster places a VO that carries ``part_of``, one an
+        aggregate or an entity holds in a field, one a command or an event
+        holds in a single-value or value-object ``Dict`` field, and one a
+        placed VO holds in such a field. A VO whose ``part_of`` names an
+        abstract aggregate lands in that abstract cluster and is not checked,
+        even when a concrete aggregate holds it in a field. Emits one finding
+        per offending field, naming it in the optional ``field`` key
+        (mirroring ``DEPRECATED_FIELD``).
         """
         abstract_fqns = self._abstract_aggregate_fqns()
-        for cluster in ir["clusters"].values():
-            if cluster["aggregate"]["fqn"] in abstract_fqns:
-                continue
-            for vo in cluster["value_objects"].values():
-                for field_name, field in vo["fields"].items():
-                    if field.get("kind") not in ("list", "dict"):
-                        continue
-                    self._diagnostics.append(
-                        build_diagnostic(
-                            DiagnosticCode.VALUE_OBJECT_MUTABLE_FIELD,
-                            element=vo["fqn"],
-                            message=f"Value object `{vo['name']}` has mutable field "
-                            f"`{field_name}` (`{field['kind']}`); value "
-                            f"objects must be immutable.",
-                            field=field_name,
-                        )
+        value_objects = [
+            vo
+            for cluster in ir["clusters"].values()
+            if cluster["aggregate"]["fqn"] not in abstract_fqns
+            for vo in cluster["value_objects"].values()
+        ]
+        value_objects.extend(ir.get("value_objects", {}).values())
+        for vo in value_objects:
+            for field_name, field in vo["fields"].items():
+                if field.get("kind") not in ("list", "dict"):
+                    continue
+                self._diagnostics.append(
+                    build_diagnostic(
+                        DiagnosticCode.VALUE_OBJECT_MUTABLE_FIELD,
+                        element=vo["fqn"],
+                        message=f"Value object `{vo['name']}` has mutable field "
+                        f"`{field_name}` (`{field['kind']}`); value "
+                        f"objects must be immutable.",
+                        field=field_name,
                     )
+                )
 
     def _diagnose_projector_handles_orphaned_event(self, ir: dict[str, Any]) -> None:
         """PROJECTOR_HANDLES_ORPHANED_EVENT: projector handling an unregistered event.
@@ -4156,9 +4194,26 @@ class IRBuilder:
         """DEPRECATED_ELEMENT: elements or fields marked as deprecated.
 
         Reports deprecated elements and deprecated fields as INFO-level
-        diagnostics so that ``protean check`` surfaces them.
+        diagnostics so that ``protean check`` surfaces them. Scans clusters,
+        the top-level ``value_objects`` section, projections and flows.
         """
-        _subsections = (
+        elements = itertools.chain(
+            self._cluster_elements(ir),
+            ir.get("value_objects", {}).values(),
+            self._projection_elements(ir),
+            (
+                element
+                for section in ("domain_services", "process_managers", "subscribers")
+                for element in ir["flows"].get(section, {}).values()
+            ),
+        )
+        for element in elements:
+            self._check_element_deprecated(element)
+
+    @staticmethod
+    def _cluster_elements(ir: dict[str, Any]) -> Iterator[dict[str, Any]]:
+        """Yield each cluster's aggregate, then the elements of its sections."""
+        sections = (
             "entities",
             "value_objects",
             "commands",
@@ -4169,25 +4224,18 @@ class IRBuilder:
             "database_models",
             "application_services",
         )
-
-        # Scan clusters (aggregates + sub-elements)
         for cluster in ir["clusters"].values():
-            self._check_element_deprecated(cluster["aggregate"])
-            for section in _subsections:
-                for element in cluster.get(section, {}).values():
-                    self._check_element_deprecated(element)
+            yield cluster["aggregate"]
+            for section in sections:
+                yield from cluster.get(section, {}).values()
 
-        # Scan projections
+    @staticmethod
+    def _projection_elements(ir: dict[str, Any]) -> Iterator[dict[str, Any]]:
+        """Yield each projection, then its projectors, queries and handlers."""
         for proj_entry in ir["projections"].values():
-            self._check_element_deprecated(proj_entry["projection"])
+            yield proj_entry["projection"]
             for section in ("projectors", "queries", "query_handlers"):
-                for element in proj_entry.get(section, {}).values():
-                    self._check_element_deprecated(element)
-
-        # Scan flows
-        for section in ("domain_services", "process_managers", "subscribers"):
-            for element in ir["flows"].get(section, {}).values():
-                self._check_element_deprecated(element)
+                yield from proj_entry.get(section, {}).values()
 
     def _check_element_deprecated(self, element: dict[str, Any]) -> None:
         """Emit DEPRECATED_ELEMENT / DEPRECATED_FIELD diagnostics."""
