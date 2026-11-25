@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-# Repo root: tests/scaffold/test_schema_publication.py → parents[2] is the repo root.
+# This file is tests/scaffold/test_schema_publication.py, so parents[2] is the repo root.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _PACKAGED_SCHEMA_ROOT = _REPO_ROOT / "src" / "protean" / "scaffold" / "schema"
 _PUBLISHED_SCHEMA_ROOT = _REPO_ROOT / "docs" / "assets" / "scaffold"

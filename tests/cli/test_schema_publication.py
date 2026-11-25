@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-# Repo root: tests/cli/test_schema_publication.py → parents[2] is the repo root.
+# This file is tests/cli/test_schema_publication.py, so parents[2] is the repo root.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _PACKAGED_SCHEMA_ROOT = _REPO_ROOT / "src" / "protean" / "cli" / "schema"
 _PUBLISHED_SCHEMA_ROOT = _REPO_ROOT / "docs" / "assets" / "cli"

@@ -57,9 +57,9 @@ The envelope ships a pinned, versioned JSON Schema at
 `src/protean/cli/schema/v0.1.0/envelope.schema.json` (mirroring the IR schema
 precedent). The docs site publishes a copy at
 `https://docs.proteanhq.com/assets/cli/v0.1.0/envelope.schema.json`, and the
-schema's `$id` names that URL. Conformance tests check the `--json` output of each command that
-follows the envelope against this schema, so a change that breaks the shape
-fails the tests.
+schema's `$id` names that URL. Conformance tests check the `--json` output of
+each command that follows the envelope against this schema, so a change that
+breaks the shape fails the tests.
 
 `data` and `diagnostics` split the payload deliberately, so a consumer should
 read **both**. `diagnostics` carries the lint findings (the recoverable,
