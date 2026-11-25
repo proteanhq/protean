@@ -327,8 +327,9 @@ class FieldValidatorError(ValueError):
     """A field validator's ``ValidationError``, re-raised as a ``ValueError``.
 
     Pydantic maps a ``ValueError`` from a field's validator to that field.
-    This subclass keeps the validator's original ``messages`` and ``codes``
-    so the converter can rebuild them under the field's name.
+    This subclass carries the validator's ``messages`` (or the ``error``
+    string set on the validator, which replaces them) and its ``codes``, so
+    the converter can rebuild them under the field's name.
     """
 
     def __init__(self, messages: Any, codes: list[str]) -> None:
