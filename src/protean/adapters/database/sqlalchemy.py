@@ -1972,8 +1972,8 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
 # ``SADatabase`` reads the rows to record the outcome of the commit.
 _OCC_TRACE_ROWS = "protean_occ_trace_rows"
 
-# The key under which ``SADAO.insert`` keeps the streams of the rows the
-# session's transaction inserted while ``occ_trace`` is active. An update to
+# The key under which ``SADAO.insert`` keeps the schema and model of each row
+# the session's transaction inserted while ``occ_trace`` is active. An update to
 # such a row is not checked against a stored version, so ``SADAO.update``
 # records no base for it, as the memory session does for a record it created.
 _OCC_TRACE_CREATED = "protean_occ_trace_created"
@@ -2149,16 +2149,26 @@ class SADAO(
         conn = typing.cast(Session, session)
         conn.add(model)
         if occ_trace.is_active() and _OCC_TRACE_ROWS in conn.info:
-            conn.info.setdefault(_OCC_TRACE_CREATED, set()).add(
-                f"{self.schema_name}:{self._model_identifier(model)}"
+            # Keep the model, not its identifier: the database assigns an
+            # ``Auto(increment=True)`` key only when the session flushes.
+            conn.info.setdefault(_OCC_TRACE_CREATED, []).append(
+                (self.schema_name, model)
             )
         return model
 
-    def _model_identifier(self, model: typing.Any) -> typing.Any:
+    def _inserted_in_transaction(
+        self, session: Session, identifier: typing.Any
+    ) -> bool:
+        """Return whether ``session``'s transaction inserted the row with
+        ``identifier`` while ``occ_trace`` was active."""
         entity_id_field = id_field(self.entity_cls)
         assert entity_id_field is not None
         assert entity_id_field.attribute_name is not None
-        return getattr(model, entity_id_field.attribute_name)
+        return any(
+            schema_name == self.schema_name
+            and getattr(model, entity_id_field.attribute_name) == identifier
+            for schema_name, model in session.info.get(_OCC_TRACE_CREATED, ())
+        )
 
     def insert_if_absent(self, session: SessionProtocol, model: typing.Any) -> bool:
         """Add ``model`` as a new row unless another row holds one of its
@@ -2345,8 +2355,8 @@ class SADAO(
                 f"(Aggregate: {self.entity_cls.__name__}({identifier}), "
                 f"Version: {stored_version})"
             )
-        if traced_rows is not None and stream not in session.info.get(
-            _OCC_TRACE_CREATED, ()
+        if traced_rows is not None and not self._inserted_in_transaction(
+            session, identifier
         ):
             # The first base seen for a row is the one the commit advances.
             traced_rows.setdefault(stream, expected_version)

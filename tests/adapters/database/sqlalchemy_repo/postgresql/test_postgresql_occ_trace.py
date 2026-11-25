@@ -23,7 +23,7 @@ from sqlalchemy import text
 from protean import Domain, UnitOfWork
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ExpectedVersionError
-from protean.fields import Integer
+from protean.fields import Auto, Integer
 from protean.utils import occ_trace
 from tests.shared import POSTGRES_PORT, provider_adapter
 
@@ -31,6 +31,11 @@ pytestmark = [pytest.mark.postgresql, pytest.mark.no_test_domain]
 
 
 class OCCTraceCounter(BaseAggregate):
+    value = Integer(default=0)
+
+
+class OCCTraceTally(BaseAggregate):
+    id = Auto(identifier=True, increment=True)
     value = Integer(default=0)
 
 
@@ -51,12 +56,14 @@ def trace_domain():
         },
     )
     domain.register(OCCTraceCounter)
+    domain.register(OCCTraceTally)
     domain.init(traverse=False)
 
     provider = provider_adapter(domain, "default")
     with domain.domain_context():
         # Materialize the model before create_all.
         domain.repository_for(OCCTraceCounter)._dao
+        domain.repository_for(OCCTraceTally)._dao
         provider._metadata.create_all(provider._engine)
         try:
             yield domain
@@ -131,6 +138,27 @@ def test_an_update_to_a_row_inserted_in_the_same_unit_of_work_records_nothing(
 
     assert recorded == [], recorded
     stored = repo.get(counter.id)
+    assert (stored.value, stored._version) == (1, 0)
+
+
+def test_an_update_to_an_inserted_row_with_a_database_assigned_key_records_nothing(
+    trace_domain,
+):
+    """The database assigns an ``Auto(increment=True)`` key at flush, after
+    the insert, so the update still finds the row the Unit of Work inserted."""
+    repo = trace_domain.repository_for(OCCTraceTally)
+
+    with occ_trace.capture() as events:
+        with UnitOfWork():
+            tally = OCCTraceTally(value=0)
+            repo.add(tally)
+            assert tally.id is not None
+            tally.value = 1
+            repo.add(tally)
+        recorded = list(events)
+
+    assert recorded == [], recorded
+    stored = repo.get(tally.id)
     assert (stored.value, stored._version) == (1, 0)
 
 
