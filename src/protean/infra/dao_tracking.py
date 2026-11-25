@@ -53,9 +53,9 @@ def track(dao: DAO, entity: BaseEntity) -> BaseEntity:
     """Return the instance to hand back for an entity ``dao`` just loaded.
 
     For an aggregate the active Unit of Work already tracks, it returns the
-    tracked instance. Two copies of one aggregate in one transaction would
-    each count versions and event positions from the store, which has not
-    seen the other copy's pending changes.
+    tracked instance. A second copy of the aggregate in the same transaction
+    would count versions and event positions from the store, which has not
+    seen the first copy's pending changes.
 
     Otherwise it syncs the aggregate's event position and, when ``dao``
     works inside a Unit of Work, registers the aggregate there and returns

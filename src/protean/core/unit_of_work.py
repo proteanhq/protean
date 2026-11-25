@@ -1030,12 +1030,12 @@ def _flush_sessions(uow: UnitOfWork) -> None:
     """Flush every session of ``uow`` through its provider, in provider-name order."""
     # The in-memory session's flush checks the recorded versions and holds
     # the provider lock until commit, as the SQL row locks do, so no other
-    # commit lands in between. A provider whose sessions write at commit
-    # (Elasticsearch) does nothing on flush and checks versions at commit.
-    # Flushing in provider-name order, not
-    # enlistment order, takes the held provider locks in one order in
-    # every Unit of Work, so two that enlist the same providers in
-    # opposite orders cannot deadlock.
+    # commit lands in between. A provider whose writes are final when the
+    # DAO saves (Elasticsearch) checks versions on that save and does
+    # nothing on flush. Flushing in provider-name order, not enlistment
+    # order, takes the held provider locks in one order in every Unit of
+    # Work, so two that enlist the same providers in opposite orders cannot
+    # deadlock.
     for provider_name, session in sorted(uow._sessions.items()):
         uow.domain.databases[provider_name].flush(session)
 
