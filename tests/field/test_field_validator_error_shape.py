@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 
+from protean._deprecation import RemovedInProtean020Warning
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.entity import BaseEntity
@@ -71,6 +72,16 @@ def no_x_coded_again(value: Any) -> None:
         raise ValidationError("has x again", code="PRT-X")
 
 
+def no_x_empty(value: Any) -> None:
+    if _contains_x(value):
+        raise ValidationError({})
+
+
+def no_x_dict_in_list(value: Any) -> None:
+    if _contains_x(value):
+        raise ValidationError([{"k": ["m"]}, "plain"])
+
+
 def never_fails(value: Any) -> None:
     return None
 
@@ -104,6 +115,9 @@ def _fields() -> dict[str, Any]:
         "w": String(validators=[never_fails]),
         "o": String(validators=[no_x_with_error]),
         "q": String(validators=[no_x_list]),
+        "es": String(validators=[no_x_empty]),
+        "e": ValueObject(Addr, validators=[no_x_empty]),
+        "dl": ValueObject(Addr, validators=[no_x_dict_in_list]),
         "a": ValueObject(Addr, validators=[no_x]),
         "b": ValueObject(Addr, validators=[no_x_dict]),
         "n": ValueObject(Addr, validators=[no_x_nested]),
@@ -132,7 +146,7 @@ def owner_cls(request, test_domain):
 
 def _bad(name: str) -> Any:
     """Return a value that fails the ``x`` validator on field ``name``."""
-    if name in ("a", "b", "n", "m", "c", "v"):
+    if name in ("a", "b", "n", "m", "c", "v", "e", "dl"):
         return Addr(city="x")
     if name == "l":
         return [Addr(city="x")]
@@ -151,6 +165,9 @@ CASES = [
     (["m"], {"m.code": ["a", "b"]}),
     (["q"], {"q": ["m1", "m2"]}),
     (["v"], {"v": ["m1", "m2"]}),
+    (["es"], {"es": ["{}"]}),
+    (["e"], {"e": ["{}"]}),
+    (["dl"], {"dl.k": ["m"], "dl": ["plain"]}),
     (["o"], {"o": ["override message"]}),
     (["l"], {"l": ["has x"]}),
     (["r"], {"r": ["has x"]}),
@@ -242,6 +259,34 @@ def test_codes_from_simple_and_descriptor_fields_are_merged(owner_cls):
         owner_cls(u="x", c=Addr(city="x"))
 
     assert exc.value.messages == {"u": ["has x"], "c": ["has x", "has x again"]}
+    assert exc.value.codes == ["PRT-X"]
+
+
+def test_create_validates_value_object_given_through_shadow_fields(owner_cls):
+    with pytest.raises(ValidationError) as exc:
+        owner_cls(s="x", a_city="x")
+
+    assert exc.value.messages == {"s": ["has x"], "a": ["has x"]}
+
+
+class Ledger(BaseAggregate):
+    s = String(validators=[no_x])
+    c = ValueObject(Addr, validators=[no_x_coded, no_x_coded_again])
+
+
+def test_update_through_dao_carries_codes(test_domain):
+    test_domain.register(Addr)
+    test_domain.register(Ledger)
+    test_domain.init(traverse=False)
+    instance = Ledger(s="ok")
+    repository = test_domain.repository_for(Ledger)
+    repository.add(instance)
+
+    with pytest.warns(RemovedInProtean020Warning):
+        with pytest.raises(ValidationError) as exc:
+            repository._dao.update(instance, s="x", c=Addr(city="x"))
+
+    assert exc.value.messages == {"s": ["has x"], "c": ["has x", "has x again"]}
     assert exc.value.codes == ["PRT-X"]
 
 
@@ -373,3 +418,33 @@ def test_projection_assignment_carries_validator_codes(coded_elements):
 
     assert exc.value.messages == {"s": ["has x"]}
     assert exc.value.codes == ["PRT-X"]
+
+
+class ShortAddr(BaseValueObject):
+    city = String(max_length=3)
+
+
+class Depot(BaseAggregate):
+    label = String(validators=[no_x])
+    site = ValueObject(ShortAddr)
+
+
+@pytest.fixture
+def depot_cls(test_domain):
+    test_domain.register(ShortAddr)
+    test_domain.register(Depot)
+    test_domain.init(traverse=False)
+    return Depot
+
+
+@pytest.mark.parametrize(
+    "kwargs", [{"site_city": "toolong"}, {"site": {"city": "toolong"}}]
+)
+def test_value_object_own_field_error_keeps_its_own_key(depot_cls, kwargs):
+    with pytest.raises(ValidationError) as exc:
+        depot_cls(label="x", **kwargs)
+
+    assert exc.value.messages == {
+        "label": ["has x"],
+        "city": ["String should have at most 3 characters"],
+    }

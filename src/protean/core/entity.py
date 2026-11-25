@@ -592,7 +592,11 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             # never validated. Validate them here so every failing field
             # reports at once.
             _collect_descriptor_errors(
-                entity_cls, descriptor_kwargs, collected_errors, collected_codes
+                entity_cls,
+                descriptor_kwargs,
+                shadow_kwargs,
+                collected_errors,
+                collected_codes,
             )
         finally:
             # ``model_post_init`` pops this call's entry on a successful init.
@@ -673,16 +677,17 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         :param kwargs: keyword arguments with key-value pairs to be updated
         """
         errors: dict[str, list[str]] = {}
+        codes: list[str] = []
 
         for data in data_dict:
             _ensure_template_dict(data)
-            _collect_setattr_errors(self, data, errors)
+            _collect_setattr_errors(self, data, errors, codes)
 
-        _collect_setattr_errors(self, kwargs, errors)
+        _collect_setattr_errors(self, kwargs, errors, codes)
 
         if errors:
             logger.error(f"Errors on Update: {errors}")
-            raise ValidationError(errors)
+            raise ValidationError(errors, codes=codes)
 
     # ------------------------------------------------------------------
     # Invariant checks
@@ -1379,16 +1384,27 @@ def _merge_validation_error(
 def _collect_descriptor_errors(
     entity_cls: type[BaseEntity],
     descriptor_kwargs: dict[str, Any],
+    shadow_kwargs: dict[str, Any],
     collected_errors: dict[str, list[str]],
     collected_codes: list[str],
 ) -> None:
     """Add the errors and codes of each descriptor value that fails to load.
 
     Covers the descriptor fields that run field validators (``ValueObject``,
-    ``ValueObjectList``, ``Reference``). Each value is loaded and validated
-    and never assigned, so the entity is left untouched.
+    ``ValueObjectList``, ``Reference``), and the value objects given through
+    their shadow fields. Each value is loaded and validated and never
+    assigned, so the entity is left untouched.
     """
-    for name, value in descriptor_kwargs.items():
+    values = dict(descriptor_kwargs)
+    for name, vo_cls, vo_kwargs in _shadow_value_object_kwargs(
+        entity_cls, descriptor_kwargs, shadow_kwargs
+    ):
+        try:
+            values[name] = vo_cls(**vo_kwargs)
+        except ValidationError as err:
+            _merge_validation_error(collected_errors, collected_codes, name, err)
+
+    for name, value in values.items():
         descriptor = BaseEntity._get_class_descriptor(entity_cls, name)
         if not isinstance(descriptor, Field):
             continue
@@ -1485,27 +1501,44 @@ def _rebuild_value_objects(
     already set (for example during repository retrieval), and at least one of
     its shadow values is not ``None``.
     """
-    for field_name, base_field_obj in value_object_fields(instance).items():
+    for field_name, vo_cls, vo_kwargs in _shadow_value_object_kwargs(
+        instance, descriptor_kwargs, shadow_kwargs
+    ):
+        # Identity, not truthiness: an already-set all-default VO is
+        # falsy but present and must not be clobbered by a shadow rebuild.
+        if getattr(instance, field_name, None) is not None:
+            continue
+        descriptor_kwargs[field_name] = vo_cls(**vo_kwargs)
+
+
+def _shadow_value_object_kwargs(
+    class_or_instance: type[Element] | Element,
+    descriptor_kwargs: dict[str, Any],
+    shadow_kwargs: dict[str, Any],
+) -> list[tuple[str, type[Any], dict[str, Any]]]:
+    """Return ``(field name, value object class, kwargs)`` for each value object
+    that can be rebuilt from ``shadow_kwargs``.
+
+    A value object is listed only when it was not passed itself and at least
+    one of its shadow values is not ``None``.
+    """
+    rebuilds: list[tuple[str, type[Any], dict[str, Any]]] = []
+    for field_name, base_field_obj in value_object_fields(class_or_instance).items():
         # ``value_object_fields`` filters on ``isinstance(_, ValueObject)``,
         # so every entry is a ``ValueObject`` at runtime; narrow the
         # base-typed reflection return so the VO-only attributes resolve.
         field_obj = cast(ValueObject, base_field_obj)
-        # Identity, not truthiness: an already-set all-default VO is
-        # falsy but present and must not be clobbered by a shadow rebuild.
-        if (
-            field_name in descriptor_kwargs
-            or getattr(instance, field_name, None) is not None
-        ):
+        if field_name in descriptor_kwargs:
             continue
         vo_kwargs = _value_object_kwargs_from_shadows(field_obj, shadow_kwargs)
-        # Only reconstruct if at least one value is not None
         if any(v is not None for v in vo_kwargs.values()):
             # ``value_object_cls`` is a resolved class at this point; the
             # property in ``fields/embedded.py`` widens it to
             # ``type[BaseValueObject] | str``, so narrow before calling.
             vo_cls = field_obj.value_object_cls
             assert not isinstance(vo_cls, str)
-            descriptor_kwargs[field_name] = vo_cls(**vo_kwargs)
+            rebuilds.append((field_name, vo_cls, vo_kwargs))
+    return rebuilds
 
 
 def _init_value_object_shadows(instance: Element) -> None:
@@ -1571,9 +1604,13 @@ def _raise_post_init_invariants(entity: BaseEntity) -> None:
 
 
 def _collect_setattr_errors(
-    entity: BaseEntity, values: dict[str, Any], errors: dict[str, list[str]]
+    entity: BaseEntity,
+    values: dict[str, Any],
+    errors: dict[str, list[str]],
+    codes: list[str],
 ) -> None:
-    """Assign each of ``values`` to ``entity``, adding failures to ``errors``."""
+    """Assign each of ``values`` to ``entity``, adding failures to ``errors``
+    and their codes to ``codes``."""
     for field_name, val in values.items():
         try:
             setattr(entity, field_name, val)
@@ -1583,6 +1620,7 @@ def _collect_setattr_errors(
             err_messages = cast("dict[str, list[str]]", err.messages)
             for fname in err_messages:
                 errors.setdefault(fname, []).extend(err_messages[fname])
+            codes.extend(err.codes)
 
 
 def _run_own_invariants(

@@ -163,7 +163,9 @@ and the error holds the messages of each one that failed.
 to a list of message strings, on every field kind. A validator that raises a
 string or a list of strings puts them under the field name. A validator that
 raises a dict has each of its keys joined to the field name with a dot, and a
-dict nested inside it is joined the same way. For a field named `address`:
+dict nested inside it, or inside a list, is joined the same way. An empty dict
+or list goes under the field name as its string form, so the field still
+fails. For a field named `address`:
 
 | The validator raises | `e.messages` |
 |---|---|
@@ -178,8 +180,15 @@ it.
 
 When several fields fail while an aggregate or an entity is constructed, the
 error lists every failing simple, `ValueObject`, `ValueObjectList` and
-`Reference` field. An attribute assignment raises on the field being set, so
-the error holds that one field.
+`Reference` field, including a value object given through its shadow fields
+such as `address_city`. An attribute assignment raises on the field being set,
+so the error holds that one field. An update through the repository's DAO
+assigns each value in turn and reports every failing field, with its codes.
+
+A value object passed as a dict is built before the aggregate's own validators
+run. When one of the value object's own fields fails, the key is that field's
+name, with no aggregate field prefix: a failing `city` on a value object passed
+to `address` gives `{'city': [...]}`.
 
 For more details on the `validators` field option and the `error_messages`
 option for customizing error text, see the

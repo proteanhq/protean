@@ -341,20 +341,29 @@ def flatten_field_messages(field_name: str, messages: Any) -> dict[str, list[str
     """Return a validator's ``messages`` as ``{key: [message, ...]}`` for one field.
 
     A string or a list of strings goes under ``field_name``. A dict has each
-    key joined to ``field_name`` with a dot, and a dict nested inside it is
-    flattened the same way: ``{"code": {"inner": ["m"]}}`` on ``b`` gives
-    ``{"b.code.inner": ["m"]}``.
+    key joined to ``field_name`` with a dot, and a dict nested inside it, or
+    inside a list, is flattened the same way: ``{"code": {"inner": ["m"]}}``
+    on ``b`` gives ``{"b.code.inner": ["m"]}``.
+
+    The result is never empty: an empty dict or list goes under
+    ``field_name`` as its string form, so a validator that raised always
+    fails its field.
     """
+    flat: dict[str, list[str]] = {}
     if isinstance(messages, Mapping):
-        flat: dict[str, list[str]] = {}
         for key, value in messages.items():
             merge_field_messages(
                 flat, flatten_field_messages(f"{field_name}.{key}", value)
             )
-        return flat
-    if isinstance(messages, (list, tuple)):
-        return {field_name: [str(message) for message in messages]}
-    return {field_name: [str(messages)]}
+    elif isinstance(messages, (list, tuple)):
+        for message in messages:
+            if isinstance(message, Mapping):
+                merge_field_messages(flat, flatten_field_messages(field_name, message))
+            else:
+                flat.setdefault(field_name, []).append(str(message))
+    if not flat:
+        flat[field_name] = [str(messages)]
+    return flat
 
 
 def merge_field_messages(
