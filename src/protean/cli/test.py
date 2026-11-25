@@ -1398,13 +1398,22 @@ def _run_pytest_for_marker(
 def _run_capability_command(name: str, cmd: list[str]) -> CapabilityResult:
     """Run one pytest command and return its result as the row ``name``.
 
-    Exit code 0 is PASS, exit code 5 (no tests collected) is SKIP, and any
-    other exit code is FAIL.
+    Exit code 0 is PASS, unless every test that ran was skipped, which is
+    SKIP with the reason ``all N tests skipped``. Exit code 5 (no tests
+    collected) is SKIP, and any other exit code is FAIL.
     """
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     passed, failed, errors, skipped = _parse_summary_counts(result.stdout)
 
     total = passed + failed + errors
+
+    if result.returncode == 0 and total == 0 and skipped > 0:
+        return CapabilityResult(
+            name=name,
+            status="SKIP",
+            skipped=skipped,
+            reason=f"all {skipped} tests skipped",
+        )
 
     if result.returncode == 0:
         status = "PASS"
@@ -1457,14 +1466,14 @@ def _marker_command(
 def _parse_summary_counts(stdout: str) -> tuple[int, int, int, int]:
     """Return the passed, failed, error and skipped counts from pytest output.
 
-    The skipped count also takes a ``deselected`` count, and a later match
-    overwrites an earlier one.
+    A ``deselected`` count is ignored, and a later match overwrites an
+    earlier one.
     """
     passed = failed = errors = skipped = 0
     for line in stdout.splitlines():
         line = line.strip()
         # Match pytest summary lines like "42 passed", "3 failed, 2 passed"
-        if "passed" in line or "failed" in line or "error" in line:
+        if any(word in line for word in ("passed", "failed", "error", "skipped")):
             # This is likely the summary line
             counts = re.findall(r"(\d+) (\w+)", line)
             for count_str, label in counts:
@@ -1475,7 +1484,7 @@ def _parse_summary_counts(stdout: str) -> tuple[int, int, int, int]:
                     failed = count
                 elif label in ("error", "errors"):
                     errors = count
-                elif label in ("skipped", "deselected"):
+                elif label == "skipped":
                     skipped = count
     return passed, failed, errors, skipped
 

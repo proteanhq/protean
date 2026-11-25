@@ -198,7 +198,9 @@ capability type defines them. A declared flag runs the tests whose `requires`
 or `requires_any` marker names it. Each flag the adapter does not declare gets
 a `SKIP (not declared)` row after all the run rows, and the command does not
 run pytest for it. A row with no test, such as a declared flag no test names
-yet, is reported as `SKIP (no tests collected)`.
+yet, is reported as `SKIP (no tests collected)`. A row whose tests all ran
+and were skipped is reported as `SKIP (all N tests skipped)`, where N is the
+number of skipped tests.
 
 With `--capabilities`, the report has only the rows of the named flags and no
 `unmarked` row. A named set of the port's capability type, such as `BASIC`
