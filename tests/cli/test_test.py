@@ -1630,6 +1630,8 @@ class TestRunPytestForMarker:
             "--no-header",
             "-p",
             "no:cacheprovider",
+            "-p",
+            "no:randomly",
             f"--rootdir={test_dir}",
         ]
 
