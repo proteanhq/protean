@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://protean.dev/scaffold/v0.1.0/schema.json",
+  "$id": "https://docs.proteanhq.com/assets/scaffold/v0.1.0/schema.json",
   "title": "Protean ChangePlan v0.1.0",
   "description": "A serializable, previewable description of a change: an ordered list of operations (create a file, edit a file, patch config) that a command like `add` or an upgrade would apply.",
 
