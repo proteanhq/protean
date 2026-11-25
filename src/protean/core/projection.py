@@ -28,7 +28,11 @@ from protean.exceptions import (
 )
 from protean.fields import HasMany, HasOne, Reference, ValueObject
 from protean.fields.association import Association
-from protean.fields.resolved import ResolvedField, convert_pydantic_errors
+from protean.fields.resolved import (
+    ResolvedField,
+    pydantic_errors_and_codes,
+    validation_error_from_pydantic,
+)
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils import (
     DomainObjects,
@@ -283,11 +287,12 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         # Collect validation errors (Pydantic + required value objects)
         # before raising.
         collected_errors: dict[str, list[str]] = {}
+        collected_codes: list[str] = []
 
         try:
             super().__init__(**values.kwargs)
         except PydanticValidationError as e:
-            collected_errors.update(convert_pydantic_errors(e))
+            collected_errors, collected_codes = pydantic_errors_and_codes(e)
         finally:
             # ``model_post_init`` pops this call's entry on a successful init.
             # When Pydantic validation raises before it runs, the entry is left
@@ -304,7 +309,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         )
 
         if collected_errors:
-            raise ValidationError(collected_errors)
+            raise ValidationError(collected_errors, codes=collected_codes)
 
     def model_post_init(self, context: Any, /) -> None:
         # Pop init context from the thread-local stack (pushed by __init__)
@@ -315,7 +320,14 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         _write_shadow_values(self, shadow_kwargs)
         _rebuild_value_objects(self, descriptor_kwargs, shadow_kwargs)
 
-        _assign_descriptor_values(self, descriptor_kwargs)
+        errors, codes = _assign_descriptor_values(self, descriptor_kwargs)
+        if errors:
+            # ``__init__`` adds the missing-required errors only after this
+            # method returns, so add them here before raising.
+            _add_missing_required_errors(
+                type(self), descriptor_kwargs, shadow_kwargs, errors
+            )
+            raise ValidationError(errors, codes=codes)
 
         _init_value_object_shadows(self)
 
@@ -346,7 +358,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
             try:
                 super().__setattr__(name, value)
             except PydanticValidationError as e:
-                raise ValidationError(convert_pydantic_errors(e)) from e
+                raise validation_error_from_pydantic(e) from e
 
             # Mark projection as changed so repository persists updates
             self._state.mark_changed()

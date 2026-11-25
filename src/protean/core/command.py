@@ -7,9 +7,8 @@ from protean.exceptions import (
     ConfigurationError,
     IncorrectUsageError,
     NotSupportedError,
-    ValidationError,
 )
-from protean.fields.resolved import convert_pydantic_errors
+from protean.fields.resolved import validation_error_from_pydantic
 from protean.utils import (
     DomainObjects,
     _check_part_of_kind,
@@ -126,7 +125,7 @@ class BaseCommand(BaseMessageType):
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:
-            raise ValidationError(convert_pydantic_errors(e)) from e
+            raise validation_error_from_pydantic(e) from e
 
         # Build metadata
         self._build_metadata(incoming_metadata, rebuild=rebuild)

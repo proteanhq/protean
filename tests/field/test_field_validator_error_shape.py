@@ -2,8 +2,8 @@
 
 ``ValidationError.messages`` is a plain ``dict[str, list[str]]``. A validator
 that raises a dict has its keys merged under the field as dotted keys.
-Construction reports every failing field; attribute assignment reports the
-field being set.
+Construction reports every failing simple, ``ValueObject``, ``ValueObjectList``
+and ``Reference`` field. Attribute assignment reports the field being set.
 """
 
 from typing import Any
@@ -11,11 +11,16 @@ from typing import Any
 import pytest
 
 from protean.core.aggregate import BaseAggregate
+from protean.core.command import BaseCommand
 from protean.core.entity import BaseEntity
+from protean.core.event import BaseEvent
+from protean.core.projection import BaseProjection
+from protean.core.query import BaseQuery
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import ValidationError
 from protean.fields import (
     HasMany,
+    Identifier,
     Reference,
     String,
     ValueObject,
@@ -267,3 +272,104 @@ def test_create_skips_associations_when_collecting_descriptor_errors(test_domain
         Basket(label="x", lines=[Line(sku="ok")], a=Addr(city="x"))
 
     assert exc.value.messages == {"label": ["has x"], "a": ["has x"]}
+
+
+class Shipment(BaseAggregate):
+    label = String(validators=[no_x])
+    a = ValueObject(Addr, validators=[no_x])
+    dest = ValueObject(Addr, required=True)
+
+
+@pytest.fixture
+def shipment_cls(test_domain):
+    test_domain.register(Addr)
+    test_domain.register(Shipment)
+    test_domain.init(traverse=False)
+    return Shipment
+
+
+def test_create_reports_missing_required_beside_failing_descriptor(shipment_cls):
+    with pytest.raises(ValidationError) as exc:
+        shipment_cls(label="ok", a=Addr(city="x"))
+
+    assert exc.value.messages == {"a": ["has x"], "dest": ["is required"]}
+
+
+def test_create_reports_missing_required_beside_failing_simple_field(shipment_cls):
+    with pytest.raises(ValidationError) as exc:
+        shipment_cls(label="x", a=Addr(city="x"))
+
+    assert exc.value.messages == {
+        "label": ["has x"],
+        "a": ["has x"],
+        "dest": ["is required"],
+    }
+
+
+def test_create_with_required_given_reports_only_failing_descriptor(shipment_cls):
+    with pytest.raises(ValidationError) as exc:
+        shipment_cls(label="ok", a=Addr(city="x"), dest=Addr(city="Paris"))
+
+    assert exc.value.messages == {"a": ["has x"]}
+
+
+class Placement(BaseAggregate):
+    name = String()
+
+
+class PlaceIt(BaseCommand):
+    s = String(validators=[no_x_coded])
+
+
+class PlacedIt(BaseEvent):
+    s = String(validators=[no_x_coded])
+
+
+class Tag(BaseValueObject):
+    s = String(validators=[no_x_coded])
+
+
+class Listing(BaseProjection):
+    listing_id = Identifier(identifier=True)
+    s = String(validators=[no_x_coded])
+
+
+class FindListing(BaseQuery):
+    s = String(validators=[no_x_coded])
+
+
+@pytest.fixture
+def coded_elements(test_domain):
+    test_domain.register(Placement)
+    test_domain.register(PlaceIt, part_of=Placement)
+    test_domain.register(PlacedIt, part_of=Placement)
+    test_domain.register(Tag)
+    test_domain.register(Listing)
+    test_domain.register(FindListing, part_of=Listing)
+    test_domain.init(traverse=False)
+
+
+@pytest.mark.parametrize("element_cls", [PlaceIt, PlacedIt, Tag, FindListing])
+def test_other_element_kinds_carry_validator_codes(coded_elements, element_cls):
+    with pytest.raises(ValidationError) as exc:
+        element_cls(s="x")
+
+    assert exc.value.messages == {"s": ["has x"]}
+    assert exc.value.codes == ["PRT-X"]
+
+
+def test_projection_construction_carries_validator_codes(coded_elements):
+    with pytest.raises(ValidationError) as exc:
+        Listing(listing_id="1", s="x")
+
+    assert exc.value.messages == {"s": ["has x"]}
+    assert exc.value.codes == ["PRT-X"]
+
+
+def test_projection_assignment_carries_validator_codes(coded_elements):
+    listing = Listing(listing_id="1", s="ok")
+    with pytest.raises(ValidationError) as exc:
+        listing.s = "x"
+
+    assert exc.value.messages == {"s": ["has x"]}
+    assert exc.value.codes == ["PRT-X"]

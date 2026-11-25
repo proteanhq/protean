@@ -270,6 +270,12 @@ def pydantic_errors_and_codes(
     return errors, codes
 
 
+def validation_error_from_pydantic(exc: PydanticValidationError) -> ValidationError:
+    """Return a Protean ``ValidationError`` with the messages and codes of ``exc``."""
+    errors, codes = pydantic_errors_and_codes(exc)
+    return ValidationError(errors, codes=codes)
+
+
 # ---------------------------------------------------------------------------
 # Custom-field redeclaration helper
 # ---------------------------------------------------------------------------

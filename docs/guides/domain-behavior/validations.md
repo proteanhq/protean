@@ -176,9 +176,10 @@ A code the validator passes, as in `ValidationError("has x", code="PRT-X")`,
 appears in `e.codes`. Each code appears once, however many validators raise
 it.
 
-When several fields fail at construction, the error lists every failing
-field. An attribute assignment raises on the field being set, so the error
-holds that one field.
+When several fields fail while an aggregate or an entity is constructed, the
+error lists every failing simple, `ValueObject`, `ValueObjectList` and
+`Reference` field. An attribute assignment raises on the field being set, so
+the error holds that one field.
 
 For more details on the `validators` field option and the `error_messages`
 option for customizing error text, see the

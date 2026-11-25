@@ -46,7 +46,11 @@ from protean.fields.association import Association, _ReferenceField
 from protean.fields.base import Field, merge_field_messages
 from protean.fields.basic import ValueObjectList
 from protean.fields.embedded import _ShadowField
-from protean.fields.resolved import ResolvedField, pydantic_errors_and_codes
+from protean.fields.resolved import (
+    ResolvedField,
+    pydantic_errors_and_codes,
+    validation_error_from_pydantic,
+)
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.fields.tempdata import AssociationCache, HasManyChanges, HasOneChanges
 from protean.integrations.logging import (
@@ -625,7 +629,14 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         _write_shadow_values(self, shadow_kwargs)
         _rebuild_value_objects(self, descriptor_kwargs, shadow_kwargs)
 
-        _assign_descriptor_values(self, descriptor_kwargs)
+        errors, codes = _assign_descriptor_values(self, descriptor_kwargs)
+        if errors:
+            # ``__init__`` adds the missing-required errors only after this
+            # method returns, so add them here before raising.
+            _add_missing_required_errors(
+                type(self), descriptor_kwargs, shadow_kwargs, errors
+            )
+            raise ValidationError(errors, codes=codes)
 
         # Discover invariants from MRO
         self._discover_invariants()
@@ -959,8 +970,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
             try:
                 super().__setattr__(name, value)
             except PydanticValidationError as e:
-                errors, codes = pydantic_errors_and_codes(e)
-                raise ValidationError(errors, codes=codes) from e
+                raise validation_error_from_pydantic(e) from e
 
             # Post-check invariants. A failure undoes this one assignment.
             with _undo_on_failure(snapshots):
@@ -1358,8 +1368,9 @@ def _merge_validation_error(
     err: ValidationError,
 ) -> None:
     """Add the messages and codes of ``err``, raised by descriptor field ``name``."""
-    # Every descriptor type raises its messages keyed by field name, through
-    # ``Field.fail``, ``Field._run_validators`` or a value object's own fields.
+    # Every descriptor type raises its messages as a dict, through
+    # ``Field.fail``, ``Field._run_validators``, a value object's own fields or
+    # an association's type check.
     assert isinstance(err.messages, dict), name
     merge_field_messages(errors, err.messages)
     codes.extend(err.codes)
@@ -1389,15 +1400,14 @@ def _collect_descriptor_errors(
 
 def _assign_descriptor_values(
     entity: Any, descriptor_kwargs: dict[str, Any]
-) -> None:
+) -> tuple[dict[str, list[str]], list[str]]:
     """Set each descriptor value on ``entity`` through its descriptor.
 
-    Raises one ``ValidationError`` that holds the errors and codes of every
-    value that failed, after trying them all.
+    Tries every value and returns the errors and codes of the values that
+    failed, both empty when all were set.
     """
     errors: dict[str, list[str]] = {}
     codes: list[str] = []
-    locations: list[str | None] = []
     for name, value in descriptor_kwargs.items():
         # ``object.__setattr__`` runs the descriptor's ``__set__`` directly,
         # bypassing the entity's ``__setattr__``, which hands names that are
@@ -1406,16 +1416,8 @@ def _assign_descriptor_values(
             object.__setattr__(entity, name, value)
         except ValidationError as err:
             _merge_validation_error(errors, codes, name, err)
-            locations.append(err.location)
 
-    if errors:
-        # A location names one raise site, so it carries over only when a
-        # single field failed.
-        raise ValidationError(
-            errors,
-            codes=codes,
-            location=locations[0] if len(locations) == 1 else None,
-        )
+    return errors, codes
 
 
 def _pop_init_context(local: threading.local) -> dict[str, Any]:
