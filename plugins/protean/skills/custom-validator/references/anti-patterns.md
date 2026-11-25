@@ -14,7 +14,7 @@ validator that raises `ValidationError` keeps one rule for every failure.
 class PhoneValidator:
     def __call__(self, value):
         if not value.startswith("+"):
-            raise ValueError("Invalid phone")  # reported, but outside the documented contract
+            raise ValueError("Invalid phone")  # -> {field: ["Invalid phone"]}, but a TypeError would propagate
 ```
 
 ```python
