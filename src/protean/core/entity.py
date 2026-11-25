@@ -1364,14 +1364,11 @@ def _set_descriptor_values(
             # Pydantic does not wrap a Protean error raised in model_post_init,
             # so the caller's __init__ never adds the missing required fields.
             # Collect them here to report every field's error together.
-            messages = err.messages
-            if isinstance(messages, dict):
-                for key, key_messages in messages.items():
-                    errors.setdefault(key, []).extend(key_messages)
-            elif isinstance(messages, list):
-                errors.setdefault(name, []).extend(messages)
-            else:
-                errors.setdefault(name, []).append(messages)
+            by_field = (
+                err.messages if isinstance(err.messages, dict) else {name: [str(err)]}
+            )
+            for key, key_messages in by_field.items():
+                errors.setdefault(key, []).extend(key_messages)
 
     if errors:
         _add_missing_required_errors(
