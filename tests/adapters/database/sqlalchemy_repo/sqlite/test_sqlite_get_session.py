@@ -27,6 +27,7 @@ class TestSqliteGetSession:
     def test_a_second_call_keeps_the_open_transaction(self, provider):
         first = provider.get_session()
         transaction = first().get_transaction()
+        assert transaction is not None
 
         second = provider.get_session()
 

@@ -471,8 +471,9 @@ class DAO:
     def track(self, entity: BaseEntity) -> BaseEntity:
         """Return the instance to hand back for an entity this DAO just
         loaded: the aggregate the active Unit of Work already tracks, or
-        ``entity`` itself, registered in the Unit of Work when this DAO works
-        inside one. See `protean.infra.dao_tracking.track`."""
+        ``entity`` itself. An aggregate is registered in the Unit of Work
+        when this DAO works inside one, and any other entity is returned
+        unchanged. See `protean.infra.dao_tracking.track`."""
         return dao_tracking.track(self, entity)
 
     def tracked_instance(self, entity: BaseEntity) -> BaseAggregate | None:

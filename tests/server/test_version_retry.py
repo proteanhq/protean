@@ -811,8 +811,9 @@ class TestSyncEventHandlerConflict:
     @pytest.mark.parametrize(
         "make_error",
         [
-            # Named like SQLAlchemy's, which the commit translates to a
-            # version conflict when the commit's own write raises it.
+            # Named like SQLAlchemy's, which only ``SADatabase.flush`` and
+            # ``commit`` translate to a version conflict, so a reaction's
+            # error of that name is wrapped like any other.
             lambda: type("StaleDataError", (Exception,), {})("stale in reaction"),
             lambda: ConfigurationError("reaction misconfigured"),
             # Under sync processing the event handler runs inside the commit,
