@@ -476,6 +476,36 @@ class TestTableInASecondSchema:
         assert self.reporting_indexes(provider) == [ARCHIVE_INDEX_STORED]
         assert migrator.check() == []
 
+    def test_a_table_copy_downgrade_restores_its_indexes_in_its_schema(
+        self, provider, migrator
+    ):
+        self.archive_table(provider).create(provider._engine)
+        with provider._engine.begin() as connection:
+            connection.execute(
+                sqlalchemy.text("ALTER TABLE reporting.archive DROP COLUMN _version")
+            )
+            connection.execute(
+                sqlalchemy.text(
+                    "ALTER TABLE reporting.archive ADD COLUMN _version TEXT"
+                )
+            )
+        path = migrator.migrate("change version")
+        assert path is not None
+        downgrade = path.read_text(encoding="utf-8").split("def downgrade")[1]
+        assert (
+            "CREATE INDEX reporting.ix_archive_title ON archive (lower(title))"
+            in downgrade
+        )
+        migrator.upgrade()
+
+        migrator.downgrade("-1")
+
+        assert self.reporting_indexes(provider) == [ARCHIVE_INDEX_STORED]
+        with provider._engine.connect() as connection:
+            assert _stored_index_sql(connection, "archive", None) == [
+                ("ix_archive_title", "CREATE INDEX ix_archive_title ON archive (title)")
+            ]
+
 
 class TestRunMigrationsFromAlembicIni:
     def test_does_nothing_outside_an_alembic_run(self):

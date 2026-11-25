@@ -10,6 +10,7 @@ it as text.
 from __future__ import annotations
 
 import contextlib
+import re
 import warnings
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
@@ -344,8 +345,10 @@ def _rebuild_indexes_after_copy(
     column. After each op that copies a table in the downgrade, each index the
     database holds before the migration is dropped and created again from the
     statement SQLite stored for it, so the downgrade restores the old
-    definition of an index the migration changes. Each index is dropped and
-    created in the schema of its table.
+    definition of an index the migration changes. Each index is dropped in the
+    schema of its table. A raw index is created by its DDL verbatim, so it lands
+    in the schema the DDL names. A stored statement is created in the schema of
+    its table.
     """
     connection = context.connection
     assert connection is not None
@@ -384,13 +387,31 @@ def _stored_index_rebuild(
 ) -> list[Any]:
     """The ops that drop and create again each index the database holds now.
 
-    Each index is created from its statement in ``sqlite_master``. An index
-    SQLite creates for a constraint has no statement, and the copy keeps it.
+    Each index is created in the table's schema from its statement in
+    ``sqlite_master``. An index SQLite creates for a constraint has no
+    statement, and the copy keeps it.
     """
     rebuilt: list[Any] = []
     for name, sql in _stored_index_sql(connection, table_name, schema):
-        rebuilt += [_drop_if_exists(connection, name, schema), _execute_sql(sql)]
+        rebuilt += [
+            _drop_if_exists(connection, name, schema),
+            _execute_sql(_in_schema(connection, sql, schema)),
+        ]
     return rebuilt
+
+
+_STORED_INDEX_PREFIX = re.compile(r"^CREATE\s+(?:UNIQUE\s+)?INDEX\s+", re.IGNORECASE)
+
+
+def _in_schema(connection: Connection, sql: str, schema: str | None) -> str:
+    """``sql``, a stored ``CREATE INDEX`` statement, with its index in ``schema``."""
+    # SQLite stores the statement without the schema, and an unqualified
+    # CREATE INDEX finds its table in the first schema that has one of that
+    # name, which can be the default schema's table.
+    if schema is None:
+        return sql
+    quoted = connection.dialect.identifier_preparer.quote_schema(schema)
+    return _STORED_INDEX_PREFIX.sub(lambda match: f"{match.group(0)}{quoted}.", sql, 1)
 
 
 def _execute_sql(sql: str) -> ops.ExecuteSQLOp:
