@@ -3,7 +3,7 @@ import pytest
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.value_object import BaseValueObject
-from protean.exceptions import IncorrectUsageError
+from protean.exceptions import IncorrectUsageError, ValidationError
 from protean.fields import String, ValueObject
 from protean.fields.embedded import _ShadowField
 from protean.utils.reflection import fields
@@ -258,3 +258,84 @@ class TestValueObjectFieldEdgeCases:
 
         with pytest.raises(ValidationError):
             vo_field._cast_to_type([1, 2, 3])
+
+
+class _RaisesValueError:
+    def __call__(self, value):
+        raise ValueError("rejected")
+
+
+class _RaisesValidationError:
+    def __call__(self, value):
+        raise ValidationError("rejected")
+
+
+class TestValueObjectFieldValidatorErrors:
+    """A validator error on a ``ValueObject`` field is reported under the field name."""
+
+    @pytest.fixture
+    def email_cls(self, test_domain):
+        @test_domain.value_object
+        class Email(BaseValueObject):
+            address: String()
+
+        return Email
+
+    def _register_aggregate(self, test_domain, email_cls, validator):
+        @test_domain.aggregate
+        class Account(BaseAggregate):
+            email = ValueObject(email_cls, validators=[validator])
+
+        test_domain.init(traverse=False)
+        return Account
+
+    def test_value_error_on_construction_is_reported_under_field_name(
+        self, test_domain, email_cls
+    ):
+        account_cls = self._register_aggregate(
+            test_domain, email_cls, _RaisesValueError()
+        )
+
+        with pytest.raises(ValidationError) as exc:
+            account_cls(email=email_cls(address="a"))
+
+        assert exc.value.messages == {"email": ["rejected"]}
+        assert "_entity" not in exc.value.messages
+
+    def test_value_error_on_assignment_is_reported_under_field_name(
+        self, test_domain, email_cls
+    ):
+        account_cls = self._register_aggregate(
+            test_domain, email_cls, _RaisesValueError()
+        )
+        account = account_cls()
+
+        with pytest.raises(ValidationError) as exc:
+            account.email = email_cls(address="a")
+
+        assert exc.value.messages == {"email": ["rejected"]}
+
+    def test_value_error_on_update_data_is_reported_under_field_name(
+        self, test_domain, email_cls
+    ):
+        account_cls = self._register_aggregate(
+            test_domain, email_cls, _RaisesValueError()
+        )
+        account = account_cls()
+
+        with pytest.raises(ValidationError) as exc:
+            account._update_data({"email": email_cls(address="a")})
+
+        assert exc.value.messages == {"email": ["rejected"]}
+
+    def test_validation_error_on_construction_is_reported_under_field_name(
+        self, test_domain, email_cls
+    ):
+        account_cls = self._register_aggregate(
+            test_domain, email_cls, _RaisesValidationError()
+        )
+
+        with pytest.raises(ValidationError) as exc:
+            account_cls(email=email_cls(address="a"))
+
+        assert exc.value.messages == {"email": ["rejected"]}

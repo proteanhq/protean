@@ -252,6 +252,9 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
     def _run_validators(self, value: Any) -> None:
         """Perform validation on ``value``. Raise a :exc:`ValidationError` if
         validation does not succeed.
+
+        A validator signals failure by raising ``ValidationError`` or
+        ``ValueError``. Both are reported under the field name.
         """
         if value in self.empty_values:
             return
@@ -263,6 +266,9 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
             except exceptions.ValidationError as err:
                 field_name = self.field_name or "unlinked"
                 errors[field_name].append(err.messages)
+            except ValueError as err:
+                field_name = self.field_name or "unlinked"
+                errors[field_name].append(str(err))
 
         if errors:
             raise exceptions.ValidationError(errors)
