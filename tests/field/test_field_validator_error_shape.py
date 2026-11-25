@@ -427,11 +427,13 @@ class ShortAddr(BaseValueObject):
 class Depot(BaseAggregate):
     label = String(validators=[no_x])
     site = ValueObject(ShortAddr)
+    a = ValueObject(Addr, validators=[no_x])
 
 
 @pytest.fixture
 def depot_cls(test_domain):
     test_domain.register(ShortAddr)
+    test_domain.register(Addr)
     test_domain.register(Depot)
     test_domain.init(traverse=False)
     return Depot
@@ -447,4 +449,14 @@ def test_value_object_own_field_error_keeps_its_own_key(depot_cls, kwargs):
     assert exc.value.messages == {
         "label": ["has x"],
         "city": ["String should have at most 3 characters"],
+    }
+
+
+def test_shadow_built_value_object_reported_beside_failing_descriptor(depot_cls):
+    with pytest.raises(ValidationError) as exc:
+        depot_cls(label="ok", site_city="toolong", a=Addr(city="x"))
+
+    assert exc.value.messages == {
+        "city": ["String should have at most 3 characters"],
+        "a": ["has x"],
     }

@@ -631,9 +631,10 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         _apply_hierarchy(self, ctx)
 
         _write_shadow_values(self, shadow_kwargs)
-        _rebuild_value_objects(self, descriptor_kwargs, shadow_kwargs)
-
-        errors, codes = _assign_descriptor_values(self, descriptor_kwargs)
+        errors: dict[str, list[str]] = {}
+        codes: list[str] = []
+        _rebuild_value_objects(self, descriptor_kwargs, shadow_kwargs, errors, codes)
+        _assign_descriptor_values(self, descriptor_kwargs, errors, codes)
         if errors:
             # ``__init__`` adds the missing-required errors only after this
             # method returns, so add them here before raising.
@@ -1415,15 +1416,16 @@ def _collect_descriptor_errors(
 
 
 def _assign_descriptor_values(
-    entity: Any, descriptor_kwargs: dict[str, Any]
-) -> tuple[dict[str, list[str]], list[str]]:
+    entity: Any,
+    descriptor_kwargs: dict[str, Any],
+    errors: dict[str, list[str]],
+    codes: list[str],
+) -> None:
     """Set each descriptor value on ``entity`` through its descriptor.
 
-    Tries every value and returns the errors and codes of the values that
-    failed, both empty when all were set.
+    Tries every value and adds the errors and codes of the values that
+    failed to ``errors`` and ``codes``.
     """
-    errors: dict[str, list[str]] = {}
-    codes: list[str] = []
     for name, value in descriptor_kwargs.items():
         # ``object.__setattr__`` runs the descriptor's ``__set__`` directly,
         # bypassing the entity's ``__setattr__``, which hands names that are
@@ -1432,8 +1434,6 @@ def _assign_descriptor_values(
             object.__setattr__(entity, name, value)
         except ValidationError as err:
             _merge_validation_error(errors, codes, name, err)
-
-    return errors, codes
 
 
 def _pop_init_context(local: threading.local) -> dict[str, Any]:
@@ -1494,12 +1494,18 @@ def _rebuild_value_objects(
     instance: Element,
     descriptor_kwargs: dict[str, Any],
     shadow_kwargs: dict[str, Any],
+    errors: dict[str, list[str]] | None = None,
+    codes: list[str] | None = None,
 ) -> None:
     """Add to ``descriptor_kwargs`` each value object rebuilt from shadow kwargs.
 
     A value object is rebuilt only when it was not passed itself, is not
     already set (for example during repository retrieval), and at least one of
     its shadow values is not ``None``.
+
+    When ``errors`` and ``codes`` are given, a value object that fails to build
+    adds its messages and codes to them. Otherwise its ``ValidationError``
+    propagates.
     """
     for field_name, vo_cls, vo_kwargs in _shadow_value_object_kwargs(
         instance, descriptor_kwargs, shadow_kwargs
@@ -1508,7 +1514,12 @@ def _rebuild_value_objects(
         # falsy but present and must not be clobbered by a shadow rebuild.
         if getattr(instance, field_name, None) is not None:
             continue
-        descriptor_kwargs[field_name] = vo_cls(**vo_kwargs)
+        try:
+            descriptor_kwargs[field_name] = vo_cls(**vo_kwargs)
+        except ValidationError as err:
+            if errors is None or codes is None:
+                raise
+            _merge_validation_error(errors, codes, field_name, err)
 
 
 def _shadow_value_object_kwargs(
