@@ -1,6 +1,6 @@
-"""Tests for DAO._sync_event_position and _track_in_uow.
+"""Tests for `dao_tracking.sync_event_position` and `DAO.track`.
 
-These methods are post-retrieval hooks called by QuerySet.all() and
+These functions are post-retrieval hooks called by QuerySet.all() and
 QuerySet.raw() after converting database models to domain entities.
 They were extracted from inline logic in QuerySet to decouple the
 query layer from aggregate-specific business logic (event-position
@@ -14,6 +14,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.event import BaseEvent
 from protean.fields import HasOne, Identifier, Integer, String
+from protean.infra.dao_tracking import sync_event_position
 
 # --- Domain elements for testing ---
 
@@ -66,23 +67,21 @@ def register_elements(test_domain):
     test_domain.init(traverse=False)
 
 
-# --- Tests for _sync_event_position ---
+# --- Tests for sync_event_position ---
 
 
 class TestSyncEventPosition:
-    """Tests for DAO._sync_event_position."""
+    """Tests for dao_tracking.sync_event_position."""
 
     def test_no_op_for_non_aggregate(self, test_domain):
-        """_sync_event_position is a no-op for non-aggregate entities."""
+        """sync_event_position is a no-op for non-aggregate entities."""
         # Persist a SimpleAggregate (which contains a SimpleEntity)
         agg = SimpleAggregate(name="Parent")
         test_domain.repository_for(SimpleAggregate).add(agg)
 
-        # Get the entity DAO and verify _sync_event_position is a no-op
-        entity_dao = test_domain.repository_for(SimpleEntity)._dao
         entity = SimpleEntity(name="Child")
         # Should not raise and should not modify the entity
-        entity_dao._sync_event_position(entity)
+        sync_event_position(entity)
 
     def test_event_position_negative_one_when_no_events(self, test_domain):
         """Aggregate with no events should have _event_position == -1."""
@@ -131,7 +130,7 @@ class TestSyncEventPosition:
         assert refreshed2._event_position == 1
 
     def test_direct_dao_call_syncs_position(self, test_domain):
-        """Calling _sync_event_position directly on a DAO-fetched entity works."""
+        """An aggregate loaded through a DAO query has its event position synced."""
         customer = Customer(name="Jane", email="jane@example.com")
         customer.raise_(
             CustomerRegistered(
@@ -148,18 +147,17 @@ class TestSyncEventPosition:
         assert results.first._event_position == 0
 
 
-# --- Tests for _track_in_uow ---
+# --- Tests for DAO.track ---
 
 
-class TestTrackInUoW:
-    """Tests for DAO._track_in_uow."""
+class TestTrack:
+    """Tests for DAO.track and DAO.tracked_instance."""
 
     def test_no_op_without_uow(self, test_domain):
-        """_track_in_uow is a no-op when there is no active UoW."""
+        """track returns the aggregate unchanged when no UoW is active."""
         customer = Customer(name="John", email="john@example.com")
         dao = test_domain.repository_for(Customer)._dao
-        # Should not raise — simply a no-op
-        dao._track_in_uow(customer)
+        assert dao.track(customer) is customer
 
     def test_aggregate_tracked_in_uow(self, test_domain):
         """Aggregate retrieved inside a UoW is tracked in the identity map."""
@@ -178,10 +176,32 @@ class TestTrackInUoW:
         dao = test_domain.repository_for(SimpleEntity)._dao
 
         with UnitOfWork() as uow:
-            dao._track_in_uow(entity)
+            assert dao.track(entity) is entity
             # Identity map should have no entries for this entity
             for provider_map in uow._identity_map.values():
                 assert entity not in provider_map.values()
+
+    def test_tracked_instance_returns_the_instance_the_uow_tracks(self, test_domain):
+        customer = Customer(name="John", email="john@example.com")
+        repo = test_domain.repository_for(Customer)
+        repo.add(customer)
+
+        with UnitOfWork():
+            loaded = repo.get(customer.id)
+            copy = Customer(id=customer.id, name="John", email="john@example.com")
+            assert repo._dao.tracked_instance(copy) is loaded
+
+    def test_tracked_instance_is_none_for_the_dao_outside_uow_returns(
+        self, test_domain
+    ):
+        customer = Customer(name="John", email="john@example.com")
+        repo = test_domain.repository_for(Customer)
+        repo.add(customer)
+
+        with UnitOfWork():
+            loaded = repo.get(customer.id)
+            assert repo._dao.tracked_instance(loaded) is loaded
+            assert repo._dao.outside_uow().tracked_instance(loaded) is None
 
 
 # --- Integration tests: QuerySet.all() and QuerySet.raw() ---

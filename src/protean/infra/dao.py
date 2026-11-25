@@ -11,8 +11,10 @@ lives in `protean.infra.dao_write` and the read path in
 
 `DAO.session_scope` picks the session for each operation. Inside a Unit of
 Work it is the Unit of Work's session for the provider, and the Unit of Work
-ends it. Outside one, or after `outside_uow()`, it is a new session from the
-provider, which the service commits, rolls back on an error, and closes.
+ends it. Outside one, or on the DAO `outside_uow()` returns, it is a new
+session from the provider, which the service commits, rolls back on an
+error, and closes. Tracking aggregates in the Unit of Work lives in
+`protean.infra.dao_tracking`.
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
 from protean.core.queryset import QuerySet, ResultSet
 from protean.exceptions import ConfigurationError
-from protean.infra import dao_read, dao_write
+from protean.infra import dao_read, dao_tracking, dao_write
 from protean.port.dao import (
     _FLAG_PORTS,
     BoundedDeletePort,
@@ -39,7 +41,7 @@ from protean.port.dao import (
 )
 from protean.port.database import DatabaseCapabilities, DatabaseModelPort
 from protean.utils import DomainObjects
-from protean.utils.globals import current_domain, current_uow
+from protean.utils.globals import current_uow
 from protean.utils.query import Q
 from protean.utils.reflection import id_field
 
@@ -407,29 +409,27 @@ class DAO:
         #: on the underlying data store.
         self.query = QuerySet(self, domain, self.entity_cls)
 
-        #: Tracks whether the DAO needs to operate outside any active Unit of Work transactions.
+        #: Set on the DAO :meth:`outside_uow` returns, which works outside any
+        #: active Unit of Work.
         self._outside_uow = False
 
     def __repr__(self) -> str:
         return f"DAO <{self.entity_cls.__name__}> over {self._adapter!r}"
 
     @property
-    def _is_standalone(self) -> bool:
-        """Check if this DAO is operating outside a Unit of Work.
-
-        Returns True when the DAO must commit, roll back and close its own
-        session: when no Unit of Work is active, or when the DAO was told to
-        work outside it with ``outside_uow()``.
-        """
+    def is_standalone(self) -> bool:
+        """``True`` when this DAO commits, rolls back and closes its own
+        sessions: when no Unit of Work is active, or when the DAO came from
+        :meth:`outside_uow`."""
         return not current_uow or self._outside_uow
 
     @contextmanager
     def session_scope(self) -> Iterator[SessionProtocol]:
         """Yield the session an operation runs in, and end it when standalone.
 
-        Inside a Unit of Work, unless :meth:`outside_uow` was called, it yields
-        the Unit of Work's session for the provider and ends nothing: the Unit
-        of Work commits or rolls it back.
+        Inside a Unit of Work, unless this DAO came from :meth:`outside_uow`,
+        it yields the Unit of Work's session for the provider and ends
+        nothing: the Unit of Work commits or rolls it back.
 
         Otherwise it yields ``provider.new_session()``. When the block exits
         normally, it commits the session through ``provider.commit``. When the
@@ -437,7 +437,7 @@ class DAO:
         through ``provider.rollback`` and re-raises. It always closes the
         session.
         """
-        if not self._is_standalone:
+        if not self.is_standalone:
             yield current_uow.get_session(self.provider.name)
             return
 
@@ -468,74 +468,31 @@ class DAO:
         with self.session_scope() as session:
             self.provider.flush(session)
 
-    def _sync_event_position(self, entity: BaseEntity) -> None:
-        """Sync the aggregate's event position from the event store.
+    def track(self, entity: BaseEntity) -> BaseEntity:
+        """Return the instance to hand back for an entity this DAO just
+        loaded: the aggregate the active Unit of Work already tracks, or
+        ``entity`` itself, registered in the Unit of Work when this DAO works
+        inside one. See `protean.infra.dao_tracking.track`."""
+        return dao_tracking.track(self, entity)
 
-        When an aggregate is loaded from the persistence store, its
-        ``_event_position`` must reflect the last written event so that
-        optimistic concurrency control (expected-version checks) works
-        correctly on subsequent ``raise_()`` calls.
-
-        This is a no-op for non-aggregate entities.
-        """
-        if entity.element_type != DomainObjects.AGGREGATE:
-            return
-
-        id_f = id_field(entity)
-        assert id_f is not None and id_f.field_name is not None
-        identifier = getattr(entity, id_f.field_name)
-        store = current_domain.event_store
-        last_message = store.read_last_message(
-            f"{entity.meta_.stream_category}-{identifier}"
-        )
-        if last_message:
-            assert last_message.metadata is not None
-            assert last_message.metadata.event_store is not None
-            entity._event_position = last_message.metadata.event_store.position
-
-    def _track_in_uow(self, entity: BaseEntity) -> BaseEntity:
-        """Return the instance to hand back for an aggregate just loaded.
-
-        Inside a Unit of Work, an aggregate already tracked there is returned
-        in place of the loaded copy. Two copies of one aggregate in one
-        transaction would each count versions and event positions from the
-        store, which has not seen the other copy's pending changes.
-
-        Otherwise the loaded aggregate's event position is synced from the
-        event store and, inside a Unit of Work, the aggregate is registered so
-        that later reads return this instance. The events it raises are
-        persisted on commit only once ``add()`` saves it. Non-aggregate
-        entities are returned unchanged.
-        """
-        if not isinstance(entity, BaseAggregate):
-            return entity
-
-        tracked = self._tracked_in_uow(entity)
-        if tracked is not None:
-            return tracked
-
-        self._sync_event_position(entity)
-        if not self._is_standalone:
-            current_uow._add_to_identity_map(entity)
-        return entity
-
-    def _tracked_in_uow(self, entity: BaseEntity) -> BaseAggregate | None:
-        """The instance of ``entity``'s aggregate that the active Unit of
-        Work tracks, if this DAO works inside one and it tracks one."""
-        if self._is_standalone or not isinstance(entity, BaseAggregate):
-            return None
-        id_f = id_field(entity)
-        assert id_f is not None and id_f.field_name is not None
-        return current_uow._tracked_instance(
-            type(entity), getattr(entity, id_f.field_name)
-        )
+    def tracked_instance(self, entity: BaseEntity) -> BaseAggregate | None:
+        """Return the instance of ``entity``'s aggregate that the active Unit
+        of Work tracks, or ``None`` when this DAO works outside a Unit of
+        Work or none is tracked. See
+        `protean.infra.dao_tracking.tracked_instance`."""
+        return dao_tracking.tracked_instance(self, entity)
 
     def outside_uow(self) -> DAO:
-        """When called, the DAO is instructed to work outside active transactions."""
-        self._outside_uow = True
+        """Return a new DAO over the same provider and adapter that works
+        outside any active Unit of Work.
 
-        # Return the DAO object to support method chaining
-        return self
+        Each operation on the returned DAO runs in its own session, which the
+        DAO commits and closes. This DAO is left unchanged: its operations
+        still join the active Unit of Work.
+        """
+        standalone = DAO(self.domain, self.provider, self._adapter)
+        standalone._outside_uow = True
+        return standalone
 
     ##############################
     # Operations on many records #

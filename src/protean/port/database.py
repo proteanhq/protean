@@ -96,10 +96,6 @@ class SessionProtocol(Protocol):
     Adapters without real transaction support (e.g., Elasticsearch)
     should provide no-op implementations and set ``is_active = True``
     in ``__init__``.
-
-    ``begin()`` is optional, needed only for adapters with deferred
-    transaction start (e.g., SQLAlchemy).  The Unit of Work calls
-    ``begin()`` only when ``is_active`` is ``False``.
     """
 
     @property
@@ -227,7 +223,8 @@ class DatabasePort(Protocol):
 
     @abstractmethod
     def get_session(self) -> SessionProtocol:
-        """The session the Unit of Work commits or rolls back.
+        """The session the Unit of Work commits or rolls back, with its
+        transaction open and ready to use.
 
         A backend without transactions returns a session whose methods do
         nothing and whose `is_active` is `True`.

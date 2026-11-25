@@ -93,8 +93,7 @@ class TestPublicWriteMethods:
         with UnitOfWork():
             dao.flush()
             uow_session = current_uow.get_session(dao.provider.name)
-
-        assert flushed == [uow_session]
+            assert flushed == [uow_session]
 
 
 class TestDeprecatedUpdateChecksUniqueFields:

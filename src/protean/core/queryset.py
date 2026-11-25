@@ -463,7 +463,7 @@ class QuerySet:
 
     def _active_uow(self) -> "UnitOfWork | None":
         """The Unit of Work this QuerySet's DAO reads through, if any."""
-        return None if self._owner_dao._is_standalone else _find_uow()
+        return None if self._owner_dao.is_standalone else _find_uow()
 
     def _cache(self, results: "ResultSet", refill: Callable[[], "ResultSet"]) -> None:
         uow = self._active_uow()
@@ -495,7 +495,7 @@ class QuerySet:
         # out in its place.
         memo: dict[int, Any] = {}
         for item in active_data.items:
-            tracked = self._owner_dao._tracked_in_uow(item)
+            tracked = self._owner_dao.tracked_instance(item)
             if tracked is not None:
                 memo[id(item)] = tracked
         return copy.deepcopy(active_data, memo)

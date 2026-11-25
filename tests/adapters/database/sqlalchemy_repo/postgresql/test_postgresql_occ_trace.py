@@ -12,10 +12,9 @@ Memory adapter's contention does: one ``committed`` advancing the version, then 
 against ``OCC.tla``; this pins that the SQLAlchemy path emits the matching raw
 observations.
 
-The updates go through the DAO directly rather than ``repository.add`` because
-``add`` wraps its own Unit of Work, which defers the version-guarded flush to the
-UoW commit; the standalone DAO path commits through ``SADatabase.commit``, where
-the outcome is observable.
+Most updates go through the DAO directly, so each one commits on its own
+through ``SADatabase.commit``. An update inside a Unit of Work commits through
+``SADatabase.commit`` too, when the Unit of Work commits.
 """
 
 import pytest
@@ -93,11 +92,9 @@ def test_update_emits_committed_then_conflicted(trace_domain):
     assert all(e["version_after"] == 1 for e in recorded), recorded
 
 
-def test_update_through_a_unit_of_work_records_nothing(trace_domain):
-    """Under a UnitOfWork the version-guarded flush is deferred to the UoW commit,
-    so the standalone commit path never sees the compare-and-set outcome. Both SQL emits are
-    gated on the standalone path for that reason, so a UoW update records nothing
-    rather than a half-observed event (:issue:`#1382`)."""
+def test_update_through_a_unit_of_work_records_its_commit(trace_domain):
+    """The Unit of Work commits its session through ``SADatabase.commit``, so an
+    update inside it records ``committed`` against the version it loaded."""
     repo = trace_domain.repository_for(OCCTraceCounter)
     with UnitOfWork():
         seed = OCCTraceCounter(value=0)
@@ -111,7 +108,9 @@ def test_update_through_a_unit_of_work_records_nothing(trace_domain):
             repo.add(counter)
         recorded = list(events)
 
-    assert recorded == [], recorded
+    assert [
+        (e["stream"], e["outcome"], e["base"], e["version_after"]) for e in recorded
+    ] == [(f"occ_trace_counter:{counter_id}", "committed", 0, 1)], recorded
 
 
 def _provoke_standalone_flush_conflict(domain, monkeypatch):
@@ -182,29 +181,32 @@ def test_standalone_flush_conflict_is_recorded_as_a_conflict(trace_domain, monke
     assert recorded[0]["version_after"] is None
 
 
-def test_a_stale_update_through_a_unit_of_work_records_nothing(trace_domain):
-    """The Unit of Work commits its session without ``SADatabase.commit``, so the
-    trace could not record that commit. A refused update inside it records no
-    ``conflicted`` either, which keeps the trace free of a conflict whose
-    winning commit it never saw."""
+def test_a_stale_update_through_a_unit_of_work_records_its_conflict(trace_domain):
+    """A stale update inside a Unit of Work is refused, records ``conflicted``
+    against the version it loaded, and raises ``ExpectedVersionError``. The
+    winning commit, also made through a Unit of Work, records ``committed``."""
     repo = trace_domain.repository_for(OCCTraceCounter)
     with UnitOfWork():
         seed = OCCTraceCounter(value=0)
         repo.add(seed)
     stale = repo.get(seed.id)
-    with UnitOfWork():
-        fresh = repo.get(seed.id)
-        fresh.value = 1
-        repo.add(fresh)
 
     with occ_trace.capture() as events:
+        with UnitOfWork():
+            fresh = repo.get(seed.id)
+            fresh.value = 1
+            repo.add(fresh)
         with pytest.raises(ExpectedVersionError):
             with UnitOfWork():
                 stale.value = 2
                 repo.add(stale)
         recorded = list(events)
 
-    assert recorded == [], recorded
+    assert [(e["outcome"], e["base"], e["version_after"]) for e in recorded] == [
+        ("committed", 0, 1),
+        ("conflicted", 0, 1),
+    ], recorded
+    assert {e["stream"] for e in recorded} == {f"occ_trace_counter:{seed.id}"}
 
 
 def _seed_counters(domain, count):

@@ -103,8 +103,8 @@ How it works, end to end:
    instrumented. Almost every value is read straight from the store rather than
    derived, so the log cannot share a blind spot with the spec; the one exception
    is the SQLAlchemy committed version, recorded as `base + 1` (the value the
-   `version_id_col` guard is guaranteed to set), since the standalone commit closes
-   the connection before the row can be read back.
+   `version_id_col` guard is guaranteed to set), since the commit ends the
+   transaction before the row can be read back.
 2. **Replay against the real `.tla`.** `OCCTrace.tla` reads the log as a constant
    `Trace` and replays each entry as a read that captures the recorded base (a
    `DoRead` faithful to `OCC!Read`) and then the real `OCC!Commit` action, whose
@@ -129,18 +129,16 @@ Memory adapter's compare-and-set produces a genuine one-winner/rest-conflict tra
 on its own.
 
 **Adapter coverage.** The Memory path is validated end to end. The SQLAlchemy
-path emits the same observations for a standalone (non-UoW) update, which
-is what `tests/adapters/database/sqlalchemy_repo/postgresql/test_postgresql_occ_trace.py`
+path emits the same observations for an update, standalone or through a Unit
+of Work, which is what `tests/adapters/database/sqlalchemy_repo/postgresql/test_postgresql_occ_trace.py`
 pins: the adapter's `update` records a `conflicted` version check, and
 `SADatabase.commit` records `committed` for each row the session version-checked.
 A `StaleDataError` at `SADatabase.commit` or `SADatabase.flush` records
 `conflicted` only when the session version-checked exactly one row, because
-SQLAlchemy does not say which row lost. Only a session from
-`SADatabase.new_session()` records anything. Under `repository.add` the Unit of
-Work commits its session directly, so both a *concurrent* SQL commit and its
-conflict resolve there, outside the provider. Capturing that outcome is left for
-a follow-up, and `check.sh` uses the deterministic Memory trace as its
-conformance source.
+SQLAlchemy does not say which row lost. A session from
+`SADatabase.new_session()` or `SADatabase.get_session()` records, and the Unit
+of Work flushes and commits its session through the provider. `check.sh` uses
+the deterministic Memory trace as its conformance source.
 
 ### Checkpoint trace validation
 

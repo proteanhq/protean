@@ -16,7 +16,7 @@ share a blind spot with the spec: the Memory path reads the stored version back 
 its merge, and both adapters read the live version for a conflict. The one exception
 is the SQLAlchemy *committed* ``version_after``, which is recorded as ``base + 1`` —
 the value the ``version_id_col`` guard is guaranteed to set on a successful update,
-since the standalone commit closes the connection before the row can be read back.
+since the commit ends the transaction before the row can be read back.
 
 The recorder is inactive by default, so the adapters pay nothing on the normal path:
 :func:`record` returns on its first line unless a :func:`capture` is in progress. A

@@ -1,6 +1,6 @@
 """The commit helpers of ``UnitOfWork`` cover the cases a plain commit inside
 a domain context never reaches: a commit with no domain context, an event
-whose metadata has no domain section, and a session with no flush."""
+whose metadata has no domain section."""
 
 import pytest
 
@@ -8,7 +8,6 @@ from protean.core.aggregate import BaseAggregate
 from protean.core.event import BaseEvent
 from protean.core.unit_of_work import (
     UnitOfWork,
-    _flush_sessions,
     _outbox_rows_for_event,
     _OutboxSettings,
     _record_commit_success,
@@ -109,21 +108,3 @@ def test_outbox_row_has_no_trace_fields_when_the_event_has_no_domain_metadata(
     assert row.correlation_id is None
     assert row.causation_id is None
     assert row.stream_category is None
-
-
-def test_flush_skips_a_session_without_a_flush(test_domain):
-    flushed: list[str] = []
-
-    class FlushingSession:
-        def flush(self) -> None:
-            flushed.append("flushing")
-
-    class SessionWithoutFlush:
-        pass
-
-    uow = UnitOfWork()
-    uow._sessions = {"b": SessionWithoutFlush(), "a": FlushingSession()}
-
-    _flush_sessions(uow)
-
-    assert flushed == ["flushing"]

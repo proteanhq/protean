@@ -489,6 +489,15 @@ class MemoryDatabase(BaseDatabase, RawQueryDatabasePort):
         """Discard ``session``'s changes."""
         session.rollback()
 
+    def flush(self, session: SessionProtocol) -> None:
+        """Check ``session``'s recorded versions and hold the provider lock
+        until the session commits, rolls back or closes.
+
+        Raises:
+            ExpectedVersionError: A recorded version is stale.
+        """
+        typing.cast(MemorySession, session).flush()
+
     def ping(self) -> bool:
         """Always `True`: the store lives in this process."""
         return True

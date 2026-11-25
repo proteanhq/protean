@@ -1968,9 +1968,7 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
 
 # The key in a session's ``info`` dict under which ``SADAO.update`` keeps the
 # stream and base version of each row it version-checked while ``occ_trace`` is
-# active. ``SADatabase.new_session`` sets it, so only a standalone session has
-# it: a Unit of Work commits its session directly, never through
-# ``SADatabase.commit``, so the trace could not record that commit's outcome.
+# active. ``SADatabase.new_session`` and ``SADatabase.get_session`` set it.
 # ``SADatabase`` reads the rows to record the outcome of the commit.
 _OCC_TRACE_ROWS = "protean_occ_trace_rows"
 
@@ -2300,10 +2298,10 @@ class SADAO(
         """Refuse an update whose stored row is not at ``expected_version``.
 
         While ``occ_trace`` is active and ``session`` came from
-        ``SADatabase.new_session``, a refused update records ``conflicted``,
-        and a passed check keeps the row's stream and base in ``session.info``
-        for ``SADatabase.commit`` to record the commit's outcome. A Unit of
-        Work's session records nothing.
+        ``SADatabase.new_session`` or ``SADatabase.get_session``, a refused
+        update records ``conflicted``, and a passed check keeps the row's
+        stream and base in ``session.info`` for ``SADatabase.commit`` to
+        record the commit's outcome.
 
         Raises:
             ExpectedVersionError: The stored version differs from
@@ -2968,12 +2966,20 @@ class SADatabase(BaseDatabase, RawQueryDatabasePort):
         """
 
     def get_session(self) -> typing.Any:
-        """Return the cached scoped session class for this provider.
+        """Return this provider's scoped session registry, with a transaction
+        open on the calling thread's session.
 
-        The session factory and scoped session registry are created once
-        during __init__ and reused across all calls, avoiding the overhead
-        of constructing new factories on every invocation.
+        It begins the transaction only when none is open, so a second call
+        inside one transaction returns the same transaction. The session
+        records the rows its updates version-check, so `commit` and `flush`
+        report their outcome to ``occ_trace``.
         """
+        # ``is_active`` is ``True`` on a session that has not begun, so the
+        # check asks the thread's session whether a transaction is open.
+        session: Session = self._scoped_session_cls()
+        session.info.setdefault(_OCC_TRACE_ROWS, {})
+        if not session.in_transaction():
+            session.begin()
         return self._scoped_session_cls
 
     @abstractmethod
@@ -2996,9 +3002,10 @@ class SADatabase(BaseDatabase, RawQueryDatabasePort):
         """Create the connection to the Database instance"""
         # If this connection has to be created within an existing session,
         #   ``session_cls`` will be provided as an argument.
-        #   Otherwise, fetch a new ``session_cls`` from ``get_session()``
+        #   Otherwise, use the scoped session registry. ``get_session()``
+        #   would begin a transaction a raw read or a ``ping`` has no use for.
         if session_cls is None:
-            session_cls = self.get_session()
+            session_cls = self._scoped_session_cls
 
         conn = session_cls()
         conn = self._execute_database_specific_connection_statements(conn)

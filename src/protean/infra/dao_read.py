@@ -38,7 +38,7 @@ def _to_entities(dao: DAO, items: list[Any]) -> list[BaseEntity]:
     for item in items:
         entity = dao.database_model_cls.to_entity(item)
         entity.state_.mark_retrieved()
-        entities.append(dao._track_in_uow(entity))
+        entities.append(dao.track(entity))
     return entities
 
 

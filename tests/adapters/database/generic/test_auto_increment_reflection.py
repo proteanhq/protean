@@ -162,7 +162,8 @@ class TestAutoIncrementReflection:
     ):
         """An aggregate with a client-supplied identifier (no pending auto field)
         must not pay a forced flush under a UoW. The guard skips the provider's
-        ``flush`` when no auto field is pending."""
+        ``flush`` when no auto field is pending. The count is read before the
+        Unit of Work's commit, which flushes every session."""
         provider = test_domain.repository_for(Memo)._dao.provider
         flush_calls = {"count": 0}
         original_flush = type(provider).flush
@@ -175,8 +176,7 @@ class TestAutoIncrementReflection:
 
         with UnitOfWork():
             test_domain.repository_for(Memo).add(Memo(body="no auto here"))
-
-        assert flush_calls["count"] == 0
+            assert flush_calls["count"] == 0
 
 
 @pytest.mark.atomic_transactions
