@@ -27,6 +27,7 @@ from protean.adapters.database.schema_migrator.autogenerate import (
     _diff_line,
     _drop_primary_key_nullability,
     _index_names,
+    _OwnedTables,
     _qualified,
     configure_options,
 )
@@ -57,7 +58,7 @@ class TestIndexNames:
 
 class TestDropPrimaryKeyNullability:
     def test_an_absent_container_is_left_alone(self, metadata):
-        _drop_primary_key_nullability(metadata, None)
+        _drop_primary_key_nullability(_OwnedTables(metadata, None), None)
 
     def test_a_primary_key_op_that_changes_more_keeps_the_other_change(self, metadata):
         op = ops.AlterColumnOp(
@@ -69,7 +70,7 @@ class TestDropPrimaryKeyNullability:
         )
         container = ops.UpgradeOps(ops=[op])
 
-        _drop_primary_key_nullability(metadata, container)
+        _drop_primary_key_nullability(_OwnedTables(metadata, None), container)
 
         assert container.ops == [op]
         assert op.modify_nullable is None
@@ -79,7 +80,7 @@ class TestDropPrimaryKeyNullability:
         op = ops.AlterColumnOp("product", "id", modify_nullable=False)
         container = ops.UpgradeOps(ops=[op])
 
-        _drop_primary_key_nullability(metadata, container)
+        _drop_primary_key_nullability(_OwnedTables(metadata, None), container)
 
         assert container.ops == []
 
@@ -152,53 +153,84 @@ class TestDiffLine:
             Column("customer_id", String(36)),
         )
 
-    def test_a_table(self, order):
-        assert _diff_line(("add_table", order)) == "add_table order"
+    @pytest.fixture
+    def owned(self, order):
+        return _OwnedTables(order.metadata, None)
 
-    def test_a_column(self, order):
+    def test_a_table(self, order, owned):
+        assert _diff_line(("add_table", order), owned) == "add_table order"
+
+    def test_a_column(self, order, owned):
         diff = ("remove_column", None, "order", order.c.name)
 
-        assert _diff_line(diff) == "remove_column order.name"
+        assert _diff_line(diff, owned) == "remove_column order.name"
 
-    def test_a_column_change_names_the_column(self, order):
+    def test_a_column_change_names_the_column(self, order, owned):
         diff = ("modify_type", None, "order", "name", {}, String(50), String(100))
 
-        assert _diff_line(diff) == "modify_type order.name"
+        assert _diff_line(diff, owned) == "modify_type order.name"
 
-    def test_an_index(self, order):
+    def test_an_index(self, order, owned):
         index = Index("ix_order_name", order.c.name)
 
-        assert _diff_line(("add_index", index)) == "add_index order.ix_order_name"
+        assert (
+            _diff_line(("add_index", index), owned) == "add_index order.ix_order_name"
+        )
 
-    def test_a_named_constraint(self, order):
+    def test_a_named_constraint(self, order, owned):
         constraint = UniqueConstraint(order.c.name, name="uq_order_name")
         order.append_constraint(constraint)
 
         assert (
-            _diff_line(("remove_constraint", constraint))
+            _diff_line(("remove_constraint", constraint), owned)
             == "remove_constraint order.uq_order_name"
         )
 
-    def test_an_unnamed_foreign_key(self, order):
+    def test_an_unnamed_foreign_key(self, order, owned):
         constraint = ForeignKeyConstraint([order.c.customer_id], ["customer.id"])
         order.append_constraint(constraint)
 
-        assert _diff_line(("add_fk", constraint)) == "add_fk order.customer_id"
+        assert _diff_line(("add_fk", constraint), owned) == "add_fk order.customer_id"
 
-    def test_an_unnamed_constraint_on_two_columns(self, order):
+    def test_an_unnamed_constraint_on_two_columns(self, order, owned):
         constraint = UniqueConstraint(order.c.name, order.c.customer_id)
         order.append_constraint(constraint)
 
         assert (
-            _diff_line(("add_constraint", constraint))
+            _diff_line(("add_constraint", constraint), owned)
             == "add_constraint order.name,customer_id"
         )
 
-    def test_an_unnamed_constraint_without_columns(self, order):
+    def test_a_table_in_another_schema_is_named_with_its_schema(self, owned):
+        archive = Table(
+            "archive",
+            MetaData(),
+            Column("title", String(50)),
+            Column("note", String(50)),
+            schema="reporting",
+        )
+        constraint = UniqueConstraint(archive.c.title, archive.c.note)
+        archive.append_constraint(constraint)
+
+        assert (
+            _diff_line(("add_table", archive), owned) == "add_table reporting.archive"
+        )
+        assert (
+            _diff_line(("add_constraint", constraint), owned)
+            == "add_constraint reporting.archive.title,note"
+        )
+        assert (
+            _diff_line(("modify_type", "reporting", "archive", "note"), owned)
+            == "modify_type reporting.archive.note"
+        )
+
+    def test_an_unnamed_constraint_without_columns(self, order, owned):
         constraint = CheckConstraint("length(name) > 0")
         order.append_constraint(constraint)
 
-        assert _diff_line(("add_constraint", constraint)) == "add_constraint order"
+        assert (
+            _diff_line(("add_constraint", constraint), owned) == "add_constraint order"
+        )
 
 
 class TestCompare:
@@ -244,3 +276,135 @@ class TestCompare:
         )
 
         assert self.compare(connection, metadata) == ["modify_nullable product.name"]
+
+
+class TestCompareAcrossSchemas:
+    """``_compare`` with a second SQLite database attached as ``reporting``.
+
+    The provider owns ``product`` in the default schema and ``archive`` in
+    ``reporting``. An unrelated ``archive`` table sits in the default schema.
+    """
+
+    @pytest.fixture
+    def connection(self, tmp_path):
+        engine = sqlalchemy.create_engine(f"sqlite:///{tmp_path / 'shop.db'}")
+        reporting = tmp_path / "reporting.db"
+
+        @sqlalchemy.event.listens_for(engine, "connect")
+        def attach(dbapi_connection, record):
+            dbapi_connection.execute(f"ATTACH DATABASE '{reporting}' AS reporting")
+
+        with engine.connect() as connection:
+            connection.execute(
+                text("CREATE TABLE product (id VARCHAR(36) NOT NULL PRIMARY KEY)")
+            )
+            connection.execute(text("CREATE TABLE archive (other INTEGER)"))
+            yield connection
+        engine.dispose()
+
+    def metadata(self, *archive_columns):
+        metadata = MetaData()
+        Table("product", metadata, Column("id", String(36), primary_key=True))
+        Table(
+            "archive",
+            metadata,
+            Column("id", String(36), primary_key=True, nullable=True),
+            *archive_columns,
+            schema="reporting",
+        )
+        return metadata
+
+    def compare(self, connection, metadata):
+        context = MigrationContext.configure(
+            connection, opts=configure_options(metadata, "sqlite", connection)
+        )
+        return _compare(context, metadata)
+
+    def create_archive(self, connection):
+        connection.execute(
+            text(
+                "CREATE TABLE reporting.archive "
+                "(id VARCHAR(36) NOT NULL PRIMARY KEY, title VARCHAR(50))"
+            )
+        )
+
+    def test_an_existing_table_in_the_second_schema_has_no_differences(
+        self, connection
+    ):
+        self.create_archive(connection)
+
+        metadata = self.metadata(Column("title", String(50)))
+
+        assert self.compare(connection, metadata) == []
+
+    def test_a_missing_table_in_the_second_schema_is_named_with_its_schema(
+        self, connection
+    ):
+        metadata = self.metadata(Column("title", String(50)))
+
+        assert self.compare(connection, metadata) == ["add_table reporting.archive"]
+
+    def test_a_missing_table_in_the_provider_schema_is_named_alone(self, connection):
+        self.create_archive(connection)
+        metadata = self.metadata(Column("title", String(50)))
+        Table("order", metadata, Column("id", String(36), primary_key=True))
+
+        assert self.compare(connection, metadata) == ["add_table order"]
+
+    def test_a_column_change_in_the_second_schema_is_named_with_its_schema(
+        self, connection
+    ):
+        self.create_archive(connection)
+        metadata = self.metadata(
+            Column("title", String(50)), Column("note", String(50))
+        )
+
+        assert self.compare(connection, metadata) == [
+            "add_column reporting.archive.note"
+        ]
+
+    def test_two_owned_tables_of_one_name_are_compared_each_in_its_schema(
+        self, connection
+    ):
+        self.create_archive(connection)
+        metadata = self.metadata(Column("title", String(50)))
+        # The default-schema ``archive`` is owned too, with its own column.
+        Table("archive", metadata, Column("other", Integer, primary_key=True))
+
+        assert self.compare(connection, metadata) == []
+
+    def test_an_index_in_the_second_schema_is_named_with_its_schema(self, connection):
+        self.create_archive(connection)
+        connection.execute(
+            text("CREATE INDEX reporting.ix_archive_title ON archive (title)")
+        )
+        metadata = self.metadata(Column("title", String(50)))
+
+        # The reflected index is not declared, so autogenerate drops it.
+        assert self.compare(connection, metadata) == [
+            "remove_index reporting.archive.ix_archive_title"
+        ]
+
+
+class TestOwnedTables:
+    def test_a_table_in_the_default_schema_is_named_with_it_when_the_provider_is_not(
+        self,
+    ):
+        engine = sqlalchemy.create_engine("sqlite://")
+        metadata = MetaData(schema="shop")
+        with engine.connect() as connection:
+            owned = _OwnedTables(metadata, connection)
+
+        assert owned.label("main", "archive") == "main.archive"
+        assert owned.label(None, "archive") == "main.archive"
+        assert owned.label("shop", "archive") == "archive"
+
+    def test_offline_a_schema_is_compared_as_it_is_written(self):
+        metadata = MetaData(schema="shop")
+        Table("archive", metadata, Column("id", Integer, primary_key=True))
+        owned = _OwnedTables(metadata, None)
+
+        assert owned.table("shop", "archive") is metadata.tables["shop.archive"]
+        assert owned.table(None, "archive") is None
+        assert owned.label(None, "archive") == "archive"
+        assert owned.label("other", "archive") == "other.archive"

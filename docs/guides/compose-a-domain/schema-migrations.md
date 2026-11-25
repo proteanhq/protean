@@ -283,7 +283,9 @@ providers on one schema overwrite each other's revision.
 A migration only touches the tables the provider owns. `protean db migrate`
 never drops a table that the domain does not declare, and `protean db check`
 never reports one. A table that another application writes stays as it is,
-and so does Alembic's own `alembic_version` table.
+and so does Alembic's own `alembic_version` table. A table is matched by its
+schema and its name, so a table in another schema with the name of a declared
+table is left alone too.
 
 For the same reason, removing an aggregate does not drop its table. To drop it,
 write a migration by hand with `alembic revision`, as above, and call

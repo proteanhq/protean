@@ -10,12 +10,14 @@ import textwrap
 
 import pytest
 import sqlalchemy
+from sqlalchemy import Column, Text
 
 from protean.adapters.database import schema_migrator
 from protean.adapters.database.schema_migrator import (
     run_migrations,
     write_migrations_folder,
 )
+from protean.adapters.database.schema_migrator.autogenerate import _stored_index_sql
 from protean.adapters.database.sqlalchemy import (
     MssqlDatabase,
     MysqlDatabase,
@@ -24,6 +26,8 @@ from protean.adapters.database.sqlalchemy import (
     _alembic_extra,
 )
 from protean.core.aggregate import BaseAggregate
+from protean.core.database_model import BaseDatabaseModel
+from protean.core.index import Index
 from protean.domain import Domain
 from protean.exceptions import ConfigurationError
 from protean.fields import DateTime, String
@@ -328,6 +332,149 @@ class TestCheckThroughTheProvider:
             ConfigurationError, match="Cannot read the database of provider 'default'"
         ):
             migrator.check()
+
+
+class Archive(BaseAggregate):
+    title = String(max_length=50)
+
+
+class ArchiveModel(BaseDatabaseModel):
+    __table_args__ = {"schema": "reporting"}
+    title = Column(Text)
+
+
+# SQLite stores a ``CREATE INDEX`` without the schema of the index.
+ARCHIVE_INDEX_STORED = (
+    "ix_archive_title",
+    "CREATE INDEX ix_archive_title ON archive (lower(title))",
+)
+ARCHIVE_INDEX = Index.from_sql(
+    "sqlite",
+    "CREATE INDEX reporting.ix_archive_title ON archive (lower(title))",
+    name="ix_archive_title",
+)
+
+
+class TestTableInASecondSchema:
+    """A custom model puts its table in ``reporting``, a second database
+    attached to the provider's SQLite database. An unrelated ``archive`` table,
+    which Protean does not own, sits in the default schema."""
+
+    @pytest.fixture
+    def provider(self, tmp_path):
+        domain = Domain(name="Shop")
+        domain.config["databases"]["default"] = {
+            "provider": "sqlite",
+            "database_uri": f"sqlite:///{tmp_path / 'shop.db'}",
+        }
+        domain.register(Archive, indexes=[ARCHIVE_INDEX])
+        domain.register_database_model(ArchiveModel, part_of=Archive)
+        domain.init(traverse=False)
+        with domain.domain_context():
+            provider = provider_adapter(domain, "default")
+            reporting = tmp_path / "reporting.db"
+
+            @sqlalchemy.event.listens_for(provider._engine, "connect")
+            def attach(dbapi_connection, record):
+                dbapi_connection.execute(f"ATTACH DATABASE '{reporting}' AS reporting")
+
+            provider._engine.dispose()
+            domain.repository_for(Archive)._dao
+            with provider._engine.begin() as connection:
+                connection.execute(
+                    sqlalchemy.text(
+                        "CREATE TABLE archive (id INTEGER PRIMARY KEY, title TEXT)"
+                    )
+                )
+                connection.execute(
+                    sqlalchemy.text("CREATE INDEX ix_archive_title ON archive (title)")
+                )
+            yield provider
+            provider._engine.dispose()
+
+    @pytest.fixture
+    def migrator(self, provider, tmp_path):
+        migrator = provider.schema_migrator(tmp_path / "migrations")
+        migrator.init("domain.py")
+        return migrator
+
+    def archive_table(self, provider):
+        return provider._metadata.tables["reporting.archive"]
+
+    def reporting_indexes(self, provider):
+        with provider._engine.connect() as connection:
+            return _stored_index_sql(connection, "archive", "reporting")
+
+    def test_an_existing_table_has_no_differences(self, provider, migrator):
+        self.archive_table(provider).create(provider._engine)
+
+        assert migrator.check() == []
+        assert migrator.migrate("nothing") is None
+        assert "archive" in tables(provider)
+
+    def test_a_missing_table_is_created_in_its_schema(self, provider, migrator):
+        assert migrator.check() == ["add_table reporting.archive"]
+
+        path = migrator.migrate("add archive")
+
+        assert path is not None
+        revision = path.read_text(encoding="utf-8")
+        assert "op.create_table('archive'" in revision
+        assert "schema='reporting'" in revision
+        assert "CREATE INDEX reporting.ix_archive_title" in revision
+        assert "drop_table" not in revision.split("def downgrade")[0]
+        migrator.upgrade()
+        reporting = sqlalchemy.inspect(provider._engine).get_table_names("reporting")
+        assert reporting == ["archive"]
+        assert self.reporting_indexes(provider) == [ARCHIVE_INDEX_STORED]
+        assert "archive" in tables(provider)
+
+    def test_a_raw_index_of_the_same_name_in_another_schema_does_not_count(
+        self, provider, migrator
+    ):
+        table = self.archive_table(provider)
+        with provider._engine.begin() as connection:
+            # ``Table.create`` would fire the raw index's DDL too.
+            connection.execute(
+                sqlalchemy.text(
+                    "CREATE TABLE reporting.archive "
+                    "(title TEXT, id VARCHAR(255) NOT NULL PRIMARY KEY, "
+                    "_version INTEGER)"
+                )
+            )
+        assert {column.name for column in table.columns} == {"title", "id", "_version"}
+
+        assert migrator.check() == ["add_index reporting.archive.ix_archive_title"]
+
+        assert migrator.migrate("add index") is not None
+        migrator.upgrade()
+        assert self.reporting_indexes(provider) == [ARCHIVE_INDEX_STORED]
+        assert migrator.check() == []
+
+    def test_a_table_copy_rebuilds_its_indexes_in_its_schema(self, provider, migrator):
+        self.archive_table(provider).create(provider._engine)
+        with provider._engine.begin() as connection:
+            connection.execute(
+                sqlalchemy.text("ALTER TABLE reporting.archive DROP COLUMN _version")
+            )
+            connection.execute(
+                sqlalchemy.text(
+                    "ALTER TABLE reporting.archive ADD COLUMN _version TEXT"
+                )
+            )
+        assert migrator.check() == ["modify_type reporting.archive._version"]
+
+        path = migrator.migrate("change version")
+
+        assert path is not None
+        upgrade, downgrade = path.read_text(encoding="utf-8").split("def downgrade")
+        assert "schema='reporting'" in upgrade
+        assert "DROP INDEX IF EXISTS reporting.ix_archive_title" in upgrade
+        assert "CREATE INDEX reporting.ix_archive_title" in upgrade
+        assert "DROP INDEX IF EXISTS reporting.ix_archive_title" in downgrade
+        migrator.upgrade()
+        assert self.reporting_indexes(provider) == [ARCHIVE_INDEX_STORED]
+        assert migrator.check() == []
 
 
 class TestRunMigrationsFromAlembicIni:
