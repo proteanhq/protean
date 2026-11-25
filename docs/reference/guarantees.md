@@ -139,7 +139,10 @@ by its per-stream `position`, and a category or `$all` read pages by
 ### Known exceptions {#event-store-exceptions}
 
 - **Append is per message**: A Unit of Work that raises several events makes
-  one OCC-checked append per event. They are not one atomic batch.
+  one OCC-checked append per event. They are not one atomic batch. A `sql`
+  store that shares the `default` database is the exception: it checks and
+  inserts the events at commit, in the Unit of Work's transaction, so they
+  commit or roll back together.
 - **MessageDB global gaps**: A rolled-back append uses up its
   `global_position`, so positions across categories can have gaps. Within one
   category there are none, because MessageDB holds a per-category advisory
