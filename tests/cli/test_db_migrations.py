@@ -378,7 +378,7 @@ class Product:
         latest = next(v for v in project.versions() if "add_stock" in v.name)
         upgrade, downgrade = latest.read_text(encoding="utf-8").split("def downgrade")
         assert "DROP INDEX IF EXISTS" not in upgrade
-        assert "DROP INDEX IF EXISTS ix_product_raw" in downgrade
+        assert "DROP INDEX IF EXISTS main.ix_product_raw" in downgrade
         assert "ix_product_raw" in index_sql(database)
 
         project.run_ok("downgrade", "-1")

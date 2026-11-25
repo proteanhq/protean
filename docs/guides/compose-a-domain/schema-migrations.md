@@ -283,7 +283,9 @@ providers on one schema overwrite each other's revision.
 A migration only touches the tables the provider owns. `protean db migrate`
 never drops a table that the domain does not declare, and `protean db check`
 never reports one. A table that another application writes stays as it is,
-and so does Alembic's own `alembic_version` table.
+and so does Alembic's own `alembic_version` table. A table is matched by its
+schema and its name, so a table in another schema with the name of a declared
+table is left alone too.
 
 For the same reason, removing an aggregate does not drop its table. To drop it,
 write a migration by hand with `alembic revision`, as above, and call
@@ -305,6 +307,12 @@ creates a named raw index again after the copy. It does not create an
 unnamed one again, and `protean db check` does not report the missing index.
 For an existing unnamed raw index, set `name=` to the name its SQL gives the
 index.
+
+The migration runs the SQL of a raw index as written. For a table in a schema
+other than the provider's, the SQL must name that schema, as in SQLite's
+`CREATE INDEX reporting.ix_archive_title ON archive (title)` or PostgreSQL's
+`CREATE INDEX ix_archive_title ON reporting.archive (title)`. Without it, the
+index goes on the table of that name the database finds first.
 
 Autogenerate compares raw indexes by name only. Change the SQL of a raw index
 and keep its name, and `protean db migrate` sees no change. Write that

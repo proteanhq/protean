@@ -1,14 +1,16 @@
 """The Alembic options the migration runner passes to ``context.configure``.
 
 Autogenerate compares the provider's ``MetaData`` with the database. These
-options keep that comparison to the tables the provider owns, in the schema it
-owns, and add the raw indexes autogenerate cannot see. ``differences`` runs
-the same comparison for ``protean db check`` and reports it as text.
+options keep that comparison to the tables the provider owns, each matched by
+its schema and its name, and add the raw indexes autogenerate cannot see.
+``differences`` runs the same comparison for ``protean db check`` and reports
+it as text.
 """
 
 from __future__ import annotations
 
 import contextlib
+import re
 import warnings
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
@@ -61,21 +63,62 @@ def configure_options(
     }
 
 
+class _OwnedTables:
+    """The tables of one provider's ``MetaData``, each found by schema and name.
+
+    A schema is compared in the form reflection reports it: None for the
+    default schema of the connection, else its name. Offline, with no
+    connection, a schema is compared as it is written.
+    """
+
+    def __init__(self, metadata: MetaData, connection: Connection | None) -> None:
+        self.default_schema = (
+            connection.dialect.default_schema_name if connection else None
+        )
+        self.schema = self.normalized(metadata.schema)
+        self.tables = {
+            (self.normalized(table.schema), table.name): table
+            for table in metadata.tables.values()
+        }
+        self.schemas = {schema for schema, _ in self.tables}
+
+    def normalized(self, schema: str | None) -> str | None:
+        """``schema`` as reflection names it."""
+        return None if schema == self.default_schema else schema
+
+    def table(self, schema: str | None, name: str) -> Table | None:
+        """The owned table ``name`` in ``schema``, or None."""
+        return self.tables.get((self.normalized(schema), name))
+
+    def label(self, schema: str | None, name: str) -> str:
+        """``name``, qualified by its schema when that is not the provider's.
+
+        Offline, a table in the default schema has no schema name to show, so
+        it is named alone.
+        """
+        schema = self.normalized(schema)
+        if schema == self.schema:
+            return name
+        qualifier = schema or self.default_schema
+        return f"{qualifier}.{name}" if qualifier else name
+
+
 class _Comparison:
     """The autogenerate hooks for one provider's ``MetaData``."""
 
     def __init__(self, metadata: MetaData, connection: Connection | None) -> None:
-        self.metadata = metadata
-        self.schema = _compared_schema(metadata, connection)
-        self.known_tables = {table.name for table in metadata.tables.values()}
+        self.owned = _OwnedTables(metadata, connection)
+        self.sqlite = connection is not None and connection.dialect.name == "sqlite"
 
     def include_name(self, name: str | None, type_: str, parent_names: Any) -> bool:
         if type_ == "schema":
-            return name == self.schema
+            return name in self.owned.schemas
         if type_ == "table":
             # A table the provider does not own is never compared, and so never
-            # dropped. ``alembic_version`` is one of them.
-            return name in self.known_tables
+            # dropped. ``alembic_version`` is one of them, and so is a table of
+            # an owned name in another schema.
+            schema = parent_names["schema_name"]
+            return name is not None and self.owned.table(schema, name) is not None
         return True
 
     def include_object(
@@ -85,10 +128,17 @@ class _Comparison:
             # A raw index is in the database and not in ``Table.indexes``, so
             # without this autogenerate would drop it. Only its DDL names an
             # unnamed raw index, so a table that declares one drops no index.
-            raw = _raw_indexes(_table(self.metadata, obj.table.name))
+            raw = _raw_indexes(self.owned.table(obj.table.schema, obj.table.name))
             if any(not index.name for index in raw):
                 return False
             return name not in {index.name for index in raw}
+        if type_ == "foreign_key_constraint" and not reflected and self.sqlite:
+            # SQLite keeps a foreign key only to a table in the same database,
+            # so SQLAlchemy leaves one to another schema out of the table it
+            # creates, and the database never has it.
+            return self.owned.normalized(obj.table.schema) == self.owned.normalized(
+                obj.referred_table.schema
+            )
         if type_ == "unique_constraint" and not reflected:
             # The identifier field is marked unique as well as primary, and the
             # primary key already makes it unique in the database.
@@ -101,23 +151,15 @@ class _Comparison:
         script = directives[0]
         if script.upgrade_ops is None:
             return
-        _drop_primary_key_nullability(self.metadata, script.upgrade_ops)
-        _drop_primary_key_nullability(self.metadata, script.downgrade_ops)
+        _drop_primary_key_nullability(self.owned, script.upgrade_ops)
+        _drop_primary_key_nullability(self.owned, script.downgrade_ops)
         if context.dialect.name == "sqlite":
-            _rebuild_indexes_after_copy(context, self.metadata, self.schema, script)
-        created = _add_raw_indexes_to_new_tables(self.metadata, script.upgrade_ops.ops)
-        _add_missing_raw_indexes(context, self.metadata, self.schema, script, created)
+            _rebuild_indexes_after_copy(context, self.owned, script)
+        created = _add_raw_indexes_to_new_tables(self.owned, script.upgrade_ops.ops)
+        _add_missing_raw_indexes(context, self.owned, script, created)
         # An empty migration adds a step to the history that does nothing.
         if script.upgrade_ops.is_empty():
             directives[:] = []
-
-
-def _compared_schema(metadata: MetaData, connection: Connection | None) -> str | None:
-    """The schema of ``metadata`` as reflection names it on ``connection``."""
-    default_schema = connection.dialect.default_schema_name if connection else None
-    # Reflection reports the default schema as None, so the provider's schema
-    # is compared as None when it is the default one.
-    return None if metadata.schema == default_schema else metadata.schema
 
 
 def differences(context: Any, metadata: MetaData) -> list[str]:
@@ -126,7 +168,8 @@ def differences(context: Any, metadata: MetaData) -> list[str]:
     ``context`` is Alembic's environment context, configured online with
     ``configure_options``. Each line is the operation, then the table, then
     ``.<column>`` or ``.<index or constraint name>`` where there is one, such
-    as ``add_column order.discount``. The lines are sorted. The comparison
+    as ``add_column order.discount``. A table in a schema other than the
+    provider's is named ``<schema>.<table>``. The lines are sorted. The comparison
     drops the same differences ``migrate`` drops, and reports a named raw
     index an existing table lacks as ``add_index``. Nothing is written to the
     database.
@@ -171,16 +214,16 @@ def _compare(migration_context: MigrationContext, metadata: MetaData) -> list[st
     """The sorted lines of ``differences``, without the check on the heads."""
     connection = migration_context.connection
     assert connection is not None
+    owned = _OwnedTables(metadata, connection)
     diffs = _flatten(compare_metadata(migration_context, metadata))
     lines = [
-        _diff_line(diff)
+        _diff_line(diff, owned)
         for diff in diffs
-        if not _changes_primary_key_nullability(metadata, diff)
+        if not _changes_primary_key_nullability(owned, diff)
     ]
-    schema = _compared_schema(metadata, connection)
     lines += [
-        f"add_index {table.name}.{name}"
-        for table, name, _ in _missing_raw_indexes(connection, metadata, schema, set())
+        f"add_index {owned.label(table.schema, table.name)}.{name}"
+        for table, name, _ in _missing_raw_indexes(connection, owned, set())
     ]
     return sorted(lines)
 
@@ -193,23 +236,29 @@ def _flatten(diffs: list[Any]) -> list[tuple[Any, ...]]:
     return flat
 
 
-def _changes_primary_key_nullability(metadata: MetaData, diff: tuple[Any, ...]) -> bool:
+def _changes_primary_key_nullability(
+    owned: _OwnedTables, diff: tuple[Any, ...]
+) -> bool:
     # ``("modify_nullable", schema, table, column, kw, existing, new)``
     return diff[0] == "modify_nullable" and _is_primary_key_column(
-        metadata, diff[2], diff[3]
+        owned, diff[1], diff[2], diff[3]
     )
 
 
-def _diff_line(diff: tuple[Any, ...]) -> str:
-    """``diff``, one entry of ``compare_metadata``, as ``<operation> <table>[.<name>]``."""
+def _diff_line(diff: tuple[Any, ...], owned: _OwnedTables) -> str:
+    """``diff``, one entry of ``compare_metadata``, as ``<operation> <table>[.<name>]``.
+
+    The table is qualified by its schema when that is not the provider's.
+    """
     operation, subject = diff[0], diff[1]
     if isinstance(subject, Table):
-        return f"{operation} {subject.name}"
+        return f"{operation} {owned.label(subject.schema, subject.name)}"
     if isinstance(subject, (Index, Constraint)):
         table = subject.table
         assert table is not None
+        name = owned.label(table.schema, table.name)
         if isinstance(subject.name, str):
-            return f"{operation} {table.name}.{subject.name}"
+            return f"{operation} {name}.{subject.name}"
         # An unnamed constraint has the name None when it is reflected and a
         # placeholder that is not a string when it is declared, so the line
         # names its columns.
@@ -219,19 +268,13 @@ def _diff_line(diff: tuple[Any, ...]) -> str:
             else []
         )
         if not columns:
-            return f"{operation} {table.name}"
-        return f"{operation} {table.name}.{','.join(column.name for column in columns)}"
+            return f"{operation} {name}"
+        return f"{operation} {name}.{','.join(column.name for column in columns)}"
     # A column change: ``(operation, schema, table, column, ...)``, where the
     # column is a ``Column`` or, in a ``modify_*`` change, its name.
-    table, column = diff[2], diff[3]
-    return f"{operation} {table}.{column if isinstance(column, str) else column.name}"
-
-
-def _table(metadata: MetaData, name: str) -> Table | None:
-    for table in metadata.tables.values():
-        if table.name == name:
-            return table
-    return None
+    schema, table, column = diff[1], diff[2], diff[3]
+    column_name = column if isinstance(column, str) else column.name
+    return f"{operation} {owned.label(schema, table)}.{column_name}"
 
 
 def _raw_indexes(table: Table | None) -> list[RawIndex]:
@@ -243,7 +286,7 @@ def _is_primary_key(constraint: Any) -> bool:
     return bool(primary) and {column.name for column in constraint.columns} == primary
 
 
-def _drop_primary_key_nullability(metadata: MetaData, container: Any) -> None:
+def _drop_primary_key_nullability(owned: _OwnedTables, container: Any) -> None:
     """Remove the nullability changes autogenerate finds on primary key columns.
 
     Protean declares an identifier column nullable. PostgreSQL, MySQL and SQL
@@ -256,10 +299,10 @@ def _drop_primary_key_nullability(metadata: MetaData, container: Any) -> None:
     kept: list[Any] = []
     for op in container.ops:
         if isinstance(op, ops.ModifyTableOps):
-            _drop_primary_key_nullability(metadata, op)
+            _drop_primary_key_nullability(owned, op)
             if op.ops:
                 kept.append(op)
-        elif isinstance(op, ops.AlterColumnOp) and _alters_primary_key(metadata, op):
+        elif isinstance(op, ops.AlterColumnOp) and _alters_primary_key(owned, op):
             op.modify_nullable = None
             op.kw.pop("autoincrement", None)
             if op.has_changes():
@@ -269,35 +312,40 @@ def _drop_primary_key_nullability(metadata: MetaData, container: Any) -> None:
     container.ops = kept
 
 
-def _alters_primary_key(metadata: MetaData, op: ops.AlterColumnOp) -> bool:
-    return _is_primary_key_column(metadata, op.table_name, op.column_name)
+def _alters_primary_key(owned: _OwnedTables, op: ops.AlterColumnOp) -> bool:
+    return _is_primary_key_column(owned, op.schema, op.table_name, op.column_name)
 
 
-def _is_primary_key_column(metadata: MetaData, table_name: str, column: str) -> bool:
-    table = _table(metadata, table_name)
+def _is_primary_key_column(
+    owned: _OwnedTables, schema: str | None, table_name: str, column: str
+) -> bool:
+    table = owned.table(schema, table_name)
     return table is not None and column in table.primary_key.columns
 
 
-def _add_raw_indexes_to_new_tables(metadata: MetaData, upgrade: list[Any]) -> set[str]:
+def _add_raw_indexes_to_new_tables(
+    owned: _OwnedTables, upgrade: list[Any]
+) -> set[tuple[str | None, str]]:
     """Put every raw index of a table right after the op that creates it.
 
-    Returns the names of the tables the migration creates.
+    Returns the schema, as reflection names it, and the name of each table the
+    migration creates.
     """
-    created: set[str] = set()
+    created: set[tuple[str | None, str]] = set()
     for position in range(len(upgrade) - 1, -1, -1):
         op = upgrade[position]
         if isinstance(op, ops.CreateTableOp):
-            created.add(op.table_name)
+            created.add((owned.normalized(op.schema), op.table_name))
             sql = [
                 _execute_sql(raw.ddl)
-                for raw in _raw_indexes(_table(metadata, op.table_name))
+                for raw in _raw_indexes(owned.table(op.schema, op.table_name))
             ]
             upgrade[position + 1 : position + 1] = sql
     return created
 
 
 def _rebuild_indexes_after_copy(
-    context: MigrationContext, metadata: MetaData, schema: str | None, script: Any
+    context: MigrationContext, owned: _OwnedTables, script: Any
 ) -> None:
     """Rebuild the indexes a SQLite table copy drops or changes, in ``script``.
 
@@ -309,7 +357,10 @@ def _rebuild_indexes_after_copy(
     column. After each op that copies a table in the downgrade, each index the
     database holds before the migration is dropped and created again from the
     statement SQLite stored for it, so the downgrade restores the old
-    definition of an index the migration changes.
+    definition of an index the migration changes. Each index is dropped in the
+    schema of its table. A raw index is created by its DDL verbatim, so it lands
+    in the schema the DDL names. A stored statement is created in the schema of
+    its table.
     """
     connection = context.connection
     assert connection is not None
@@ -320,41 +371,59 @@ def _rebuild_indexes_after_copy(
         for position in range(len(container.ops) - 1, -1, -1):
             op = container.ops[position]
             if isinstance(op, ops.ModifyTableOps) and _copies_table(op):
-                rebuilt = rebuild(connection, metadata, schema, op.table_name)
+                rebuilt = rebuild(connection, owned, op.schema, op.table_name)
                 container.ops[position + 1 : position + 1] = rebuilt
 
 
 def _index_rebuild(
-    connection: Connection, metadata: MetaData, schema: str | None, table_name: str
+    connection: Connection, owned: _OwnedTables, schema: str | None, table_name: str
 ) -> list[Any]:
     """The ops that drop and create again each index a copy of the table loses.
 
     Only the indexes the database holds are rebuilt. The others are created by
     the migration's own ops.
     """
-    table = _table(metadata, table_name)
+    table = owned.table(schema, table_name)
     assert table is not None
     present = _index_names(connection, table_name, schema)
     rebuilt: list[Any] = []
     for name, create in _lossy_indexes(table):
         if name in present:
             # The copy keeps an index it can reflect, in its reflected form.
-            rebuilt += [_drop_if_exists(connection, name, schema), create]
+            rebuilt += [_drop_if_exists(connection, owned, name, schema), create]
     return rebuilt
 
 
 def _stored_index_rebuild(
-    connection: Connection, metadata: MetaData, schema: str | None, table_name: str
+    connection: Connection, owned: _OwnedTables, schema: str | None, table_name: str
 ) -> list[Any]:
     """The ops that drop and create again each index the database holds now.
 
-    Each index is created from its statement in ``sqlite_master``. An index
-    SQLite creates for a constraint has no statement, and the copy keeps it.
+    Each index is created in the table's schema from its statement in
+    ``sqlite_master``. An index SQLite creates for a constraint has no
+    statement, and the copy keeps it.
     """
     rebuilt: list[Any] = []
     for name, sql in _stored_index_sql(connection, table_name, schema):
-        rebuilt += [_drop_if_exists(connection, name, schema), _execute_sql(sql)]
+        rebuilt += [
+            _drop_if_exists(connection, owned, name, schema),
+            _execute_sql(_in_schema(connection, sql, schema)),
+        ]
     return rebuilt
+
+
+_STORED_INDEX_PREFIX = re.compile(r"^CREATE\s+(?:UNIQUE\s+)?INDEX\s+", re.IGNORECASE)
+
+
+def _in_schema(connection: Connection, sql: str, schema: str | None) -> str:
+    """``sql``, a stored ``CREATE INDEX`` statement, with its index in ``schema``."""
+    # SQLite stores the statement without the schema, and an unqualified
+    # CREATE INDEX finds its table in the first schema that has one of that
+    # name, which can be the default schema's table.
+    if schema is None:
+        return sql
+    quoted = connection.dialect.identifier_preparer.quote_schema(schema)
+    return _STORED_INDEX_PREFIX.sub(lambda match: f"{match.group(0)}{quoted}.", sql, 1)
 
 
 def _execute_sql(sql: str) -> ops.ExecuteSQLOp:
@@ -366,8 +435,11 @@ def _execute_sql(sql: str) -> ops.ExecuteSQLOp:
 
 
 def _drop_if_exists(
-    connection: Connection, name: str, schema: str | None
+    connection: Connection, owned: _OwnedTables, name: str, schema: str | None
 ) -> ops.ExecuteSQLOp:
+    # The copy has already dropped the table's own index, so an unqualified
+    # name would find an index of that name in an attached database.
+    schema = schema or owned.default_schema
     return ops.ExecuteSQLOp(
         f"DROP INDEX IF EXISTS {_qualified(connection, name, schema)}"
     )
@@ -415,10 +487,9 @@ def _lossy_indexes(table: Table) -> list[tuple[str, Any]]:
 
 def _add_missing_raw_indexes(
     context: MigrationContext,
-    metadata: MetaData,
-    schema: str | None,
+    owned: _OwnedTables,
     script: Any,
-    created: set[str],
+    created: set[tuple[str | None, str]],
 ) -> None:
     """Add the named raw indexes that existing tables lack to ``script``.
 
@@ -428,7 +499,7 @@ def _add_missing_raw_indexes(
     """
     connection = context.connection
     assert connection is not None
-    for table, name, ddl in _missing_raw_indexes(connection, metadata, schema, created):
+    for table, name, ddl in _missing_raw_indexes(connection, owned, created):
         script.upgrade_ops.ops.append(_execute_sql(ddl))
         script.downgrade_ops.ops.insert(
             0, ops.DropIndexOp(name, table.name, schema=table.schema)
@@ -436,19 +507,31 @@ def _add_missing_raw_indexes(
 
 
 def _missing_raw_indexes(
-    connection: Connection, metadata: MetaData, schema: str | None, created: set[str]
+    connection: Connection,
+    owned: _OwnedTables,
+    created: set[tuple[str | None, str]],
 ) -> list[tuple[Table, str, str]]:
     """The table, name and DDL of each named raw index an existing table lacks.
 
-    A table exists when the database has it and its name is not in
-    ``created``. A raw index is lacking when the table has no index of its name.
+    A table exists when the database has it in the table's schema and its
+    schema and name are not in ``created``. A schema the database lacks has
+    no tables. A raw index is lacking when the table has no index of its name.
     """
-    existing = set(inspect(connection).get_table_names(schema=schema)) - created
+    inspector = inspect(connection)
+    # Reflecting tables in a schema the database lacks raises on SQLite and
+    # MySQL, and a declared schema may not exist yet.
+    schemas = {owned.normalized(schema) for schema in inspector.get_schema_names()}
+    existing = {
+        (schema, name)
+        for schema in owned.schemas
+        if schema is None or schema in schemas
+        for name in inspector.get_table_names(schema=schema)
+    } - created
     missing: list[tuple[Table, str, str]] = []
-    for table in metadata.tables.values():
-        if table.name not in existing:
+    for (schema, table_name), table in owned.tables.items():
+        if (schema, table_name) not in existing:
             continue
-        present = _index_names(connection, table.name, schema)
+        present = _index_names(connection, table_name, schema)
         missing += [
             (table, raw.name, raw.ddl)
             for raw in _raw_indexes(table)
