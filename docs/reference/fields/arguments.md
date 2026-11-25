@@ -230,7 +230,10 @@ attributes.
 ```
 
 If the field value fails a validator, Protean raises a `ValidationError` with
-the validator's custom error message.
+the validator's custom error message. A validator that raises a dict has its
+keys joined to the field name with a dot. The
+[error shape](../../guides/domain-behavior/validations.md#error-shape) section
+lists each form.
 
 ```shell hl_lines="8"
 In [1]: e = Employee(email="john@mydomain.com")

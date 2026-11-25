@@ -17,12 +17,11 @@ from typing_extensions import TypeVar
 from protean.exceptions import (
     IncorrectUsageError,
     NotSupportedError,
-    ValidationError,
 )
 from protean.fields.association import Association, Reference
 from protean.fields.base import FieldBase
 from protean.fields.embedded import ValueObject as ValueObjectField
-from protean.fields.resolved import ResolvedField, convert_pydantic_errors
+from protean.fields.resolved import ResolvedField, validation_error_from_pydantic
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.utils import (
     DomainObjects,
@@ -225,7 +224,7 @@ class BaseQuery(Element, BaseModel, OptionsMixin, Generic[TResult]):
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:
-            raise ValidationError(convert_pydantic_errors(e)) from e
+            raise validation_error_from_pydantic(e) from e
 
         object.__setattr__(self, "_initialized", True)
 

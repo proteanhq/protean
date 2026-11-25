@@ -152,10 +152,43 @@ ValidationError: {'email': ['Invalid Email Address - jane.doe@.gmail.com']}
 ```
 
 You can attach multiple validators to a single field with the `validators`
-list. Protean runs them in order, and on a basic field such as `String` the
-first failure stops evaluation and raises the error. On a `ValueObject` or
-`Reference` field every validator runs, and the error lists the message of
-each validator that failed.
+list. Protean runs them in order. On a simple field such as `String` or
+`Integer`, the first failure stops evaluation and raises the error. On a
+`ValueObject`, `ValueObjectList` or `Reference` field, every validator runs,
+and the error holds the messages of each one that failed.
+
+### Error shape
+
+`e.messages` on the raised `ValidationError` is a plain `dict` that maps a key
+to a list of message strings, on every field kind. A validator that raises a
+string or a list of strings puts them under the field name. A validator that
+raises a dict has each of its keys joined to the field name with a dot, and a
+dict nested inside it, or inside a list, is joined the same way. An empty dict
+or list goes under the field name as its string form, so the field still
+fails. For a field named `address`:
+
+| The validator raises | `e.messages` |
+|---|---|
+| `ValidationError("has x")` | `{'address': ['has x']}` |
+| `ValidationError(["m1", "m2"])` | `{'address': ['m1', 'm2']}` |
+| `ValidationError({"code": ["a", "b"]})` | `{'address.code': ['a', 'b']}` |
+| `ValidationError({"code": {"inner": ["m"]}})` | `{'address.code.inner': ['m']}` |
+
+A code the validator passes, as in `ValidationError("has x", code="PRT-X")`,
+appears in `e.codes`. Each code appears once, however many validators raise
+it.
+
+When several fields fail while an aggregate or an entity is constructed, the
+error lists every failing simple, `ValueObject`, `ValueObjectList` and
+`Reference` field, including a value object given through its shadow fields
+such as `address_city`. An attribute assignment raises on the field being set,
+so the error holds that one field. An update through the repository's DAO
+assigns each value in turn and reports every failing field, with its codes.
+
+A value object passed as a dict is built before the aggregate's own validators
+run. When one of the value object's own fields fails, the key is that field's
+name, with no aggregate field prefix: a failing `city` on a value object passed
+to `address` gives `{'city': [...]}`.
 
 For more details on the `validators` field option and the `error_messages`
 option for customizing error text, see the

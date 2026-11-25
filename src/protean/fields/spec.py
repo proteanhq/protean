@@ -25,6 +25,7 @@ from protean.exceptions import ConfigurationError
 from protean.exceptions import ValidationError as ProteanValidationError
 from protean.fields.base import (
     EMPTY_VALUES,
+    FieldValidatorError,
     normalize_field_renamed_from,
 )
 from protean.ir.diagnostics import DiagnosticCode
@@ -560,12 +561,12 @@ def _make_protean_validators_runner(
             try:
                 validator_fn(v)
             except ProteanValidationError as e:
-                # Re-raise as ValueError so Pydantic catches it and
-                # maps it to the correct field name.
-                msg = str(e.messages) if hasattr(e, "messages") else str(e)
-                # If the validator set an error string on itself, use that
-                msg = getattr(validator_fn, "error", msg)
-                raise ValueError(msg) from e
+                # Re-raise as a ValueError so Pydantic catches it and maps
+                # it to the field name, which the converter needs to key
+                # the messages. If the validator set an error string on
+                # itself, that string replaces the messages.
+                messages = getattr(validator_fn, "error", e.messages)
+                raise FieldValidatorError(messages, e.codes) from e
         return v
 
     return _run_protean_validators

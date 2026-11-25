@@ -32,8 +32,8 @@ from protean.fields.embedded import ValueObject as ValueObjectDescriptor
 from protean.fields.embedded import ValueObject as ValueObjectField
 from protean.fields.resolved import (
     ResolvedField,
-    convert_pydantic_errors,
     custom_field_declaration,
+    validation_error_from_pydantic,
 )
 from protean.fields.spec import FieldSpec, resolve_fieldspecs
 from protean.ir.diagnostics import DiagnosticCode
@@ -357,7 +357,7 @@ class BaseValueObject(Element, BaseModel, OptionsMixin):
         try:
             super().__init__(**kwargs)
         except PydanticValidationError as e:
-            raise ValidationError(convert_pydantic_errors(e)) from e
+            raise validation_error_from_pydantic(e) from e
 
     def model_post_init(self, context: Any, /) -> None:
         if self.meta_.abstract is True:

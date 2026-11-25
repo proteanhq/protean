@@ -2,8 +2,7 @@
 
 import enum
 from abc import ABCMeta, abstractmethod
-from collections import defaultdict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any, ClassVar
 
 from protean import exceptions
@@ -259,21 +258,22 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         if value in self.empty_values:
             return
 
-        errors: defaultdict[str, list[Any]] = defaultdict(list)
+        errors: dict[str, list[str]] = {}
+        codes: list[str] = []
+        field_name = self.field_name or "unlinked"
         for validator in self.validators:
             try:
                 validator(value)
             except exceptions.ValidationError as err:
-                field_name = self.field_name or "unlinked"
-                errors[field_name].append(err.messages)
+                merge_field_messages(
+                    errors, flatten_field_messages(field_name, err.messages)
+                )
+                codes.extend(err.codes)
             except ValueError as err:
-                field_name = self.field_name or "unlinked"
-                errors[field_name].append(str(err))
+                merge_field_messages(errors, {field_name: [str(err)]})
 
         if errors:
-            # A plain dict, so a missing key raises KeyError, the same as the
-            # dict that construction raises.
-            raise exceptions.ValidationError(dict(errors))
+            raise exceptions.ValidationError(errors, codes=codes)
 
     def _clone(self) -> "Field":
         """
@@ -321,6 +321,58 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
         self._run_validators(value)
 
         return value
+
+
+class FieldValidatorError(ValueError):
+    """A field validator's ``ValidationError``, re-raised as a ``ValueError``.
+
+    Pydantic maps a ``ValueError`` from a field's validator to that field.
+    This subclass carries the validator's ``messages`` (or the ``error``
+    string set on the validator, which replaces them) and its ``codes``, so
+    the converter can rebuild them under the field's name.
+    """
+
+    def __init__(self, messages: Any, codes: list[str]) -> None:
+        super().__init__(messages if isinstance(messages, str) else str(messages))
+        self.messages = messages
+        self.codes = codes
+
+
+def flatten_field_messages(field_name: str, messages: Any) -> dict[str, list[str]]:
+    """Return a validator's ``messages`` as ``{key: [message, ...]}`` for one field.
+
+    A string or a list of strings goes under ``field_name``. A dict has each
+    key joined to ``field_name`` with a dot, and a dict nested inside it, or
+    inside a list, is flattened the same way: ``{"code": {"inner": ["m"]}}``
+    on ``b`` gives ``{"b.code.inner": ["m"]}``.
+
+    The result is never empty: an empty dict or list goes under
+    ``field_name`` as its string form, so a validator that raised always
+    fails its field.
+    """
+    flat: dict[str, list[str]] = {}
+    if isinstance(messages, Mapping):
+        for key, value in messages.items():
+            merge_field_messages(
+                flat, flatten_field_messages(f"{field_name}.{key}", value)
+            )
+    elif isinstance(messages, (list, tuple)):
+        for message in messages:
+            if isinstance(message, Mapping):
+                merge_field_messages(flat, flatten_field_messages(field_name, message))
+            else:
+                flat.setdefault(field_name, []).append(str(message))
+    if not flat:
+        flat[field_name] = [str(messages)]
+    return flat
+
+
+def merge_field_messages(
+    into: dict[str, list[str]], messages: Mapping[str, list[str]]
+) -> None:
+    """Append each list in ``messages`` to the list under the same key in ``into``."""
+    for key, values in messages.items():
+        into.setdefault(key, []).extend(values)
 
 
 # ---------------------------------------------------------------------------
