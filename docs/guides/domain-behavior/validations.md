@@ -152,8 +152,10 @@ ValidationError: {'email': ['Invalid Email Address - jane.doe@.gmail.com']}
 ```
 
 You can attach multiple validators to a single field with the `validators`
-list. Protean runs all of them in order, and the first failure stops
-evaluation and raises the error.
+list. Protean runs them in order, and on a basic field such as `String` the
+first failure stops evaluation and raises the error. On a `ValueObject` or
+`Reference` field every validator runs, and the error lists the message of
+each validator that failed.
 
 For more details on the `validators` field option and the `error_messages`
 option for customizing error text, see the

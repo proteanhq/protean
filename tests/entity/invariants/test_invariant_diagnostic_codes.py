@@ -294,6 +294,19 @@ class TestChildEntityRecursion:
         assert exc.value.location == "Inventory"
         assert set(exc.value.messages) == {"name", "price"}
 
+    def test_child_given_as_a_dict_keeps_its_code_and_location_on_construction(
+        self,
+    ):
+        with pytest.raises(ValidationError) as exc:
+            Inventory(name="Store", products=[{"name": "Widget", "price": -5.0}])
+
+        assert exc.value.code == POST
+        assert exc.value.codes == [POST]
+        # The child raises while the root is still being built, so the
+        # location is the child.
+        assert exc.value.location == "Product"
+        assert exc.value.messages == {"price": ["Price must be positive"]}
+
 
 class TestPickleRoundTrip:
     def test_codes_survive_a_pickle_round_trip(self):

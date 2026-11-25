@@ -617,12 +617,7 @@ class BaseEntity(Element, BaseModel, OptionsMixin):
         _write_shadow_values(self, shadow_kwargs)
         _rebuild_value_objects(self, descriptor_kwargs, shadow_kwargs)
 
-        # Set association/VO values via descriptors (triggers __set__).
-        # Use object.__setattr__ to invoke the descriptor protocol directly,
-        # bypassing the entity's __setattr__ which delegates to Pydantic for
-        # unknown fields (descriptors are not Pydantic model fields).
-        for name, value in descriptor_kwargs.items():
-            object.__setattr__(self, name, value)
+        _set_descriptor_values(self, descriptor_kwargs, shadow_kwargs)
 
         # Discover invariants from MRO
         self._discover_invariants()
@@ -1345,6 +1340,50 @@ def _add_missing_required_errors(
             and not _has_shadow_value(field_obj, shadow_kwargs)
         ):
             collected_errors.setdefault(field_name, []).append("is required")
+
+
+def _set_descriptor_values(
+    element: Any,
+    descriptor_kwargs: dict[str, Any],
+    shadow_kwargs: dict[str, Any],
+) -> None:
+    """Set each association or value object field given in ``descriptor_kwargs``.
+
+    Raises ``ValidationError`` when a field rejects its value. The error holds
+    every rejected field's messages and diagnostic codes, and an ``is required``
+    error for each required descriptor field not given. It keeps the rejected
+    field's ``location`` when exactly one field failed.
+    """
+    errors: dict[str, list[str]] = {}
+    failures: list[ValidationError] = []
+    for name, value in descriptor_kwargs.items():
+        try:
+            # object.__setattr__ runs the descriptor's __set__ directly. The
+            # element's own __setattr__ hands unknown names to Pydantic, and
+            # descriptors are not Pydantic model fields.
+            object.__setattr__(element, name, value)
+        except ValidationError as err:
+            # Pydantic does not wrap a Protean error raised in model_post_init,
+            # so the caller's __init__ never adds the missing required fields.
+            # Collect them here to report every field's error together.
+            by_field = (
+                err.messages if isinstance(err.messages, dict) else {name: [str(err)]}
+            )
+            for key, key_messages in by_field.items():
+                errors.setdefault(key, []).extend(key_messages)
+            failures.append(err)
+
+    if errors:
+        _add_missing_required_errors(
+            type(element), descriptor_kwargs, shadow_kwargs, errors
+        )
+        # A location names one raise site, so it carries over only when a
+        # single field failed.
+        raise ValidationError(
+            errors,
+            codes=[code for failure in failures for code in failure.codes],
+            location=failures[0].location if len(failures) == 1 else None,
+        )
 
 
 def _pop_init_context(local: threading.local) -> dict[str, Any]:

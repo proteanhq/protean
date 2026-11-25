@@ -3,11 +3,10 @@
 ## Raising `ValueError` instead of `ValidationError`
 
 Protean's validation pipeline expects `ValidationError`, and it reports it under
-the field name on every field type. Other exceptions behave differently by
-field. On a basic field such as `String`, Pydantic catches a `ValueError` and
-reports it under the field name. On a `ValueObject` field, a `ValueError` is
-reported under `_entity`, away from the field. Any other exception type, such
-as `TypeError`, propagates unhandled.
+the field name on every field type. A `ValueError` is also reported under the
+field name, on a basic field such as `String` and on a `ValueObject` field.
+Any other exception type, such as `TypeError`, propagates unhandled, so a
+validator that raises `ValidationError` keeps one rule for every failure.
 
 ```python
 # fragment
@@ -15,7 +14,7 @@ as `TypeError`, propagates unhandled.
 class PhoneValidator:
     def __call__(self, value):
         if not value.startswith("+"):
-            raise ValueError("Invalid phone")  # scoped differently by field type
+            raise ValueError("Invalid phone")  # -> {field: ["Invalid phone"]}, but a TypeError would propagate
 ```
 
 ```python
