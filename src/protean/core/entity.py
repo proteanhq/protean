@@ -1350,10 +1350,12 @@ def _set_descriptor_values(
     """Set each association or value object field given in ``descriptor_kwargs``.
 
     Raises ``ValidationError`` when a field rejects its value. The error holds
-    every rejected field's messages and an ``is required`` error for each
-    required descriptor field not given.
+    every rejected field's messages and diagnostic codes, and an ``is required``
+    error for each required descriptor field not given. It keeps the rejected
+    field's ``location`` when exactly one field failed.
     """
     errors: dict[str, list[str]] = {}
+    failures: list[ValidationError] = []
     for name, value in descriptor_kwargs.items():
         try:
             # object.__setattr__ runs the descriptor's __set__ directly. The
@@ -1369,12 +1371,19 @@ def _set_descriptor_values(
             )
             for key, key_messages in by_field.items():
                 errors.setdefault(key, []).extend(key_messages)
+            failures.append(err)
 
     if errors:
         _add_missing_required_errors(
             type(element), descriptor_kwargs, shadow_kwargs, errors
         )
-        raise ValidationError(errors)
+        # A location names one raise site, so it carries over only when a
+        # single field failed.
+        raise ValidationError(
+            errors,
+            codes=[code for failure in failures for code in failure.codes],
+            location=failures[0].location if len(failures) == 1 else None,
+        )
 
 
 def _pop_init_context(local: threading.local) -> dict[str, Any]:
