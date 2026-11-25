@@ -590,11 +590,40 @@ class ForgetfulCache(MemoryCache):
         return CacheCapabilities.LOCAL | CacheCapabilities.DURABLE
 """
 
-REGISTER_FORGETFUL_CACHE = """
+REGISTER_TEST_CACHES = """
 from protean.infra.registry import caches
 
 caches.register("forgetful", "forgetful_cache.ForgetfulCache")
 caches.register("volatile", "shared_volatile_cache.SharedVolatileCache")
+caches.register("failing_put", "failing_put_cache.FailingPutCache")
+"""
+
+FAILING_PUT_CACHE = """
+from protean.adapters.cache.memory import MemoryCache
+from protean.port.cache import CacheCapabilities
+
+
+class FailingPutCache(MemoryCache):
+    def __init__(self, name, domain, config):
+        super().__init__(name, domain, config)
+        self._closed = False
+
+    def put(self, key, value, ttl):
+        if key.startswith("durable"):
+            raise ValueError("put failed")
+        super().put(key, value, ttl)
+
+    def clear(self):
+        if self._closed:
+            raise RuntimeError("cleared after close")
+        super().clear()
+
+    def close(self):
+        self._closed = True
+
+    @property
+    def capabilities(self):
+        return CacheCapabilities.LOCAL | CacheCapabilities.DURABLE
 """
 
 SHARED_VOLATILE_CACHE = """
@@ -634,6 +663,8 @@ def cache_suite(tmp_path: Path) -> Path:
 
     ``forgetful`` gives each adapter its own store. ``volatile`` shares one
     store across its adapters and empties it when the last adapter closes.
+    ``failing_put`` raises from ``put`` for the DURABLE test's key, and raises
+    from ``clear`` once it is closed.
     """
     root = tmp_path / "conformance"
     root.mkdir()
@@ -646,7 +677,8 @@ def cache_suite(tmp_path: Path) -> Path:
     )
     (tmp_path / "forgetful_cache.py").write_text(FORGETFUL_CACHE)
     (tmp_path / "shared_volatile_cache.py").write_text(SHARED_VOLATILE_CACHE)
-    (tmp_path / "conftest.py").write_text(REGISTER_FORGETFUL_CACHE)
+    (tmp_path / "failing_put_cache.py").write_text(FAILING_PUT_CACHE)
+    (tmp_path / "conftest.py").write_text(REGISTER_TEST_CACHES)
     (tmp_path / "pytest.ini").write_text("[pytest]\naddopts = --strict-markers\n")
     return tmp_path
 
@@ -707,6 +739,34 @@ class TestTheCacheSuite:
             "test_a_second_adapter_from_the_same_config_reads_the_first_ones_writes"
         )
         assert outcomes(result)[shared_test] == "passed"
+
+    def test_leaves_the_adapter_open_for_teardown_when_the_durable_write_raises(
+        self, cache_suite
+    ):
+        result = run(
+            cache_suite,
+            "conformance/cache",
+            "--port",
+            "cache",
+            "--adapter",
+            "failing_put",
+            "--adapter-config",
+            '{"TTL": 300}',
+        )
+
+        assert result.returncode == 1, result.stdout + result.stderr
+        failed = [
+            line.split(" - ")[0].removeprefix("FAILED ")
+            for line in result.stdout.splitlines()
+            if line.startswith("FAILED ")
+        ]
+        durable_test = "test_an_entry_outlasts_the_adapter_that_wrote_it"
+        assert failed == [
+            f"conformance/cache/test_shared_and_durable.py::{durable_test}"
+        ]
+        assert "ValueError: put failed" in result.stdout
+        errors = [line for line in result.stdout.splitlines() if "ERROR " in line]
+        assert errors == []
 
 
 REGISTER_STALE_WRITE_EVENT_STORE = """
