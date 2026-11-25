@@ -1,5 +1,6 @@
 """Check what docs/reference/migration/v0-19.md says about upgrading to 0.19."""
 
+import json
 import pathlib
 import re
 from datetime import UTC, datetime
@@ -233,3 +234,20 @@ class TestEventStoreHealthMembers:
         for member in ("ping()", "health()", "get_connection()"):
             assert f"`{member}`" in section
         assert "TypeError" in section
+
+
+SCHEMA_IDS = "## The CLI envelope and scaffold schemas name their published URL"
+
+
+class TestPublishedSchemaIds:
+    @pytest.mark.parametrize(
+        "schema",
+        [
+            "src/protean/cli/schema/v0.1.0/envelope.schema.json",
+            "src/protean/scaffold/schema/v0.1.0/schema.json",
+        ],
+    )
+    def test_the_page_names_the_shipped_id(self, schema):
+        shipped = json.loads((PAGE.parents[3] / schema).read_text())["$id"]
+
+        assert f"\n- `{shipped}`\n" in _section(SCHEMA_IDS)
