@@ -12,19 +12,19 @@ Memory adapter's contention does: one ``committed`` advancing the version, then 
 against ``OCC.tla``; this pins that the SQLAlchemy path emits the matching raw
 observations.
 
-The updates go through the DAO directly rather than ``repository.add`` because
-``add`` wraps its own Unit of Work, which defers the version-guarded flush to the
-UoW commit; the standalone DAO path commits through ``SADatabase.commit``, where
-the outcome is observable.
+Most updates go through the DAO directly, so each one commits on its own
+through ``SADatabase.commit``. An update inside a Unit of Work commits through
+``SADatabase.commit`` too, when the Unit of Work commits.
 """
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from protean import Domain, UnitOfWork
 from protean.core.aggregate import BaseAggregate
 from protean.exceptions import ExpectedVersionError
-from protean.fields import Integer
+from protean.fields import Auto, Integer
 from protean.utils import occ_trace
 from tests.shared import POSTGRES_PORT, provider_adapter
 
@@ -32,6 +32,11 @@ pytestmark = [pytest.mark.postgresql, pytest.mark.no_test_domain]
 
 
 class OCCTraceCounter(BaseAggregate):
+    value = Integer(default=0)
+
+
+class OCCTraceTally(BaseAggregate):
+    id = Auto(identifier=True, increment=True)
     value = Integer(default=0)
 
 
@@ -52,12 +57,14 @@ def trace_domain():
         },
     )
     domain.register(OCCTraceCounter)
+    domain.register(OCCTraceTally)
     domain.init(traverse=False)
 
     provider = provider_adapter(domain, "default")
     with domain.domain_context():
         # Materialize the model before create_all.
         domain.repository_for(OCCTraceCounter)._dao
+        domain.repository_for(OCCTraceTally)._dao
         provider._metadata.create_all(provider._engine)
         try:
             yield domain
@@ -93,11 +100,9 @@ def test_update_emits_committed_then_conflicted(trace_domain):
     assert all(e["version_after"] == 1 for e in recorded), recorded
 
 
-def test_update_through_a_unit_of_work_records_nothing(trace_domain):
-    """Under a UnitOfWork the version-guarded flush is deferred to the UoW commit,
-    so the standalone commit path never sees the compare-and-set outcome. Both SQL emits are
-    gated on the standalone path for that reason, so a UoW update records nothing
-    rather than a half-observed event (:issue:`#1382`)."""
+def test_update_through_a_unit_of_work_records_its_commit(trace_domain):
+    """The Unit of Work commits its session through ``SADatabase.commit``, so an
+    update inside it records ``committed`` against the version it loaded."""
     repo = trace_domain.repository_for(OCCTraceCounter)
     with UnitOfWork():
         seed = OCCTraceCounter(value=0)
@@ -111,7 +116,81 @@ def test_update_through_a_unit_of_work_records_nothing(trace_domain):
             repo.add(counter)
         recorded = list(events)
 
+    assert [
+        (e["stream"], e["outcome"], e["base"], e["version_after"]) for e in recorded
+    ] == [(f"occ_trace_counter:{counter_id}", "committed", 0, 1)], recorded
+
+
+def test_an_update_to_a_row_inserted_in_the_same_unit_of_work_records_nothing(
+    trace_domain,
+):
+    """A row the Unit of Work inserted has no stored version to check, so a
+    second save of it records no ``committed`` that the stored row would
+    contradict."""
+    repo = trace_domain.repository_for(OCCTraceCounter)
+
+    with occ_trace.capture() as events:
+        with UnitOfWork():
+            counter = OCCTraceCounter(value=0)
+            repo.add(counter)
+            counter.value = 1
+            repo.add(counter)
+        recorded = list(events)
+
     assert recorded == [], recorded
+    stored = repo.get(counter.id)
+    assert (stored.value, stored._version) == (1, 0)
+
+
+def test_an_update_to_an_inserted_row_with_a_database_assigned_key_records_nothing(
+    trace_domain,
+):
+    """The database assigns an ``Auto(increment=True)`` key at flush, after
+    the insert, so the update still finds the row the Unit of Work inserted."""
+    repo = trace_domain.repository_for(OCCTraceTally)
+
+    with occ_trace.capture() as events:
+        with UnitOfWork():
+            tally = OCCTraceTally(value=0)
+            repo.add(tally)
+            assert tally.id is not None
+            tally.value = 1
+            repo.add(tally)
+        recorded = list(events)
+
+    assert recorded == [], recorded
+    stored = repo.get(tally.id)
+    assert (stored.value, stored._version) == (1, 0)
+
+
+def test_a_rejected_insert_if_absent_leaves_later_updates_of_the_row_checked(
+    trace_domain,
+):
+    """An ``insert_if_absent`` that the stored row's identifier rejects rolls
+    back only its savepoint and inserts nothing, so a later update of the
+    stored row in the same session still records its commit."""
+    repo = trace_domain.repository_for(OCCTraceCounter)
+    adapter = repo._dao._adapter
+    provider = provider_adapter(trace_domain, "default")
+    (counter_id,) = _seed_counters(trace_domain, 1)
+
+    with occ_trace.capture() as events:
+        session = provider.new_session()
+        try:
+            duplicate = adapter.database_model_cls.from_entity(
+                OCCTraceCounter(id=counter_id, value=9)
+            )
+            with pytest.raises(IntegrityError):
+                adapter.insert_if_absent(session, duplicate)
+            _stage_updates(trace_domain, session, [counter_id])
+            provider.commit(session)
+        finally:
+            session.close()
+        recorded = list(events)
+
+    assert [
+        (e["stream"], e["outcome"], e["base"], e["version_after"]) for e in recorded
+    ] == [(f"occ_trace_counter:{counter_id}", "committed", 0, 1)], recorded
 
 
 def _provoke_standalone_flush_conflict(domain, monkeypatch):
@@ -182,29 +261,32 @@ def test_standalone_flush_conflict_is_recorded_as_a_conflict(trace_domain, monke
     assert recorded[0]["version_after"] is None
 
 
-def test_a_stale_update_through_a_unit_of_work_records_nothing(trace_domain):
-    """The Unit of Work commits its session without ``SADatabase.commit``, so the
-    trace could not record that commit. A refused update inside it records no
-    ``conflicted`` either, which keeps the trace free of a conflict whose
-    winning commit it never saw."""
+def test_a_stale_update_through_a_unit_of_work_records_its_conflict(trace_domain):
+    """A stale update inside a Unit of Work is refused, records ``conflicted``
+    against the version it loaded, and raises ``ExpectedVersionError``. The
+    winning commit, also made through a Unit of Work, records ``committed``."""
     repo = trace_domain.repository_for(OCCTraceCounter)
     with UnitOfWork():
         seed = OCCTraceCounter(value=0)
         repo.add(seed)
     stale = repo.get(seed.id)
-    with UnitOfWork():
-        fresh = repo.get(seed.id)
-        fresh.value = 1
-        repo.add(fresh)
 
     with occ_trace.capture() as events:
+        with UnitOfWork():
+            fresh = repo.get(seed.id)
+            fresh.value = 1
+            repo.add(fresh)
         with pytest.raises(ExpectedVersionError):
             with UnitOfWork():
                 stale.value = 2
                 repo.add(stale)
         recorded = list(events)
 
-    assert recorded == [], recorded
+    assert [(e["outcome"], e["base"], e["version_after"]) for e in recorded] == [
+        ("committed", 0, 1),
+        ("conflicted", 0, 1),
+    ], recorded
+    assert {e["stream"] for e in recorded} == {f"occ_trace_counter:{seed.id}"}
 
 
 def _seed_counters(domain, count):

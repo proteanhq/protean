@@ -461,8 +461,9 @@ Repository.add(aggregate)
     # UoW holds session, no commit yet
 
 UnitOfWork.__exit__()
-  → session.commit()                             # your session
-  # On error: session.rollback()
+  → Provider.flush(session)                      # your session
+  → Provider.commit(session)
+  # On error: Provider.rollback(session)
 ```
 
 **Persist (standalone, no Unit of Work):**

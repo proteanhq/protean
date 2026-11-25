@@ -535,8 +535,9 @@ class UnitOfWork:
             # the memory, Message DB and sql event stores on a wrong expected
             # version. That is a concurrency conflict, not a generic
             # transaction failure, so propagate it unchanged for the
-            # version-retry machinery (mirrors the StaleDataError translation
-            # below). Without this, the generic handler would wrap it in
+            # version-retry machinery. ``SADatabase.flush`` and ``commit``
+            # translate SQLAlchemy's version conflict to it the same way.
+            # Without this, the generic handler would wrap it in
             # TransactionError.
             logger.exception("uow.commit_failed")
             set_span_error(span, exc)
@@ -547,14 +548,6 @@ class UnitOfWork:
             set_span_error(span, exc)
             raise
         except Exception as exc:
-            # A SQLAlchemy version_id_col mismatch surfaces at flush/commit as
-            # StaleDataError. That is an optimistic-concurrency conflict, not a
-            # generic transaction failure, so translate it to ExpectedVersionError
-            # (matching what the event stores raise) for the retry machinery.
-            if type(exc).__name__ == "StaleDataError":
-                logger.exception("uow.commit_failed")
-                set_span_error(span, exc)
-                raise ExpectedVersionError(str(exc)) from None
             logger.exception("uow.commit_failed")
             set_span_error(span, exc)
             raise self._transaction_error(exc, all_events) from exc
@@ -771,8 +764,8 @@ class UnitOfWork:
         self._settle_versions_on_rollback()
 
         try:
-            for session in self._sessions.values():
-                session.rollback()
+            for provider_name, session in self._sessions.items():
+                self.domain.databases[provider_name].rollback(session)
 
             logger.debug("uow.rollback_successful")
         except Exception:  # a failed rollback still resets the UoW; logged
@@ -791,14 +784,6 @@ class UnitOfWork:
     ) -> "SessionProtocol":
         new_session = self._get_session(provider_name, domain)
         self._sessions[provider_name] = new_session
-        if not new_session.is_active:
-            # ``begin()`` is an optional part of the session contract (see
-            # ``SessionProtocol``); adapters with deferred transaction start
-            # (e.g. SQLAlchemy) implement it, others (e.g. the in-memory
-            # session) do not.
-            begin = getattr(new_session, "begin", None)
-            if begin is not None:
-                begin()
         return new_session
 
     def get_session(
@@ -1042,18 +1027,17 @@ def _outbox_rows_for_event(
 
 
 def _flush_sessions(uow: UnitOfWork) -> None:
-    """Flush every session of ``uow`` that supports a flush, in provider-name order."""
+    """Flush every session of ``uow`` through its provider, in provider-name order."""
     # The in-memory session's flush checks the recorded versions and holds
     # the provider lock until commit, as the SQL row locks do, so no other
-    # commit lands in between. Sessions without a flush (Elasticsearch)
-    # check versions at commit. Flushing in provider-name order, not
-    # enlistment order, takes the held provider locks in one order in
-    # every Unit of Work, so two that enlist the same providers in
-    # opposite orders cannot deadlock.
-    for _, session in sorted(uow._sessions.items()):
-        flush = getattr(session, "flush", None)
-        if flush is not None:
-            flush()
+    # commit lands in between. A provider whose writes are final when the
+    # DAO saves (Elasticsearch) checks versions on that save and does
+    # nothing on flush. Flushing in provider-name order, not enlistment
+    # order, takes the held provider locks in one order in every Unit of
+    # Work, so two that enlist the same providers in opposite orders cannot
+    # deadlock.
+    for provider_name, session in sorted(uow._sessions.items()):
+        uow.domain.databases[provider_name].flush(session)
 
 
 def _append_events(all_events: defaultdict[str, list[Any]]) -> None:
@@ -1106,7 +1090,7 @@ def _commit_sessions(uow: UnitOfWork) -> None:
     # events, never events from rows.
     ordered = sorted(uow._sessions.items(), key=lambda item: item[0] != "default")
     for provider_name, session in ordered:
-        session.commit()
+        uow.domain.databases[provider_name].commit(session)
         # ``dropped_rows`` is an optional part of the session contract.
         uow._dropped_rows.update(getattr(session, "dropped_rows", ()))
         uow._advance_next_versions(provider_name)

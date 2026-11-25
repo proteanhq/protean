@@ -18,7 +18,8 @@ The path keeps these guarantees:
   once the write commits: at once for a standalone save, and on commit
   inside a Unit of Work.
 - Unit of Work. Inside a Unit of Work a write commits when the Unit of Work
-  does, unless the `DAO` was moved out of it with `DAO.outside_uow`. While
+  does, unless the write runs through the `DAO` that `DAO.outside_uow`
+  returns. While
   a Unit of Work is active, a saved or created aggregate enters its
   identity map as saved. A pending ``Auto(increment=True)``
   key is flushed and copied back onto the entity before the save returns.
@@ -393,7 +394,7 @@ def _save(dao: DAO, entity_obj: Any, *, apply_hooks: bool, if_absent: bool) -> A
         # would give. Under a UoW the commit advances ``_next_version``
         # instead: until then, events raised on this instance belong to
         # the version this transaction writes.
-        if dao._is_standalone and entity_obj.element_type == DomainObjects.AGGREGATE:
+        if dao.is_standalone and entity_obj.element_type == DomainObjects.AGGREGATE:
             entity_obj._next_version = entity_obj._version + 1
 
         # Track aggregate at the UoW level, to be able to perform actions on UoW commit,
@@ -446,7 +447,7 @@ def _write_insert(dao: DAO, entity_obj: Any, if_absent: bool) -> None:
         # committed (and flushed) when the scope ends, so this is UoW-only,
         # and it is skipped entirely when no auto field is pending (the
         # common client-supplied identifier).
-        if not dao._is_standalone and _has_pending_auto_field(entity_obj):
+        if not dao.is_standalone and _has_pending_auto_field(entity_obj):
             dao.provider.flush(session)
 
     # Reflect store-generated auto-increment values back onto the

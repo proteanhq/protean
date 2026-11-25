@@ -1968,11 +1968,15 @@ class SqlalchemyModel(orm.DeclarativeBase, BaseDatabaseModel):
 
 # The key in a session's ``info`` dict under which ``SADAO.update`` keeps the
 # stream and base version of each row it version-checked while ``occ_trace`` is
-# active. ``SADatabase.new_session`` sets it, so only a standalone session has
-# it: a Unit of Work commits its session directly, never through
-# ``SADatabase.commit``, so the trace could not record that commit's outcome.
+# active. ``SADatabase.new_session`` and ``SADatabase.get_session`` set it.
 # ``SADatabase`` reads the rows to record the outcome of the commit.
 _OCC_TRACE_ROWS = "protean_occ_trace_rows"
+
+# The key under which ``SADAO.insert`` keeps the schema and model of each row
+# the session's transaction inserted while ``occ_trace`` is active. An update to
+# such a row is not checked against a stored version, so ``SADAO.update``
+# records no base for it, as the memory session does for a record it created.
+_OCC_TRACE_CREATED = "protean_occ_trace_created"
 
 
 def _record_stale_conflict(rows: Mapping[str, int]) -> None:
@@ -2142,8 +2146,29 @@ class SADAO(
 
     def insert(self, session: SessionProtocol, model: typing.Any) -> typing.Any:
         """Add a new record to the sqlalchemy database"""
-        typing.cast(Session, session).add(model)
+        conn = typing.cast(Session, session)
+        conn.add(model)
+        if occ_trace.is_active() and _OCC_TRACE_ROWS in conn.info:
+            # Keep the model, not its identifier: the database assigns an
+            # ``Auto(increment=True)`` key only when the session flushes.
+            conn.info.setdefault(_OCC_TRACE_CREATED, []).append(
+                (self.schema_name, model)
+            )
         return model
+
+    def _inserted_in_transaction(
+        self, session: Session, identifier: typing.Any
+    ) -> bool:
+        """Return whether ``session``'s transaction inserted the row with
+        ``identifier`` while ``occ_trace`` was active."""
+        entity_id_field = id_field(self.entity_cls)
+        assert entity_id_field is not None
+        assert entity_id_field.attribute_name is not None
+        return any(
+            schema_name == self.schema_name
+            and getattr(model, entity_id_field.attribute_name) == identifier
+            for schema_name, model in session.info.get(_OCC_TRACE_CREATED, ())
+        )
 
     def insert_if_absent(self, session: SessionProtocol, model: typing.Any) -> bool:
         """Add ``model`` as a new row unless another row holds one of its
@@ -2211,6 +2236,11 @@ class SADAO(
                 # rolls back the savepoint and not the whole transaction.
                 self.provider.flush(session)
         except IntegrityError:
+            # The savepoint rolled back the insert, so the row with this key is
+            # another transaction's and its updates are version-checked.
+            created = session.info.get(_OCC_TRACE_CREATED)
+            if created:
+                created[:] = [entry for entry in created if entry[1] is not model]
             if not self._key_held_elsewhere(session, model):
                 raise
             return False
@@ -2300,10 +2330,11 @@ class SADAO(
         """Refuse an update whose stored row is not at ``expected_version``.
 
         While ``occ_trace`` is active and ``session`` came from
-        ``SADatabase.new_session``, a refused update records ``conflicted``,
-        and a passed check keeps the row's stream and base in ``session.info``
-        for ``SADatabase.commit`` to record the commit's outcome. A Unit of
-        Work's session records nothing.
+        ``SADatabase.new_session`` or ``SADatabase.get_session``, a refused
+        update records ``conflicted``, and a passed check keeps the row's
+        stream and base in ``session.info`` for ``SADatabase.commit`` to
+        record the commit's outcome. A row the transaction inserted records
+        nothing.
 
         Raises:
             ExpectedVersionError: The stored version differs from
@@ -2329,7 +2360,9 @@ class SADAO(
                 f"(Aggregate: {self.entity_cls.__name__}({identifier}), "
                 f"Version: {stored_version})"
             )
-        if traced_rows is not None:
+        if traced_rows is not None and not self._inserted_in_transaction(
+            session, identifier
+        ):
             # The first base seen for a row is the one the commit advances.
             traced_rows.setdefault(stream, expected_version)
 
@@ -2968,12 +3001,20 @@ class SADatabase(BaseDatabase, RawQueryDatabasePort):
         """
 
     def get_session(self) -> typing.Any:
-        """Return the cached scoped session class for this provider.
+        """Return this provider's scoped session registry, with a transaction
+        open on the calling thread's session.
 
-        The session factory and scoped session registry are created once
-        during __init__ and reused across all calls, avoiding the overhead
-        of constructing new factories on every invocation.
+        It begins the transaction only when none is open, so a second call
+        inside one transaction returns the same transaction. The session
+        records the rows its updates version-check, so `commit` and `flush`
+        report their outcome to ``occ_trace``.
         """
+        # ``is_active`` is ``True`` on a session that has not begun, so the
+        # check asks the thread's session whether a transaction is open.
+        session: Session = self._scoped_session_cls()
+        session.info.setdefault(_OCC_TRACE_ROWS, {})
+        if not session.in_transaction():
+            session.begin()
         return self._scoped_session_cls
 
     @abstractmethod
@@ -2996,9 +3037,10 @@ class SADatabase(BaseDatabase, RawQueryDatabasePort):
         """Create the connection to the Database instance"""
         # If this connection has to be created within an existing session,
         #   ``session_cls`` will be provided as an argument.
-        #   Otherwise, fetch a new ``session_cls`` from ``get_session()``
+        #   Otherwise, use the scoped session registry. ``get_session()``
+        #   would begin a transaction a raw read or a ``ping`` has no use for.
         if session_cls is None:
-            session_cls = self.get_session()
+            session_cls = self._scoped_session_cls
 
         conn = session_cls()
         conn = self._execute_database_specific_connection_statements(conn)
@@ -3032,6 +3074,7 @@ class SADatabase(BaseDatabase, RawQueryDatabasePort):
         """
         conn = typing.cast(Session, session)
         rows: dict[str, int] = conn.info.pop(_OCC_TRACE_ROWS, {})
+        conn.info.pop(_OCC_TRACE_CREATED, None)
         try:
             conn.commit()
         except StaleDataError as exc:
@@ -3046,6 +3089,7 @@ class SADatabase(BaseDatabase, RawQueryDatabasePort):
         """Roll back ``session``."""
         conn = typing.cast(Session, session)
         conn.info.pop(_OCC_TRACE_ROWS, None)
+        conn.info.pop(_OCC_TRACE_CREATED, None)
         conn.rollback()
 
     def flush(self, session: SessionProtocol) -> None:

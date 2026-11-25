@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -127,44 +127,6 @@ class TestUnitOfWorkErrorHandling:
             # Check that error was logged via logger.exception
             mock_logger.exception.assert_called_once()
             assert "uow.rollback_failed" in str(mock_logger.exception.call_args)
-
-    def test_session_initialization_when_not_active(self, test_domain):
-        """Test session initialization when session is not active"""
-        uow = UnitOfWork()
-        uow.start()
-
-        provider_name = "default"
-
-        # Mock the provider and session
-        mock_session = MagicMock()
-        mock_session.is_active = False  # This will trigger the begin() call
-        mock_session.begin = Mock()
-
-        with patch.object(uow, "_get_session", return_value=mock_session):
-            session = uow._initialize_session(provider_name)
-
-            # Verify session.begin() was called since is_active was False
-            mock_session.begin.assert_called_once()
-            assert session == mock_session
-
-    def test_session_initialization_when_already_active(self, test_domain):
-        """Test session initialization when session is already active"""
-        uow = UnitOfWork()
-        uow.start()
-
-        provider_name = "default"
-
-        # Mock the provider and session
-        mock_session = MagicMock()
-        mock_session.is_active = True  # This will skip the begin() call
-        mock_session.begin = Mock()
-
-        with patch.object(uow, "_get_session", return_value=mock_session):
-            session = uow._initialize_session(provider_name)
-
-            # Verify session.begin() was NOT called since is_active was True
-            mock_session.begin.assert_not_called()
-            assert session == mock_session
 
     def test_rollback_when_uow_not_in_progress_raises_error(self, test_domain):
         """Test that rolling back when UoW is not active raises InvalidOperationError"""

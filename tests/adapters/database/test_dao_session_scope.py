@@ -84,18 +84,32 @@ def _recording_dao(test_domain, fail_commit=False):
 class TestIsStandalone:
     def test_is_standalone_without_uow(self, test_domain):
         dao = test_domain.repository_for(StandaloneTestEntity)._dao
-        assert dao._is_standalone is True
+        assert dao.is_standalone is True
 
     def test_is_not_standalone_within_uow(self, test_domain):
         with UnitOfWork():
             dao = test_domain.repository_for(StandaloneTestEntity)._dao
-            assert dao._is_standalone is False
+            assert dao.is_standalone is False
 
     def test_is_standalone_with_outside_uow_flag(self, test_domain):
         with UnitOfWork():
             dao = test_domain.repository_for(StandaloneTestEntity)._dao
-            dao.outside_uow()
-            assert dao._is_standalone is True
+            assert dao.outside_uow().is_standalone is True
+
+    def test_outside_uow_leaves_the_dao_it_is_called_on_inside_the_uow(
+        self, test_domain
+    ):
+        with UnitOfWork():
+            dao = test_domain.repository_for(StandaloneTestEntity)._dao
+            outside = dao.outside_uow()
+            assert outside is not dao
+            assert dao.is_standalone is False
+
+    def test_the_dao_outside_uow_returns_queries_through_itself(self, test_domain):
+        dao = test_domain.repository_for(StandaloneTestEntity)._dao
+        outside = dao.outside_uow()
+        assert outside.query._owner_dao is outside
+        assert dao.query._owner_dao is dao
 
 
 class TestSessionScope:
@@ -139,8 +153,7 @@ class TestSessionScope:
         dao, provider = _recording_dao(test_domain)
 
         with UnitOfWork() as uow:
-            dao.outside_uow()
-            with dao.session_scope() as session:
+            with dao.outside_uow().session_scope() as session:
                 assert session is provider.sessions[0]
                 assert session is not uow.get_session(provider.name)
 
