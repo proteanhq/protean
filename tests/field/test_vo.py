@@ -2,9 +2,10 @@ import pytest
 
 from protean.core.aggregate import BaseAggregate
 from protean.core.entity import BaseEntity
+from protean.core.projection import BaseProjection
 from protean.core.value_object import BaseValueObject
 from protean.exceptions import IncorrectUsageError, ValidationError
-from protean.fields import String, ValueObject
+from protean.fields import Identifier, Reference, String, ValueObject
 from protean.fields.embedded import _ShadowField
 from protean.utils.reflection import fields
 
@@ -261,8 +262,11 @@ class TestValueObjectFieldEdgeCases:
 
 
 class _RaisesValueError:
+    def __init__(self, message="rejected"):
+        self.message = message
+
     def __call__(self, value):
-        raise ValueError("rejected")
+        raise ValueError(self.message)
 
 
 class _RaisesValidationError:
@@ -300,6 +304,7 @@ class TestValueObjectFieldValidatorErrors:
             account_cls(email=email_cls(address="a"))
 
         assert exc.value.messages == {"email": ["rejected"]}
+        assert type(exc.value.messages) is dict
         assert "_entity" not in exc.value.messages
 
     def test_value_error_on_assignment_is_reported_under_field_name(
@@ -314,6 +319,7 @@ class TestValueObjectFieldValidatorErrors:
             account.email = email_cls(address="a")
 
         assert exc.value.messages == {"email": ["rejected"]}
+        assert type(exc.value.messages) is dict
 
     def test_value_error_on_update_data_is_reported_under_field_name(
         self, test_domain, email_cls
@@ -339,3 +345,93 @@ class TestValueObjectFieldValidatorErrors:
             account_cls(email=email_cls(address="a"))
 
         assert exc.value.messages == {"email": ["rejected"]}
+
+    def test_every_validator_message_is_reported_in_order(self, test_domain, email_cls):
+        @test_domain.aggregate
+        class Account(BaseAggregate):
+            email = ValueObject(
+                email_cls,
+                validators=[
+                    _RaisesValueError("a"),
+                    _RaisesValidationError(),
+                    _RaisesValueError("b"),
+                ],
+            )
+
+        test_domain.init(traverse=False)
+
+        with pytest.raises(ValidationError) as exc:
+            Account(email=email_cls(address="a"))
+
+        assert exc.value.messages == {"email": ["a", "rejected", "b"]}
+
+    def test_missing_required_sibling_is_reported_with_the_validator_error(
+        self, test_domain, email_cls
+    ):
+        @test_domain.aggregate
+        class Account(BaseAggregate):
+            email = ValueObject(email_cls, validators=[_RaisesValueError()])
+            backup = ValueObject(email_cls, required=True)
+
+        test_domain.init(traverse=False)
+
+        with pytest.raises(ValidationError) as exc:
+            Account(email=email_cls(address="a"))
+
+        assert exc.value.messages == {
+            "email": ["rejected"],
+            "backup": ["is required"],
+        }
+
+    def test_missing_required_sibling_is_reported_on_a_projection(
+        self, test_domain, email_cls
+    ):
+        @test_domain.projection
+        class AccountView(BaseProjection):
+            account_id = Identifier(identifier=True)
+            email = ValueObject(email_cls, validators=[_RaisesValueError()])
+            backup = ValueObject(email_cls, required=True)
+
+        test_domain.init(traverse=False)
+
+        with pytest.raises(ValidationError) as exc:
+            AccountView(account_id="1", email=email_cls(address="a"))
+
+        assert exc.value.messages == {
+            "email": ["rejected"],
+            "backup": ["is required"],
+        }
+
+
+class TestReferenceFieldValidatorErrors:
+    """A validator's ``ValueError`` on a ``Reference`` field is reported under the field name."""
+
+    @pytest.fixture
+    def post_cls(self, test_domain):
+        @test_domain.aggregate
+        class Owner(BaseAggregate):
+            name: String()
+
+        @test_domain.entity(part_of=Owner)
+        class Post(BaseEntity):
+            owner = Reference(Owner, validators=[_RaisesValueError()])
+
+        test_domain.init(traverse=False)
+        return Owner, Post
+
+    def test_value_error_on_construction_is_reported_under_field_name(self, post_cls):
+        owner_cls, post_cls = post_cls
+
+        with pytest.raises(ValidationError) as exc:
+            post_cls(owner=owner_cls(name="a"))
+
+        assert exc.value.messages == {"owner": ["rejected"]}
+
+    def test_value_error_on_assignment_is_reported_under_field_name(self, post_cls):
+        owner_cls, post_cls = post_cls
+        post = post_cls()
+
+        with pytest.raises(ValidationError) as exc:
+            post.owner = owner_cls(name="a")
+
+        assert exc.value.messages == {"owner": ["rejected"]}

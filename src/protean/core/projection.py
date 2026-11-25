@@ -15,6 +15,7 @@ from protean.core.entity import (
     _init_value_object_shadows,
     _pop_init_context,
     _rebuild_value_objects,
+    _set_descriptor_values,
     _split_init_values,
     _value_object_shadow_names,
     _write_shadow_values,
@@ -314,10 +315,7 @@ class BaseProjection(Element, BaseModel, OptionsMixin):
         _write_shadow_values(self, shadow_kwargs)
         _rebuild_value_objects(self, descriptor_kwargs, shadow_kwargs)
 
-        # Set VO values via descriptors (triggers __set__ which populates
-        # shadow fields and the VO instance in __dict__).
-        for name, value in descriptor_kwargs.items():
-            object.__setattr__(self, name, value)
+        _set_descriptor_values(self, descriptor_kwargs, shadow_kwargs)
 
         _init_value_object_shadows(self)
 

@@ -271,7 +271,9 @@ class Field(FieldBase, FieldDescriptorMixin, metaclass=ABCMeta):
                 errors[field_name].append(str(err))
 
         if errors:
-            raise exceptions.ValidationError(errors)
+            # A plain dict, so a missing key raises KeyError, the same as the
+            # dict that construction raises.
+            raise exceptions.ValidationError(dict(errors))
 
     def _clone(self) -> "Field":
         """
