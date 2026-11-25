@@ -131,7 +131,8 @@ aggregates, the commands that `domain.process()` stores, process manager
 transitions, and the rows of state-based aggregates and the outbox rows in
 the `default` database. A raise before the commit leaves none of them in the
 database. An aggregate on another database commits in that database's own
-transaction.
+transaction, after the `default` transaction. A failure between the two
+commits leaves the events stored and the other database's rows missing.
 
 Inside a Unit of Work, the store holds each message until the commit, and
 `write_message` returns `None` in place of the stream position. At the

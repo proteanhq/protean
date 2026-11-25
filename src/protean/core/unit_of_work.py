@@ -1098,7 +1098,14 @@ def _commit_sessions(uow: UnitOfWork) -> None:
     # Advance versions as each provider commits: if a later provider
     # fails, the rollback must not rewind aggregates whose write is
     # already durable.
-    for provider_name, session in uow._sessions.items():
+    #
+    # ``default`` commits first. A sql event store that shares it enlists it
+    # last, at the pre-commit append, and its events must be durable before
+    # another provider's rows, as an event store that writes outside the
+    # transaction makes them. Reconciliation rebuilds outbox rows from
+    # events, never events from rows.
+    ordered = sorted(uow._sessions.items(), key=lambda item: item[0] != "default")
+    for provider_name, session in ordered:
         session.commit()
         # ``dropped_rows`` is an optional part of the session contract.
         uow._dropped_rows.update(getattr(session, "dropped_rows", ()))
