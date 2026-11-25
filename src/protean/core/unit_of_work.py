@@ -13,7 +13,12 @@ from protean.exceptions import (
 )
 from protean.port.database import DatabaseCapabilities
 from protean.utils import Processing
-from protean.utils.globals import _uow_context_stack, current_domain, g
+from protean.utils.globals import (
+    _quiet_find_domain,
+    _uow_context_stack,
+    current_domain,
+    g,
+)
 from protean.utils.processing import current_priority
 from protean.utils.reflection import id_field
 from protean.utils.sync_dispatch import dispatch_events_sync
@@ -25,6 +30,7 @@ from protean.utils.telemetry import (
 
 if TYPE_CHECKING:
     from protean.core.aggregate import BaseAggregate
+    from protean.domain import Domain
     from protean.port.database import SessionProtocol
     from protean.utils.outbox import Outbox, OutboxRepository
 
@@ -104,9 +110,11 @@ class UnitOfWork:
 
     In a domain with ``command_processing = "sync"``, a command processed with
     ``domain.process(command, asynchronous=True)`` inside the block is stored
-    at once and handled after the block commits, in its own UnitOfWork. The
-    deferred commands run in the order they were processed, after the sync
-    event handlers of this commit. When this UnitOfWork commits inside a sync
+    at once and handled after the block commits, in its own UnitOfWork. A
+    ``sql`` event store that shares the ``default`` database stores it at the
+    commit instead, so a rollback discards it. The deferred commands run in
+    the order they were processed, after the sync event handlers of this
+    commit. When this UnitOfWork commits inside a sync
     event handler, its events wait for the dispatch already running, so its
     deferred commands run before their handlers. A command that a sync event
     handler defers belongs to the handler's own UnitOfWork, so it runs before
@@ -132,6 +140,10 @@ class UnitOfWork:
         # Identifies the transaction in progress. A UnitOfWork can be started
         # again after it ends, so the object alone does not.
         self._transaction: object | None = None
+        # The domain active when the transaction started. ``domain`` follows
+        # the domain context, so it cannot tell which domain's databases this
+        # transaction writes to once another domain's context is pushed.
+        self._started_in: Domain | None = None
 
         # A UnitOfWork started while another is already active on this context is
         # a participant in the outer transaction (see ``start``). ``_nested`` marks
@@ -146,6 +158,13 @@ class UnitOfWork:
         # Work that must happen only once this transaction's writes are durable
         # (see ``run_after_commit``). A rollback discards it.
         self._after_commit: list[Callable[[], None]] = []
+
+        # Writes that must join this transaction at commit, after the
+        # aggregate events go to the event store and before the outbox rows
+        # are saved.
+        # A shared SQL event store registers one here to insert the messages it
+        # held. A rollback discards them.
+        self._before_commit: list[Callable[[], None]] = []
 
         # Commands processed with ``asynchronous=True`` inside this transaction
         # in a sync domain. Each runs once this transaction has committed, in
@@ -327,6 +346,7 @@ class UnitOfWork:
             return
 
         self._transaction = object()
+        self._started_in = _quiet_find_domain()
 
         # Log transaction capability warnings for each configured provider
         for provider_name, provider in self.domain.databases.items():
@@ -413,6 +433,20 @@ class UnitOfWork:
 
             self._do_commit(span)
 
+    def _run_before_commit(self) -> None:
+        """Run every pre-commit callback in the order registered.
+
+        An exception propagates, so the commit fails and every session rolls
+        back. An event that a store outside the sessions already wrote stays
+        written.
+        """
+        # Index the list instead of iterating it, so a callback registered by
+        # an earlier one still runs.
+        index = 0
+        while index < len(self._before_commit):
+            self._before_commit[index]()
+            index += 1
+
     def _run_after_commit(self) -> None:
         """Run every after-commit callback, logging each ``Exception`` it raises."""
         for callback in self._after_commit:
@@ -449,16 +483,20 @@ class UnitOfWork:
         # Process each provider session separately
         try:
             # Append events to the event store FIRST, while this UnitOfWork is
-            # still the active context, so the event store is the durable anchor
-            # of the commit: a crash before the relational commit leaves the
-            # events durable, and reconciliation rebuilds the outbox rows of
-            # event-sourced aggregates' events, rather than leaving the store
-            # missing a committed event. See ADR-0015.
+            # still the active context. An event store that writes outside this
+            # transaction is then the durable anchor of the commit: a crash
+            # before the relational commit leaves the events durable, and
+            # reconciliation rebuilds the outbox rows of event-sourced
+            # aggregates' events, rather than leaving the store missing a
+            # committed event. See ADR-0015.
             #
-            # The built-in event stores (memory, message-db, sql) write the append
-            # directly, outside this transaction. A genuine optimistic-concurrency
-            # conflict still raises and is re-driven by the handler-level version
-            # retry, which reloads the aggregate cleanly.
+            # The memory and message-db event stores, and a sql event store on
+            # its own database, write the append directly, outside this
+            # transaction. A sql event store that shares the ``default``
+            # database holds the appends and writes them in the pre-commit
+            # callbacks, inside this transaction. Either way, a genuine
+            # optimistic-concurrency conflict raises and is re-driven by the
+            # handler-level version retry, which reloads the aggregate cleanly.
             #
             # The append also runs before the outbox rows are saved. Outbox rows
             # carry the event's message id, which for an event-sourced aggregate
@@ -473,6 +511,7 @@ class UnitOfWork:
             # autoflush after the append.
             _flush_sessions(self)
             _append_events(all_events)
+            self._run_before_commit()
             _save_outbox_rows(outbox_rows)
             _commit_sessions(self)
 
@@ -685,6 +724,7 @@ class UnitOfWork:
         self._identity_map = defaultdict(dict)
         self._saved = set()
         self._after_commit = []
+        self._before_commit = []
         self._deferred_commands = []
         self._pending_idempotency_results = {}
         self._in_progress = False
@@ -740,12 +780,16 @@ class UnitOfWork:
 
         self._reset()
 
-    def _get_session(self, provider_name: str) -> "SessionProtocol":
-        provider = self.domain.databases[provider_name]
+    def _get_session(
+        self, provider_name: str, domain: "Domain | None" = None
+    ) -> "SessionProtocol":
+        provider = (domain or self.domain).databases[provider_name]
         return provider.get_session()
 
-    def _initialize_session(self, provider_name: str) -> "SessionProtocol":
-        new_session = self._get_session(provider_name)
+    def _initialize_session(
+        self, provider_name: str, domain: "Domain | None" = None
+    ) -> "SessionProtocol":
+        new_session = self._get_session(provider_name, domain)
         self._sessions[provider_name] = new_session
         if not new_session.is_active:
             # ``begin()`` is an optional part of the session contract (see
@@ -757,12 +801,18 @@ class UnitOfWork:
                 begin()
         return new_session
 
-    def get_session(self, provider_name: str) -> "SessionProtocol":
-        """Get session for provider, initializing one if it doesn't exist"""
+    def get_session(
+        self, provider_name: str, *, domain: "Domain | None" = None
+    ) -> "SessionProtocol":
+        """Get session for provider, initializing one if it doesn't exist.
+
+        A new session comes from ``domain``'s provider, or from the active
+        domain's when ``domain`` is None.
+        """
         if provider_name in self._sessions:
             return self._sessions[provider_name]
         else:
-            return self._initialize_session(provider_name)
+            return self._initialize_session(provider_name, domain)
 
     @staticmethod
     def _extract_partition_key(
@@ -1048,7 +1098,14 @@ def _commit_sessions(uow: UnitOfWork) -> None:
     # Advance versions as each provider commits: if a later provider
     # fails, the rollback must not rewind aggregates whose write is
     # already durable.
-    for provider_name, session in uow._sessions.items():
+    #
+    # ``default`` commits first. A sql event store that shares it enlists it
+    # last, at the pre-commit append, and its events must be durable before
+    # another provider's rows, as an event store that writes outside the
+    # transaction makes them. Reconciliation rebuilds outbox rows from
+    # events, never events from rows.
+    ordered = sorted(uow._sessions.items(), key=lambda item: item[0] != "default")
+    for provider_name, session in ordered:
         session.commit()
         # ``dropped_rows`` is an optional part of the session contract.
         uow._dropped_rows.update(getattr(session, "dropped_rows", ()))

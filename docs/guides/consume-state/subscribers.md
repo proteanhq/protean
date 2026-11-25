@@ -131,9 +131,11 @@ again. Two subscribers on the same stream keep separate markers.
 
 The rollback covers writes made through repositories on the subscriber's
 `database`. It does not cover a command the subscriber issues with
-`domain.process`: that call stores the command in the event store at once, and
-an event store that writes outside the unit of work, such as Message DB, keeps
-it after a rollback. A redelivery after a raise then issues the command again.
+`domain.process` on an event store that writes outside the unit of work, such
+as Message DB: that call stores the command in the event store at once, and the
+store keeps it after a rollback. A redelivery after a raise then issues the
+command again. A `sql` event store that shares the `default` database holds
+the command until the unit of work commits, so a rollback discards it.
 It also does not cover side effects outside the database, such as an HTTP call.
 Write the handlers of such commands, and any such side effects, so that they are
 safe to repeat.

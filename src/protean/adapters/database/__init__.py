@@ -95,6 +95,9 @@ class Databases(collections.abc.MutableMapping[str, BaseDatabase]):
     def __init__(self, domain: "Domain") -> None:
         self.domain = domain
         self._databases: dict[str, BaseDatabase] | None = None
+        # False after ``_initialize(connect=False)``. An adapter built after
+        # the providers reads it to skip its own connection checks.
+        self._connect = True
 
         # Recognized Repositories are memoized within providers
         # for subsequent calls. The outer key is the aggregate's fully
@@ -170,6 +173,7 @@ class Databases(collections.abc.MutableMapping[str, BaseDatabase]):
         # Close existing providers before re-initializing to prevent
         # connection leaks (e.g., when domain.init() is called again).
         self.close()
+        self._connect = connect
 
         configured_providers = self.domain.config["databases"]
         provider_objects: dict[str, BaseDatabase] = {}

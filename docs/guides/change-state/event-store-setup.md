@@ -61,8 +61,17 @@ database_uri = "${MESSAGEDB_URL}"
 
 ### SQL (SQLite or PostgreSQL)
 
-The `sql` event store needs the `sqlite` or `postgresql` extra and a
-`database_uri`:
+The `sql` event store needs the `sqlite` or `postgresql` extra. Without a
+`database_uri`, it shares the `default` database. Its writes inside a Unit of
+Work commit with the Unit of Work, and a write outside one commits at once:
+
+```toml
+[event_store]
+provider = "sql"
+```
+
+With a `database_uri`, it keeps its tables in that database and commits each
+write at once:
 
 ```toml
 [event_store]

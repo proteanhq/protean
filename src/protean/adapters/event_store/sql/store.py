@@ -1,4 +1,8 @@
-"""The SQL event store on its own SQLite file or PostgreSQL database.
+"""The SQL event store on a SQLite file or a PostgreSQL database.
+
+With ``database_uri`` the store has its own database. Without it, the store
+shares the ``default`` database provider's engine, and inside a Unit of Work
+its writes join the Unit of Work's transaction.
 
 PostgreSQL lock key
 -------------------
@@ -13,12 +17,15 @@ compute the same key.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import logging
-from collections.abc import Mapping
+from collections.abc import Collection, Iterator, Mapping
+from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 from uuid import uuid4
+from weakref import WeakKeyDictionary
 
 try:
     from sqlalchemy import (
@@ -46,6 +53,7 @@ except ImportError as exc:
 
 from protean.adapters.database.sqlalchemy import (
     POSTGRESQL_ENGINE_DEFAULTS,
+    SADatabase,
     _custom_json_dumps,
     queue_pool_stats,
     resolve_postgresql_url,
@@ -54,9 +62,11 @@ from protean.adapters.event_store.sql.schema import (
     STREAM_POSITION_CONSTRAINT,
     build_tables,
 )
+from protean.core.unit_of_work import UnitOfWork, _uow_stack
 from protean.exceptions import (
     ConfigurationError,
     ExpectedVersionError,
+    InvalidOperationError,
     NotSupportedError,
 )
 from protean.port.event_store import (
@@ -68,6 +78,8 @@ from protean.port.event_store import (
 from protean.utils.globals import _domain_now
 
 if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
     from protean.domain import Domain
 
 logger = logging.getLogger(__name__)
@@ -112,8 +124,13 @@ _UNSAFE_ISOLATION_LEVELS: dict[str, dict[str, str]] = {
 _SNAPSHOT_MARKER = ":snapshot-"
 
 # The execution option that makes a SQLite transaction start with
-# ``BEGIN IMMEDIATE``. Only writes set it.
+# ``BEGIN IMMEDIATE``. On the store's own file, only writes set it.
 _BEGIN_IMMEDIATE = "sqlite_begin_immediate"
+
+# How long a SQLite connection waits for another connection's write lock
+# before it fails with ``database is locked``. The connect listener reads it
+# when each connection opens.
+_SQLITE_BUSY_TIMEOUT_MS = 5000
 
 # The text SQLite gives a violation of ``uq_messages_stream_position``.
 _SQLITE_STREAM_POSITION_VIOLATION = (
@@ -138,21 +155,33 @@ def _category(stream_name: str) -> str:
     return stream_name.partition("-")[0]
 
 
-def _store_url(name: str, config: Mapping[str, Any]) -> URL:
+class _Append(NamedTuple):
+    """One message to append to the ``messages`` table."""
+
+    stream_name: str
+    message_type: str
+    data: dict[str, Any]
+    metadata: dict[str, Any] | None
+    expected_version: int | None
+
+
+class _Held:
+    """The messages a shared store holds for one Unit of Work transaction."""
+
+    def __init__(self, transaction: object) -> None:
+        self.transaction = transaction
+        self.messages: list[_Append] = []
+        self.written = False
+
+
+def _store_url(name: str, uri: str) -> URL:
     """Return the parsed ``database_uri``.
 
     Raises:
-        ConfigurationError: When ``database_uri`` is missing or unparseable,
-            names a database other than SQLite or PostgreSQL, or is an
-            in-memory SQLite database.
+        ConfigurationError: When ``database_uri`` is unparseable, names a
+            database other than SQLite or PostgreSQL, or is an in-memory
+            SQLite database.
     """
-    uri = config.get("database_uri")
-    if not uri:
-        raise ConfigurationError(
-            f"Event store '{name}' uses provider 'sql' without a database_uri. "
-            "Set database_uri under [event_store] to a sqlite:/// file URL or "
-            "a postgresql:// URL."
-        )
     try:
         url = make_url(uri)
     # make_url raises ArgumentError for a malformed URI and ValueError for a
@@ -177,12 +206,78 @@ def _store_url(name: str, config: Mapping[str, Any]) -> URL:
     return url
 
 
+def _shared_provider(
+    name: str, domain: Domain, config: Mapping[str, Any]
+) -> SADatabase:
+    """Return the ``default`` database provider, which the store shares.
+
+    Raises:
+        ConfigurationError: When ``schema`` is set, when the ``default``
+            provider is not a SQLAlchemy provider on SQLite or PostgreSQL or
+            is an in-memory SQLite database, or when its isolation level is
+            unsafe for the database.
+    """
+    if "schema" in config:
+        raise ConfigurationError(
+            f"Event store '{name}' sets schema without a database_uri. A store "
+            "that shares the 'default' database uses that database's schema. "
+            "Remove the schema key, or set database_uri to give the store its "
+            "own database."
+        )
+    provider = domain.databases["default"]
+    if not isinstance(provider, SADatabase) or provider.database_type not in _BACKENDS:
+        raise ConfigurationError(
+            f"Event store '{name}' uses provider 'sql' without a database_uri, "
+            "so it shares the 'default' database, and that database uses "
+            f"provider '{provider.config.get('provider')}'. The sql event store "
+            f"shares a 'default' database on {' or '.join(_BACKENDS)}. Set "
+            "database_uri under [event_store] to give the store its own database."
+        )
+    if provider.database_type == "sqlite" and _is_in_memory(provider._engine.url):
+        raise ConfigurationError(
+            f"Event store '{name}' shares the 'default' database, which is an "
+            "in-memory SQLite database. The sql event store needs a SQLite "
+            "file, such as sqlite:///app.db. Set database_uri under "
+            "[event_store] to give the store its own SQLite file."
+        )
+    subject = f"Database 'default', which event store '{name}' shares,"
+    _check_isolation_level(subject, provider.database_type, provider.config)
+    # A domain initialized with ``connect=False`` renders SQL offline, so the
+    # database may be unreachable.
+    if provider.database_type == "postgresql" and domain.databases._connect:
+        _check_connection_isolation_level(subject, provider._engine)
+    return provider
+
+
+def _check_connection_isolation_level(subject: str, engine: Engine) -> None:
+    """Raise ``ConfigurationError`` unless ``engine``'s connections run a safe
+    PostgreSQL isolation level.
+
+    The level is read from a connection, so a level set in ``connect_args``,
+    on the role or on the server is checked too.
+    """
+    with engine.connect() as conn:
+        level = str(conn.exec_driver_sql("SHOW transaction_isolation").scalar())
+    normalized = level.upper()
+    if normalized in _SAFE_ISOLATION_LEVELS["postgresql"]:
+        return
+    reason = _UNSAFE_ISOLATION_LEVELS["postgresql"].get(
+        normalized, "postgresql does not run this level"
+    )
+    raise ConfigurationError(
+        f"{subject} runs its connections at isolation level {level!r}, which "
+        f"the sql event store refuses: {reason}. Set the level to READ "
+        "COMMITTED."
+    )
+
+
 def _is_in_memory(url: URL) -> bool:
     database = url.database or ""
     return (
         database in ("", ":memory:")
         or database.startswith("file::memory:")
         or url.query.get("mode") == "memory"
+        or url.query.get("vfs") == "memdb"
     )
 
 
@@ -211,17 +306,19 @@ def _schema(name: str, backend: str, config: Mapping[str, Any]) -> str | None:
     return schema
 
 
-def _check_isolation_level(name: str, backend: str, config: Mapping[str, Any]) -> None:
+def _check_isolation_level(
+    subject: str, backend: str, config: Mapping[str, Any]
+) -> None:
     """Raise ``ConfigurationError`` unless the config's isolation level is safe.
 
     The level is read from ``isolation_level`` and from
     ``execution_options.isolation_level``. ``execution_options`` must be a
-    table.
+    table. ``subject`` names the config in the message.
     """
     execution_options = config.get("execution_options", {})
     if not isinstance(execution_options, Mapping):
         raise ConfigurationError(
-            f"Event store '{name}' has execution_options "
+            f"{subject} has execution_options "
             f"{execution_options!r}. Set execution_options to a table."
         )
     levels = [config.get("isolation_level"), execution_options.get("isolation_level")]
@@ -235,7 +332,7 @@ def _check_isolation_level(name: str, backend: str, config: Mapping[str, Any]) -
             normalized, f"{backend} does not run this level"
         )
         raise ConfigurationError(
-            f"Event store '{name}' sets isolation level {level!r} on "
+            f"{subject} sets isolation level {level!r} on "
             f"{backend}, which the sql event store refuses: {reason}."
         )
 
@@ -262,33 +359,46 @@ def _engine_args(backend: str, config: Mapping[str, Any]) -> dict[str, Any]:
     return args
 
 
-def _install_sqlite_settings(engine: Engine) -> None:
+def _on_sqlite_connect(dbapi_connection: Any, _record: Any) -> None:
+    # The driver's own transaction handling is off, so the ``begin``
+    # listener emits every ``BEGIN``.
+    dbapi_connection.isolation_level = None
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA journal_mode = WAL")
+        cursor.execute(f"PRAGMA busy_timeout = {int(_SQLITE_BUSY_TIMEOUT_MS)}")
+    finally:
+        cursor.close()
+
+
+def _begin_as_requested(conn: Connection) -> None:
+    if conn.get_execution_options().get(_BEGIN_IMMEDIATE):
+        conn.exec_driver_sql("BEGIN IMMEDIATE")
+    else:
+        conn.exec_driver_sql("BEGIN")
+
+
+def _begin_immediate(conn: Connection) -> None:
+    conn.exec_driver_sql("BEGIN IMMEDIATE")
+
+
+def _install_sqlite_settings(engine: Engine, *, shared: bool = False) -> None:
     """Set WAL and the busy timeout, and start writes with ``BEGIN IMMEDIATE``.
 
     SQLAlchemy's documented recipe for pysqlite: the driver's own transaction
     handling is turned off on connect, and the ``begin`` event emits the
-    ``BEGIN``. A transaction on a connection with the ``_BEGIN_IMMEDIATE``
-    execution option takes the write lock at its start. Any other transaction
-    starts with a plain ``BEGIN``, so under WAL a read runs while another
-    connection writes.
+    ``BEGIN``. With ``shared``, every transaction on the engine starts with
+    ``BEGIN IMMEDIATE``, because a Unit of Work's session reads and writes on
+    one connection. Otherwise only a transaction on a connection with the
+    ``_BEGIN_IMMEDIATE`` execution option does, and any other starts with a
+    plain ``BEGIN``, so under WAL a read runs while another connection writes.
+
+    An engine that already has the settings is left as it is.
     """
-
-    @event.listens_for(engine, "connect")
-    def _on_connect(dbapi_connection: Any, _record: Any) -> None:
-        dbapi_connection.isolation_level = None
-        cursor = dbapi_connection.cursor()
-        try:
-            cursor.execute("PRAGMA journal_mode = WAL")
-            cursor.execute("PRAGMA busy_timeout = 5000")
-        finally:
-            cursor.close()
-
-    @event.listens_for(engine, "begin")
-    def _on_begin(conn: Connection) -> None:
-        if conn.get_execution_options().get(_BEGIN_IMMEDIATE):
-            conn.exec_driver_sql("BEGIN IMMEDIATE")
-        else:
-            conn.exec_driver_sql("BEGIN")
+    if event.contains(engine, "connect", _on_sqlite_connect):
+        return
+    event.listen(engine, "connect", _on_sqlite_connect)
+    event.listen(engine, "begin", _begin_immediate if shared else _begin_as_requested)
 
 
 def _is_stream_position_violation(exc: IntegrityError) -> bool:
@@ -356,24 +466,46 @@ def _raw_message(row: Row[Any], global_position: int | None = None) -> RawMessag
 class SqlEventStore(EventStorePort):
     """An event store on a SQLite file or a PostgreSQL database.
 
-    ``database_uri`` selects the database by its scheme, ``sqlite`` or
-    ``postgresql``. Events live in ``messages`` and snapshots in ``snapshots``.
-    Each write commits on its own connection, as on Message DB.
+    Events live in ``messages`` and snapshots in ``snapshots``.
+
+    With ``database_uri``, the store has its own database, which the URL's
+    scheme selects, ``sqlite`` or ``postgresql``. Each write commits on its
+    own connection, as on Message DB.
+
+    Without ``database_uri``, the store shares the engine of the ``default``
+    database provider, which must be a SQLAlchemy provider on a SQLite file or
+    PostgreSQL. The tables go in that provider's schema. Inside a Unit of
+    Work, the store holds each appended message and ``write_message`` returns
+    ``None``. At commit, after the Unit of Work passes its aggregate events to
+    the store, which holds them too, and before the outbox rows are saved, the
+    store writes every held message on the Unit of Work's session for
+    ``default``, so the messages commit or roll back with it.
+    Snapshot writes and reads inside a Unit of Work run on that session too.
+    Outside a Unit of Work, each write commits in its own transaction. On a
+    shared SQLite file, every transaction starts with ``BEGIN IMMEDIATE``.
 
     A write takes the category lock, reads the stream's last position, checks
     the expected version and inserts, in one transaction. On PostgreSQL the
     lock is ``pg_advisory_xact_lock`` with the key the module docstring
-    defines. On SQLite the write lock ``BEGIN IMMEDIATE`` takes is the lock.
+    defines, and the held messages of a Unit of Work take their category
+    locks in key order. On SQLite the write lock ``BEGIN IMMEDIATE`` takes is
+    the lock.
 
     Raises:
-        ConfigurationError: At construction, when ``database_uri`` is missing
-            or unparseable, names a database other than SQLite or PostgreSQL,
+        ConfigurationError: At construction, when ``database_uri`` is not
+            a string, is unparseable, names a database other than SQLite or PostgreSQL,
             or is an in-memory SQLite database; when ``schema`` is set on
             SQLite, or on PostgreSQL is not a string, or is empty or only
             whitespace; when
             ``execution_options`` is not a table; when the isolation level is
             unsafe for the database; or when the PostgreSQL driver cannot be
-            imported.
+            imported. Without ``database_uri``: when ``schema`` is set, when
+            the ``default`` database is not a SQLAlchemy provider on SQLite or
+            PostgreSQL or is an in-memory SQLite database, or when its
+            isolation level is unsafe for the database.
+        ExpectedVersionError: From ``write_message`` outside a Unit of Work,
+            and from the Unit of Work's commit for a held message, when the
+            expected version is not the stream's current version.
         ValueError: On a read with a negative ``limit``.
     """
 
@@ -382,26 +514,59 @@ class SqlEventStore(EventStorePort):
         self.domain = domain
         self.config = config
 
-        url = _store_url(name, config)
-        self._backend = url.get_backend_name()
-        self._schema = _schema(name, self._backend, config)
-        _check_isolation_level(name, self._backend, config)
-        if self._backend == "postgresql":
-            url = resolve_postgresql_url(url, name, kind="Event store")
-
-        self._engine = create_engine(
-            url,
-            json_serializer=_custom_json_dumps,
-            **_engine_args(self._backend, config),
-        )
-        if self._backend == "sqlite":
-            _install_sqlite_settings(self._engine)
+        uri = config.get("database_uri")
+        if uri is not None and not isinstance(uri, str):
+            raise ConfigurationError(
+                f"Event store '{name}' has a database_uri that is not a string: "
+                f"{uri!r}."
+            )
+        self._shared = not uri
+        if uri:
+            self._engine = self._own_engine(uri)
+        else:
+            self._engine = self._shared_engine()
         # Writes go through this engine. It shares the pool and listeners of
-        # ``_engine``; on SQLite its transactions start with BEGIN IMMEDIATE.
+        # ``_engine``. On SQLite its transactions start with BEGIN IMMEDIATE.
         self._write_engine = self._engine.execution_options(**{_BEGIN_IMMEDIATE: True})
 
         self._metadata = MetaData(schema=self._schema)
         self._messages, self._snapshots = build_tables(self._metadata)
+
+        # The messages held for each Unit of Work, with the transaction they
+        # belong to. A Unit of Work can be started again, so a held list
+        # counts only while its transaction is the one in progress.
+        self._held: WeakKeyDictionary[UnitOfWork, _Held] = WeakKeyDictionary()
+
+    def _own_engine(self, uri: str) -> Engine:
+        """Build the engine of the store's own database from ``database_uri``."""
+        url = _store_url(self.name, uri)
+        self._backend = url.get_backend_name()
+        self._schema = _schema(self.name, self._backend, self.config)
+        _check_isolation_level(f"Event store '{self.name}'", self._backend, self.config)
+        if self._backend == "postgresql":
+            url = resolve_postgresql_url(url, self.name, kind="Event store")
+
+        engine = create_engine(
+            url,
+            json_serializer=_custom_json_dumps,
+            **_engine_args(self._backend, self.config),
+        )
+        if self._backend == "sqlite":
+            _install_sqlite_settings(engine)
+        return engine
+
+    def _shared_engine(self) -> Engine:
+        """Return the ``default`` provider's engine, with the SQLite settings."""
+        provider = _shared_provider(self.name, self.domain, self.config)
+        self._backend = provider.database_type
+        self._schema = provider._metadata.schema
+        engine = provider._engine
+        if self._backend == "sqlite":
+            _install_sqlite_settings(engine, shared=True)
+            # The provider has connected already, to check it can. Disposing
+            # of the pool makes every later connection open with the settings.
+            engine.dispose()
+        return engine
 
     @property
     def capabilities(self) -> EventStoreCapabilities:
@@ -410,6 +575,115 @@ class SqlEventStore(EventStorePort):
         return (
             EventStoreCapabilities.PRODUCTION | EventStoreCapabilities.SCHEMA_MANAGEMENT
         )
+
+    # ------------------------------------------------------------------
+    # Unit of Work
+    # ------------------------------------------------------------------
+
+    def _active_uow(self) -> UnitOfWork | None:
+        """Return the Unit of Work whose transaction a shared store joins."""
+        if not self._shared:
+            return None
+        uow = _uow_stack.top
+        if uow is None or not uow.in_progress:
+            return None
+        # A Unit of Work started in another domain writes to that domain's
+        # databases, so this store writes at once on its own connection.
+        return uow if uow._started_in is self.domain else None
+
+    def _uow_connection(self, uow: UnitOfWork) -> Connection:
+        """Return the connection of ``uow``'s session for ``default``.
+
+        Opens the session on this store's domain when the Unit of Work has
+        none yet, even while another domain's context is active.
+
+        Raises:
+            InvalidOperationError: The Unit of Work's ``default`` session is
+                on another domain's database.
+        """
+        session = cast("Session", uow.get_session("default", domain=self.domain))
+        # The Unit of Work keys its sessions by provider name only, so a
+        # repository of another domain may have opened the ``default`` one.
+        if session.get_bind() is not self._engine:
+            raise InvalidOperationError(
+                "The Unit of Work's 'default' session is on another domain's "
+                "database, so the sql event store of domain "
+                f"'{self.domain.name}' cannot join its transaction."
+            )
+        return session.connection()
+
+    @contextmanager
+    def _reading(self) -> Iterator[Connection]:
+        """Yield the connection a read runs on.
+
+        Inside a Unit of Work on a shared store, it is the Unit of Work's
+        connection, so a read on a shared SQLite file never waits for the
+        write lock the Unit of Work holds. Otherwise it is a new connection,
+        closed when the block ends: a read returns materialized rows.
+        """
+        uow = self._active_uow()
+        if uow is not None:
+            yield self._uow_connection(uow)
+            return
+        with self._engine.connect() as conn:
+            yield conn
+
+    @contextmanager
+    def _writing(self) -> Iterator[Connection]:
+        """Yield the connection a write runs on, as ``_reading`` chooses it.
+
+        A new connection's transaction commits when the block ends. The Unit
+        of Work's transaction commits with the Unit of Work.
+        """
+        uow = self._active_uow()
+        if uow is not None:
+            yield self._uow_connection(uow)
+            return
+        with self._write_engine.begin() as conn:
+            yield conn
+
+    def _hold(self, uow: UnitOfWork, message: _Append) -> None:
+        """Keep ``message`` to write when ``uow`` commits."""
+        held = self._held.get(uow)
+        if held is None or held.transaction is not uow._transaction:
+            held = _Held(uow._transaction)
+            self._held[uow] = held
+            uow._before_commit.append(lambda: self._write_held(uow, held))
+        held.messages.append(message)
+
+    def _write_held(self, uow: UnitOfWork, held: _Held) -> None:
+        """Write ``held``'s messages on ``uow``'s connection, in the order
+        produced.
+
+        Runs as ``uow``'s pre-commit callback, so an exception fails the
+        commit and rolls back every session.
+
+        Raises:
+            ExpectedVersionError: A held message's expected version is not
+                its stream's current version.
+            InvalidOperationError: ``commit()`` runs again after a commit
+                that failed. The transaction may hold some of the messages
+                already, so the Unit of Work must be rolled back.
+        """
+        if held.written:
+            raise InvalidOperationError(
+                "The Unit of Work's commit failed after the sql event store "
+                "wrote its messages in the transaction. Roll the Unit of Work "
+                "back and run it again."
+            )
+        held.written = True
+        self._held.pop(uow, None)
+        self._on_commit_callback_entered()
+        conn = self._uow_connection(uow)
+        self._take_category_locks(
+            conn, {_category(message.stream_name) for message in held.messages}
+        )
+        for message in held.messages:
+            self._insert(conn, message)
+
+    def _on_commit_callback_entered(self) -> None:
+        """Run when a Unit of Work's commit starts to write the held messages,
+        before any lock is taken. Tests patch it. It does nothing."""
 
     # ------------------------------------------------------------------
     # Writes
@@ -422,16 +696,71 @@ class SqlEventStore(EventStorePort):
         data: Mapping[str, Any],
         metadata: Mapping[str, Any] | None = None,
         expected_version: int | None = None,
-    ) -> int:
+    ) -> int | None:
         if _SNAPSHOT_MARKER in stream_name:
             return self._write_snapshot(
                 stream_name, message_type, data, expected_version
             )
+        message = _Append(
+            stream_name,
+            message_type,
+            # A held message is serialized at the commit, so a caller that
+            # changes a nested value after this call must not change it.
+            copy.deepcopy(dict(data)),
+            copy.deepcopy(dict(metadata)) if metadata is not None else None,
+            expected_version,
+        )
+        uow = self._active_uow()
+        if uow is not None:
+            self._hold(uow, message)
+            return None
+        with self._write_engine.begin() as conn:
+            self._take_category_locks(conn, [_category(stream_name)])
+            return self._insert(conn, message)
+
+    def _take_category_locks(
+        self, conn: Connection, categories: Collection[str]
+    ) -> None:
+        """Take the lock of each category, in key order on PostgreSQL.
+
+        Transactions that lock the same categories take them in one order, so
+        none waits for a lock that another waits behind.
+        """
+        if self._backend != "postgresql":
+            # The write lock BEGIN IMMEDIATE took is the lock.
+            self._on_lock_taken()
+            return
+        schema = self._schema or "public"
+        for key in sorted({_lock_key(schema, category) for category in categories}):
+            conn.execute(select(func.pg_advisory_xact_lock(key)))
+            self._on_lock_taken()
+
+    def _insert(self, conn: Connection, message: _Append) -> int:
+        """Check ``message``'s expected version, insert it and return its
+        position. The caller holds its category lock.
+
+        Raises:
+            ExpectedVersionError: The expected version is not the stream's
+                current version, or another writer inserted at the position.
+        """
+        stream_name = message.stream_name
+        stream_version = self._last_position(conn, stream_name)
+        _check_expected_version(stream_name, message.expected_version, stream_version)
+
+        position = stream_version + 1
         try:
-            with self._write_engine.begin() as conn:
-                return self._append(
-                    conn, stream_name, message_type, data, metadata, expected_version
+            conn.execute(
+                self._messages.insert().values(
+                    id=str(uuid4()),
+                    stream_name=stream_name,
+                    category=_category(stream_name),
+                    position=position,
+                    type=message.message_type,
+                    data=message.data,
+                    metadata=message.metadata,
+                    time=_now(),
                 )
+            )
         except IntegrityError as exc:
             # The version check runs under the category lock, so this is a
             # writer that bypassed the lock. Any other violation, such as a
@@ -439,46 +768,14 @@ class SqlEventStore(EventStorePort):
             if not _is_stream_position_violation(exc):
                 raise
             raise ExpectedVersionError(
-                f"Wrong expected version: {expected_version} "
+                f"Wrong expected version: {message.expected_version} "
                 f"(Stream: {stream_name}): another writer appended at the same "
                 "position"
             ) from exc
-
-    def _append(
-        self,
-        conn: Connection,
-        stream_name: str,
-        message_type: str,
-        data: Mapping[str, Any],
-        metadata: Mapping[str, Any] | None,
-        expected_version: int | None,
-    ) -> int:
-        category = _category(stream_name)
-        if self._backend == "postgresql":
-            key = _lock_key(self._schema or "public", category)
-            conn.execute(select(func.pg_advisory_xact_lock(key)))
-        self._on_lock_taken()
-
-        stream_version = self._last_position(conn, stream_name)
-        _check_expected_version(stream_name, expected_version, stream_version)
-
-        position = stream_version + 1
-        conn.execute(
-            self._messages.insert().values(
-                id=str(uuid4()),
-                stream_name=stream_name,
-                category=category,
-                position=position,
-                type=message_type,
-                data=dict(data),
-                metadata=dict(metadata) if metadata is not None else None,
-                time=_now(),
-            )
-        )
         return position
 
     def _on_lock_taken(self) -> None:
-        """Run after the category lock is taken. Tests patch it; it does nothing."""
+        """Run after each category lock is taken. Tests patch it. It does nothing."""
 
     def _last_position(self, conn: Connection, stream_name: str) -> int:
         """Return the stream's last position, or -1 when it is empty."""
@@ -502,6 +799,8 @@ class SqlEventStore(EventStorePort):
         is taken: ``ON CONFLICT`` makes two first writes safe, and a write with
         ``expected_version`` changes the row only when it is at that position.
         The row's ``metadata`` is always NULL, whatever the caller passes.
+        Inside a Unit of Work on a shared store, the upsert runs in the Unit of
+        Work's transaction and is not held.
         """
         table = self._snapshots
         insert = postgresql_insert if self._backend == "postgresql" else sqlite_insert
@@ -531,7 +830,8 @@ class SqlEventStore(EventStorePort):
                 )
                 .values(position=table.c.position + 1, **values)
             )
-        with self._write_engine.begin() as conn:
+        current = None
+        with self._writing() as conn:
             # psycopg reports no row count for an upsert, so RETURNING tells
             # whether the statement wrote the row.
             position = conn.execute(
@@ -634,7 +934,7 @@ class SqlEventStore(EventStorePort):
 
     def stream_ids(self, category: str) -> list[str]:
         messages = self._messages
-        with self._engine.connect() as conn:
+        with self._reading() as conn:
             names = conn.execute(
                 select(messages.c.stream_name)
                 .where(messages.c.category == category)
@@ -658,7 +958,7 @@ class SqlEventStore(EventStorePort):
         )
 
     def _fetch(self, statement: Select[Any]) -> list[RawMessage]:
-        with self._engine.connect() as conn:
+        with self._reading() as conn:
             return [_raw_message(row) for row in conn.execute(statement)]
 
     def _first(self, statement: Select[Any]) -> RawMessage | None:
@@ -668,7 +968,7 @@ class SqlEventStore(EventStorePort):
     def _snapshot(self, stream_name: str) -> RawMessage | None:
         """Return the snapshot stream's row, with ``global_position`` 0."""
         table = self._snapshots
-        with self._engine.connect() as conn:
+        with self._reading() as conn:
             row = conn.execute(
                 select(table).where(table.c.stream_name == stream_name)
             ).one_or_none()
@@ -698,7 +998,8 @@ class SqlEventStore(EventStorePort):
         )
 
     def get_connection(self) -> Engine:
-        """Return the store's SQLAlchemy engine."""
+        """Return the store's SQLAlchemy engine, the ``default`` provider's
+        when the store shares it."""
         return self._engine
 
     def create_schema(self) -> None:
@@ -724,8 +1025,13 @@ class SqlEventStore(EventStorePort):
             conn.execute(text("DELETE FROM sqlite_sequence WHERE name = 'messages'"))
 
     def close(self) -> None:
-        """Dispose of the engine's pooled connections."""
-        self._engine.dispose()
+        """Dispose of the engine's pooled connections.
+
+        A store that shares the ``default`` provider's engine leaves it to the
+        provider.
+        """
+        if not self._shared:
+            self._engine.dispose()
 
 
 _PORT_CHECK: type[EventStorePort] = SqlEventStore

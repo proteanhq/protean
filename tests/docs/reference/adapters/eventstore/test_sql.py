@@ -4,11 +4,13 @@ import pytest
 from sqlalchemy import text
 
 from protean.adapters.event_store.sql.store import SqlEventStore
+from protean.core.unit_of_work import UnitOfWork
 from tests.docs.support import domain_from_config
-from tests.shared import POSTGRES_URI
+from tests.shared import POSTGRES_URI, provider_adapter
 
 SQLITE_CONFIG = "adapters/eventstore/sql/configuration.toml"
 POSTGRESQL_CONFIG = "adapters/eventstore/sql/postgresql.toml"
+SHARED_CONFIG = "adapters/eventstore/sql/shared.toml"
 
 pytestmark = pytest.mark.no_test_domain
 
@@ -55,6 +57,35 @@ def test_postgresql_configuration_shown_writes_and_reads(tmp_path, monkeypatch):
         store.close()
 
 
+@pytest.mark.sqlite
+def test_shared_configuration_shown_commits_with_the_unit_of_work(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'app.db'}")
+    domain = domain_from_config(SHARED_CONFIG, tmp_path)
+    domain.init(traverse=False)
+    with domain.domain_context():
+        store = domain.event_store._adapter
+        try:
+            store.create_schema()
+            assert store.get_connection() is provider_adapter(domain)._engine
+
+            with pytest.raises(RuntimeError, match="rolled back"):
+                with UnitOfWork():
+                    store.write_message("doc_check-1", "Dropped", {})
+                    raise RuntimeError("rolled back")
+            with UnitOfWork():
+                assert store.write_message("doc_check-1", "Checked", {}) is None
+
+            assert [m["type"] for m in store.get_stream_messages("doc_check-1")] == [
+                "Checked"
+            ]
+        finally:
+            store.drop_schema()
+            store.close()
+            provider_adapter(domain).close()
+
+
 @pytest.mark.parametrize(
     ("config", "documented"),
     [
@@ -69,3 +100,13 @@ def test_configuration_shown_defaults_to_the_documented_uri(
     domain = domain_from_config(config, tmp_path)
 
     assert domain.config["event_store"]["database_uri"] == documented
+
+
+def test_shared_configuration_shown_defaults_to_the_documented_uri(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    domain = domain_from_config(SHARED_CONFIG, tmp_path)
+
+    assert domain.config["databases"]["default"]["database_uri"] == "sqlite:///app.db"
+    assert "database_uri" not in domain.config["event_store"]

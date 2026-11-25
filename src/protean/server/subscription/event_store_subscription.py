@@ -711,7 +711,7 @@ class EventStoreSubscription(BaseSubscription):
 
         return self.current_position
 
-    async def write_position(self, position: int) -> int:
+    async def write_position(self, position: int) -> int | None:
         """
         Write the position to the store.
 
@@ -722,7 +722,8 @@ class EventStoreSubscription(BaseSubscription):
             position (int): The read position to be written.
 
         Returns:
-            int: The position that was written.
+            int | None: The stream position of the written message, or
+            ``None`` when the store holds it for the active Unit of Work.
         """
         logger.debug(f"Updating Read Position of {self.subscriber_name} to {position}")
 

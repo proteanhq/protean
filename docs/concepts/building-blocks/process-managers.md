@@ -194,9 +194,11 @@ routing.
 
 Each handler executes inside its own Unit of Work. If the handler fails, the
 PM's transition is rolled back. A command the handler issued before the
-failure survives the rollback: the memory event store and Message-DB both
-write it at once, outside the Unit of Work. Keep issued commands idempotent so
-re-issuing one is safe.
+failure survives the rollback on the memory event store, Message-DB and a
+`sql` store on its own database: each writes it at once, outside the Unit of
+Work. A `sql` store that shares the `default` database holds the command until
+the commit, so the rollback discards it too. Keep issued commands idempotent
+so re-issuing one is safe.
 
 ## Best Practices
 

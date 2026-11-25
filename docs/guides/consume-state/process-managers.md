@@ -116,9 +116,11 @@ Process managers advance a workflow by issuing commands to other aggregates:
    and `end=True` marks the PM as complete.
 
 If the handler fails after issuing a command, the PM's own state change rolls
-back. The command is already written: the memory store and Message-DB both
-write it at once, outside the handler's Unit of Work, so the command survives
-while the PM's transition does not. Keep issued commands idempotent so
+back. The memory store, Message-DB and a `sql` store on its own database
+write the command at once, outside the handler's Unit of Work, so the command
+survives while the PM's transition does not. A `sql` store that shares the
+`default` database holds the command until the commit, so the rollback
+discards it with the transition. Keep issued commands idempotent so
 re-issuing one is safe.
 
 ## Process Manager Workflow

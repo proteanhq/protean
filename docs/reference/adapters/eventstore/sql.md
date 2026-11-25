@@ -2,11 +2,15 @@
 
 The `sql` event store keeps events and snapshots in tables on a SQLite file or
 a PostgreSQL database. It talks to the database through SQLAlchemy and needs no
-database extension. It uses its own `database_uri`. On PostgreSQL the URI can
-name the same database as your application or a different one. On SQLite it
-must name a different file from the application's: SQLite allows one writer
-per file, so an append on the store's connection waits for the Unit of Work's
-write lock and fails with `database is locked`.
+database extension.
+
+Without a `database_uri`, the store shares the `default` database and its
+engine, and its writes commit or roll back with the Unit of Work. With a
+`database_uri`, the store opens its own engine and commits each write at once.
+On PostgreSQL that URI can name the application's database or a different
+one. On SQLite it must name a different file from the application's: SQLite
+allows one writer per file, so an append on the store's own connection waits
+for the Unit of Work's write lock and fails with `database is locked`.
 
 [ADR-0048](../../../adr/0048-sql-event-store.md) records the design decisions.
 
@@ -54,15 +58,22 @@ On PostgreSQL:
 `${SQL_EVENT_STORE_URL|...}` reads the URI from the `SQL_EVENT_STORE_URL`
 environment variable, and uses the value after `|` when it is not set.
 
+Sharing the `default` database:
+
+```toml
+--8<-- "adapters/eventstore/sql/shared.toml"
+```
+
 ### Configuration options
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | `provider` | Required | Must be `"sql"` |
-| `database_uri` | Required | A `sqlite:///` file path or a `postgresql://` URL |
-| `schema` | `"public"` | The PostgreSQL schema that holds the tables. The schema must exist. SQLite has no schemas, so setting it there raises `ConfigurationError`. |
+| `database_uri` | None | A `sqlite:///` file path or a `postgresql://` URL. Without it, the store shares the `default` database. |
+| `schema` | `"public"` | The PostgreSQL schema that holds the tables, on a store with its own `database_uri`. The schema must exist. SQLite has no schemas, so setting it there raises `ConfigurationError`. A shared store uses the `default` database's schema, so setting it there raises `ConfigurationError`. |
 
-Every other key goes to SQLAlchemy's `create_engine`. On PostgreSQL the engine
+On a store with its own `database_uri`, every other key goes to SQLAlchemy's
+`create_engine`. On PostgreSQL the engine
 starts from the defaults of the
 [PostgreSQL database provider](../database/postgresql.md) (`pool_size` 5,
 `max_overflow` 10, `pool_pre_ping` on, `pool_recycle` 1800 seconds), and the
@@ -76,7 +87,7 @@ psycopg2 otherwise. A URL that names a driver, such as
 
 The store raises `ConfigurationError` when it is built with:
 
-- no `database_uri`, or one SQLAlchemy cannot parse
+- a `database_uri` that is not a string, or that SQLAlchemy cannot parse
 - a database other than SQLite or PostgreSQL
 - an in-memory SQLite database, such as `sqlite://` or `sqlite:///:memory:`.
   Each connection to an in-memory database sees a different, empty database,
@@ -93,9 +104,69 @@ The store raises `ConfigurationError` when it is built with:
     - `REPEATABLE READ` or `SERIALIZABLE` on PostgreSQL, because the
       transaction reads a snapshot taken before the category lock is granted
 
-On PostgreSQL the store's engine sets `READ COMMITTED` on every connection it
-opens. A default set on the server, the role or through `connect_args` does
-not change the level the store's writes run at.
+On PostgreSQL a store with its own `database_uri` sets `READ COMMITTED` on
+every connection its engine opens. A default set on the server, the role or
+through `connect_args` does not change the level the store's writes run at.
+A shared store writes at the level of the `default` database's connections.
+On PostgreSQL it opens one of those connections at start-up and reads its
+level, so a level set on the server, the role or through `connect_args` is
+checked too. A command that renders SQL without a database, such as
+`protean db upgrade --sql`, skips this connection check.
+
+A shared store raises `ConfigurationError` at start-up when its own config
+sets `schema`, or when the `default` database is:
+
+- not a `sqlite` or `postgresql` database provider, such as the `memory`
+  provider or Elasticsearch
+- an in-memory SQLite database
+- set to an isolation level the store refuses, by the rules above
+- on PostgreSQL, running its connections at `REPEATABLE READ` or
+  `SERIALIZABLE`
+
+## Sharing the default database
+
+A store with no `database_uri` writes on the Unit of Work's connection to the
+`default` database. One transaction holds the events of event-sourced
+aggregates, the commands that `domain.process()` stores, process manager
+transitions, and the rows of state-based aggregates and the outbox rows in
+the `default` database. A raise before the commit leaves none of them in the
+database. An aggregate on another database commits in that database's own
+transaction, after the `default` transaction. A failure between the two
+commits leaves the events stored and the other database's rows missing.
+
+Inside a Unit of Work, the store holds each message until the commit, and
+`write_message` returns `None` in place of the stream position. At the
+commit, the Unit of Work hands the store its aggregate events, which the
+store adds to the held messages. Before the outbox rows are saved, the store
+checks each expected version and inserts every held message. A version
+conflict raises `ExpectedVersionError` from the commit and rolls back the
+whole transaction. A read inside the Unit of Work does not see a held message.
+When a commit fails after the store inserted its messages, a second
+`commit()` on the same Unit of Work raises `TransactionError`. Roll the Unit
+of Work back and run it again.
+
+The store joins only a Unit of Work started in its own domain. Inside a Unit
+of Work of another domain, it writes each message at once and returns the
+position. When a repository of another domain opens the Unit of Work's
+`default` session first, a read by the store raises `InvalidOperationError`
+and the commit raises `TransactionError`, so the store never writes to the
+other domain's database.
+`domain.process()` returns `None` for an asynchronous command it sends inside
+a Unit of Work, and records the command's idempotency key after the commit.
+Outside a Unit of Work, the store writes at once and returns the position.
+
+Snapshots and reads inside a Unit of Work run on its connection, so a
+snapshot write rolls back with it. Outside a Unit of Work they run on a
+connection of their own from the `default` pool.
+
+On a shared SQLite file the store turns on WAL mode, sets a 5 second busy
+timeout and starts every transaction on the file with `BEGIN IMMEDIATE`,
+including the application's own reads and writes. A transaction waits for the
+file's write lock when it starts, so two processes on one file wait in turn
+instead of failing with `database is locked`.
+
+`store.close()` leaves the shared engine and its pool to the `default`
+provider.
 
 ## Creating the tables
 
@@ -131,8 +202,9 @@ writes to different categories do not wait for each other.
   lets readers run while a write is in progress) and a 5 second busy timeout,
   and starts each write with `BEGIN IMMEDIATE`. That statement takes the
   database's write lock before the version check reads, so one write runs at
-  a time across the whole file. A read starts with a plain `BEGIN` and takes
-  no write lock, so it runs while another connection writes.
+  a time across the whole file. On a file of its own, a read starts with a
+  plain `BEGIN` and takes no write lock, so it runs while another connection
+  writes.
 
 The `messages` table also has a unique constraint on `(stream_name,
 position)`. A write that breaks it, such as one from a writer that did not
@@ -156,7 +228,19 @@ keeps apart from its events.
 - **No consumer groups.** Use Message DB when a category read must be split
   across the members of a consumer group.
 - **One writer at a time on SQLite.** Every write takes the whole file's
-  write lock. A writer that waits longer than the busy timeout fails.
+  write lock. A writer that waits longer than the busy timeout fails. On a
+  shared file every transaction takes the lock, reads included.
+- **Late global positions on a shared PostgreSQL store.** A shared store
+  takes each message's `global_position` when it inserts the held messages,
+  and the row becomes visible when the Unit of Work's transaction on
+  `default` commits, after the outbox rows are saved. The Unit of Work
+  commits `default` before any other database. A Unit of
+  Work on another category can commit a higher position in that time. A
+  `$all` subscription waits `gap_timeout_seconds` (5 by default) at the
+  missing position, then skips it for good. Keep the work after the insert
+  shorter than that timeout, or raise `gap_timeout_seconds` under
+  `[server.event_store_subscription]`. A category subscription is
+  not affected, because the category lock orders the writes of one category.
 - **No negative `limit`.** A read with a negative `limit` raises `ValueError`
   on both databases.
 

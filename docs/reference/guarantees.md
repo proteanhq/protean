@@ -108,7 +108,9 @@ guarantee but blocks where PostgreSQL skips.
     leaves no orphaned parent. The outbox row is saved on the same session and
     committed by the same `session.commit()` as the domain write. For an
     event-sourced aggregate the event-store append is written before the
-    relational commit, outside this transaction (ADR-0015).
+    relational commit, outside this transaction (ADR-0015). A `sql` event store
+    that shares the `default` database is the exception: it writes the append
+    on this session just before the commit, inside this transaction.
     `tests/adapters/database/sqlalchemy_repo/postgresql/test_postgresql_uow_atomicity_and_ryw.py`
     and its MSSQL mirror pin these guarantees.
 
@@ -137,7 +139,10 @@ by its per-stream `position`, and a category or `$all` read pages by
 ### Known exceptions {#event-store-exceptions}
 
 - **Append is per message**: A Unit of Work that raises several events makes
-  one OCC-checked append per event. They are not one atomic batch.
+  one OCC-checked append per event. They are not one atomic batch. A `sql`
+  store that shares the `default` database is the exception: it checks and
+  inserts the events at commit, in the Unit of Work's transaction, so they
+  commit or roll back together.
 - **MessageDB global gaps**: A rolled-back append uses up its
   `global_position`, so positions across categories can have gaps. Within one
   category there are none, because MessageDB holds a per-category advisory
@@ -148,7 +153,10 @@ by its per-stream `position`, and a category or `$all` read pages by
 
 !!! warning "Interim: not yet a stable contract"
     The event-store append is written first, and the relational and outbox
-    commit follows it without a shared transaction. For event-sourced
+    commit follows it without a shared transaction. A `sql` event store that
+    shares the `default` database is the exception: it writes the append in
+    the Unit of Work's transaction on `default`, so the append and the
+    relational and outbox rows on that database commit together. For event-sourced
     aggregates, a reconciliation sweep at startup closes the window between the
     append and the commit. The sweep checks each recent event of an
     event-sourced aggregate. When the event has lost its internal outbox row,

@@ -189,7 +189,9 @@ Such a command is handled at once, unless a Unit of Work is active. Inside a
 handler, a `@use_case` method or a `with UnitOfWork():` block, `process` stores
 a command with a registered handler and returns `None`. The command runs after
 the caller commits. A command with no registered handler goes to the engine,
-and `process` returns its event store position. See [Calling external systems
+and `process` returns its event store position. A `sql` event store that
+shares the `default` database holds that command until the caller commits, so
+`process` returns `None` for it too. See [Calling external systems
 from handlers](../../patterns/calling-external-systems-from-handlers.md#recording-the-result-of-a-call).
 Passing `asynchronous=False` handles a command at once in an `"async"` domain.
 

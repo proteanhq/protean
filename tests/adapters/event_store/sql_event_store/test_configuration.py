@@ -22,8 +22,11 @@ def build(test_domain, **config):
 
 @pytest.mark.sqlite
 class TestDatabaseUri:
-    def test_a_missing_database_uri_is_refused(self, test_domain):
-        with pytest.raises(ConfigurationError, match="without a database_uri"):
+    def test_a_missing_database_uri_on_a_memory_default_is_refused(self, test_domain):
+        with pytest.raises(
+            ConfigurationError,
+            match="without a database_uri, so it shares the 'default' database",
+        ):
             build(test_domain)
 
     @pytest.mark.parametrize("uri", ["not a url", "postgresql://h:port/db"])
@@ -37,6 +40,13 @@ class TestDatabaseUri:
             match=r"'mysql\+pymysql://'.*supports sqlite and postgresql",
         ):
             build(test_domain, database_uri="mysql+pymysql://u:p@h/db")
+
+    @pytest.mark.parametrize("uri", [False, 0, 1])
+    def test_a_database_uri_that_is_not_a_string_is_refused(self, test_domain, uri):
+        with pytest.raises(
+            ConfigurationError, match="database_uri that is not a string"
+        ):
+            build(test_domain, database_uri=uri)
 
     @pytest.mark.parametrize(
         "uri",

@@ -4,11 +4,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 
 from protean import Domain
 from protean.adapters.event_store.sql.store import SqlEventStore
-from tests.shared import POSTGRES_URI
+from tests.shared import POSTGRES_URI, provider_adapter
 
 # The PostgreSQL tests use their own schema, so they never touch the tables
 # of the conformance run on the same database. The name holds the process id,
@@ -72,3 +72,87 @@ def config(backend: str, tmp_path: Path) -> dict[str, Any]:
 @pytest.fixture
 def store(make_store, config) -> SqlEventStore:
     return make_store(config)
+
+
+def shared_database(backend: str, tmp_path: Path) -> dict[str, Any]:
+    """The ``default`` database a shared store uses, on ``backend``."""
+    if backend == "sqlite":
+        return {
+            "provider": "sqlite",
+            "database_uri": f"sqlite:///{tmp_path / 'shared.db'}",
+        }
+    return {"provider": "postgresql", "database_uri": POSTGRES_URI, "schema": PG_SCHEMA}
+
+
+def _create_pg_schema() -> None:
+    engine = create_engine(POSTGRES_URI)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{PG_SCHEMA}"'))
+    finally:
+        engine.dispose()
+
+
+def _drop_pg_schema() -> None:
+    engine = create_engine(POSTGRES_URI)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(f'DROP SCHEMA IF EXISTS "{PG_SCHEMA}" CASCADE'))
+    finally:
+        engine.dispose()
+
+
+@pytest.fixture
+def make_shared_domain(backend: str, tmp_path: Path) -> Iterator[Callable[..., Domain]]:
+    """Build a domain whose sql event store shares ``default`` on ``backend``.
+
+    ``register`` receives the domain before ``init()``. Other keyword arguments
+    go into the domain's config, and a table updates the table already there. The domain's context stays active until the
+    test ends, and the tables of the provider and the store exist.
+    """
+    domains: list[Domain] = []
+    contexts: list[Any] = []
+
+    def make(register: Callable[[Domain], None] | None = None, **config: Any) -> Domain:
+        if backend == "postgresql":
+            _create_pg_schema()
+        domain = Domain(name=f"Shared{len(domains)}")
+        domain.config["databases"]["default"] = shared_database(backend, tmp_path)
+        domain.config["event_store"] = {"provider": "sql"}
+        domain.config["command_processing"] = "sync"
+        domain.config["event_processing"] = "sync"
+        for key, value in config.items():
+            current = domain.config.get(key)
+            if isinstance(current, dict) and isinstance(value, dict):
+                current.update(value)
+            else:
+                domain.config[key] = value
+        if register is not None:
+            register(domain)
+        domain.init(traverse=False)
+        context = domain.domain_context()
+        context.push()
+        contexts.append(context)
+        domains.append(domain)
+        provider_adapter(domain, "default").create_schema()
+        domain.event_store._require_adapter().create_schema()
+        return domain
+
+    yield make
+
+    for context in reversed(contexts):
+        context.pop()
+    for domain in domains:
+        domain.event_store._require_adapter().close()
+        provider_adapter(domain, "default").close()
+    if domains and backend == "postgresql":
+        _drop_pg_schema()
+
+
+def row_count(domain: Domain, table: str) -> int:
+    """Count the rows of ``table`` in ``default`` on a connection of its own."""
+    provider = provider_adapter(domain, "default")
+    schema = provider._metadata.schema
+    name = f'"{schema}"."{table}"' if schema else f'"{table}"'
+    with provider._engine.connect() as conn:
+        return int(conn.execute(text(f"SELECT COUNT(*) FROM {name}")).scalar_one())
