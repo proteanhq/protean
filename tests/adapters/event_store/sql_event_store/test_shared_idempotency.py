@@ -35,10 +35,24 @@ class Notify(BaseCommand):
     account_id = Identifier(required=True)
 
 
+class Open(BaseCommand):
+    account_id = Identifier(required=True)
+
+
+# What ``send`` returned inside ``AccountHandler.open``.
+returned: list[int | None] = []
+
+
 class NotifyHandler(BaseCommandHandler):
     @handle(Notify)
     def notify(self, command: Notify) -> None:
         pass
+
+
+class AccountHandler(BaseCommandHandler):
+    @handle(Open)
+    def open(self, command: Open) -> None:
+        returned.append(send(str(uuid4())))
 
 
 def register(domain: Domain) -> None:
@@ -46,6 +60,8 @@ def register(domain: Domain) -> None:
     domain.register(Account)
     domain.register(Notify, part_of=Account)
     domain.register(NotifyHandler, part_of=Account)
+    domain.register(Open, part_of=Account)
+    domain.register(AccountHandler, part_of=Account)
 
 
 def send(key: str) -> int | None:
@@ -89,9 +105,23 @@ class TestASharedStore:
         assert domain.idempotency_store.check(key) is not None
         assert row_count(domain, "messages") == 1
 
-    def test_process_returns_none_inside_a_unit_of_work(self, domain):
-        with UnitOfWork():
-            assert send(str(uuid4())) is None
+
+@pytest.mark.postgresql
+class TestASharedStoreInsideAHandler:
+    @pytest.fixture
+    def backend(self) -> str:
+        return "postgresql"
+
+    def test_process_returns_none(self, make_shared_domain):
+        returned.clear()
+        domain = make_shared_domain(register, command_processing="async")
+        try:
+            domain.process(Open(account_id="a1"), asynchronous=False)
+        finally:
+            domain.idempotency_store.flush()
+
+        assert returned == [None]
+        assert row_count(domain, "messages") == 2
 
 
 @pytest.mark.postgresql

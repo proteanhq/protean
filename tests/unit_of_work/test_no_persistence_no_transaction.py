@@ -24,13 +24,14 @@ body returns.
 
 import pytest
 
+from protean import Domain
 from protean.core.aggregate import BaseAggregate
 from protean.core.command import BaseCommand
 from protean.core.event import BaseEvent
 from protean.core.event_handler import BaseEventHandler
 from protean.core.unit_of_work import UnitOfWork
 from protean.fields import Identifier, String
-from protean.utils.globals import _uow_context_stack
+from protean.utils.globals import _uow_context_stack, current_domain
 from protean.utils.mixins import handle
 from tests.shared import provider_adapter
 
@@ -70,16 +71,12 @@ class Reactions(BaseEventHandler):
 
     @handle(Placed)
     def persists(self, event: Placed) -> None:
-        from protean.utils.globals import current_domain
-
         repo = current_domain.repository_for(Order)
         repo.add(Order(name="o"))
         _record("persists")
 
     @handle(Placed)
     def sends(self, event: Placed) -> None:
-        from protean.utils.globals import current_domain
-
         current_domain.process(Ship(order_id=event.order_id), asynchronous=True)
         _record("sends")
         pool = provider_adapter(current_domain, "default")._engine.pool
@@ -137,8 +134,6 @@ class TestTheGuaranteeHoldsOnSQLAlchemyToo:
 
     @pytest.fixture
     def sqlite_domain(self, tmp_path):
-        from protean.domain import Domain
-
         domain = Domain(name="NoTxnSqlite")
         domain.config["databases"]["default"] = {
             "provider": "sqlite",
@@ -173,8 +168,6 @@ class TestTheGuaranteeHoldsOnSQLAlchemyToo:
 class TestASharedSqlEventStoreOpensTheTransactionAtCommit:
     @pytest.fixture
     def shared_domain(self, tmp_path):
-        from protean.domain import Domain
-
         domain = Domain(name="NoTxnShared")
         domain.config["databases"]["default"] = {
             "provider": "sqlite",

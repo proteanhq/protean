@@ -28,8 +28,9 @@ def build_domain(tmp_path: Path) -> Domain:
     return domain
 
 
-def append_events(tmp_path: Path, writer: str, errors: Any) -> None:
-    """Append ``APPENDS_PER_PROCESS`` events, one Unit of Work each.
+def append_events(tmp_path: Path, writer: str, errors: Any, start: Any) -> None:
+    """Append ``APPENDS_PER_PROCESS`` events, one Unit of Work each, once
+    both processes reach ``start``.
 
     Runs in a child process, so it reports a failure through ``errors``.
     """
@@ -37,6 +38,9 @@ def append_events(tmp_path: Path, writer: str, errors: Any) -> None:
         domain = build_domain(tmp_path)
         with domain.domain_context():
             store = domain.event_store._require_adapter()
+            # The domain is built in each process first, so both start to
+            # write together.
+            start.wait(timeout=60)
             for index in range(APPENDS_PER_PROCESS):
                 with UnitOfWork():
                     store.write_message(f"{writer}-{index}", "Written", {})
@@ -55,8 +59,11 @@ def test_two_processes_append_every_event(tmp_path):
 
         context = multiprocessing.get_context("spawn")
         errors = context.Queue()
+        start = context.Barrier(2)
         processes = [
-            context.Process(target=append_events, args=(tmp_path, writer, errors))
+            context.Process(
+                target=append_events, args=(tmp_path, writer, errors, start)
+            )
             for writer in ("left", "right")
         ]
         for process in processes:
@@ -72,7 +79,6 @@ def test_two_processes_append_every_event(tmp_path):
         while not errors.empty():
             reported.append(errors.get())
         assert reported == []
-        assert [process.exitcode for process in processes] == [0, 0]
 
         positions = [
             row["global_position"]

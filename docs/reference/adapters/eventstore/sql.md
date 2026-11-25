@@ -107,31 +107,45 @@ The store raises `ConfigurationError` when it is built with:
 On PostgreSQL a store with its own `database_uri` sets `READ COMMITTED` on
 every connection its engine opens. A default set on the server, the role or
 through `connect_args` does not change the level the store's writes run at.
-A shared store writes at the level of the `default` database's connections,
-so keep the server and role default at `READ COMMITTED`.
+A shared store writes at the level of the `default` database's connections.
+On PostgreSQL it opens one of those connections at start-up and reads its
+level, so a level set on the server, the role or through `connect_args` is
+checked too.
 
-A shared store raises `ConfigurationError` at start-up when the `default`
-database is:
+A shared store raises `ConfigurationError` at start-up when its own config
+sets `schema`, or when the `default` database is:
 
 - not a `sqlite` or `postgresql` database provider, such as the `memory`
   provider or Elasticsearch
 - an in-memory SQLite database
 - set to an isolation level the store refuses, by the rules above
+- on PostgreSQL, running its connections at `REPEATABLE READ` or
+  `SERIALIZABLE`
 
 ## Sharing the default database
 
 A store with no `database_uri` writes on the Unit of Work's connection to the
 `default` database. One transaction holds the events of event-sourced
-aggregates, the commands sent with `domain.process(..., asynchronous=True)`,
-process manager transitions, the rows of state-based aggregates and the
-outbox rows. A raise before the commit leaves none of them in the database.
+aggregates, the commands that `domain.process()` stores, process manager
+transitions, and the rows of state-based aggregates and the outbox rows in
+the `default` database. A raise before the commit leaves none of them in the
+database. An aggregate on another database commits in that database's own
+transaction.
 
 Inside a Unit of Work, the store holds each message until the commit, and
-`write_message` returns `None` in place of the stream position. At the commit
-it checks each expected version and inserts the messages, after the
-aggregate events are appended and before the outbox rows are saved. A version
+`write_message` returns `None` in place of the stream position. At the
+commit, the Unit of Work hands the store its aggregate events, which the
+store adds to the held messages. Before the outbox rows are saved, the store
+checks each expected version and inserts every held message. A version
 conflict raises `ExpectedVersionError` from the commit and rolls back the
 whole transaction. A read inside the Unit of Work does not see a held message.
+When a commit fails after the store inserted its messages, a second
+`commit()` on the same Unit of Work raises `TransactionError`. Roll the Unit
+of Work back and run it again.
+
+The store joins only a Unit of Work started in its own domain. Inside a Unit
+of Work of another domain, it writes each message at once and returns the
+position.
 `domain.process()` returns `None` for an asynchronous command it sends inside
 a Unit of Work, and records the command's idempotency key after the commit.
 Outside a Unit of Work, the store writes at once and returns the position.
@@ -211,6 +225,16 @@ keeps apart from its events.
 - **One writer at a time on SQLite.** Every write takes the whole file's
   write lock. A writer that waits longer than the busy timeout fails. On a
   shared file every transaction takes the lock, reads included.
+- **Late global positions on a shared PostgreSQL store.** A shared store
+  takes each message's `global_position` when it inserts the held messages,
+  and the row becomes visible when the Unit of Work's transaction commits,
+  after the outbox rows are saved and the other databases commit. A Unit of
+  Work on another category can commit a higher position in that time. A
+  `$all` subscription waits `gap_timeout_seconds` (5 by default) at the
+  missing position, then skips it for good. Keep the work after the insert
+  shorter than that timeout, or raise `gap_timeout_seconds` under
+  `[server.event_store_subscription]`. A category subscription is
+  not affected, because the category lock orders the writes of one category.
 - **No negative `limit`.** A read with a negative `limit` raises `ValueError`
   on both databases.
 

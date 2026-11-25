@@ -107,7 +107,9 @@ Positive:
   not just the single-statement case. Silent data-integrity failures (orphaned
   parents, split outbox writes) go away. (For an event-sourced aggregate the
   event-store append is still a separate durable anchor written before the
-  relational commit, per ADR-0015; that two-store boundary is unchanged.)
+  relational commit, per ADR-0015; that two-store boundary is unchanged. A
+  `sql` event store that shares the `default` database later joins the
+  relational transaction, per ADR-0048.)
 - Read-your-writes works on PostgreSQL and MSSQL, matching the Memory and SQLite
   adapters and the behavior every other ORM provides.
 - The adapter uses SQLAlchemy the way it is designed to be used. The OCC guard and

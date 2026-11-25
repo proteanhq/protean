@@ -45,7 +45,7 @@ class TestTheDefaultDatabaseMustBeSqlOnAFile:
         assert "without a database_uri" in message
         assert "provider 'memory'" in message
         assert "sqlite or postgresql" in message
-        assert "database_uri" in message
+        assert "Set database_uri under [event_store]" in message
 
     @pytest.mark.sqlite
     def test_a_sql_database_under_another_name_is_refused(self, tmp_path):
@@ -57,7 +57,16 @@ class TestTheDefaultDatabaseMustBeSqlOnAFile:
             init_domain(databases, {"provider": "sql"})
 
     @pytest.mark.sqlite
-    @pytest.mark.parametrize("uri", ["sqlite://", "sqlite:///:memory:"])
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "sqlite://",
+            "sqlite:///:memory:",
+            "sqlite:///file::memory:?uri=true",
+            "sqlite:///file:shared?mode=memory&cache=shared&uri=true",
+            "sqlite:///file:memdb?vfs=memdb&uri=true",
+        ],
+    )
     def test_an_in_memory_sqlite_default_is_refused(self, uri):
         with pytest.raises(ConfigurationError, match="in-memory SQLite database"):
             init_domain(
@@ -94,6 +103,47 @@ class TestTheDefaultDatabaseIsolationLevel:
 
         assert f"isolation level '{level}'" in str(exc.value)
         assert "Database 'default'" in str(exc.value)
+
+    @pytest.mark.postgresql
+    def test_postgresql_refuses_a_lowercase_unsafe_level(self):
+        database = {
+            "provider": "postgresql",
+            "database_uri": POSTGRES_URI,
+            "isolation_level": "repeatable_read",
+        }
+        with pytest.raises(ConfigurationError, match="'repeatable_read'"):
+            init_domain({"default": database}, {"provider": "sql"})
+
+    @pytest.mark.postgresql
+    def test_postgresql_refuses_a_level_set_on_the_connection(self):
+        database = {
+            "provider": "postgresql",
+            "database_uri": POSTGRES_URI,
+            "connect_args": {
+                "options": "-c default_transaction_isolation=serializable"
+            },
+        }
+        with pytest.raises(ConfigurationError) as exc:
+            init_domain({"default": database}, {"provider": "sql"})
+
+        assert "runs its connections at isolation level 'serializable'" in str(
+            exc.value
+        )
+
+    @pytest.mark.postgresql
+    def test_postgresql_accepts_read_committed_on_the_connection(self):
+        database = {
+            "provider": "postgresql",
+            "database_uri": POSTGRES_URI,
+            "connect_args": {
+                "options": "-c default_transaction_isolation=read\\ committed"
+            },
+        }
+        domain = init_domain({"default": database}, {"provider": "sql"})
+        try:
+            assert domain.event_store.ping() is True
+        finally:
+            close(domain)
 
     @pytest.mark.sqlite
     def test_sqlite_refuses_autocommit(self, tmp_path):

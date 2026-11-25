@@ -327,6 +327,8 @@ first prevents the corrupting failure where the event store could be left
 missing a committed event, but it leaves a narrow window. If the process dies
 between the append and the relational commit, the event is durable in the store
 while its outbox row never committed, so the event would never be published.
+A `sql` event store that shares the `default` database writes the events in the
+relational transaction, so it has no such window.
 
 Reconciliation repairs that window for event-sourced aggregates by re-deriving
 the missing outbox rows directly from the event store. It does not repair

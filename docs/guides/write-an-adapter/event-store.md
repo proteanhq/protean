@@ -21,7 +21,8 @@ The adapter implements these members:
 
 - `capabilities`, a property that returns the guarantees the store makes
 - `write_message`, which appends one message to a stream and returns its
-  position in the stream
+  position in the stream, or `None` when the store holds the message to write
+  at the Unit of Work's commit
 - the reads by stream, by category and over the whole store:
   `get_stream_messages`, `get_category_messages` and `get_all_messages`
 - the matching reads of the newest row: `get_last_stream_message`,

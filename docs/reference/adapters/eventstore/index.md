@@ -49,8 +49,9 @@ SQLite file or a PostgreSQL database, through SQLAlchemy.
 
 - **Requires**: the `sqlite` or `postgresql` extra
 - Persistent, durable storage
-- Without a `database_uri`, it shares the `default` database and commits
-  with the Unit of Work
+- Without a `database_uri`, it shares the `default` database. Inside a Unit
+  of Work its writes commit with the Unit of Work, and outside one each write
+  commits at once
 - `protean db setup` creates its tables
 - No consumer groups
 
@@ -62,7 +63,7 @@ with `EventStoreCapabilities.DURABLE in domain.event_store.capabilities`.
 
 | Flag | What the store promises |
 |------|-------------------------|
-| `WRITE` | It appends a message and returns the message's position in the stream. |
+| `WRITE` | It appends a message and returns the message's position in the stream, or `None` for a message it holds until the Unit of Work commits. |
 | `READ_STREAM` | It reads one stream by stream position. |
 | `READ_CATEGORY` | It reads every stream of a category by global position, from the given position inclusive ([ADR-0024](../../../adr/0024-event-store-read-position-contract.md)). |
 | `READ_ALL` | It reads the whole store by global position, from the given position inclusive. |

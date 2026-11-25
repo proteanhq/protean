@@ -27,7 +27,7 @@ class EventStoreCapabilities(Flag):
     with ``EventStoreCapabilities.DURABLE in store.capabilities``.
     """
 
-    WRITE = auto()  # Append a message and return its stream position
+    WRITE = auto()  # Append a message, return its stream position or None if held
     READ_STREAM = auto()  # Read one stream by stream position
     READ_CATEGORY = auto()  # Read a category by global position, inclusive
     READ_ALL = auto()  # Read the whole store by global position, inclusive

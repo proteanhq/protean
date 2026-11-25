@@ -65,6 +65,7 @@ from protean.core.unit_of_work import UnitOfWork, _uow_stack
 from protean.exceptions import (
     ConfigurationError,
     ExpectedVersionError,
+    InvalidOperationError,
     NotSupportedError,
 )
 from protean.port.event_store import (
@@ -163,6 +164,15 @@ class _Append(NamedTuple):
     expected_version: int | None
 
 
+class _Held:
+    """The messages a shared store holds for one Unit of Work transaction."""
+
+    def __init__(self, transaction: object) -> None:
+        self.transaction = transaction
+        self.messages: list[_Append] = []
+        self.written = False
+
+
 def _store_url(name: str, uri: str) -> URL:
     """Return the parsed ``database_uri``.
 
@@ -229,12 +239,33 @@ def _shared_provider(
             "file, such as sqlite:///app.db. Set database_uri under "
             "[event_store] to give the store its own SQLite file."
         )
-    _check_isolation_level(
-        f"Database 'default', which event store '{name}' shares,",
-        provider.database_type,
-        provider.config,
-    )
+    subject = f"Database 'default', which event store '{name}' shares,"
+    _check_isolation_level(subject, provider.database_type, provider.config)
+    if provider.database_type == "postgresql":
+        _check_connection_isolation_level(subject, provider._engine)
     return provider
+
+
+def _check_connection_isolation_level(subject: str, engine: Engine) -> None:
+    """Raise ``ConfigurationError`` unless ``engine``'s connections run a safe
+    PostgreSQL isolation level.
+
+    The level is read from a connection, so a level set in ``connect_args``,
+    on the role or on the server is checked too.
+    """
+    with engine.connect() as conn:
+        level = str(conn.exec_driver_sql("SHOW transaction_isolation").scalar())
+    normalized = level.upper()
+    if normalized in _SAFE_ISOLATION_LEVELS["postgresql"]:
+        return
+    reason = _UNSAFE_ISOLATION_LEVELS["postgresql"].get(
+        normalized, "postgresql does not run this level"
+    )
+    raise ConfigurationError(
+        f"{subject} runs its connections at isolation level {level!r}, which "
+        f"the sql event store refuses: {reason}. Set the level to READ "
+        "COMMITTED."
+    )
 
 
 def _is_in_memory(url: URL) -> bool:
@@ -243,6 +274,7 @@ def _is_in_memory(url: URL) -> bool:
         database in ("", ":memory:")
         or database.startswith("file::memory:")
         or url.query.get("mode") == "memory"
+        or url.query.get("vfs") == "memdb"
     )
 
 
@@ -441,9 +473,10 @@ class SqlEventStore(EventStorePort):
     database provider, which must be a SQLAlchemy provider on a SQLite file or
     PostgreSQL. The tables go in that provider's schema. Inside a Unit of
     Work, the store holds each appended message and ``write_message`` returns
-    ``None``. At commit, after the aggregate events are appended and before
-    the outbox rows are saved, the store writes the held messages on the Unit
-    of Work's session for ``default``, so they commit or roll back with it.
+    ``None``. At commit, after the Unit of Work passes its aggregate events to
+    the store, which holds them too, and before the outbox rows are saved, the
+    store writes every held message on the Unit of Work's session for
+    ``default``, so the messages commit or roll back with it.
     Snapshot writes and reads inside a Unit of Work run on that session too.
     Outside a Unit of Work, each write commits in its own transaction. On a
     shared SQLite file, every transaction starts with ``BEGIN IMMEDIATE``.
@@ -494,9 +527,7 @@ class SqlEventStore(EventStorePort):
         # The messages held for each Unit of Work, with the transaction they
         # belong to. A Unit of Work can be started again, so a held list
         # counts only while its transaction is the one in progress.
-        self._held: WeakKeyDictionary[UnitOfWork, tuple[object, list[_Append]]] = (
-            WeakKeyDictionary()
-        )
+        self._held: WeakKeyDictionary[UnitOfWork, _Held] = WeakKeyDictionary()
 
     def _own_engine(self, uri: str) -> Engine:
         """Build the engine of the store's own database from ``database_uri``."""
@@ -546,7 +577,11 @@ class SqlEventStore(EventStorePort):
         if not self._shared:
             return None
         uow = _uow_stack.top
-        return uow if uow is not None and uow.in_progress else None
+        if uow is None or not uow.in_progress:
+            return None
+        # A Unit of Work started in another domain writes to that domain's
+        # databases, so this store writes at once on its own connection.
+        return uow if uow._started_in is self.domain else None
 
     @staticmethod
     def _uow_connection(uow: UnitOfWork) -> Connection:
@@ -589,16 +624,16 @@ class SqlEventStore(EventStorePort):
 
     def _hold(self, uow: UnitOfWork, message: _Append) -> None:
         """Keep ``message`` to write when ``uow`` commits."""
-        entry = self._held.get(uow)
-        if entry is not None and entry[0] is uow._transaction:
-            entry[1].append(message)
-            return
-        held = [message]
-        self._held[uow] = (uow._transaction, held)
-        uow._before_commit.append(lambda: self._write_held(uow, held))
+        held = self._held.get(uow)
+        if held is None or held.transaction is not uow._transaction:
+            held = _Held(uow._transaction)
+            self._held[uow] = held
+            uow._before_commit.append(lambda: self._write_held(uow, held))
+        held.messages.append(message)
 
-    def _write_held(self, uow: UnitOfWork, held: list[_Append]) -> None:
-        """Write ``held`` on ``uow``'s connection, in the order produced.
+    def _write_held(self, uow: UnitOfWork, held: _Held) -> None:
+        """Write ``held``'s messages on ``uow``'s connection, in the order
+        produced.
 
         Runs as ``uow``'s pre-commit callback, so an exception fails the
         commit and rolls back every session.
@@ -606,14 +641,24 @@ class SqlEventStore(EventStorePort):
         Raises:
             ExpectedVersionError: A held message's expected version is not
                 its stream's current version.
+            InvalidOperationError: ``commit()`` runs again after a commit
+                that failed. The transaction may hold some of the messages
+                already, so the Unit of Work must be rolled back.
         """
+        if held.written:
+            raise InvalidOperationError(
+                "The Unit of Work's commit failed after the sql event store "
+                "wrote its messages in the transaction. Roll the Unit of Work "
+                "back and run it again."
+            )
+        held.written = True
         self._held.pop(uow, None)
         self._on_commit_callback_entered()
         conn = self._uow_connection(uow)
         self._take_category_locks(
-            conn, {_category(message.stream_name) for message in held}
+            conn, {_category(message.stream_name) for message in held.messages}
         )
-        for message in held:
+        for message in held.messages:
             self._insert(conn, message)
 
     def _on_commit_callback_entered(self) -> None:
@@ -763,6 +808,7 @@ class SqlEventStore(EventStorePort):
                 )
                 .values(position=table.c.position + 1, **values)
             )
+        current = None
         with self._writing() as conn:
             # psycopg reports no row count for an upsert, so RETURNING tells
             # whether the statement wrote the row.

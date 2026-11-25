@@ -80,7 +80,7 @@ with domain.domain_context():
 
 ## Asynchronous Processing
 
-When processing asynchronously (the default), the handler's return value is ignored. `domain.process()` returns the position of the command in the event store:
+When processing asynchronously (the default), the handler's return value is ignored. `domain.process()` returns the position of the command in the event store. Inside a unit of work, a `sql` event store that shares the `default` database holds the command until the commit, and `process` returns `None`:
 
 ```python
 with domain.domain_context():

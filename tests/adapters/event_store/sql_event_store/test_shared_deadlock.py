@@ -21,8 +21,8 @@ class TestCommitsTakeCategoryLocksInKeyOrder:
         domain: Domain = make_shared_domain()
         store = domain.event_store._require_adapter()
         # Both commits reach their locks together. The pause after each lock
-        # gives the other commit time to take its first lock, so an unsorted
-        # order deadlocks every time.
+        # gives the other commit time to take its first lock, so taking the
+        # locks in the order the messages were written deadlocks every time.
         barrier = threading.Barrier(2, timeout=10)
         store._on_commit_callback_entered = barrier.wait
         store._on_lock_taken = lambda: time.sleep(0.3)

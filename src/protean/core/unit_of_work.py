@@ -13,7 +13,12 @@ from protean.exceptions import (
 )
 from protean.port.database import DatabaseCapabilities
 from protean.utils import Processing
-from protean.utils.globals import _uow_context_stack, current_domain, g
+from protean.utils.globals import (
+    _quiet_find_domain,
+    _uow_context_stack,
+    current_domain,
+    g,
+)
 from protean.utils.processing import current_priority
 from protean.utils.reflection import id_field
 from protean.utils.sync_dispatch import dispatch_events_sync
@@ -25,6 +30,7 @@ from protean.utils.telemetry import (
 
 if TYPE_CHECKING:
     from protean.core.aggregate import BaseAggregate
+    from protean.domain import Domain
     from protean.port.database import SessionProtocol
     from protean.utils.outbox import Outbox, OutboxRepository
 
@@ -134,6 +140,10 @@ class UnitOfWork:
         # Identifies the transaction in progress. A UnitOfWork can be started
         # again after it ends, so the object alone does not.
         self._transaction: object | None = None
+        # The domain active when the transaction started. ``domain`` follows
+        # the domain context, so it cannot tell which domain's databases this
+        # transaction writes to once another domain's context is pushed.
+        self._started_in: Domain | None = None
 
         # A UnitOfWork started while another is already active on this context is
         # a participant in the outer transaction (see ``start``). ``_nested`` marks
@@ -150,7 +160,8 @@ class UnitOfWork:
         self._after_commit: list[Callable[[], None]] = []
 
         # Writes that must join this transaction at commit, after the
-        # aggregate events are appended and before the outbox rows are saved.
+        # aggregate events go to the event store and before the outbox rows
+        # are saved.
         # A shared SQL event store registers one here to insert the messages it
         # held. A rollback discards them.
         self._before_commit: list[Callable[[], None]] = []
@@ -335,6 +346,7 @@ class UnitOfWork:
             return
 
         self._transaction = object()
+        self._started_in = _quiet_find_domain()
 
         # Log transaction capability warnings for each configured provider
         for provider_name, provider in self.domain.databases.items():
@@ -471,11 +483,12 @@ class UnitOfWork:
         # Process each provider session separately
         try:
             # Append events to the event store FIRST, while this UnitOfWork is
-            # still the active context, so the event store is the durable anchor
-            # of the commit: a crash before the relational commit leaves the
-            # events durable, and reconciliation rebuilds the outbox rows of
-            # event-sourced aggregates' events, rather than leaving the store
-            # missing a committed event. See ADR-0015.
+            # still the active context. An event store that writes outside this
+            # transaction is then the durable anchor of the commit: a crash
+            # before the relational commit leaves the events durable, and
+            # reconciliation rebuilds the outbox rows of event-sourced
+            # aggregates' events, rather than leaving the store missing a
+            # committed event. See ADR-0015.
             #
             # The memory and message-db event stores, and a sql event store on
             # its own database, write the append directly, outside this

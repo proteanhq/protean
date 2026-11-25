@@ -153,7 +153,10 @@ by its per-stream `position`, and a category or `$all` read pages by
 
 !!! warning "Interim: not yet a stable contract"
     The event-store append is written first, and the relational and outbox
-    commit follows it without a shared transaction. For event-sourced
+    commit follows it without a shared transaction. A `sql` event store that
+    shares the `default` database is the exception: it writes the append in
+    the Unit of Work's transaction on `default`, so the append and the
+    relational and outbox rows on that database commit together. For event-sourced
     aggregates, a reconciliation sweep at startup closes the window between the
     append and the commit. The sweep checks each recent event of an
     event-sourced aggregate. When the event has lost its internal outbox row,

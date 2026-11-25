@@ -129,7 +129,7 @@ Example of a command handler that returns a value:
 
 ### Asynchronous Processing
 
-When commands are processed asynchronously (the default behavior), the command handler's return value is not passed back to the caller. Instead, the domain's `process` method returns the position of the command in the event store:
+When commands are processed asynchronously (the default behavior), the command handler's return value is not passed back to the caller. Instead, the domain's `process` method returns the position of the command in the event store. Inside a unit of work, a `sql` event store that shares the `default` database holds the command until the commit, and `process` returns `None`:
 
 ```python
 --8<-- "guides/change-state/command-handlers/001.py:process_async"
