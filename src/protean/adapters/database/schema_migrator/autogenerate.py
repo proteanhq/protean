@@ -91,7 +91,11 @@ class _OwnedTables:
         return self.tables.get((self.normalized(schema), name))
 
     def label(self, schema: str | None, name: str) -> str:
-        """``name``, qualified by its schema when that is not the provider's."""
+        """``name``, qualified by its schema when that is not the provider's.
+
+        Offline, a table in the default schema has no schema name to show, so
+        it is named alone.
+        """
         schema = self.normalized(schema)
         if schema == self.schema:
             return name
@@ -104,6 +108,7 @@ class _Comparison:
 
     def __init__(self, metadata: MetaData, connection: Connection | None) -> None:
         self.owned = _OwnedTables(metadata, connection)
+        self.sqlite = connection is not None and connection.dialect.name == "sqlite"
 
     def include_name(self, name: str | None, type_: str, parent_names: Any) -> bool:
         if type_ == "schema":
@@ -127,6 +132,13 @@ class _Comparison:
             if any(not index.name for index in raw):
                 return False
             return name not in {index.name for index in raw}
+        if type_ == "foreign_key_constraint" and not reflected and self.sqlite:
+            # SQLite keeps a foreign key only to a table in the same database,
+            # so SQLAlchemy leaves one to another schema out of the table it
+            # creates, and the database never has it.
+            return self.owned.normalized(obj.table.schema) == self.owned.normalized(
+                obj.referred_table.schema
+            )
         if type_ == "unique_constraint" and not reflected:
             # The identifier field is marked unique as well as primary, and the
             # primary key already makes it unique in the database.
@@ -378,7 +390,7 @@ def _index_rebuild(
     for name, create in _lossy_indexes(table):
         if name in present:
             # The copy keeps an index it can reflect, in its reflected form.
-            rebuilt += [_drop_if_exists(connection, name, schema), create]
+            rebuilt += [_drop_if_exists(connection, owned, name, schema), create]
     return rebuilt
 
 
@@ -394,7 +406,7 @@ def _stored_index_rebuild(
     rebuilt: list[Any] = []
     for name, sql in _stored_index_sql(connection, table_name, schema):
         rebuilt += [
-            _drop_if_exists(connection, name, schema),
+            _drop_if_exists(connection, owned, name, schema),
             _execute_sql(_in_schema(connection, sql, schema)),
         ]
     return rebuilt
@@ -423,8 +435,11 @@ def _execute_sql(sql: str) -> ops.ExecuteSQLOp:
 
 
 def _drop_if_exists(
-    connection: Connection, name: str, schema: str | None
+    connection: Connection, owned: _OwnedTables, name: str, schema: str | None
 ) -> ops.ExecuteSQLOp:
+    # The copy has already dropped the table's own index, so an unqualified
+    # name would find an index of that name in an attached database.
+    schema = schema or owned.default_schema
     return ops.ExecuteSQLOp(
         f"DROP INDEX IF EXISTS {_qualified(connection, name, schema)}"
     )
@@ -499,13 +514,17 @@ def _missing_raw_indexes(
     """The table, name and DDL of each named raw index an existing table lacks.
 
     A table exists when the database has it in the table's schema and its
-    schema and name are not in ``created``. A raw index is lacking when the
-    table has no index of its name.
+    schema and name are not in ``created``. A schema the database lacks has
+    no tables. A raw index is lacking when the table has no index of its name.
     """
     inspector = inspect(connection)
+    # Reflecting tables in a schema the database lacks raises on SQLite and
+    # MySQL, and a declared schema may not exist yet.
+    schemas = {owned.normalized(schema) for schema in inspector.get_schema_names()}
     existing = {
         (schema, name)
         for schema in owned.schemas
+        if schema is None or schema in schemas
         for name in inspector.get_table_names(schema=schema)
     } - created
     missing: list[tuple[Table, str, str]] = []

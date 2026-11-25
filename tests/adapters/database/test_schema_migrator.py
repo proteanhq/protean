@@ -353,6 +353,35 @@ ARCHIVE_INDEX = Index.from_sql(
     "CREATE INDEX reporting.ix_archive_title ON archive (lower(title))",
     name="ix_archive_title",
 )
+UNIQUE_ARCHIVE_INDEX_STORED = (
+    "ix_archive_title",
+    "CREATE UNIQUE INDEX ix_archive_title ON archive (lower(title))",
+)
+UNIQUE_ARCHIVE_INDEX = Index.from_sql(
+    "sqlite",
+    "CREATE UNIQUE INDEX reporting.ix_archive_title ON archive (lower(title))",
+    name="ix_archive_title",
+)
+# A plain column index, which reflection reports, unlike an expression index.
+COLUMN_ARCHIVE_INDEX = Index.from_sql(
+    "sqlite",
+    "CREATE INDEX reporting.ix_archive_title ON archive (title)",
+    name="ix_archive_title",
+)
+UNRELATED_INDEX_STORED = (
+    "ix_archive_title",
+    "CREATE INDEX ix_archive_title ON archive (title)",
+)
+
+
+def change_version_type(connection):
+    """Give ``reporting.archive._version`` a type the model does not declare."""
+    connection.execute(
+        sqlalchemy.text("ALTER TABLE reporting.archive DROP COLUMN _version")
+    )
+    connection.execute(
+        sqlalchemy.text("ALTER TABLE reporting.archive ADD COLUMN _version TEXT")
+    )
 
 
 class TestTableInASecondSchema:
@@ -361,13 +390,17 @@ class TestTableInASecondSchema:
     which Protean does not own, sits in the default schema."""
 
     @pytest.fixture
-    def provider(self, tmp_path):
+    def index(self):
+        return ARCHIVE_INDEX
+
+    @pytest.fixture
+    def provider(self, tmp_path, index):
         domain = Domain(name="Shop")
         domain.config["databases"]["default"] = {
             "provider": "sqlite",
             "database_uri": f"sqlite:///{tmp_path / 'shop.db'}",
         }
-        domain.register(Archive, indexes=[ARCHIVE_INDEX])
+        domain.register(Archive, indexes=[index])
         domain.register_database_model(ArchiveModel, part_of=Archive)
         domain.init(traverse=False)
         with domain.domain_context():
@@ -405,6 +438,10 @@ class TestTableInASecondSchema:
         with provider._engine.connect() as connection:
             return _stored_index_sql(connection, "archive", "reporting")
 
+    def unrelated_indexes(self, provider):
+        with provider._engine.connect() as connection:
+            return _stored_index_sql(connection, "archive", None)
+
     def test_an_existing_table_has_no_differences(self, provider, migrator):
         self.archive_table(provider).create(provider._engine)
 
@@ -418,11 +455,12 @@ class TestTableInASecondSchema:
         path = migrator.migrate("add archive")
 
         assert path is not None
-        revision = path.read_text(encoding="utf-8")
-        assert "op.create_table('archive'" in revision
-        assert "schema='reporting'" in revision
-        assert "CREATE INDEX reporting.ix_archive_title" in revision
-        assert "drop_table" not in revision.split("def downgrade")[0]
+        upgrade, downgrade = path.read_text(encoding="utf-8").split("def downgrade")
+        assert "op.create_table('archive'" in upgrade
+        assert "schema='reporting'\n    )" in upgrade
+        assert "CREATE INDEX reporting.ix_archive_title" in upgrade
+        assert "drop_table" not in upgrade
+        assert "op.drop_table('archive', schema='reporting')" in downgrade
         migrator.upgrade()
         reporting = sqlalchemy.inspect(provider._engine).get_table_names("reporting")
         assert reporting == ["archive"]
@@ -451,59 +489,134 @@ class TestTableInASecondSchema:
         assert self.reporting_indexes(provider) == [ARCHIVE_INDEX_STORED]
         assert migrator.check() == []
 
+    @pytest.mark.parametrize("index", [COLUMN_ARCHIVE_INDEX])
+    def test_a_raw_column_index_in_the_second_schema_is_kept(self, provider, migrator):
+        # ``Table.create`` fires the raw index's DDL.
+        self.archive_table(provider).create(provider._engine)
+
+        assert migrator.check() == []
+
     def test_a_table_copy_rebuilds_its_indexes_in_its_schema(self, provider, migrator):
         self.archive_table(provider).create(provider._engine)
         with provider._engine.begin() as connection:
-            connection.execute(
-                sqlalchemy.text("ALTER TABLE reporting.archive DROP COLUMN _version")
-            )
-            connection.execute(
-                sqlalchemy.text(
-                    "ALTER TABLE reporting.archive ADD COLUMN _version TEXT"
-                )
-            )
+            change_version_type(connection)
         assert migrator.check() == ["modify_type reporting.archive._version"]
 
         path = migrator.migrate("change version")
 
         assert path is not None
         upgrade, downgrade = path.read_text(encoding="utf-8").split("def downgrade")
-        assert "schema='reporting'" in upgrade
+        assert "batch_alter_table('archive', schema='reporting')" in upgrade
         assert "DROP INDEX IF EXISTS reporting.ix_archive_title" in upgrade
         assert "CREATE INDEX reporting.ix_archive_title" in upgrade
         assert "DROP INDEX IF EXISTS reporting.ix_archive_title" in downgrade
         migrator.upgrade()
         assert self.reporting_indexes(provider) == [ARCHIVE_INDEX_STORED]
+        assert self.unrelated_indexes(provider) == [UNRELATED_INDEX_STORED]
         assert migrator.check() == []
 
+    def test_a_table_copy_looks_for_its_indexes_in_its_schema(self, provider, migrator):
+        self.archive_table(provider).create(provider._engine)
+        with provider._engine.begin() as connection:
+            change_version_type(connection)
+            connection.execute(sqlalchemy.text("DROP INDEX main.ix_archive_title"))
+
+        path = migrator.migrate("change version")
+
+        assert path is not None
+        upgrade = path.read_text(encoding="utf-8").split("def downgrade")[0]
+        assert "DROP INDEX IF EXISTS reporting.ix_archive_title" in upgrade
+        migrator.upgrade()
+        assert self.reporting_indexes(provider) == [ARCHIVE_INDEX_STORED]
+
+    @pytest.mark.parametrize(
+        "index, stored",
+        [
+            (ARCHIVE_INDEX, ARCHIVE_INDEX_STORED),
+            (UNIQUE_ARCHIVE_INDEX, UNIQUE_ARCHIVE_INDEX_STORED),
+        ],
+    )
     def test_a_table_copy_downgrade_restores_its_indexes_in_its_schema(
-        self, provider, migrator
+        self, provider, migrator, stored
     ):
         self.archive_table(provider).create(provider._engine)
         with provider._engine.begin() as connection:
-            connection.execute(
-                sqlalchemy.text("ALTER TABLE reporting.archive DROP COLUMN _version")
-            )
-            connection.execute(
-                sqlalchemy.text(
-                    "ALTER TABLE reporting.archive ADD COLUMN _version TEXT"
-                )
-            )
+            change_version_type(connection)
         path = migrator.migrate("change version")
         assert path is not None
         downgrade = path.read_text(encoding="utf-8").split("def downgrade")[1]
-        assert (
-            "CREATE INDEX reporting.ix_archive_title ON archive (lower(title))"
-            in downgrade
-        )
+        restored = stored[1].replace("INDEX ix_", "INDEX reporting.ix_")
+        assert restored in downgrade
         migrator.upgrade()
 
         migrator.downgrade("-1")
 
-        assert self.reporting_indexes(provider) == [ARCHIVE_INDEX_STORED]
+        assert self.reporting_indexes(provider) == [stored]
+        assert self.unrelated_indexes(provider) == [UNRELATED_INDEX_STORED]
+
+
+class Note(BaseAggregate):
+    body = String(max_length=50)
+
+
+class TestTableCopyInTheDefaultSchema:
+    """An attached ``reporting`` database holds an index with the name of a
+    raw index on the owned ``note`` table in the default schema."""
+
+    @pytest.fixture
+    def provider(self, tmp_path):
+        domain = Domain(name="Shop")
+        domain.config["databases"]["default"] = {
+            "provider": "sqlite",
+            "database_uri": f"sqlite:///{tmp_path / 'shop.db'}",
+        }
+        index = Index.from_sql(
+            "sqlite", "CREATE INDEX ix_note ON note (lower(body))", name="ix_note"
+        )
+        domain.register(Note, indexes=[index])
+        domain.init(traverse=False)
+        with domain.domain_context():
+            provider = provider_adapter(domain, "default")
+            reporting = tmp_path / "reporting.db"
+
+            @sqlalchemy.event.listens_for(provider._engine, "connect")
+            def attach(dbapi_connection, record):
+                dbapi_connection.execute(f"ATTACH DATABASE '{reporting}' AS reporting")
+
+            provider._engine.dispose()
+            domain.repository_for(Note)._dao
+            with provider._engine.begin() as connection:
+                connection.execute(
+                    sqlalchemy.text("CREATE TABLE reporting.other (body TEXT)")
+                )
+                connection.execute(
+                    sqlalchemy.text("CREATE INDEX reporting.ix_note ON other (body)")
+                )
+            yield provider
+            provider._engine.dispose()
+
+    def test_the_copy_drops_only_the_index_of_its_table(self, provider, tmp_path):
+        migrator = provider.schema_migrator(tmp_path / "migrations")
+        migrator.init("domain.py")
+        provider._metadata.tables["note"].create(provider._engine)
+        with provider._engine.begin() as connection:
+            connection.execute(sqlalchemy.text("ALTER TABLE note DROP COLUMN _version"))
+            connection.execute(
+                sqlalchemy.text("ALTER TABLE note ADD COLUMN _version TEXT")
+            )
+        assert migrator.check() == ["modify_type note._version"]
+
+        path = migrator.migrate("change version")
+        assert path is not None
+        assert "DROP INDEX IF EXISTS main.ix_note" in path.read_text(encoding="utf-8")
+        migrator.upgrade()
+
         with provider._engine.connect() as connection:
-            assert _stored_index_sql(connection, "archive", None) == [
-                ("ix_archive_title", "CREATE INDEX ix_archive_title ON archive (title)")
+            assert _stored_index_sql(connection, "other", "reporting") == [
+                ("ix_note", "CREATE INDEX ix_note ON other (body)")
+            ]
+            assert _stored_index_sql(connection, "note", None) == [
+                ("ix_note", "CREATE INDEX ix_note ON note (lower(body))")
             ]
 
 

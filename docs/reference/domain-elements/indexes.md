@@ -66,7 +66,8 @@ Index.from_sql(dialect, ddl, name=None) -> RawIndex
 `Index.from_sql` declares dialect-specific DDL that the portable `Index` API
 cannot model (GIN/GiST/BRIN, expression indexes, dialect-only options). The
 schema generator and the SQLAlchemy adapter emit the verbatim `ddl` **only**
-when the configured dialect matches `dialect`.
+when the configured dialect matches `dialect`. For a table in another schema,
+the `ddl` names that schema.
 
 ```python
 --8<-- "reference/domain-elements/indexes/002.py:from_sql"

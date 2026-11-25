@@ -6,6 +6,7 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
     Computed,
+    ForeignKey,
     ForeignKeyConstraint,
     Index,
     Integer,
@@ -373,6 +374,37 @@ class TestCompareAcrossSchemas:
 
         assert self.compare(connection, metadata) == []
 
+    def test_a_foreign_key_to_another_schema_is_not_compared(self, connection):
+        self.create_archive(connection)
+        metadata = self.metadata(
+            Column("title", String(50)),
+            Column("product_id", String(36), ForeignKey("product.id")),
+        )
+        connection.execute(
+            text("ALTER TABLE reporting.archive ADD COLUMN product_id VARCHAR(36)")
+        )
+
+        assert self.compare(connection, metadata) == []
+
+    def test_a_foreign_key_in_one_schema_is_compared(self, connection):
+        metadata = self.metadata(Column("title", String(50)))
+        Table(
+            "archive",
+            metadata,
+            Column("other", Integer, primary_key=True),
+            Column("product_id", String(36), ForeignKey("product.id")),
+        )
+        connection.execute(text("DROP TABLE archive"))
+        connection.execute(
+            text(
+                "CREATE TABLE archive "
+                "(other INTEGER PRIMARY KEY, product_id VARCHAR(36))"
+            )
+        )
+        self.create_archive(connection)
+
+        assert self.compare(connection, metadata) == ["add_fk archive.product_id"]
+
     def test_an_index_in_the_second_schema_is_named_with_its_schema(self, connection):
         self.create_archive(connection)
         connection.execute(
@@ -384,6 +416,24 @@ class TestCompareAcrossSchemas:
         assert self.compare(connection, metadata) == [
             "remove_index reporting.archive.ix_archive_title"
         ]
+
+
+class TestCompareASchemaTheDatabaseLacks:
+    def test_a_table_in_the_schema_is_reported_missing(self):
+        engine = sqlalchemy.create_engine("sqlite://")
+        metadata = MetaData()
+        Table(
+            "archive",
+            metadata,
+            Column("id", String(36), primary_key=True),
+            schema="reporting",
+        )
+        with engine.connect() as connection:
+            context = MigrationContext.configure(
+                connection, opts=configure_options(metadata, "sqlite", connection)
+            )
+
+            assert _compare(context, metadata) == ["add_table reporting.archive"]
 
 
 class TestOwnedTables:
