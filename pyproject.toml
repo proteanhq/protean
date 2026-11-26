@@ -79,7 +79,7 @@ dependencies = [
 [project.optional-dependencies]
 # Adapter extras: the infrastructure a domain talks to.
 elasticsearch = ["elasticsearch>=8.18.0,<9.0.0"]
-redis = ["redis>=8.0.0,<8.2.0"]
+redis = ["redis>=8.0.0,<8.3.0"]
 # `greenlet` rides with the SQLAlchemy extras: SQLAlchemy 2.0 requires it on
 # common platforms but declares no floor (2.1 no longer requires it, but the
 # 2.0 floor still has to install), and 3.2.3 is the first release with a
